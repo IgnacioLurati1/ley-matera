@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { PLAYER } from '../config/rules';
 import { PLAYER_START } from '../config/map';
 
+const specTarget = new THREE.Vector3();
+const specFwd = new THREE.Vector3();
+const specBack = new THREE.Vector3();
+
 // Jugador: movimiento con colisiones, cámara, vida con regeneración, perks,
 // caída con Quick Revive (solo) y muerte.
 
@@ -124,12 +128,14 @@ export default class Player {
     this.alive = false;
     this.downed = false;
     this.eye = 3.2;
+    this.g.hud.hurt(0);
     this.g.hud.subtitle('Caíste. Volvés en la próxima ronda.', 5);
     this.g.net?.net.send({ t: 'ev', e: 'dead', id: this.g.net.id });
   }
 
   respawn() {
     const g = this.g;
+    g.hud.setSpectate(null);
     this.alive = true;
     this.downed = false;
     this.health = this.maxHealth;
@@ -191,13 +197,16 @@ export default class Player {
     this.recoil.y -= this.recoil.y * Math.min(1, dt * 20);
     this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch));
 
-    if (!this.alive) return;
+    if (!this.alive) {
+      this.spectateCam(dt, cam);
+      return;
+    }
 
     if (this.downed && this.bleed > 0) {
       // caído en cooperativo: te desangrás hasta que te levanten
       this.bleed -= dt;
       this.eye += (0.55 - this.eye) * Math.min(1, dt * 5);
-      g.hud.setDowned(1 - this.bleed / 30);
+      g.hud.setDowned(this.bleed / 30, 'Caíste: que un compañero te levante', true);
       if (this.bleed <= 0) {
         this.downed = false;
         this.spectate();
@@ -297,6 +306,25 @@ export default class Player {
     this.eye += (targetEye - this.eye) * Math.min(1, dt * 10);
 
     this.updateCamera(cam);
+  }
+
+  // Muerto en línea: la cámara sigue desde atrás a un compañero (con el mouse
+  // se gira alrededor) hasta volver en la próxima ronda.
+  spectateCam(dt, cam) {
+    const g = this.g;
+    const mates = g.net ? [...g.net.remote.values()].filter((r) => !r.dead) : [];
+    const r = mates.find((x) => !x.downed) || mates[0];
+    g.hud.setSpectate(r ? r.name : null);
+    if (!r) return;
+    this.pitch = Math.max(-0.9, Math.min(0.6, this.pitch));
+    specTarget.set(r.pos.x, (r.pos.y || 0) + (r.downed ? 0.6 : 1.5), r.pos.z);
+    specFwd.set(-Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch));
+    // se acerca si hay una pared, el techo o el piso en el medio
+    specBack.copy(specFwd).negate();
+    const hit = g.world.raycast(specTarget, specBack, 3.2);
+    const dist = Math.max(0.4, Math.min(3.2, hit - 0.3));
+    cam.position.copy(specTarget).addScaledVector(specBack, dist);
+    cam.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
   }
 
   updateCamera(cam) {

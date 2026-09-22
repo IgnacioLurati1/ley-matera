@@ -328,6 +328,17 @@ export default class GameAudio {
     }
   }
 
+  // Silbido del Pombero: dos cortitos que suben y uno largo que cae, como
+  // llamando desde el monte.
+  pombero(pos) {
+    const o = this.out({ pos, reverb: 0.7, gain: 0.55 });
+    const t = this.now;
+    this.tone(o, { t, dur: 0.16, type: 'sine', freq: 1700, freqEnd: 2300, gain: 0.22, attack: 0.02 });
+    this.tone(o, { t: t + 0.24, dur: 0.16, type: 'sine', freq: 1750, freqEnd: 2400, gain: 0.22, attack: 0.02 });
+    this.tone(o, { t: t + 0.55, dur: 0.8, type: 'sine', freq: 2500, freqEnd: 1300, gain: 0.25, attack: 0.04 });
+    this.noise(o, { t, dur: 1.3, type: 'bandpass', freq: 2200, q: 4, gain: 0.03, attack: 0.05 });
+  }
+
   // "Ladrido" del carpincho: un resoplido grave y cortito, con chasquido de dientes.
   bark(pos) {
     const o = this.out({ pos, reverb: 0.3, gain: 0.5 });

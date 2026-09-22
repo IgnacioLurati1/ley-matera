@@ -56,7 +56,8 @@ export default class Hud {
     this.weaponName = el('div', 'mdu-wname', this.ammoBox);
     this.ammo = el('div', 'mdu-mag', this.ammoBox);
     this.nades = el('div', 'mdu-nades', this.ammoBox);
-    this.down = el('div', 'mdu-down', r, '<span>Rosamorte te está levantando...</span><b><i></i></b>');
+    this.down = el('div', 'mdu-down', r, '<span></span><b><i></i></b>');
+    this.spec = el('div', 'mdu-spec', r);
     this.fps = el('div', 'mdu-fps', r);
     this.pickup = el('div', 'mdu-pickup', r);
     this.cache = {};
@@ -89,6 +90,7 @@ export default class Hud {
     this.loc.classList.remove('is-on');
     this.hurt(0);
     this.setDowned(null);
+    this.setSpectate(null);
     this.round.innerHTML = '';
     this.ach.classList.remove('is-on');
   }
@@ -341,10 +343,24 @@ export default class Hud {
     setTimeout(() => d.remove(), 900);
   }
 
-  setDowned(progress) {
-    this.set('down', progress == null ? null : Math.round(progress * 50), () => {
+  // Barra de caído: en solitario se llena mientras Rosamorte te levanta; en
+  // línea (`bleed`) se vacía mientras te desangrás esperando a un compañero.
+  setDowned(progress, text = 'Rosamorte te está levantando...', bleed = false) {
+    this.set('down', progress == null ? null : `${Math.round(progress * 50)}${text}`, () => {
       this.down.classList.toggle('is-on', progress != null);
-      if (progress != null) this.down.querySelector('i').style.width = `${progress * 100}%`;
+      this.down.classList.toggle('is-bleed', bleed);
+      if (progress == null) return;
+      this.down.querySelector('span').textContent = text;
+      this.down.querySelector('i').style.width = `${progress * 100}%`;
+    });
+  }
+
+  // Muerto en línea: a quién estás mirando.
+  setSpectate(name) {
+    this.set('spec', name, () => {
+      this.spec.classList.toggle('is-on', name != null);
+      this.spec.innerHTML = name == null ? '' : `Mirando a <b></b><small>Volvés en la próxima ronda</small>`;
+      if (name != null) this.spec.querySelector('b').textContent = name;
     });
   }
 

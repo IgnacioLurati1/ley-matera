@@ -620,6 +620,20 @@
   height: 100%;
   background: #39a8e0;
 }
+.mdu-down.is-bleed b { border-color: #d23b2c; }
+.mdu-down.is-bleed i { background: #d23b2c; }
+.mdu-spec {
+  position: absolute;
+  left: 50%;
+  top: 16%;
+  transform: translateX(-50%);
+  display: none;
+  text-align: center;
+  font-size: 18px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+.mdu-spec.is-on { display: block; }
+.mdu-spec small { display: block; margin-top: 4px; font-size: 14px; opacity: 0.75; }
 .mdu-fps {
   position: absolute;
   left: 10px;

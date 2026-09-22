@@ -13,6 +13,7 @@ import Player from './entities/Player';
 import Rounds from './entities/Rounds';
 import Powerups from './entities/Powerups';
 import EasterEgg from './entities/EasterEgg';
+import Pombero from './entities/Pombero';
 import Weather from './world/Weather';
 import Activities from './world/Activities';
 import Decor from './world/Decor';
@@ -235,6 +236,7 @@ export default class Game {
     this.zombies = new Zombies(this);
     this.rounds = new Rounds(this);
     this.powerups = new Powerups(this);
+    this.pombero = new Pombero(this);
     this.ee = new EasterEgg(this);
     this.weather = new Weather(this);
     this.decor = new Decor(this);
@@ -834,6 +836,7 @@ export default class Game {
     this.zombies.update(dt, this.time);
     this.arena.update(dt);
     this.powerups.update(dt);
+    this.pombero.update(dt);
     this.activities.update(dt);
     this.net?.update(dt);
     this.decor.update(dt);
@@ -857,9 +860,9 @@ export default class Game {
       this.fx.resize(this.renderer.getDrawingBufferSize(new THREE.Vector2()).y, this.camera.fov);
     }
     const scoped = st?.scope && w.adsT > 0.85;
-    w.vmRoot.visible = !scoped && !this.endCam;
+    w.vmRoot.visible = !scoped && !this.endCam && this.player.alive;
     this.hud.setCrosshair(w.crosshair, !w.ads && !this.player.sprinting && this.player.alive, !!scoped);
-    if (this.player.downed) this.hud.setDowned(this.player.downT / 10);
+    if (this.player.downed && !(this.player.bleed > 0)) this.hud.setDowned(this.player.downT / 10);
 
     // luz del lugar para iluminar el mate en la mano
     const zone = this.world.zoneAt(this.player.pos.x, this.player.pos.z);

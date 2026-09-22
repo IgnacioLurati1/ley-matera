@@ -69,9 +69,12 @@ export default class Powerups {
     glow.scale.setScalar(1.6);
     mesh.add(glow);
     const id = (this.nextId = (this.nextId || 0) + 1);
-    this.items.push({ id, type, mesh, t: 0, pos: p });
+    const item = { id, type, mesh, t: 0, pos: p };
+    this.items.push(item);
     g.audio.powerupSpawn(mesh.position);
     g.net?.event('pup', { id, type, x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
+    // muy de vez en cuando, el Pombero viene a llevárselo
+    g.pombero?.onDrop(item);
   }
 
   // Power-up que aparece o se levanta en otra compu.

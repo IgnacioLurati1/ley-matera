@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import Avatars from './Avatars';
 import { GRENADE, maxTier } from '../config/weapons';
+import { POMBERO_ID } from '../entities/Pombero';
 
 // Sincronización de la partida. El anfitrión simula todo (zombies, rondas,
 // puertas, caja, clima) y manda 15 fotos por segundo con las posiciones; los
@@ -179,13 +180,14 @@ export default class Session {
     const v = this.view;
     const list = g.zombies.pool.filter((z) => z.active);
     const boss = g.zombies.boss;
+    const pomb = g.pombero?.snapshot();
     let o = 0;
     v.setUint8(o++, 1);
     v.setUint8(o++, 1 + this.remote.size);
     v.setUint16(o, list.length, true);
     o += 2;
     v.setUint8(o++, boss ? 1 : 0);
-    v.setUint8(o++, 0);
+    v.setUint8(o++, pomb ? 1 : 0);
     // jugadores (el anfitrión y lo último que recibió de cada invitado)
     o = this.writePlayer(v, o, this.id, g.player);
     for (const r of this.remote.values()) {
@@ -221,6 +223,13 @@ export default class Session {
       v.setUint8(o + 9, boss.dead ? 1 : 0);
       o += ZOMBIE_BYTES;
     }
+    if (pomb) {
+      v.setInt16(o, Math.round(pomb.x * 50), true);
+      v.setInt16(o + 2, Math.round(pomb.z * 50), true);
+      v.setInt16(o + 4, Math.round(pomb.yaw * 5000), true);
+      v.setUint8(o + 6, pomb.st);
+      o += 8;
+    }
     this.net.sendFast(this.buf.slice(0, o));
   }
 
@@ -246,6 +255,7 @@ export default class Session {
     const players = v.getUint8(1);
     const zcount = v.getUint16(2, true);
     const hasBoss = v.getUint8(4);
+    const hasPomb = v.getUint8(5);
     let o = 6;
     for (let i = 0; i < players; i++) {
       const p = this.readPlayer(v, o);
@@ -276,7 +286,11 @@ export default class Session {
         dead: !!v.getUint8(o + 9),
       };
       this.g.zombies.applyRemoteBoss(b);
+      o += ZOMBIE_BYTES;
     } else this.g.zombies.applyRemoteBoss(null);
+    this.g.pombero?.applyRemote(
+      hasPomb ? { x: v.getInt16(o, true) / 50, z: v.getInt16(o + 2, true) / 50, yaw: v.getInt16(o + 4, true) / 5000, st: v.getUint8(o + 6) } : null,
+    );
   }
 
   applyRemote(id, p) {
@@ -538,6 +552,8 @@ export default class Session {
   }
 
   findZombie(id) {
+    const pb = this.g.pombero?.z;
+    if (id === POMBERO_ID) return pb?.active ? pb : null;
     for (const z of this.g.zombies.pool) if (z.active && (z.id & 0xffff) === id) return z;
     if (this.g.zombies.boss && (this.g.zombies.boss.id & 0xffff) === id) return this.g.zombies.boss;
     return null;
@@ -686,6 +702,9 @@ export default class Session {
         break;
       case 'ee':
         g.ee.applyRemote(m);
+        break;
+      case 'pomb':
+        g.pombero?.applyEvent(m);
         break;
       case 'arena':
         g.arena.start();

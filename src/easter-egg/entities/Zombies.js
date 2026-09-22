@@ -1784,6 +1784,8 @@ export default class Zombies {
     };
     for (const z of this.pool) test(z);
     if (this.boss) test(this.boss);
+    const pb = this.g.pombero?.hitTest(o, d, maxT);
+    if (pb) hits.push(pb);
     hits.sort((a, b) => a.t - b.t);
     return hits;
   }
@@ -1802,6 +1804,7 @@ export default class Zombies {
     };
     for (const z of this.pool) check(z);
     if (this.boss) check(this.boss);
+    if (this.g.pombero && this.g.pombero.state !== 'appear') check(this.g.pombero.z);
     return out;
   }
 
@@ -1817,6 +1820,7 @@ export default class Zombies {
       g.net.reportHit(z, amount, info);
       return true;
     }
+    if (z.pombero) return g.pombero.damage(amount, info);
     this.lastPoints = 0;
     let dmg = amount;
     const type = info.type || 'bullet';
