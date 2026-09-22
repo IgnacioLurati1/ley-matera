@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { useUI } from '../../context/UIContext';
 import ImageDrop from '../../components/ImageDrop';
-import { getImageSize, previewDataUrl, resizedVariants } from '../../lib/image';
+import { getImageSize, previewDataUrl, resizedVariants, tinyPlaceholder } from '../../lib/image';
 import { ABOUT_SIZES, BACKGROUND_SIZES, removeVariants, uploadVariants } from '../../lib/media';
-import { DEFAULT_ABOUT_IMAGE, DEFAULT_HERO } from '../../lib/siteContent';
+import { DEFAULT_ABOUT_IMAGE, DEFAULT_HERO, heroFrom } from '../../lib/siteContent';
 import { assetUrl } from '../../lib/assets';
 
 const DEFAULT_ABOUT = { title: 'Somos Ley Matera', body: '', image: DEFAULT_ABOUT_IMAGE, imageY: null };
@@ -23,10 +23,15 @@ function usePhoto() {
 }
 
 // Sube la foto nueva (si hay), guarda la sección y borra la foto anterior.
-async function saveSection({ key, value, photo, sizes, previous, updateSettings }) {
+// Con `placeholder`, guarda también la copia diminuta de la foto nueva.
+async function saveSection({ key, value, photo, sizes, previous, updateSettings, placeholder = false }) {
   let image = value.image;
-  if (photo) image = await uploadVariants('sitio', key, await resizedVariants(photo.raw, sizes));
-  await updateSettings({ [key]: { ...value, image } });
+  const extra = {};
+  if (photo) {
+    image = await uploadVariants('sitio', key, await resizedVariants(photo.raw, sizes));
+    if (placeholder) extra.placeholder = await tinyPlaceholder(photo.raw);
+  }
+  await updateSettings({ [key]: { ...value, ...extra, image } });
   if (previous && previous !== image) removeVariants(previous, sizes);
   return image;
 }
@@ -61,7 +66,7 @@ function HeroEditor() {
   const { photo, warning, pick, reset } = usePhoto();
 
   useEffect(() => {
-    setHero({ ...DEFAULT_HERO, ...settings?.hero });
+    setHero(heroFrom(settings?.hero));
   }, [settings?.hero]);
 
   const set = (patch) => setHero((h) => ({ ...h, ...patch }));
@@ -125,8 +130,15 @@ function HeroEditor() {
           run(async () => {
             const image = await saveSection({
               key: 'hero',
-              value: { ...hero, title: hero.title.trim(), text: hero.text.trim() },
+              // La copia difuminada de la foto de siempre ya viene en el código.
+              value: {
+                ...hero,
+                title: hero.title.trim(),
+                text: hero.text.trim(),
+                placeholder: hero.image === DEFAULT_HERO.image ? null : hero.placeholder,
+              },
               photo,
+              placeholder: true,
               sizes: BACKGROUND_SIZES,
               previous: settings?.hero?.image,
               updateSettings,

@@ -2,13 +2,12 @@ import { useEffect, useState } from 'react';
 import { local } from '../lib/storage';
 import { MoonIcon, SunIcon } from './Icons';
 
-// Tema elegido por el visitante. Sin elección se sigue el tema del sistema.
+// Tema elegido por el visitante. Sin elección arranca en modo claro.
 // index.html aplica el valor guardado antes de pintar, para que no parpadee.
 const KEY = 'lm-theme';
-const systemDark = () => window.matchMedia?.('(prefers-color-scheme: dark)').matches;
 
 export default function ThemeToggle() {
-  const [theme, setTheme] = useState(() => local.get(KEY) ?? (systemDark() ? 'dark' : 'light'));
+  const [theme, setTheme] = useState(() => (local.get(KEY) === 'dark' ? 'dark' : 'light'));
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;

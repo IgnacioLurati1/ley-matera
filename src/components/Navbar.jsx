@@ -50,18 +50,25 @@ export default function Navbar() {
 
   // El espacio que deja la barra fija se ajusta a su alto real (cambia con la
   // barra de anuncios o el tamaño de pantalla). Se mide sólo con la barra
-  // abierta y cuando terminó la animación.
+  // abierta: al instante, salvo justo después de abrirse o cerrarse al hacer
+  // scroll, que espera a que termine la animación.
   const header = useRef(null);
   const collapsedRef = useRef(collapsed);
+  const toggledAt = useRef(-Infinity);
+  if (collapsedRef.current !== collapsed) toggledAt.current = performance.now();
   collapsedRef.current = collapsed;
   useEffect(() => {
     const el = header.current;
     let timer;
+    const ANIMATION_MS = 500;
     const measure = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (!collapsedRef.current) document.documentElement.style.setProperty('--nav-full', `${el.offsetHeight}px`);
-      }, 500);
+      const wait = toggledAt.current + ANIMATION_MS - performance.now();
+      if (wait > 0) {
+        timer = setTimeout(measure, wait);
+        return;
+      }
+      if (!collapsedRef.current) document.documentElement.style.setProperty('--nav-full', `${el.offsetHeight}px`);
     };
     const ro = new ResizeObserver(measure);
     ro.observe(el);

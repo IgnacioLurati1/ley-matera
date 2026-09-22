@@ -12,6 +12,7 @@ import PromoPage from './pages/PromoPage';
 import CartPage from './pages/CartPage';
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
+import PageMeta from './components/PageMeta';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminHome from './pages/admin/AdminHome';
 import ProductsAdmin from './pages/admin/ProductsAdmin';
@@ -40,6 +41,7 @@ export default function App() {
   return (
     <>
       <ScrollToTop />
+      <PageMeta />
       <SeasonalLayer />
       <Routes>
         <Route element={<SiteLayout />}>

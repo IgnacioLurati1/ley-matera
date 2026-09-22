@@ -2,24 +2,30 @@
 <html lang="es-AR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/assets/brand/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ley Matera</title>
+    <!-- %SEO% (vite.config.js: descripción, canonical, redes y datos de la tienda) -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/favicon.png" />
+    <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#465c2d" />
-    <meta name="description" content="Ley Matera Rosario — mates, bombillas, termos y todo para compartir unos buenos mates." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
-    <title>Ley Matera · Rosario</title>
     <script>
-      // Aplica el tema guardado antes de pintar (evita el parpadeo claro→oscuro).
+      // Aplica el tema antes de pintar (evita el parpadeo). Sin elección: claro.
       try {
         var t = JSON.parse(localStorage.getItem('lm-theme'));
-        if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
-      } catch (e) {}
+        document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
+      } catch (e) {
+        document.documentElement.dataset.theme = 'light';
+      }
     </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>Ley Matera: mates, bombillas, termos y accesorios en Rosario. Activá JavaScript para ver el catálogo.</noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

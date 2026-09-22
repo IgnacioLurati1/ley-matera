@@ -1,5 +1,6 @@
 # Publica el sitio en GitHub Pages en cada push a prod_frontend.
 # Requiere las variables de repo VITE_SUPABASE_URL y VITE_SUPABASE_KEY (publishable key).
+# Opcional: GOOGLE_SITE_VERIFICATION (código de Search Console, método "etiqueta HTML").
 name: Publicar en GitHub Pages
 on:
   push:
@@ -25,6 +26,8 @@ jobs:
       - run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
+          SITE_URL: https://ignaciolurati1.github.io/${{ github.event.repository.name }}
+          GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ vars.VITE_SUPABASE_KEY }}
       - uses: actions/upload-pages-artifact@v3

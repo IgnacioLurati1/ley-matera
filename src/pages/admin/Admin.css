@@ -310,3 +310,27 @@
 }
 .about-preview img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
 .panel input[type='range'] { width: 100%; accent-color: var(--green-light); }
+
+/* Productos con poco stock (amarillo) o sin stock (rojo): arriba de la lista. */
+.alist__item.is-stock-low { --flag: #b8860b; --flag-bg: #fdf3d1; }
+.alist__item.is-stock-out { --flag: var(--danger); --flag-bg: #fbe3de; }
+:root[data-theme='dark'] .alist__item.is-stock-low { --flag: #e2b33c; --flag-bg: rgb(226 179 60 / 0.12); }
+:root[data-theme='dark'] .alist__item.is-stock-out { --flag: #e27a66; --flag-bg: rgb(226 122 102 / 0.12); }
+.alist__item[class*='is-stock-'] {
+  border-color: var(--flag);
+  border-left-width: 6px;
+  background: var(--flag-bg);
+}
+.stock-flag {
+  justify-self: start;
+  align-self: flex-start;
+  margin: 2px 0;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--flag);
+  color: #fff;
+  font-style: normal;
+  font-weight: 800;
+  font-size: 0.75rem;
+}
+.is-stock-low .stock-flag { color: #3b2a00; }

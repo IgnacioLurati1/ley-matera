@@ -12,6 +12,11 @@ import ImagePositioner from '../../components/ImagePositioner';
 import ImageDrop from '../../components/ImageDrop';
 import { EditIcon, StarIcon, TrashIcon } from '../../components/Icons';
 
+// Desde cuántas unidades se avisa que queda poco.
+const LOW_STOCK = 3;
+// 'out' (sin stock), 'low' (quedan pocas) o '' (sin aviso / stock sin controlar).
+const stockLevel = (p) => (p.stock == null ? '' : p.stock === 0 ? 'out' : p.stock <= LOW_STOCK ? 'low' : '');
+
 const EMPTY = {
   id: null,
   title: '',
@@ -243,12 +248,20 @@ export default function ProductsAdmin() {
   }, [params, setParams]);
 
   const featured = settings?.featured ?? [];
+  // Arriba de todo los que se quedaron sin stock (rojo) y después los que
+  // tienen poco (amarillo), de menos a más. El resto, del más nuevo al más viejo.
   const list = useMemo(() => {
+    const urgent = (p) => (stockLevel(p) ? 0 : 1);
     const nq = normalize(q.trim());
     return products
       .filter((p) => inCategory(p.category, cat))
       .filter((p) => !nq || normalize(p.title).includes(nq) || p.id.toLowerCase() === nq)
-      .sort((a, b) => Number(b.id.slice(1)) - Number(a.id.slice(1)));
+      .sort(
+        (a, b) =>
+          urgent(a) - urgent(b) ||
+          (urgent(a) === 0 ? a.stock - b.stock : 0) ||
+          Number(b.id.slice(1)) - Number(a.id.slice(1)),
+      );
   }, [products, q, cat]);
 
   const toggleFeatured = (id) => {
@@ -297,10 +310,15 @@ export default function ProductsAdmin() {
 
       <ul className="alist">
         {list.map((p) => (
-          <li key={p.id} className="alist__item">
+          <li key={p.id} className={`alist__item ${stockLevel(p) ? `is-stock-${stockLevel(p)}` : ''}`}>
             <ProductImage src={p.image} alt={p.title} className="alist__img" />
             <div className="alist__info">
               <strong>{p.title}</strong>
+              {stockLevel(p) && (
+                <em className="stock-flag">
+                  {p.stock === 0 ? 'Sin stock' : p.stock === 1 ? 'Queda 1' : `Quedan ${p.stock}`}
+                </em>
+              )}
               <span>
                 <span className="id-pill">{p.id}</span> · {categoryLabel(p.category)} ·{' '}
                 {p.discount > 0 ? (

@@ -95,3 +95,15 @@ export const previewDataUrl = async (src, maxWidth = 1920) => {
   canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/jpeg', 0.9);
 };
+
+// Copia diminuta (32 px de ancho) en data URL: se muestra difuminada mientras
+// carga la foto grande. Pesa menos de 1 KB, así que va guardada en settings.
+export const tinyPlaceholder = async (src, width = 32) => {
+  const img = await loadImage(src);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = Math.max(1, Math.round((img.naturalHeight / img.naturalWidth) * width));
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  const webp = canvas.toDataURL('image/webp', 0.5);
+  return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.5);
+};
