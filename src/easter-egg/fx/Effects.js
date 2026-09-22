@@ -307,6 +307,33 @@ export default class Effects {
     this.decal(0, hit.point, n, 0.1 + Math.random() * 0.05);
   }
 
+  // Chorro de agua hirviendo (Bombilla del Diablo): gotas a lo largo y vapor.
+  waterJet(a, b, hot = false) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dy, dz) || 1;
+    const n = Math.min(26, 6 + Math.floor(len * 1.6));
+    const col = hot ? [1, 0.55, 0.45] : [0.8, 0.92, 1];
+    for (let i = 0; i < n; i++) {
+      const k = Math.random();
+      this.add.spawn(a.x + dx * k + (Math.random() - 0.5) * 0.08, a.y + dy * k + (Math.random() - 0.5) * 0.08 - k * k * 0.25, a.z + dz * k + (Math.random() - 0.5) * 0.08, (dx / len) * 5, (dy / len) * 5, (dz / len) * 5, {
+        color: col,
+        size: 0.07 + k * 0.08,
+        size1: 0.02,
+        life: 0.22,
+        gravity: 5,
+        alpha: 0.7,
+      });
+    }
+    for (let i = 0; i < 3; i++) {
+      const k = 0.3 + Math.random() * 0.7;
+      this.alpha.spawn(a.x + dx * k, a.y + dy * k, a.z + dz * k, (Math.random() - 0.5) * 0.4, 0.5 + Math.random() * 0.5, (Math.random() - 0.5) * 0.4, { color: [0.75, 0.78, 0.8], size: 0.15, size1: 0.6, life: 0.9, alpha: 0.12, drag: 0.8 });
+    }
+    // salpicón al final
+    this.add.spawn(b.x, b.y, b.z, (Math.random() - 0.5) * 2, 1.5, (Math.random() - 0.5) * 2, { color: col, size: 0.1, size1: 0.02, life: 0.3, gravity: 6 });
+  }
+
   steam(p, n = 3, spread = 0.3) {
     for (let i = 0; i < n; i++) {
       this.alpha.spawn(p.x + (Math.random() - 0.5) * spread, p.y, p.z + (Math.random() - 0.5) * spread, (Math.random() - 0.5) * 0.3, 0.6 + Math.random() * 0.6, (Math.random() - 0.5) * 0.3, {

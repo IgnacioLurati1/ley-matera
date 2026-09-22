@@ -1,4 +1,4 @@
-import { zombieCount, zombieHealth, spawnDelay, bossRound, maxAlive, ROUND_BREAK } from '../config/rules';
+import { zombieCount, zombieHealth, spawnDelay, bossRound, maxAlive, dogRound, dogCount, ROUND_BREAK } from '../config/rules';
 import { GRENADE } from '../config/weapons';
 
 // Sistema de rondas de BO1: cuántos zombies, con cuánta vida, cada cuánto
@@ -25,6 +25,8 @@ export default class Rounds {
     this.state = 'remote';
     g.stats.round = m.n;
     if (m.phase === 'active') {
+      g.weather?.setRoundSky(m.n);
+      if (m.dogs) this.dogIntro();
       g.hud.setRound(m.n, true);
       g.audio.roundStart();
       if (!g.player.alive) g.player.respawn();
@@ -44,6 +46,16 @@ export default class Rounds {
     this.delay = spawnDelay(this.round);
     this.spawnT = this.round === 1 ? 1 : 2.5;
     this.bossPending = bossRound(this.round);
+    this.dogs = dogRound(this.round);
+    if (this.dogs) {
+      // ronda de carpinchos: menos bichos, más rápidos, con niebla y relámpagos
+      this.total = dogCount(this.round, players);
+      this.toSpawn = this.total;
+      this.health = Math.max(150, Math.floor(zombieHealth(this.round) * 0.45));
+      this.delay = Math.max(0.9, spawnDelay(this.round) * 1.5 + 0.7);
+      this.spawnT = 4;
+      this.bossPending = false;
+    }
     this.state = 'active';
     g.hud.setRound(this.round, true);
     g.audio.roundStart();
@@ -53,8 +65,13 @@ export default class Rounds {
     }
     g.powerups.newRound();
     g.weather?.onRound(this.round);
+    g.weather?.setRoundSky(this.round);
+    if (this.dogs) {
+      g.weather?.set('dogs', false);
+      this.dogIntro();
+    }
     g.stats.round = this.round;
-    g.net?.event('round', { n: this.round, phase: 'active' });
+    g.net?.event('round', { n: this.round, phase: 'active', dogs: this.dogs ? 1 : 0 });
     // los que cayeron vuelven al empezar la ronda
     if (g.net && !g.player.alive) g.player.respawn();
   }
@@ -63,8 +80,17 @@ export default class Rounds {
     return (this.toSpawn || 0) + this.g.zombies.alive;
   }
 
-  // Hoy la ronda termina cuando no quedan zombies; se deja el gancho por si hace falta.
-  onKill() {}
+  dogIntro() {
+    const g = this.g;
+    g.hud.subtitle('¡Se viene la manada de carpinchos endemoniados!', 4, 'boss');
+    g.later(1.5, () => g.audio.howl(null));
+    g.later(2.6, () => g.audio.howl(null));
+  }
+
+  // Dónde cayó el último perro: ahí queda la munición de premio.
+  onKill(z) {
+    if (z?.dog) this.lastDogPos = z.pos.clone();
+  }
 
   // Un zombie trabado o perdido vuelve a la cola.
   requeue(n) {
@@ -81,8 +107,9 @@ export default class Rounds {
     }
     if (this.state !== 'active') return;
     this.spawnT -= dt;
-    if (this.toSpawn > 0 && this.spawnT <= 0 && g.zombies.alive < maxAlive(this.players || 1)) {
-      if (g.zombies.spawn(this.round, this.health)) {
+    const cap = this.dogs ? 3 + (this.players || 1) * 2 : maxAlive(this.players || 1);
+    if (this.toSpawn > 0 && this.spawnT <= 0 && g.zombies.alive < cap) {
+      if (this.dogs ? g.zombies.spawnDog(this.health) : g.zombies.spawn(this.round, this.health)) {
         this.toSpawn--;
         this.spawnT = this.delay;
       } else this.spawnT = 0.5;
@@ -96,6 +123,13 @@ export default class Rounds {
 
   endRound() {
     const g = this.g;
+    if (this.dogs) {
+      // como en el original: el último carpincho deja munición completa
+      this.dogs = false;
+      g.powerups.drop(this.lastDogPos || g.player.pos.clone(), true, 'maxammo');
+      g.weather?.set('clear', false);
+      g.hud.subtitle('La manada se volvió al estero... por ahora.', 3);
+    }
     this.state = 'break';
     this.breakT = ROUND_BREAK;
     g.audio.roundEnd();

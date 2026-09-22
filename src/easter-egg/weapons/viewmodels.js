@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { weaponStats, ELEM_INFO } from '../config/weapons';
 
 // Modelos 3D de los mates-arma, armados con geometría procedural.
 // Se construyen parados (eje y) con la bombilla saliendo hacia arriba y luego
@@ -28,7 +29,8 @@ function mats(T) {
     copper: std({ color: 0xc86a3a, metalness: 1, roughness: 0.3 }),
     silicone: std({ color: 0x2ec4b6, roughness: 0.55 }),
     ceramic: std({ color: 0xf4f0e8, roughness: 0.25 }),
-    horn: std({ color: 0xd9c49a, roughness: 0.45 }),
+    // las guampas son un tubo abierto: se ven de los dos lados al mirar adentro
+    horn: std({ color: 0xd9c49a, roughness: 0.45, side: THREE.DoubleSide }),
     hornDark: std({ color: 0x3a2a1c, roughness: 0.45 }),
     red: std({ color: 0xa81c1c, metalness: 0.6, roughness: 0.35 }),
     dark: std({ color: 0x2a2a2e, metalness: 0.7, roughness: 0.4 }),
@@ -51,6 +53,14 @@ function mats(T) {
   };
   // Camuflaje del Pack-a-Pava: fluorescente y animado.
   MATS.camo = new THREE.MeshStandardMaterial({ map: T.camo, emissiveMap: T.camo, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.3, metalness: 0.3 });
+  // segunda mejora: el mismo camuflaje teñido del color del elemento
+  for (const [k, e] of Object.entries(ELEM_INFO)) {
+    MATS[`camo_${k}`] = MATS.camo.clone();
+    MATS[`camo_${k}`].color.set(e.color).lerp(new THREE.Color(0xffffff), 0.35);
+    MATS[`camo_${k}`].emissive.set(e.color);
+    MATS[`camo_${k}`].emissiveIntensity = 1.2;
+  }
+  for (const k of Object.keys(MATS)) if (k.startsWith('camo')) MATS[k].side = THREE.DoubleSide;
   return MATS;
 }
 
@@ -359,7 +369,9 @@ export function buildMate(id, upgraded, T) {
   let bomb = { len: 0.2 };
   let virola = M.silver;
   let body = null;
-  const camo = (m) => (upgraded ? M.camo : m);
+  const st = weaponStats(id, upgraded);
+  const camoMat = st.elem ? M[`camo_${st.elem}`] : M.camo;
+  const camo = (m) => (upgraded ? camoMat : m);
 
   // radio del cuerpo a cada altura (para que los dedos lo abracen)
   let rAt = (y) => profileRadius(PROFILES.calabaza, y);
@@ -379,6 +391,20 @@ export function buildMate(id, upgraded, T) {
   };
   const hornR = (h, r0, len) => {
     rAt = (y) => r0 + (h.r1 - r0) * Math.pow(Math.min(1, Math.max(0, y / len)), 0.8);
+  };
+  // Las guampas son curvas: la boca queda corrida y un poco inclinada. Todo lo
+  // de arriba (virola, yerba, hielo) va en este grupo, y la bombilla se corre.
+  const hornMouth = (h, curve, virolaMat, virolaH) => {
+    mate.userData.hornTop = h.top;
+    const mouth = new THREE.Group();
+    mouth.position.set(h.top.x, h.top.y, 0);
+    mouth.rotation.z = -Math.atan(0.35 * curve * Math.cos(curve));
+    mate.add(mouth);
+    const vir = addVirola(virolaMat, virolaH);
+    vir.position.y = -h.top.y;
+    mouth.add(vir);
+    mouth.add(yerba(top.r, 0, M));
+    return mouth;
   };
   const addVirola = (mat = M.silver, h = 0.012) => {
     const v = lathe([[top.r - 0.001, top.y - h], [top.r + 0.003, top.y - h], [top.r + 0.004, top.y - h / 2], [top.r + 0.003, top.y + 0.002], [top.r - 0.001, top.y + 0.002]], mat, 24);
@@ -410,7 +436,7 @@ export function buildMate(id, upgraded, T) {
       break;
     case 'vidrio': {
       addBody('cup', M.glass);
-      body.material = upgraded ? M.camo : M.glass;
+      body.material = upgraded ? camoMat : M.glass;
       const inner = lathe([[0, 0.003], [0.027, 0.003], [0.037, 0.085]], M.yerba);
       mate.add(inner);
       addVirola(M.silver, 0.012);
@@ -507,20 +533,12 @@ export function buildMate(id, upgraded, T) {
       mate.add(body);
       top = { r: h.r1, y: h.top.y };
       hornR(h, 0.012, 0.13);
-      mate.userData.hornTop = h.top;
-      addVirola(M.silver, 0.012);
-      // arco con dos bombillas de repuesto
-      for (const s of [-1, 1]) {
-        const limb = cyl(0.003, 0.003, 0.16, M.silverDark, 6);
-        limb.position.set(s * 0.06, 0.12, -0.02);
-        limb.rotation.z = s * 1.1;
-        mate.add(limb);
-      }
+      hornMouth(h, 0.9, M.silver, 0.012);
       bomb = { len: 0.28, thick: 1.4 };
       break;
     }
     case 'rayo': {
-      addBody('calabaza', upgraded ? M.camo : M.red);
+      addBody('calabaza', upgraded ? camoMat : M.red);
       const chamber = sph(0.02, upgraded ? M.glowRed : M.glowGreen);
       chamber.position.set(0, 0.05, 0.043);
       mate.add(chamber);
@@ -555,17 +573,18 @@ export function buildMate(id, upgraded, T) {
       mate.add(body);
       top = { r: h.r1, y: h.top.y };
       hornR(h, 0.018, 0.12);
+      const mouth = hornMouth(h, 0.6, M.silver, 0.012);
       for (let i = 0; i < 4; i++) {
-        const ice = box(0.018, 0.018, 0.018, M.ice);
-        ice.position.set(h.top.x + (Math.random() - 0.5) * 0.03, h.top.y + 0.004, (Math.random() - 0.5) * 0.03);
+        const ice = box(0.016, 0.016, 0.016, M.ice);
+        const a = (i / 4) * Math.PI * 2 + 0.4;
+        ice.position.set(Math.cos(a) * 0.019, 0.002, Math.sin(a) * 0.019);
         ice.rotation.set(Math.random(), Math.random(), Math.random());
-        mate.add(ice);
+        mouth.add(ice);
       }
       const lemon = cyl(0.016, 0.016, 0.004, M.lemon, 14);
-      lemon.position.set(h.top.x + 0.026, h.top.y + 0.01, 0);
+      lemon.position.set(0.024, 0.009, -0.008);
       lemon.rotation.z = 1.1;
-      mate.add(lemon);
-      addVirola(M.silver, 0.012);
+      mouth.add(lemon);
       bomb = { len: 0.2, mat: M.silver, thick: 1.4 };
       break;
     }
@@ -590,6 +609,23 @@ export function buildMate(id, upgraded, T) {
       bomb = { len: 0.2, thick: 3, mat: M.copper };
       break;
     }
+    case 'diablo': {
+      // calabaza roja con cuernos, virola de oro y una bombilla gruesa que hierve
+      addBody('calabaza', upgraded ? camoMat : M.red);
+      for (const s of [-1, 1]) {
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.011, 0.055, 8), M.hornDark);
+        horn.position.set(s * 0.038, top.y + 0.008, -0.012);
+        horn.rotation.set(-0.35, 0, s * -0.55);
+        mate.add(horn);
+      }
+      const ember = sph(0.013, M.glowRed);
+      ember.position.set(0, 0.035, 0.046);
+      mate.add(ember);
+      anim.glow.push(ember);
+      addVirola(M.gold, 0.016);
+      bomb = { len: 0.21, thick: 2.4, mat: M.copper };
+      break;
+    }
     case 'oro':
       addBody('calabaza', M.gold);
       addVirola(M.gold, 0.02);
@@ -600,19 +636,14 @@ export function buildMate(id, upgraded, T) {
       addVirola(virola);
   }
 
-  if (id !== 'cocido' && id !== 'bombillazo' && id !== 'terere') mate.add(yerba(top.r, top.y, M));
-  else if (id === 'bombillazo') {
-    const y = yerba(top.r, top.y, M);
-    y.position.x = mate.userData.hornTop.x;
-    mate.add(y);
-  }
+  if (id !== 'cocido' && !mate.userData.hornTop) mate.add(yerba(top.r, top.y, M));
 
   let muzzle = new THREE.Object3D();
   if (bomb) {
     const b = bombilla(bomb, M, top.y);
     if (mate.userData.hornTop) b.group.position.x = mate.userData.hornTop.x;
-    if (id === 'terere') b.group.position.x = top.r * 0.5;
     mate.add(b.group);
+    mate.userData.bombGroup = b.group;
     muzzle = b.tips[0];
     const straw = b.straws[0];
     if (mate.userData.rings) {
@@ -673,7 +704,7 @@ export function buildMate(id, upgraded, T) {
   tilt.updateMatrixWorld(true);
   const tip = new THREE.Vector3();
   muzzle.getWorldPosition(tip);
-  return { root: tilt, muzzle, anim, upgraded, tip, mouth, mate };
+  return { root: tilt, muzzle, anim, upgraded, tip, mouth, mate, bombGroup: mate.userData.bombGroup || null };
 }
 
 // Termo para la animación de recarga (cebar = recargar): cuerpo pintado,
@@ -710,20 +741,37 @@ export function buildTermo(T) {
 }
 
 // Facón para el cuchillo.
-export function buildKnife(T) {
+export function buildKnife(T, kind = 'plain') {
   const M = mats(T);
   const g = new THREE.Group();
-  const blade = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.2, 4), M.steel);
+  const plata = kind === 'plata';
+  // el Facón de Plata: hoja más larga, guarda en S y cabo de plata con virolas
+  const blade = new THREE.Mesh(new THREE.ConeGeometry(plata ? 0.014 : 0.012, plata ? 0.3 : 0.2, 4), M.steel);
   blade.scale.set(1, 1, 0.25);
-  blade.position.y = 0.13;
+  blade.position.y = plata ? 0.18 : 0.13;
   g.add(blade);
-  const guard = box(0.05, 0.008, 0.012, M.silver);
+  const guard = box(plata ? 0.07 : 0.05, 0.008, 0.012, plata ? M.gold : M.silver);
   guard.position.y = 0.028;
   g.add(guard);
-  const handleK = cyl(0.011, 0.012, 0.09, M.hornDark, 10);
+  if (plata) {
+    for (const s of [-1, 1]) {
+      const curl = tor(0.009, 0.0025, M.gold, 6, 12);
+      curl.position.set(s * 0.036, 0.034, 0);
+      g.add(curl);
+    }
+  }
+  const handleK = cyl(0.011, 0.012, 0.09, plata ? M.silver : M.hornDark, 10);
   handleK.position.y = -0.02;
   g.add(handleK);
-  const pommel = sph(0.013, M.silver);
+  if (plata) {
+    for (const y of [-0.05, -0.02, 0.01]) {
+      const ring = tor(0.0122, 0.0022, M.gold, 6, 14);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = y;
+      g.add(ring);
+    }
+  }
+  const pommel = sph(0.013, plata ? M.gold : M.silver);
   pommel.position.y = -0.068;
   g.add(pommel);
   g.add(wrapHand(M, { radius: 0.012, y0: -0.068, side: Math.PI / 2, dir: 1, arm: new THREE.Vector3(0.2, -0.9, 0.4), scale: 0.85 }));

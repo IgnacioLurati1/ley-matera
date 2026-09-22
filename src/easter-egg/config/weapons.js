@@ -2,7 +2,10 @@
 // el daño está pensado contra las vidas de zombie de ese juego (150 en la
 // ronda 1, +100 por ronda hasta la 9 y luego x1,1 por ronda).
 //
-// kind: 'hitscan' | 'projectile' | 'chain' | 'freeze' | 'blast' | 'bolt' | 'tactical'
+// kind: 'hitscan' | 'projectile' | 'chain' | 'freeze' | 'blast' | 'bolt' | 'stream' | 'tactical'
+// elem (segunda mejora del Pack-a-Pava): 'fire' prende fuego, 'ice' congela
+// y frena, 'electric' salta con un arco a los zombies de al lado. Los mates
+// especiales (los de la caja que no se compran en pared) no la tienen.
 // El modelo 3D de cada arma se arma en weapons/viewmodels.js con el mismo id.
 
 export const WEAPONS = {
@@ -25,6 +28,7 @@ export const WEAPONS = {
     chalk: 'tall',
     pap: {
       name: 'Porongo Explosivo',
+      elem: 'fire',
       kind: 'projectile',
       projectile: { speed: 42, gravity: 9, radius: 3.2, damage: 900, color: 0xffa040, size: 0.09, trail: 0xffc070 },
       mag: 12,
@@ -52,7 +56,7 @@ export const WEAPONS = {
     recoil: 0.08,
     chalk: 'cyl',
     wall: 500,
-    pap: { name: 'Mate de Quebracho', damage: 190, mag: 12, reserve: 144, auto: true, rpm: 600 },
+    pap: { name: 'Mate de Quebracho', damage: 190, mag: 12, reserve: 144, auto: true, rpm: 600, elem: 'fire' },
   },
   plastico: {
     name: 'Mate de Plástico',
@@ -74,7 +78,7 @@ export const WEAPONS = {
     chalk: 'cup',
     chalkStraws: 2,
     wall: 500,
-    pap: { name: 'Mate del Diablo', damage: 120, mag: 4, reserve: 60, burn: true },
+    pap: { name: 'Mate del Diablo', damage: 120, mag: 4, reserve: 60, burn: true, elem: 'fire' },
   },
   vidrio: {
     name: 'Mate de Vidrio',
@@ -94,7 +98,7 @@ export const WEAPONS = {
     recoil: 0.025,
     chalk: 'cup',
     wall: 1000,
-    pap: { name: 'Mate de Cristal Tallado', damage: 130, mag: 40, reserve: 200, rpm: 900 },
+    pap: { name: 'Mate de Cristal Tallado', damage: 130, mag: 40, reserve: 200, rpm: 900, elem: 'ice' },
   },
   lata: {
     name: 'Mate de Lata',
@@ -116,7 +120,7 @@ export const WEAPONS = {
     recoil: 0.18,
     chalk: 'cyl',
     wall: 1500,
-    pap: { name: 'Latón Fulminante', damage: 170, mag: 10, reserve: 80, rpm: 110 },
+    pap: { name: 'Latón Fulminante', damage: 170, mag: 10, reserve: 80, rpm: 110, elem: 'electric' },
   },
   algarrobo: {
     name: 'Mate de Algarrobo',
@@ -136,7 +140,7 @@ export const WEAPONS = {
     recoil: 0.03,
     chalk: 'tall',
     wall: 1200,
-    pap: { name: 'Algarrobo Milenario', damage: 170, mag: 40, reserve: 280 },
+    pap: { name: 'Algarrobo Milenario', damage: 170, mag: 40, reserve: 280, elem: 'fire' },
   },
   imperial: {
     name: 'Mate Imperial',
@@ -155,7 +159,7 @@ export const WEAPONS = {
     sound: 'rifle',
     recoil: 0.035,
     box: 10,
-    pap: { name: 'Imperial de Oro y Plata', damage: 240, mag: 45, reserve: 360, rpm: 780 },
+    pap: { name: 'Imperial de Oro y Plata', damage: 240, mag: 45, reserve: 360, rpm: 780, elem: 'electric' },
   },
   camionero: {
     name: 'Mate Camionero',
@@ -175,7 +179,7 @@ export const WEAPONS = {
     recoil: 0.04,
     moveMult: 0.88,
     box: 10,
-    pap: { name: 'Camionero de Larga Distancia', damage: 210, mag: 150, reserve: 600 },
+    pap: { name: 'Camionero de Larga Distancia', damage: 210, mag: 150, reserve: 600, elem: 'ice' },
   },
   torpedo: {
     name: 'Mate Torpedo',
@@ -199,6 +203,7 @@ export const WEAPONS = {
     box: 8,
     pap: {
       name: 'Torpedo Nuclear',
+      elem: 'electric',
       damage: 1600,
       mag: 8,
       reserve: 64,
@@ -223,7 +228,7 @@ export const WEAPONS = {
     recoil: 0.02,
     wobble: true,
     box: 8,
-    pap: { name: 'Silicona Industrial', damage: 75, mag: 60, reserve: 300 },
+    pap: { name: 'Silicona Industrial', damage: 75, mag: 60, reserve: 300, elem: 'ice' },
   },
   cocido: {
     name: 'Mate Cocido',
@@ -243,6 +248,7 @@ export const WEAPONS = {
     box: 6,
     pap: {
       name: 'Mate Cocido con Leche',
+      elem: 'ice',
       damage: 220,
       mag: 16,
       reserve: 96,
@@ -267,6 +273,7 @@ export const WEAPONS = {
     box: 6,
     pap: {
       name: 'Bombillazo Mágico',
+      elem: 'fire',
       reserve: 16,
       bolt: { speed: 65, fuse: 3.2, radius: 4, damage: 3000, lure: true },
     },
@@ -354,6 +361,25 @@ export const WEAPONS = {
     box: 2,
     pap: { name: 'Tronador Cero Absoluto', mag: 4, reserve: 24, range: 14 },
   },
+  diablo: {
+    name: 'La Bombilla del Diablo',
+    desc: 'Escupe agua hirviendo en chorro. Atraviesa filas enteras de zombies.',
+    kind: 'stream',
+    auto: true,
+    rpm: 600,
+    mag: 60,
+    reserve: 240,
+    reload: 3.1,
+    damage: 100000,
+    headMult: 1,
+    range: 13,
+    sound: 'stream',
+    recoil: 0.008,
+    special: true,
+    stream: { radius: 0.7 },
+    box: 2,
+    pap: { name: 'La Bombilla de Belcebú', mag: 100, reserve: 400, range: 17, stream: { radius: 0.95 } },
+  },
   pava: {
     name: 'Pava Silbadora',
     desc: 'Tirala: silba, los zombies van a ver quién ceba y... ¡bum!',
@@ -387,22 +413,42 @@ export const BOX_POOL = Object.entries(WEAPONS)
   .map(([id, w]) => ({ id, weight: w.box || 7 }));
 
 export const KNIFE = { damage: 150, range: 1.8, time: 0.55, lunge: 3 };
+// Facón de Plata (el Bowie del original): de un tajo hasta la ronda 10, después pega x6.
+export const BOWIE = { name: 'Facón de Plata', cost: 3000, oneHitUntil: 10, mult: 6 };
 export const GRENADE = { damage: 400, radius: 5.5, fuse: 2.2, max: 4, perRound: 2, wall: 250 };
+
+// Pack-a-Pava: la primera mejora cuesta 5000; la segunda (el elemento) 2500.
+export const PAP_COST = [5000, 2500];
+export const ELEM_INFO = {
+  fire: { name: 'Brasa', desc: 'prende fuego', color: 0xff7a30 },
+  ice: { name: 'Escarcha', desc: 'congela', color: 0x7ad8ff },
+  electric: { name: 'Centella', desc: 'electrocuta', color: 0xffe25a },
+};
+// Nivel de mejora de un mate: 0 normal, 1 mejorado, 2 con elemento.
+export const tierOf = (up) => (up === true ? 1 : up | 0);
+// ¿Hasta qué nivel se puede mejorar?
+export const maxTier = (id) => (!WEAPONS[id]?.pap ? 0 : WEAPONS[id].pap.elem ? 2 : 1);
 
 // Arma efectiva: datos base mezclados con los del Pack-a-Pava si corresponde.
 export function weaponStats(id, upgraded) {
   const base = WEAPONS[id];
-  if (!upgraded || !base.pap) return { id, upgraded: false, ...base };
+  const tier = Math.min(tierOf(upgraded), maxTier(id));
+  if (!tier) return { id, upgraded: false, tier: 0, ...base };
   const { pap } = base;
+  const elem = tier >= 2 ? pap.elem : undefined;
   return {
     id,
     upgraded: true,
+    tier,
     ...base,
     ...pap,
+    elem,
+    name: elem ? `${pap.name} · ${ELEM_INFO[elem].name}` : pap.name,
     projectile: pap.projectile || base.projectile,
     bolt: pap.bolt || base.bolt,
     chain: pap.chain || base.chain,
     cone: pap.cone || base.cone,
+    stream: pap.stream || base.stream,
     reload: base.reload * 0.85,
   };
 }

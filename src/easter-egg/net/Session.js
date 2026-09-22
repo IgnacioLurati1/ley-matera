@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import Avatars from './Avatars';
+import { GRENADE, maxTier } from '../config/weapons';
 
 // Sincronización de la partida. El anfitrión simula todo (zombies, rondas,
 // puertas, caja, clima) y manda 15 fotos por segundo con las posiciones; los
@@ -207,7 +208,7 @@ export default class Session {
       v.setInt16(o + 4, Math.round(z.pos.z * 50), true);
       v.setInt16(o + 6, Math.round(z.yaw * 5000), true);
       v.setUint8(o + 8, STATES.indexOf(z.state) + 1);
-      v.setUint8(o + 9, (z.crawler ? 1 : 0) | (z.dead ? 2 : 0) | (SPEEDS.indexOf(z.speedType) << 2) | (z.hidden & (1 << 2) ? 16 : 0));
+      v.setUint8(o + 9, (z.crawler ? 1 : 0) | (z.dead ? 2 : 0) | (SPEEDS.indexOf(z.speedType) << 2) | (z.hidden & (1 << 2) ? 16 : 0) | (z.dog ? 32 : 0));
       o += ZOMBIE_BYTES;
     }
     if (boss) {
@@ -261,7 +262,7 @@ export default class Session {
       const f = v.getUint8(o + 9);
       o += ZOMBIE_BYTES;
       seen.add(id);
-      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', noHead: !!(f & 16) });
+      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', noHead: !!(f & 16), dog: !!(f & 32) });
     }
     this.g.zombies.pruneRemote(seen);
     if (hasBoss) {
@@ -368,6 +369,16 @@ export default class Session {
       g.onHostGone();
     });
     net.on('pts', (m) => g.addPoints(m.v, null, true));
+    // un invitado le pegó a un osito
+    net.on('secret', (m) => {
+      if (!this.host || m.k !== 'bear') return;
+      const b = g.secrets.bears[m.i];
+      if (b?.alive) g.secrets.hitBear(b);
+    });
+    // un invitado le pegó a la calabaza del Abuelo
+    net.on('eeshot', (m) => {
+      if (this.host) g.ee.dropCalabaza(new THREE.Vector3(m.x, 0, m.z));
+    });
     net.on('hurt', (m) => g.player.damage(m.a, tmpV.set(m.x, 1, m.z)));
     net.on('shot', (m) => this.remoteShot(m));
     net.on('hit', (m, from) => this.applyRemoteHit(m, from));
@@ -433,7 +444,7 @@ export default class Session {
       box: { spot: g.interact.box.spot, state: g.interact.box.state },
       weather: g.weather.name,
       arena: g.arena.active,
-      ee: { done: g.ee.done, power: g.world.power },
+      ee: g.ee.fullState(),
       shield: g.activities.shieldBuilt,
       start: [g.player.pos.x, g.player.pos.z],
     });
@@ -458,6 +469,7 @@ export default class Session {
     g.rounds.round = m.round;
     g.hud.setRound(m.round);
     if (m.shield) g.activities.shieldBuilt = true;
+    if (m.ee) g.ee.applyRemote(m.ee);
     // aparecer cerca del anfitrión (en una partida nueva, cada uno en su lugar)
     if (!m.restart) g.player.pos.set(m.start[0], 0, m.start[1]);
     if (m.paused) g.hostPause(true);
@@ -475,7 +487,9 @@ export default class Session {
     if (this.host) this.net.broadcast(m, m.pid);
     const from = tmpV.set(m.x, m.y, m.z).clone();
     const to = new THREE.Vector3(m.ex, m.ey, m.ez);
-    g.fx.tracer(from, to, m.u ? 0xffa0ff : 0xfff0c8);
+    if (m.k === 'stream') g.fx.waterJet(from, to, !!m.u);
+    else g.fx.tracer(from, to, m.u ? 0xffa0ff : 0xfff0c8);
+    g.critters?.onNoise(from);
     g.fx.flash(from, 0xffb060, 6, 0.05, 6);
     g.audio.shot(m.k, from, !!m.u);
   }
@@ -495,6 +509,8 @@ export default class Session {
       dz: info.dir ? +info.dir.z.toFixed(2) : 0,
       arm: info.arm,
       burn: info.burn ? 1 : 0,
+      el: info.elem || undefined,
+      dc: info.decap ? 1 : 0,
     });
   }
 
@@ -508,6 +524,8 @@ export default class Session {
       zone: m.zone,
       arm: m.arm,
       burn: !!m.burn,
+      elem: m.el,
+      decap: !!m.dc,
       point: new THREE.Vector3(m.x, m.y, m.w),
       dir: new THREE.Vector3(m.dx, 0, m.dz),
       noPoints: true,
@@ -541,9 +559,10 @@ export default class Session {
     if (kind === 'pap') {
       // el mate del invitado entra a la máquina
       const pap = g.interact.pap;
-      if (!m.w || pap.state !== 'idle') return reply(false);
-      g.interact.startPapFor(m.w, from);
-      return reply(true, { w: m.w, up: true });
+      const tier = (m.up | 0) + 1;
+      if (!m.w || pap.state !== 'idle' || tier > maxTier(m.w)) return reply(false);
+      g.interact.startPapFor(m.w, from, tier);
+      return reply(true, { w: m.w, up: tier });
     }
     if (kind === 'box') {
       const box = g.interact.box;
@@ -560,14 +579,16 @@ export default class Session {
       return reply(false);
     }
     if (kind === 'wallbuy') {
-      const ok = it.use();
-      return reply(ok !== false, { w: it.weapon, ammo: true });
+      // el mate es del invitado: acá solo queda colgado el dibujo (el anfitrión no recibe nada)
+      it.show?.();
+      return reply(true, { w: it.weapon, nade: it.isNade ? 1 : 0, bowie: it.bowie ? 1 : 0 });
     }
     if (kind === 'perk') {
-      const ok = it.prompt() && it.use !== undefined;
-      if (!ok) return reply(false);
-      g.audio.perkJingle(it.machine.perk, it.pos);
-      return reply(true, { perk: it.machine.perk });
+      // si el invitado ya lo tiene lo frena su propia compu; acá solo importa la máquina
+      const mach = it.machine;
+      if (mach.gone || (!g.world.power && mach.perk !== 'revive')) return reply(false);
+      g.audio.perkJingle(mach.perk, it.pos);
+      return reply(true, { perk: mach.perk });
     }
     if (kind === 'jar') {
       const jar = g.activities.jars.find((j) => j.def === it.jarDef) || g.activities.jars[it.jarIndex ?? 0];
@@ -594,8 +615,12 @@ export default class Session {
     const cost = it ? it.cost() : 0;
     if (cost > 0) g.spend(cost);
     else g.audio.purchase();
-    if (m.w && m.up) g.weapons.give(m.w, true);
-    else if (m.w) g.weapons.give(m.w);
+    if (m.w) g.weapons.give(m.w, m.up || 0);
+    if (m.nade) {
+      g.weapons.grenades = GRENADE.max;
+      g.weapons.updateHud();
+    }
+    if (m.bowie) g.weapons.giveBowie();
     if (m.perk) {
       g.weapons.drink(g.perkColor(m.perk), () => g.player.givePerk(m.perk));
     }
@@ -647,6 +672,15 @@ export default class Session {
       case 'radio':
         g.activities.playRadio(g.activities.radios[m.i]);
         break;
+      case 'radio4':
+        g.secrets.playRadio();
+        break;
+      case 'bear':
+        g.secrets.popBear(m.i);
+        break;
+      case 'song':
+        g.secrets.playSong();
+        break;
       case 'shield':
         g.activities.shieldBuilt = true;
         break;
@@ -685,6 +719,11 @@ export default class Session {
         break;
       case 'sub':
         g.hud.subtitle(m.x, m.d || 3, m.k || '');
+        if (m.s) g.audio.sting();
+        break;
+      case 'toast':
+        g.hud.toast(m.x);
+        g.audio.sting();
         break;
       default:
         break;
@@ -697,5 +736,5 @@ export default class Session {
   }
 }
 
-export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking'];
+export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn'];
 export const SPEEDS = ['walk', 'run', 'sprint'];

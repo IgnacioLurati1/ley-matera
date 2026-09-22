@@ -90,6 +90,7 @@ export default class Hud {
     this.hurt(0);
     this.setDowned(null);
     this.round.innerHTML = '';
+    this.ach.classList.remove('is-on');
   }
 
   // ---------------- ronda ----------------

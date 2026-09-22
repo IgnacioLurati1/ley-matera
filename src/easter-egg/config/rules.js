@@ -55,9 +55,16 @@ export function rollSpeed(round, rand = Math.random) {
 
 export const SPEEDS = { walk: 1.05, run: 2.7, sprint: 4.1 };
 
+// Rondas de carpinchos endemoniados (las de perros del original): la 6 y
+// después cada 6, salvo que toque el Capataz.
+export const dogRound = (round) => round >= 6 && round % 6 === 0 && !bossRound(round);
+export const dogCount = (round, players = 1) => 6 + (players - 1) * 4 + Math.floor(round / 6) * 2;
+
 // Jefe: el Capataz aparece en las rondas múltiplo de 5.
 export const bossRound = (round) => round >= 5 && round % 5 === 0;
 export const bossHealth = (round) => Math.max(4000, zombieHealth(round) * 14);
+// En co-op los jefes aguantan más: +75% de vida por cada jugador extra.
+export const bossScale = (players = 1) => 1 + (players - 1) * 0.75;
 
 // Power-ups: cada 2000 puntos ganados (x1,14 por vez) cae uno, máximo 4 por ronda,
 // y además un 2% por muerte. Se reparten en bolsa mezclada, como en BO1.

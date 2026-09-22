@@ -3,18 +3,20 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { money, normalize } from '../lib/format';
 import { salePrice } from '../lib/pricing';
-import { openEasterEgg } from '../lib/easterEgg';
+import { EGG_PATH, allowSotano } from '../pages/Sotano';
 import ProductImage from './ProductImage';
 import { SearchIcon } from './Icons';
 import './SearchButton.css';
 
 // Lupa de la navbar: abre un buscador con sugerencias y lleva al catálogo
 // filtrado por lo que se escribió. Escribir "Ley Matera" lleva al login del
-// panel (no hay link visible para iniciar sesión) y "nodeberiasveresto" abre
+// panel (no hay link visible para iniciar sesión) y "easter egg" abre
 // el juego oculto, que recién se descarga en ese momento.
 const compact = (text) => normalize(text).replace(/\s+/g, '');
 const isLoginWord = (text) => compact(text) === 'leymatera';
-const isEggWord = (text) => compact(text) === 'nodeberiasveresto';
+// Buscar "easter egg" (o la palabra secreta) abre el juego escondido.
+const EGG_WORDS = ['easteregg', 'nodeberiasveresto'];
+const isEggWord = (text) => EGG_WORDS.includes(compact(text));
 
 export default function SearchButton() {
   const { products } = useData();
@@ -56,7 +58,8 @@ export default function SearchButton() {
     if (isEggWord(t)) {
       setOpen(false);
       setQ('');
-      openEasterEgg();
+      allowSotano();
+      navigate(EGG_PATH, { state: { egg: true, from: location.pathname + location.search } });
       return;
     }
     navigate(t ? `/catalogo?q=${encodeURIComponent(t)}` : '/catalogo');

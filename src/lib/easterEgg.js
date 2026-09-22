@@ -1,9 +1,11 @@
 // Abre el juego oculto. El juego (three.js incluido) vive en un chunk aparte
-// que solo se descarga cuando alguien escribe "nodeberiasveresto" en el buscador.
+// que solo se descarga cuando alguien escribe "easter egg" en el buscador.
+// Corre en su propia página (/sotano, ver pages/Sotano.jsx), nunca encima del
+// inicio: así el uso fuerte de placa y procesador queda en otra dirección.
 
 let opening = null;
 
-export function openEasterEgg() {
+export function openEasterEgg({ onExit } = {}) {
   if (opening) return opening;
   const veil = document.createElement('div');
   veil.textContent = 'Cargando…';
@@ -14,7 +16,7 @@ export function openEasterEgg() {
   // siendo portable a cualquier sitio (sin Supabase funciona igual, con
   // códigos largos de copiar y pegar)
   opening = Promise.all([import('../easter-egg/index.js'), import('./netSignal.js')])
-    .then(([m, s]) => m.launch({ signal: s.createSignal() }))
+    .then(([m, s]) => m.launch({ signal: s.createSignal(), onExit }))
     .catch(() => {
       veil.textContent = 'No se pudo cargar. Probá de nuevo.';
       return new Promise((r) => setTimeout(r, 1800));

@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { EE } from '../config/map';
-import { PERK_ORDER } from '../config/perks';
-import { mesh, boxGeo, cylGeo } from '../world/props';
+import { mesh, boxGeo, cylGeo, mergeByMaterial } from '../world/props';
 import { getMats } from '../weapons/viewmodels';
 
 // Easter egg "La Ronda del Abuelo" (~10 minutos):
@@ -9,8 +8,12 @@ import { getMats } from '../weapons/viewmodels';
 //  2. Bajar de un tiro su calabaza, arriba de todo en el almacén.
 //  3. Subir el balde del aljibe del patio: ahí está la bombilla.
 //  4. Prender el barbacuá y matar 12 zombies cerca para secar la yerba.
-//  5. Calentar el agua en el fogón de la oficina y cortarla entre 75 y 85 °C.
-//  6. Cebarle el mate al Abuelo.
+//  5. Moler la yerba: en la sala de máquinas hay una palanca por jugador y
+//     hay que bajarlas todas a la vez.
+//  6. Calentar el agua en el fogón de la oficina y cortarla entre 75 y 85 °C.
+//  7. Cebarle el mate al Abuelo.
+// En línea lo lleva el anfitrión, pero cualquiera puede hacer cada paso: los
+// avisos y el premio les llegan a todos.
 
 const LINES = {
   dark: 'Está todo oscuro, m\'hijo... Prendé la luz en la sala de máquinas.',
@@ -19,12 +22,27 @@ const LINES = {
   bombilla: 'La bombilla se me cayó al aljibe del patio. Subí el balde, despacito.',
   yerba: 'La yerba se seca en el barbacuá... con almas, como se hacía antes.',
   agua: 'El agua va al fogón de la oficina. ¡Nunca hervida! Entre setenta y cinco y ochenta y cinco grados.',
+  molino1: 'La yerba seca hay que molerla. Bajá la palanca del molino, en la sala de máquinas.',
+  molinoN: (n) => `La yerba seca hay que molerla. En la sala de máquinas hay ${n} palancas: bájenlas todas juntas, m'hijos.`,
   ready: '¡Ahora sí! Cebame uno, m\'hijo.',
   done: '¡Eso es un mate! Andá, que yo me quedo acá tranquilo.',
   hat: 'Una cosa más, m\'hijo. Traeme el sombrero del Capataz. Cuando lo tenga en la mano, te llevo a donde empezó todo.',
   gotHat: '¡Ese es el sombrero! Dámelo, que te muestro de dónde vengo.',
   go: 'Agarrate fuerte. Allá abajo te espera el que me persigue hace un siglo.',
 };
+
+// Palancas del molino (sala de máquinas), repartidas por las cuatro paredes.
+const LEVERS = [
+  { cell: [56, 10], face: [-1, 0] },
+  { cell: [31, 14], face: [1, 0] },
+  { cell: [52, 3], face: [0, 1] },
+  { cell: [35, 17], face: [0, -1] },
+];
+// cuánto queda baja cada palanca antes de volver sola
+const LEVER_HOLD = 3.2;
+// ángulo del mango: arriba (inclinado hacia la sala) y abajo
+const LEVER_UP = 0.35;
+const LEVER_DOWN = 2.6;
 
 export default class EasterEgg {
   constructor(game) {
@@ -47,7 +65,42 @@ export default class EasterEgg {
     this.buildAbuelo();
     this.buildCalabaza();
     this.buildHearth();
+    this.buildLevers();
     this.register();
+  }
+
+  // Cuántas palancas hay: una por jugador en la partida.
+  get leverCount() {
+    if (this.g.net?.guest) return this.nlev || 1;
+    return Math.max(1, Math.min(LEVERS.length, this.g.net ? this.g.net.net.count : 1));
+  }
+
+  buildLevers() {
+    const M = this.g.world.M;
+    this.levers = LEVERS.map((def, i) => {
+      const a = this.g.world.wallAnchor(def.cell, def.face, 0.06);
+      const group = new THREE.Group();
+      group.position.set(a.x, 0, a.z);
+      group.rotation.y = a.rot;
+      group.add(mesh(boxGeo(0.42, 0.7, 0.1), M.metalGreen, 0, 1.35, 0));
+      group.add(mesh(boxGeo(0.3, 0.08, 0.04), M.black, 0, 1.78, 0.05));
+      // número de la palanca pintado arriba
+      for (let k = 0; k <= i; k++) group.add(mesh(boxGeo(0.03, 0.05, 0.01), M.redPaint, -0.045 * i + k * 0.09, 1.78, 0.075));
+      const pivot = new THREE.Group();
+      pivot.position.set(0, 1.3, 0.08);
+      pivot.add(mesh(cylGeo(0.022, 0.022, 0.42, 8), M.iron, 0, 0.2, 0));
+      pivot.add(mesh(cylGeo(0.045, 0.045, 0.12, 10), M.redPaint, 0, 0.42, 0, 0, 0, Math.PI / 2));
+      pivot.rotation.x = LEVER_UP;
+      group.add(pivot);
+      const lampMat = new THREE.MeshStandardMaterial({ color: 0x220a06, emissive: 0xff3a1a, emissiveIntensity: 0 });
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), lampMat);
+      lamp.position.set(0.14, 1.62, 0.07);
+      group.add(lamp);
+      mergeByMaterial(group, [lamp]);
+      this.root.add(group);
+      const lever = { i, group, pivot, lamp: lampMat, downT: 0, down: false, angle: LEVER_UP, pos: new THREE.Vector3(a.x, 1.3, a.z) };
+      return lever;
+    });
   }
 
   // ---------------- modelos ----------------
@@ -217,18 +270,35 @@ export default class EasterEgg {
       use: () => {
         if (this.kiln === 'idle') {
           this.kiln = 'souls';
-          g.hud.subtitle('El barbacuá está hambriento. Matá zombies cerca del fuego.', 3.5);
-          g.audio.sting();
+          this.announce('El barbacuá está hambriento. Maten zombies cerca del fuego.', 3.5, true);
+          this.netSync();
           return true;
         }
         if (this.kiln === 'ready') {
-          this.kiln = 'done';
-          this.gain('yerba', 'Yerba del barbacuá');
+          // la yerba sale seca pero entera: falta pasarla por el molino
+          this.kiln = 'dry';
+          this.toastAll('Conseguiste: Yerba seca (falta molerla)');
+          this.netSync();
+          g.later(1.2, () => g.say('abuelo', this.molinoLine()));
           return true;
         }
         return false;
       },
     });
+    for (const lever of this.levers) {
+      lever.it = I.add({
+        kind: 'ee',
+        pos: lever.pos,
+        radius: 1.9,
+        prompt: () => {
+          if (!g.world.power || this.kiln !== 'dry' || lever.i >= this.leverCount) return null;
+          if (lever.down) return { text: 'Esperando las otras palancas...', noCost: true, info: true };
+          return { text: this.leverCount > 1 ? 'bajar la palanca del molino (todas a la vez)' : 'bajar la palanca del molino', noCost: true };
+        },
+        cost: () => 0,
+        use: () => this.pullLever(lever),
+      });
+    }
     I.add({
       kind: 'ee',
       pos: this.hearthObj.pos,
@@ -247,6 +317,7 @@ export default class EasterEgg {
           this.hearth = 'heating';
           this.temp = 20;
           this.hearthObj.coals.material.emissiveIntensity = 3;
+          this.netSync();
           return true;
         }
         if (this.hearth === 'heating') {
@@ -255,7 +326,7 @@ export default class EasterEgg {
             this.hearthObj.coals.material.emissiveIntensity = 0.4;
             this.gain('agua', `Agua a ${Math.round(this.temp)} °C`);
           } else if (this.temp < 75) {
-            g.hud.subtitle(`Todavía está fría: ${Math.round(this.temp)} °C.`, 2);
+            this.announce(`Todavía está fría: ${Math.round(this.temp)} °C.`, 2);
             this.fail('fría');
           } else this.fail('hervida');
           return true;
@@ -271,9 +342,61 @@ export default class EasterEgg {
     this.coolT = kind === 'hervida' ? 15 : 3;
     this.hearthObj.coals.material.emissiveIntensity = 0.4;
     if (kind === 'hervida') {
-      g.hud.subtitle('¡La hervistes! Así no se ceba. Esperá que se enfríe.', 3);
+      this.announce('¡La hervistes! Así no se ceba. Esperá que se enfríe.', 3);
       g.audio.laugh(this.hearthObj.pos);
     }
+    this.netSync();
+  }
+
+  // ---------------- molino ----------------
+  molinoLine() {
+    const n = this.leverCount;
+    return n > 1 ? LINES.molinoN(n) : LINES.molino1;
+  }
+
+  pullLever(lever) {
+    const g = this.g;
+    if (this.kiln !== 'dry' || lever.down || lever.i >= this.leverCount) return false;
+    lever.down = true;
+    lever.downT = LEVER_HOLD;
+    g.audio.mech(g.audio.now, [0, 0.08]);
+    g.fx.sparks(lever.pos, 4, { x: 0, y: 1, z: 0 });
+    const active = this.levers.slice(0, this.leverCount);
+    if (active.every((l) => l.down)) this.grind();
+    else if (this.leverCount > 1) this.announce(`Palancas bajas: ${active.filter((l) => l.down).length} de ${this.leverCount}.`, 1.6);
+    this.netSync();
+    return true;
+  }
+
+  // Todas las palancas abajo a la vez: el molino arranca y muele la yerba.
+  grind() {
+    const g = this.g;
+    this.kiln = 'done';
+    for (const l of this.levers) {
+      l.down = true;
+      l.downT = Infinity;
+      g.fx.sparks(l.pos, 12, { x: 0, y: 1, z: 0 });
+    }
+    g.audio.powerOn(new THREE.Vector3(43.5, 2, 10));
+    g.fx.addShake(0.35);
+    g.net?.event('ee', { shake: 1 });
+    this.announce('¡El molino arrancó! La yerba quedó molida.', 3.5);
+    this.gain('yerba', 'Yerba molida');
+  }
+
+  // Aviso para todo el equipo (el easter egg es de todos).
+  announce(text, secs = 3, sting = false) {
+    const g = this.g;
+    g.hud.subtitle(text, secs);
+    if (sting) g.audio.sting();
+    g.net?.event('sub', { x: text, d: secs, s: sting ? 1 : 0 });
+  }
+
+  toastAll(text) {
+    const g = this.g;
+    g.hud.toast(text);
+    g.audio.sting();
+    g.net?.event('toast', { x: text });
   }
 
   gain(key, label) {
@@ -282,10 +405,9 @@ export default class EasterEgg {
     this.items[key] = true;
     this.netSync();
     g.hud.setInventory(this.items);
-    g.hud.toast(`Conseguiste: ${label}`);
-    g.audio.sting();
+    this.toastAll(`Conseguiste: ${label}`);
     const missing = Object.entries(this.items).filter(([, v]) => !v).length;
-    if (!missing) g.hud.subtitle('Tenés todo. Andá a la capilla a cebarle al Abuelo.', 3.5);
+    if (!missing) this.announce('Está todo. Vayan a la capilla a cebarle al Abuelo.', 3.5);
   }
 
   // ---------------- ganchos del juego ----------------
@@ -311,18 +433,48 @@ export default class EasterEgg {
       this.items = { ...this.items, ...m.items };
       g.hud.setInventory(this.items);
     }
+    if (m.drop && this.calabazaState === 'shelf') this.dropCalabaza(new THREE.Vector3(m.drop[0], 0, m.drop[1]));
     if (m.kiln) this.kiln = m.kiln;
-    if (m.hearth) this.hearth = m.hearth;
+    if (m.hearth) {
+      if (m.hearth !== this.hearth) this.hearthObj.coals.material.emissiveIntensity = m.hearth === 'heating' ? 3 : 0.4;
+      this.hearth = m.hearth;
+    }
+    if (m.temp !== undefined) this.temp = m.temp;
+    if (m.nlev) this.nlev = m.nlev;
+    if (m.lev) m.lev.forEach((d, i) => {
+      if (d && !this.levers[i].down) g.audio.mech(g.audio.now, [0, 0.08]);
+      this.levers[i].down = !!d;
+    });
+    if (m.soul) g.fx.soul(new THREE.Vector3(m.soul[0], 0, m.soul[1]), this.kilnTarget);
+    if (m.shake) g.fx.addShake(0.35);
+    if (m.hasHat !== undefined) this.hasHat = m.hasHat;
     if (m.done && !this.done) {
       this.done = true;
-      g.hud.setInventory(null);
+      this.reward();
     }
     if (m.hat) this.dropHat(new THREE.Vector3(m.hat[0], 0, m.hat[1]));
     if (m.hatTaken && this.hatObj) this.hatObj.visible = false;
   }
 
   netSync() {
-    this.g.net?.event('ee', { items: this.items, kiln: this.kiln, hearth: this.hearth, done: this.done, calabaza: this.calabazaState === 'taken' ? 'taken' : null });
+    const g = this.g;
+    if (!g.net?.host) return;
+    g.net.event('ee', {
+      items: this.items,
+      kiln: this.kiln,
+      hearth: this.hearth,
+      temp: Math.round(this.temp),
+      done: this.done,
+      hasHat: this.hasHat,
+      nlev: this.leverCount,
+      lev: this.levers.map((l) => (l.down ? 1 : 0)),
+      calabaza: this.calabazaState === 'taken' ? 'taken' : null,
+    });
+  }
+
+  // Estado completo para un jugador que entra a mitad de partida.
+  fullState() {
+    return { items: this.items, kiln: this.kiln, hearth: this.hearth, done: this.done, hasHat: this.hasHat, nlev: this.leverCount, calabaza: this.calabazaState === 'taken' ? 'taken' : null };
   }
 
   onZone(k) {
@@ -331,25 +483,41 @@ export default class EasterEgg {
     this.talkT = 6;
     g.later(1.6, () => {
       if (this.arenaGone) return;
-      this.talkT = Math.max(2, g.say('abuelo', this.nextLine()) + 18);
+      this.talkT = Math.max(2, g.say('abuelo', this.nextLine(), 'abuelo', { local: true }) + 18);
     });
   }
 
   onShot(origin, dir, maxT) {
-    if (this.calabazaState !== 'shelf' || !this.g.world.power) return;
+    if (this.calabazaState !== 'shelf' || !this.g.world.power || this.shotSent) return;
     const p = this.calabaza.position;
     const v = new THREE.Vector3().subVectors(p, origin);
     const t = v.dot(dir);
     if (t < 0 || t > maxT + 0.3) return;
     const closest = new THREE.Vector3().copy(origin).addScaledVector(dir, t);
-    if (closest.distanceTo(p) < 0.16) this.dropCalabaza(dir);
+    if (closest.distanceTo(p) < 0.16) this.hitCalabaza(dir);
   }
 
   onExplosion(pos, radius) {
-    if (this.calabazaState === 'shelf' && this.g.world.power && pos.distanceTo(this.calabaza.position) < radius * 0.6) this.dropCalabaza(new THREE.Vector3(0, 0, 1));
+    if (this.calabazaState === 'shelf' && this.g.world.power && pos.distanceTo(this.calabaza.position) < radius * 0.6) this.hitCalabaza(new THREE.Vector3(0, 0, 1));
+  }
+
+  // De invitado, el que decide es el anfitrión: se le avisa y él la tira para todos.
+  hitCalabaza(dir) {
+    const g = this.g;
+    if (g.net?.guest) {
+      this.shotSent = true;
+      g.later(1.5, () => {
+        this.shotSent = false;
+      });
+      g.net.net.send({ t: 'eeshot', x: +dir.x.toFixed(2), z: +dir.z.toFixed(2) });
+      return;
+    }
+    this.dropCalabaza(dir);
   }
 
   dropCalabaza(dir) {
+    if (this.calabazaState !== 'shelf') return;
+    this.g.net?.event('ee', { drop: [+dir.x.toFixed(2), +dir.z.toFixed(2)] });
     this.calabazaState = 'falling';
     this.calabazaVel.set(dir.x * 1.5, 1.5, dir.z * 1.5);
     this.g.audio.shell();
@@ -361,26 +529,39 @@ export default class EasterEgg {
     const d = Math.hypot(z.pos.x - EE.kiln.pos[0], z.pos.z - EE.kiln.pos[1]);
     if (d > 9) return;
     this.g.fx.soul(z.pos, this.kilnTarget);
+    this.g.net?.event('ee', { soul: [+z.pos.x.toFixed(1), +z.pos.z.toFixed(1)] });
     this.souls++;
     if (this.souls >= 12) {
       this.kiln = 'ready';
-      this.g.hud.subtitle('La yerba está seca. Sacala del barbacuá.', 3);
-      this.g.audio.sting();
+      this.announce('La yerba está seca. Sáquenla del barbacuá.', 3, true);
+      this.netSync();
     }
   }
 
   complete() {
     const g = this.g;
     this.done = true;
+    this.secs = Math.round(g.time - (this.started ?? g.time));
     g.later(0.1, () => this.netSync());
-    const secs = Math.round(g.time - (this.started ?? g.time));
-    g.audio.fanfare();
     g.say('abuelo', LINES.done);
-    g.post.flash(1.5);
     g.zombies.nuke();
+    this.reward();
+    // lo que sigue: el sombrero del Capataz
+    this.talkT = 40;
+    g.later(8, () => {
+      g.say('abuelo', this.hasHat ? LINES.gotHat : LINES.hat);
+      if (!this.hasHat) this.announce('El Capataz aparece cada 5 rondas. Cuando caiga, agarren su sombrero.', 5);
+    });
+  }
+
+  // El premio (cada jugador en su compu): el Mate de Oro.
+  reward() {
+    const g = this.g;
+    const secs = this.secs ?? Math.round(g.time - (this.started ?? g.time));
+    g.audio.fanfare();
+    g.post.flash(1.5);
     g.zombies.setEyeColor(0x39a8ff);
-    for (const id of PERK_ORDER) if (!g.player.perks.has(id)) g.player.givePerk(id);
-    g.weapons.give('oro');
+    if (g.player.alive) g.weapons.give('oro');
     g.hud.setInventory(null);
     g.hud.achievement('La Ronda del Abuelo', `Easter egg completado en ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
     g.stats.easterEgg = true;
@@ -389,12 +570,20 @@ export default class EasterEgg {
     const mate = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), mats.gold);
     mate.position.set(0.32, 0.95, 0.3);
     this.chair.rocker.add(mate);
-    // lo que sigue: el sombrero del Capataz
-    this.talkT = 40;
-    g.later(8, () => {
-      g.say('abuelo', this.hasHat ? LINES.gotHat : LINES.hat);
-      if (!this.hasHat) g.hud.subtitle('El Capataz aparece cada 5 rondas. Cuando caiga, agarrá su sombrero.', 5);
-    });
+  }
+
+  // Alt+K (solo): todo listo para el último paso, para probar la pelea final.
+  debugFinal() {
+    const g = this.g;
+    if (!g.world.power) g.turnOnPower();
+    for (const k of Object.keys(this.items)) this.items[k] = true;
+    this.calabazaState = 'taken';
+    this.calabaza.visible = false;
+    this.kiln = 'done';
+    this.hearth = 'done';
+    this.introDone = true;
+    this.hasHat = true;
+    g.hud.setInventory(this.items);
   }
 
   // El Capataz pierde el sombrero al caer: queda tirado brillando.
@@ -425,9 +614,10 @@ export default class EasterEgg {
           if (!this.hatObj?.visible) return false;
           this.hatObj.visible = false;
           this.hasHat = true;
-          g.hud.toast('Conseguiste: Sombrero del Capataz');
-          g.audio.sting();
-          if (this.done) g.hud.subtitle('Llevale el sombrero al Abuelo, en la capilla.', 4);
+          this.toastAll('Conseguiste: Sombrero del Capataz');
+          g.net?.event('ee', { hatTaken: 1 });
+          this.netSync();
+          if (this.done) this.announce('Llévenle el sombrero al Abuelo, en la capilla.', 4);
           return true;
         },
       });
@@ -445,6 +635,7 @@ export default class EasterEgg {
     const g = this.g;
     this.hasHat = false;
     this.arenaGone = true;
+    this.netSync();
     g.say('abuelo', LINES.go);
     g.post.flash(0.6);
     g.later(4.5, () => g.arena.start());
@@ -464,14 +655,14 @@ export default class EasterEgg {
       if (d < 7 && this.talkT <= 0 && !this.arenaGone) {
         this.talkT = 25;
         const line = this.nextLine();
-        this.talkT = Math.max(this.talkT, g.say('abuelo', line) + 18);
+        this.talkT = Math.max(this.talkT, g.say('abuelo', line, 'abuelo', { local: true }) + 18);
       }
     }
     // brillo de la calabaza en el estante
     if (this.calabazaState === 'shelf' && g.world.power && Math.floor(t * 1.2) % 3 === 0 && Math.random() < 0.3) {
       g.fx.sparkle(this.calabaza.position, [1, 0.85, 0.4], 1, 0.15);
     }
-    if (this.calabazaState === 'falling' && !g.net?.guest) {
+    if (this.calabazaState === 'falling') {
       this.calabazaVel.y -= 9.8 * dt;
       this.calabaza.position.addScaledVector(this.calabazaVel, dt);
       this.calabaza.rotation.x += dt * 8;
@@ -508,6 +699,45 @@ export default class EasterEgg {
     }
     // barbacuá cargándose
     if (this.kiln === 'souls' && Math.random() < 0.3) g.fx.fire(this.kilnTarget, 0.5, 1);
+    this.updateLevers(dt);
+    // la temperatura del fogón les llega a los invitados cada medio segundo
+    if (this.hearth === 'heating' && g.net?.host) {
+      this.tempT = (this.tempT || 0) - dt;
+      if (this.tempT <= 0) {
+        this.tempT = 0.5;
+        g.net.event('ee', { temp: Math.round(this.temp) });
+      }
+    }
+  }
+
+  updateLevers(dt) {
+    const g = this.g;
+    const n = this.leverCount;
+    const active = g.world.power && (this.kiln === 'dry' || this.kiln === 'done');
+    for (const l of this.levers) {
+      l.group.visible = l.i < n || this.kiln === 'done';
+      // la palanca vuelve sola si las otras no bajaron a tiempo (lo decide el anfitrión)
+      if (l.down && Number.isFinite(l.downT) && !g.net?.guest) {
+        l.downT -= dt;
+        if (l.downT <= 0) {
+          l.down = false;
+          g.audio.mech(g.audio.now, [0]);
+          this.netSync();
+        }
+      }
+      const target = l.down ? LEVER_DOWN : LEVER_UP;
+      l.angle += (target - l.angle) * Math.min(1, dt * 14);
+      l.pivot.rotation.x = l.angle;
+      // luz: roja apagada sin molienda, parpadea esperando, verde al moler
+      const lamp = l.lamp;
+      if (this.kiln === 'done') {
+        lamp.emissive.setHex(0x3aff5a);
+        lamp.emissiveIntensity = 2.5;
+      } else if (active && this.kiln === 'dry') {
+        lamp.emissive.setHex(l.down ? 0xffc23a : 0xff3a1a);
+        lamp.emissiveIntensity = l.down ? 3 : 1 + Math.sin(g.time * 6 + l.i) * 0.8;
+      } else lamp.emissiveIntensity = 0;
+    }
   }
 
   nextLine() {
@@ -519,7 +749,7 @@ export default class EasterEgg {
     const it = this.items;
     if (!it.calabaza) return LINES.calabaza;
     if (!it.bombilla) return LINES.bombilla;
-    if (!it.yerba) return LINES.yerba;
+    if (!it.yerba) return this.kiln === 'dry' ? this.molinoLine() : LINES.yerba;
     if (!it.agua) return LINES.agua;
     return LINES.ready;
   }

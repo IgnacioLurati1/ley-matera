@@ -257,6 +257,8 @@ export function zombieSound(kind, r = Math.random) {
 export const SPEAKERS = {
   abuelo: { f0: 108, rate: 0.82, jitter: 0.03, shimmer: 0.09, breath: 0.22, vib: { rate: 5.5, depth: 0.035 }, tilt: 0.45, shift: 0.96, oq: 0.65, level: 0.8 },
   anunciador: { f0: 58, rate: 0.72, jitter: 0.012, shimmer: 0.05, breath: 0.08, sub: 0.5, growl: 0.2, roughRate: 30, tilt: 0.4, shift: 0.8, drive: 1.8, oq: 0.6, level: 0.9 },
+  // el Capataz de joven, antes del pacto: voz más clara y sin gruñido
+  capatazJoven: { f0: 118, rate: 1.02, jitter: 0.018, shimmer: 0.06, breath: 0.1, tilt: 0.32, shift: 0.97, oq: 0.55, level: 0.8 },
   capataz: { f0: 88, rate: 1.0, jitter: 0.03, shimmer: 0.1, breath: 0.12, growl: 0.45, roughRate: 45, sub: 0.25, tilt: 0.35, shift: 0.88, drive: 2.2, oq: 0.55, level: 0.9 },
   radio: { f0: 122, rate: 1.05, jitter: 0.015, shimmer: 0.05, breath: 0.1, tilt: 0.3, shift: 1.0, oq: 0.55, level: 0.8 },
   taza: { f0: 190, rate: 1.1, jitter: 0.02, shimmer: 0.08, breath: 0.12, tilt: 0.3, shift: 1.15, oq: 0.5, level: 0.8 },

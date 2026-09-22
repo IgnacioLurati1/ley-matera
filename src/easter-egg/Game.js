@@ -17,6 +17,9 @@ import Weather from './world/Weather';
 import Activities from './world/Activities';
 import Decor from './world/Decor';
 import Arena from './world/Arena';
+import Critters from './world/Critters';
+import Secrets from './world/Secrets';
+import { buildHighWindows } from './world/HighWindows';
 import Cinematic from './ui/Cinematic';
 import Session from './net/Session';
 import Avatars from './net/Avatars';
@@ -35,7 +38,7 @@ const QUALITY = {
   high: { pr: 1.25, shadows: true, shadowSize: 2048 },
   ultra: { pr: 2, shadows: true, shadowSize: 4096 },
 };
-const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.55, sfx: 0.9, shake: 1, quality: 'high', invertY: false, voiceMode: 'auto', showFps: false };
+const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.55, sfx: 0.9, shake: 1, quality: 'ultra', invertY: false, voiceMode: 'auto', showFps: false, v: 2 };
 
 // Entrada vacía: el jugador sigue con su física pero no toca nada (menú abierto en línea).
 const IDLE_INPUT = { mouse: { dx: 0, dy: 0 }, sensitivity: 1, invertY: false, key: () => false, hit: () => false };
@@ -74,6 +77,10 @@ export default class Game {
     // antes era un sí/no de voces
     if (saved.voices === false && !saved.voiceMode) saved.voiceMode = 'off';
     delete saved.voices;
+    // la calidad por defecto pasó de Alta a Ultra: el que nunca la tocó, sube
+    if (!saved.v && saved.quality === 'high') saved.quality = 'ultra';
+    if (saved.voiceMode === 'natural') saved.voiceMode = 'auto';
+    saved.v = 2;
     this.settings = { ...DEFAULTS, ...saved };
     this.best = store.get(BEST_KEY) || 0;
     this.paused = false;
@@ -114,6 +121,8 @@ export default class Game {
     this.audio = new GameAudio();
     this.audio.setVolumes(this.settings);
     this.audio.voiceMode = this.settings.voiceMode;
+    // las voces del navegador pueden llegar después: se actualizan las opciones
+    this.audio.onVoices = () => this.menus?.syncOptions();
     await step(0.6, 'Despertando gargantas…');
     this.audio.buildBank();
     this.input = new Input(canvas);
@@ -148,6 +157,11 @@ export default class Game {
     this.raf = requestAnimationFrame(this.loop);
     this.onKey = (e) => {
       if (e.code === 'Escape' && this.state === 'playing' && !this.input.locked) this.pause();
+      // Alt+K, solo jugando solo: 100.000 puntos y el easter egg listo para la pelea final
+      if (e.altKey && e.code === 'KeyK' && this.state === 'playing' && !this.net) {
+        e.preventDefault();
+        this.cheatFinal();
+      }
     };
     window.addEventListener('keydown', this.onKey);
     this.onVisibility = () => {
@@ -225,6 +239,9 @@ export default class Game {
     this.weather = new Weather(this);
     this.decor = new Decor(this);
     this.arena = new Arena(this);
+    this.critters = new Critters(this);
+    this.secrets = new Secrets(this);
+    this.highWindows = buildHighWindows(this);
     this.world.finalizeStatic();
     this.world.computeNavBlock();
     this.points = START_POINTS;
@@ -250,6 +267,8 @@ export default class Game {
 
   disposeScene() {
     this.weather?.dispose();
+    this.critters?.dispose();
+    this.secrets?.dispose();
     this.activities?.dispose();
     this.arena?.dispose();
     this.scene.traverse((o) => {
@@ -342,9 +361,10 @@ export default class Game {
   }
 
   // Jugadores vivos (el local y los remotos), para que los zombies elijan.
+  // El jugador de pie más cercano; los tirados no cuentan (null si no queda nadie).
   nearestPlayer(x, z) {
-    if (!this.net) return this.player;
-    return this.net.nearest(x, z) || this.player;
+    if (!this.net) return this.player.canBeHit() ? this.player : null;
+    return this.net.nearest(x, z);
   }
 
   // Le pega a quien corresponda: si es un jugador remoto, se le avisa.
@@ -355,6 +375,16 @@ export default class Game {
       return;
     }
     this.net?.net.to(target.id, { t: 'hurt', a: amount, x: +from.x.toFixed(2), z: +from.z.toFixed(2) });
+  }
+
+  // Atajo de prueba (Alt+K): plata, luz, puertas abiertas y el Abuelo esperando
+  // el último mate con el sombrero del Capataz ya en la mano.
+  cheatFinal() {
+    this.addPoints(100000, null, true);
+    if (!this.world.power) this.turnOnPower();
+    for (const it of this.interact.list) if (it.kind === 'door' && !it.door.open) this.interact.openDoor(it.door);
+    this.ee.debugFinal();
+    this.hud.subtitle('Modo prueba: 100.000 puntos, todo abierto. El Abuelo te espera en la capilla con el último mate.', 5);
   }
 
   perkColor(id) {
@@ -658,10 +688,12 @@ export default class Game {
   }
 
   // Un personaje habla: voz (o murmullos) y subtítulo con su nombre.
-  say(speaker, text, kind = speaker) {
-    this.net?.event('say', { s: speaker, x: text, k: kind });
+  // local: solo lo escucha este jugador (el Abuelo cuando te acercás, las radios,
+  // que cada compu reproduce por su cuenta).
+  say(speaker, text, kind = speaker, { local = false } = {}) {
+    if (!local) this.net?.event('say', { s: speaker, x: text, k: kind });
     const dur = this.audio.say(text, speaker);
-    const label = { abuelo: 'Abuelo', capataz: 'El Capataz', radio: 'Radio Misiones', taza: 'La taza', anunciador: 'La Voz' }[speaker] || speaker;
+    const label = { abuelo: 'Abuelo', capataz: 'El Capataz', capatazJoven: 'Anselmo, el capataz (1911)', radio: 'Radio Misiones', taza: 'La taza', anunciador: 'La Voz' }[speaker] || speaker;
     this.hud.speak(label, text, dur + 1.4, kind);
     return dur;
   }
@@ -805,6 +837,7 @@ export default class Game {
     this.activities.update(dt);
     this.net?.update(dt);
     this.decor.update(dt);
+    this.critters.update(dt);
     this.ee.update(dt);
     this.world.update(dt, this.time);
     this.weather.update(dt);

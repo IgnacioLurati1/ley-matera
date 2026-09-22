@@ -3,8 +3,10 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { PART_COUNT, makePose, solvePose, solveExtras, hitParts } from './skeleton';
 import Navigation from '../world/Navigation';
+import DogRig from './Dogs';
+import { SILL_Y } from '../world/HighWindows';
 import { RISERS } from '../config/map';
-import { SPEEDS, rollSpeed, ZOMBIE_DAMAGE, BOSS_DAMAGE, POINTS, bossHealth } from '../config/rules';
+import { SPEEDS, rollSpeed, ZOMBIE_DAMAGE, BOSS_DAMAGE, POINTS, bossHealth, bossScale } from '../config/rules';
 import { rng } from '../core/noise';
 
 // Zombies por rondas: aparición (ventanas y tierra), IA, animación procedural,
@@ -12,6 +14,8 @@ import { rng } from '../core/noise';
 
 const MAX = 40;
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+// un perro no dibuja ninguna parte del cuerpo humano
+const ALL_PARTS = (1 << PART_COUNT) - 1;
 
 const SKIN = [0x6d7a5e, 0x7a7f68, 0x5e6456, 0x858a76, 0x6a5f52, 0x78705a];
 const SHIRT = [0x4a4f3a, 0x5a2c24, 0x2f3b4a, 0x6a6454, 0x3d4a34, 0x7a6a48, 0x2a2a2a, 0x8a8478];
@@ -178,6 +182,7 @@ export default class Zombies {
     this.hits = [];
     this.idc = 0;
     this.blobs = this.buildBlobShadows();
+    this.dogRig = new DogRig(game, MAX, this.eyeMat);
   }
 
   makeZombie(slot) {
@@ -191,6 +196,7 @@ export default class Zombies {
       pos: new THREE.Vector3(),
       vel: new THREE.Vector3(),
       from: new THREE.Vector3(),
+      dropDir: new THREE.Vector3(),
       colors: {},
       hidden: 0,
     };
@@ -233,6 +239,14 @@ export default class Zombies {
         if (dx * dx + dz * dz < 16) continue;
         const d = g.nav.distAt(r.pos[0], r.pos[1]);
         list.push({ kind: 'riser', r, d });
+      }
+    }
+    // de a ratos, alguno se tira desde un ventanal alto
+    if (allowRisers && g.rounds.round >= 3 && g.highWindows) {
+      for (const hw of g.highWindows.list) {
+        if (!zones.has(hw.zone)) continue;
+        const d = g.nav.distAt(hw.x + hw.in.x * 1.3, hw.z + hw.in.z * 1.3);
+        if (Number.isFinite(d)) list.push({ kind: 'drop', hw, d: d * 1.6 + 6 });
       }
     }
     if (!list.length) return null;
@@ -293,7 +307,13 @@ export default class Zombies {
     z.los = false;
     z.corpseT = 0;
     z.static = false;
+    z.dog = false;
+    z.pos.y = 0;
     z.burnT = 0;
+    z.burnDmgT = 0.5;
+    z.slowT = 0;
+    z.steamT = 0;
+    z.fountT = 0;
     z.window = -1;
     z.P.rootPitch = 0;
     z.P.rootRoll = 0;
@@ -321,6 +341,17 @@ export default class Zombies {
       z.pos.copy(w.ext).addScaledVector(w.out, 3 + r() * 3).addScaledVector(lat, (r() - 0.5) * 3);
       z.state = 'approach';
       z.yaw = Math.atan2(-w.out.x, -w.out.z);
+    } else if (sp.kind === 'drop') {
+      // se asoma por el ventanal alto (rompiendo lo que quedaba del vidrio)
+      const hw = sp.hw;
+      z.pos.set(hw.x + hw.in.x * 0.15, SILL_Y, hw.z + hw.in.z * 0.15);
+      z.dropDir.copy(hw.in);
+      z.vel.set(0, 0, 0);
+      z.yaw = Math.atan2(hw.in.x, hw.in.z);
+      z.state = 'drop';
+      const gp = new THREE.Vector3(hw.x, SILL_Y + 0.6, hw.z);
+      this.g.fx.sparks(gp, 1, { x: hw.in.x, y: 0.3, z: hw.in.z }, [0.8, 0.9, 1]);
+      this.g.audio.shatter(gp);
     } else {
       z.pos.set(sp.r.pos[0] + (r() - 0.5) * 1.2, 0, sp.r.pos[1] + (r() - 0.5) * 1.2);
       z.state = 'rise';
@@ -329,6 +360,82 @@ export default class Zombies {
       this.g.audio.rise(z.pos);
     }
     return true;
+  }
+
+  // Perro cimarrón: cae un rayo cerca de algún jugador y aparece ahí.
+  spawnDog(health) {
+    const g = this.g;
+    const at = this.dogSpot();
+    if (!at) return false;
+    const z = this.freeSlot();
+    if (!z) return false;
+    const r = Math.random;
+    Object.assign(z, {
+      active: true,
+      dead: false,
+      dog: true,
+      id: ++this.idc,
+      hp: health,
+      maxHp: health,
+      scale: 0.92 + r() * 0.16,
+      speedType: 'sprint',
+      speed: 5.8 + r() * 0.9,
+      phase: r() * 10,
+      stateT: 0,
+      attackT: 0,
+      growlT: 1 + r() * 2,
+      crawler: false,
+      hidden: ALL_PARTS,
+      limp: 0,
+      headTilt: 0,
+      armOff: 0,
+      farT: 0,
+      losT: 0,
+      los: false,
+      corpseT: 0,
+      static: false,
+      burnT: 0,
+      slowT: 0,
+      steamT: 0,
+      fountT: 0,
+      window: -1,
+      flags: {},
+      burst: false,
+      state: 'dogspawn',
+      yaw: r() * Math.PI * 2,
+    });
+    z.P.rootPitch = 0;
+    z.P.rootRoll = 0;
+    z.P.rootY = 0;
+    z.pos.set(at.x, 0, at.z);
+    const top = new THREE.Vector3(at.x, 24, at.z);
+    const ground = new THREE.Vector3(at.x, 0.1, at.z);
+    g.fx.lightning(top, ground, 0xcfe0ff, 0.35);
+    g.fx.flash(new THREE.Vector3(at.x, 1.5, at.z), 0xcfe0ff, 30, 0.3, 16);
+    if (g.weather) g.weather.flash = Math.max(g.weather.flash, 0.9);
+    g.weather?.thunder(0.05, true);
+    g.fx.dirt(z.pos, 10);
+    return true;
+  }
+
+  // Un lugar para el rayo: entre 6 y 12 m de algún jugador, en una zona abierta.
+  dogSpot() {
+    const g = this.g;
+    const targets = [g.player, ...(g.net ? [...g.net.remote.values()].filter((p) => !p.dead) : [])].filter((p) => p.alive !== false);
+    if (!targets.length) targets.push(g.player);
+    for (let i = 0; i < 40; i++) {
+      const tp = targets[Math.floor(Math.random() * targets.length)];
+      const a = Math.random() * Math.PI * 2;
+      const d = 6 + Math.random() * 6;
+      const x = tp.pos.x + Math.cos(a) * d;
+      const z = tp.pos.z + Math.sin(a) * d;
+      const zone = g.world.zoneAt(x, z);
+      if (!zone || !g.activeZones.has(zone)) continue;
+      const nd = g.nav.distAt(x, z);
+      if (!Number.isFinite(nd) || nd > 45) continue;
+      return { x, z };
+    }
+    return null;
   }
 
   paint(z, tint = null) {
@@ -461,7 +568,8 @@ export default class Zombies {
     z.pos.copy(at);
     z.yaw = Math.atan2(p.x - at.x, p.z - at.z);
     z.scale = 1.4;
-    z.maxHp = bossHealth(round);
+    const more = bossScale(g.rounds?.players || 1);
+    z.maxHp = bossHealth(round) * more;
     z.hp = z.maxHp;
     z.hatHp = z.maxHp * 0.25;
     z.speed = 3.1;
@@ -484,7 +592,7 @@ export default class Zombies {
       // el diablo: más grande, rojo, con cuernos; no clausura máquinas
       z.mandinga = true;
       z.scale = 2.05;
-      z.maxHp = opts.hp || 60000;
+      z.maxHp = (opts.hp || 60000) * more;
       z.hp = z.maxHp;
       z.hatHp = 0;
       z.lockT = Infinity;
@@ -570,6 +678,8 @@ export default class Zombies {
         zz.corpseT = 0;
       }
     }
+    zz.dog = !!f.dog;
+    if (zz.dog) zz.hidden = ALL_PARTS;
     zz.speedType = f.speedType;
     zz.crawler = f.crawler;
     zz.dead = f.dead || state === 'dead';
@@ -634,6 +744,8 @@ export default class Zombies {
     if (this.boss) all.push(this.boss);
     for (const z of all) {
       z.stateT += dt;
+      // al terminar la caída desde el ventanal, vuelve a pisar el suelo
+      if (z.state === 'chase' || z.state === 'attack') z.P.rootY = 0;
       if (z.net) {
         // de donde se lo dibujaba hasta la foto nueva, en lo que tarda en llegar la otra
         const n = z.net;
@@ -668,6 +780,26 @@ export default class Zombies {
           break;
         case 'shocked':
           this.poseShock(z, t);
+          break;
+        case 'drop': {
+          // la misma caída que calcula el anfitrión, a partir del tiempo
+          const tt = z.stateT - 0.9;
+          if (tt < 0) {
+            z.P.rootY = SILL_Y - 0.4;
+            this.poseClimb(z, 0.3);
+          } else {
+            const y = SILL_Y + 1.3 * tt - 6 * tt * tt;
+            z.P.rootY = Math.max(0, y - 0.2);
+            if (y > 0) this.poseClimb(z, 0.85);
+            else this.poseRise(z, t);
+          }
+          break;
+        }
+        case 'burnrun':
+          z.pos.x += Math.sin(z.yaw) * 3.4 * dt;
+          z.pos.z += Math.cos(z.yaw) * 3.4 * dt;
+          this.poseBurnRun(z, dt, t);
+          if (Math.random() < 0.8) this.g.fx.fire(tmpV.set(z.pos.x, 0.5 + Math.random() * 1.2, z.pos.z), 0.5, 2);
           break;
         case 'slam':
         case 'locking':
@@ -753,6 +885,10 @@ export default class Zombies {
 
   think(z, dt, t, player) {
     const g = this.g;
+    if (z.dog) {
+      this.thinkDog(z, dt, t, player);
+      return;
+    }
     z.stateT += dt;
     const P = z.P;
     const pp = player.pos;
@@ -769,7 +905,23 @@ export default class Zombies {
       if (z.burnT > 0) {
         z.burnT -= dt;
         if (Math.random() < 0.5) g.fx.fire(tmpV.set(z.pos.x, 0.8 + Math.random(), z.pos.z), 0.4, 1);
+        // el fuego quema de a poco (sin puntos por cada quemadura)
+        z.burnDmgT = (z.burnDmgT ?? 0.5) - dt;
+        if (z.burnDmgT <= 0) {
+          z.burnDmgT = 0.5;
+          // los puntos del que lo prendió fuego (si es un compañero, se le mandan)
+          const by = z.burnBy;
+          const remote = by != null && g.net?.host && by !== g.net.id;
+          this.damage(z, z.maxHp * 0.08 + 25, { type: 'burn', by, noPoints: remote, point: tmpV.set(z.pos.x, 1.2, z.pos.z).clone() });
+          if (remote && this.lastPoints) g.net.pts.set(by, (g.net.pts.get(by) || 0) + this.lastPoints);
+          if (z.dead) return;
+        }
         if (z.burnT <= 0) this.paint(z);
+      }
+      if (z.slowT > 0) {
+        z.slowT -= dt;
+        if (Math.random() < 0.15) g.fx.frost(z.pos, 1);
+        if (z.slowT <= 0 && !(z.burnT > 0)) this.paint(z);
       }
     }
 
@@ -908,9 +1060,71 @@ export default class Zombies {
         }
         break;
       }
+      case 'drop': {
+        // se asoma agachado un momento, salta y cae al piso
+        if (z.stateT < 0.9) {
+          P.rootY = SILL_Y - 0.4;
+          this.poseClimb(z, 0.25 + z.stateT * 0.25);
+          break;
+        }
+        if (z.pos.y > 0) {
+          if (!z.jumped) {
+            z.jumped = true;
+            z.vel.set(z.dropDir.x * 1.7, 1.3, z.dropDir.z * 1.7);
+          }
+          z.vel.y -= 12 * dt;
+          z.pos.addScaledVector(z.vel, dt);
+          P.rootY = Math.max(0, z.pos.y - 0.2);
+          this.poseClimb(z, 0.85);
+          if (z.pos.y <= 0) {
+            z.pos.y = 0;
+            P.rootY = 0;
+            z.landT = 0;
+            z.jumped = false;
+            g.world.collide(z.pos, 0.3, 0.1, 1.7);
+            g.fx.dust(tmpV.set(z.pos.x, 0.05, z.pos.z), { x: 0, y: 1, z: 0 }, [0.45, 0.4, 0.35], 8);
+            g.audio.land(tmpV.set(z.pos.x, 0.2, z.pos.z));
+          }
+          break;
+        }
+        z.landT = (z.landT || 0) + dt;
+        P.rootY = -0.35 * (1 - Math.min(1, z.landT / 0.45));
+        this.poseRise(z, t);
+        if (z.landT > 0.45) this.setState(z, 'chase');
+        break;
+      }
+      case 'burnrun': {
+        // prendido fuego: corre a los manotazos para cualquier lado y cae
+        z.turnT = (z.turnT ?? 0) - dt;
+        if (z.turnT <= 0) {
+          z.turnT = 0.35 + Math.random() * 0.4;
+          z.runYaw = z.yaw + (Math.random() - 0.5) * 2.2;
+        }
+        this.turn(z, z.runYaw ?? z.yaw, 5, dt);
+        z.pos.x += Math.sin(z.yaw) * 3.4 * dt;
+        z.pos.z += Math.cos(z.yaw) * 3.4 * dt;
+        g.world.collide(z.pos, 0.3, 0.1, 1.7);
+        this.poseBurnRun(z, dt, t);
+        g.fx.fire(tmpV.set(z.pos.x, 0.5 + Math.random() * 1.2, z.pos.z), 0.5, 2);
+        if (z.stateT > z.runT) {
+          z.deathFrom = null;
+          this.setState(z, 'dead');
+        }
+        break;
+      }
       case 'dead': {
         this.poseDeath(z);
         z.corpseT += dt;
+        if (z.steamT > 0) {
+          z.steamT -= dt;
+          if (Math.random() < 0.35) g.fx.steam(tmpV.set(z.pos.x, 0.35, z.pos.z), 1, 0.5);
+        }
+        if (z.fountT > 0) {
+          z.fountT -= dt;
+          const np = tmpV.setFromMatrixPosition(z.mats[1]);
+          np.y += 0.3 * z.scale;
+          g.fx.blood(np, { x: (Math.random() - 0.5) * 0.4, y: 2.2, z: (Math.random() - 0.5) * 0.4 }, 2, 0.8);
+        }
         if (z.corpseT > 9) {
           P.rootY = -Math.min(1.2, (z.corpseT - 9) * 0.8) + (z.crawler ? 0 : 0.12);
           z.static = false;
@@ -923,6 +1137,41 @@ export default class Zombies {
     }
   }
 
+  thinkDog(z, dt, t, player) {
+    const g = this.g;
+    z.stateT += dt;
+    if (z.state === 'dogspawn') {
+      if (Math.random() < 0.6) g.fx.fire(tmpV.set(z.pos.x, 0.25, z.pos.z), 0.7, 1);
+      if (z.stateT > 0.6) {
+        this.setState(z, 'chase');
+        g.audio.howl(tmpV.set(z.pos.x, 0.8, z.pos.z));
+      }
+      return;
+    }
+    if (z.dead) {
+      // al rato se deshace en brasas
+      z.corpseT += dt;
+      if (z.stateT > 1.1 && !z.burst) {
+        z.burst = true;
+        g.fx.fire(tmpV.set(z.pos.x, 0.3, z.pos.z), 0.8, 8);
+        g.fx.sparks(tmpV, 1.5, { x: 0, y: 1, z: 0 }, [1, 0.5, 0.2]);
+      }
+      if (z.stateT > 1.5) this.free(z);
+      return;
+    }
+    if (z.slowT > 0) z.slowT -= dt;
+    if (z.burnT > 0) {
+      z.burnT -= dt;
+      if (Math.random() < 0.5) g.fx.fire(tmpV.set(z.pos.x, 0.6, z.pos.z), 0.4, 1);
+    }
+    z.growlT -= dt;
+    if (z.growlT <= 0) {
+      z.growlT = 1.2 + Math.random() * 2.5;
+      if (Math.hypot(player.pos.x - z.pos.x, player.pos.z - z.pos.z) < 22) g.audio.bark(tmpV.set(z.pos.x, 0.7, z.pos.z));
+    }
+    this.chase(z, dt, t, player, Math.hypot(player.pos.x - z.pos.x, player.pos.z - z.pos.z));
+  }
+
   setState(z, s) {
     z.state = s;
     z.stateT = 0;
@@ -932,8 +1181,8 @@ export default class Zombies {
   chase(z, dt, t, player, distP) {
     const g = this.g;
     const lure = this.lure;
-    // con varios jugadores, va por el que tenga más cerca
-    const target = g.net ? g.nearestPlayer(z.pos.x, z.pos.z) : player;
+    // va por el jugador de pie más cercano: a los tirados no los buscan
+    const target = g.nearestPlayer(z.pos.x, z.pos.z);
     if (target && target !== player) {
       distP = Math.hypot(target.pos.x - z.pos.x, target.pos.z - z.pos.z);
       player = target;
@@ -941,6 +1190,20 @@ export default class Zombies {
     let tx = player.pos.x;
     let tz = player.pos.z;
     let nav = g.nav;
+    // no queda nadie de pie: deambulan despacio alrededor, sin ir al que está tirado
+    const wander = !target && !lure;
+    if (wander) {
+      z.wanderT = (z.wanderT ?? 0) - dt;
+      if (!z.wander || z.wanderT <= 0 || Math.hypot(z.wander.x - z.pos.x, z.wander.z - z.pos.z) < 0.8) {
+        // hacia afuera, del lado donde ya están
+        const a = Math.atan2(z.pos.z - player.pos.z, z.pos.x - player.pos.x) + (Math.random() - 0.5) * 1.4;
+        const r = 7 + Math.random() * 4;
+        z.wander = { x: player.pos.x + Math.cos(a) * r, z: player.pos.z + Math.sin(a) * r };
+        z.wanderT = 3 + Math.random() * 3;
+      }
+      tx = z.wander.x;
+      tz = z.wander.z;
+    }
     if (lure && Math.hypot(lure.pos.x - z.pos.x, lure.pos.z - z.pos.z) < 30) {
       tx = lure.pos.x;
       tz = lure.pos.z;
@@ -958,7 +1221,7 @@ export default class Zombies {
     }
     let mx = 0;
     let mz = 0;
-    if (dist < 1.6 || z.los) {
+    if (dist < 1.6 || z.los || wander) {
       mx = dx / (dist || 1);
       mz = dz / (dist || 1);
     } else if (nav.direction(z.pos.x, z.pos.z, dirOut)) {
@@ -969,7 +1232,7 @@ export default class Zombies {
       mz = dz / (dist || 1);
     }
 
-    const speed = z.crawler ? 0.75 : z.speed;
+    const speed = (z.crawler ? 0.75 : z.speed) * (z.slowT > 0 ? 0.4 : 1) * (wander ? 0.55 : 1);
     const attacking = z.state === 'attack';
     // pasos arrastrados cuando andan cerca
     if (distP < 7) {
@@ -979,7 +1242,7 @@ export default class Zombies {
         g.audio.shuffle(tmpV.set(z.pos.x, 0.2, z.pos.z));
       }
     }
-    const stop = !lure && distP < 0.95;
+    const stop = !lure && !wander && distP < 0.95;
     const sp = attacking ? speed * 0.25 : stop ? 0 : speed;
     this.turn(z, Math.atan2(mx, mz), z.speedType === 'sprint' ? 9 : 6, dt);
     // avanzar hacia donde mira (así giran como personas, no como flechas)
@@ -1005,7 +1268,8 @@ export default class Zombies {
       if (distP < 1.3 && (player.canBeHit ? player.canBeHit() : !player.downed && !player.dead) && !lure) {
         this.setState(z, 'attack');
         z.attackHit = false;
-        g.audio.growl(tmpV.set(z.pos.x, 1.5, z.pos.z), 'attack');
+        if (z.dog) g.audio.bark(tmpV.set(z.pos.x, 0.7, z.pos.z));
+        else g.audio.growl(tmpV.set(z.pos.x, 1.5, z.pos.z), 'attack');
       }
     } else {
       z.attackT += dt;
@@ -1403,6 +1667,19 @@ export default class Zombies {
     }
   }
 
+  poseBurnRun(z, dt, t) {
+    this.poseGait(z, dt, 4, t);
+    const P = z.P;
+    P.shLp = -2.5 + Math.sin(t * 17 + z.phase) * 0.6;
+    P.shRp = -2.3 + Math.cos(t * 15 + z.phase) * 0.6;
+    P.shLr = 0.5;
+    P.shRr = -0.5;
+    P.elL = -0.9 + Math.sin(t * 21) * 0.3;
+    P.elR = -0.8 + Math.cos(t * 19) * 0.3;
+    P.headP = -0.45;
+    P.torsoP = 0.15;
+  }
+
   poseDeath(z) {
     const P = z.P;
     if (z.static) return;
@@ -1457,13 +1734,14 @@ export default class Zombies {
           M.im.setMatrixAt(z.slot * M.parts.length + k, off || z.hidden & (1 << part) ? ZERO : z.mats[part]);
         }
       }
-      if (z.state === 'approach' || z.state === 'tear' || z.state === 'rise' || z.dead) this.blobs.setMatrixAt(z.slot, ZERO);
+      if (z.state === 'approach' || z.state === 'tear' || z.state === 'rise' || z.state === 'drop' || z.state === 'dogspawn' || z.dead) this.blobs.setMatrixAt(z.slot, ZERO);
       else {
         blobM.makeScale(0.9, 1, 0.9).setPosition(z.pos.x, 0.015, z.pos.z);
         this.blobs.setMatrixAt(z.slot, blobM);
       }
     }
     for (const M of this.meshes) M.im.instanceMatrix.needsUpdate = true;
+    this.dogRig.update(this.pool);
     const b = this.boss;
     if (b) {
       solvePose(b.mats, b.pos.x, b.pos.z, b.yaw, b.scale, b.P);
@@ -1489,6 +1767,12 @@ export default class Zombies {
     hits.length = 0;
     const test = (z) => {
       if (!z.active || z.dead) return;
+      if (z.dog) {
+        if (z.state === 'dogspawn') return;
+        const h = DogRig.raycast(z, o, d, maxT);
+        if (h) hits.push({ z, t: h.t, zone: h.zone });
+        return;
+      }
       tmpV.set(z.pos.x - o.x, z.pos.y + 1 * z.scale - o.y, z.pos.z - o.z);
       const along = tmpV.dot(d);
       if (along < -1.5 || along > maxT + 1.5) return;
@@ -1537,7 +1821,7 @@ export default class Zombies {
     let dmg = amount;
     const type = info.type || 'bullet';
     if (z.boss) {
-      if (['chain', 'freeze', 'blast', 'nuke'].includes(type)) dmg = type === 'nuke' ? 0 : 2500;
+      if (['chain', 'freeze', 'blast', 'nuke', 'scald'].includes(type)) dmg = type === 'nuke' ? 0 : type === 'scald' ? 320 : 2500;
       if (info.zone === 'hat') {
         z.hatHp -= dmg;
         if (!info.noPoints) g.addPoints(POINTS.hit);
@@ -1574,10 +1858,12 @@ export default class Zombies {
           z.hidden |= HIDE_LEGS;
           g.fx.blood(tmpV.set(z.pos.x, 0.5, z.pos.z), { x: 0, y: 1, z: 0 }, 20, 1.5);
         }
-        if (info.burn) {
+        if (info.burn && !(z.burnT > 0)) {
           z.burnT = 4;
+          z.burnBy = info.by;
           this.paint(z, 0x6a3a20);
         }
+        if (info.elem) this.applyElem(z, info, dmg);
       }
       if (z.boss && z.state === 'chase' && Math.random() < 0.02) this.setState(z, 'intro');
       // quejido de dolor de vez en cuando
@@ -1586,6 +1872,32 @@ export default class Zombies {
     }
     this.kill(z, info);
     return true;
+  }
+
+  // Efecto del elemento de un mate mejorado en el Pack-a-Pava.
+  applyElem(z, info, dmg) {
+    const g = this.g;
+    const e = info.elem;
+    if (e === 'fire' && !(z.burnT > 0) && Math.random() < 0.4) {
+      z.burnT = 5;
+      z.burnBy = info.by;
+      this.paint(z, 0x6a3a20);
+    } else if (e === 'ice' && Math.random() < 0.45) {
+      z.slowT = 2.5;
+      if (!(z.burnT > 0)) this.paint(z, 0x9cc8e8);
+      g.fx.frost(z.pos, 6);
+    } else if (e === 'electric' && Math.random() < 0.3) {
+      // arco a los dos zombies más cercanos
+      const at = new THREE.Vector3(z.pos.x, 1.2 * z.scale, z.pos.z);
+      const near = this.inRadius(at, 4.5, []).filter((n) => n.z !== z).sort((a, b) => a.d - b.d).slice(0, 2);
+      g.fx.electric(at, 5);
+      g.audio.zap(at);
+      for (const { z: o } of near) {
+        const to = new THREE.Vector3(o.pos.x, 1.2 * o.scale, o.pos.z);
+        g.fx.lightning(at, to, 0x9ac8ff, 0.15);
+        this.damage(o, dmg * 0.6, { type: 'bullet', zone: 'torso', point: to, noPoints: info.noPoints, by: info.by, zap: true });
+      }
+    }
   }
 
   kill(z, info = {}) {
@@ -1624,7 +1936,56 @@ export default class Zombies {
     } else z.deathBack = Math.random() < 0.5;
 
     const neck = tmpV.setFromMatrixPosition(z.mats[1]);
-    if (type === 'freeze') {
+    // muertes especiales: congelado que se hace trizas, electrocutado, prendido fuego corriendo
+    const iced = z.slowT > 0 && !z.boss && type === 'bullet' && info.zone !== 'head' && Math.random() < 0.35;
+    const zapped = (info.elem === 'electric' || info.zap) && !z.boss && type === 'bullet' && Math.random() < 0.45;
+    const onFire = !z.boss && (type === 'burn' || (z.burnT > 0 && type === 'bullet' && info.zone !== 'head') || type === 'trapfire') && Math.random() < (type === 'burn' ? 0.9 : 0.55);
+    const decap = !z.boss && type === 'knife' && (info.decap || Math.random() < 0.3);
+    if (z.dog) {
+      // aullido corto, sangre y cae de costado; después se hace brasas
+      z.state = 'dead';
+      z.stateT = 0;
+      z.burst = false;
+      g.audio.yelp(tmpV.set(z.pos.x, 0.6, z.pos.z));
+      if (info.point) g.fx.blood(info.point, info.dir || { x: 0, y: 0.5, z: 0 }, 14);
+    } else if (iced) {
+      z.state = 'frozen';
+      z.stateT = 0;
+      z.freezeT = 0.35 + Math.random() * 0.3;
+      this.paint(z, 0x9fd8ff);
+      g.fx.frost(z.pos, 16);
+    } else if (zapped) {
+      z.state = 'shocked';
+      z.stateT = 0;
+      this.paint(z, 0xbfe0ff);
+      g.fx.electric(tmpV.set(z.pos.x, 1.2, z.pos.z), 10);
+    } else if (onFire && !z.crawler && ['chase', 'attack', 'dead'].includes(z.state)) {
+      z.state = 'burnrun';
+      z.stateT = 0;
+      z.runT = 1.8 + Math.random() * 1.4;
+      z.runYaw = z.yaw + (Math.random() - 0.5) * 2;
+      this.paint(z, 0x2a1a10);
+      g.audio.growl(tmpV.set(z.pos.x, 1.6, z.pos.z), 'scream');
+    } else if (type === 'scald') {
+      // hervido: queda colorado, suelta vapor y se desploma
+      z.state = 'dead';
+      z.stateT = 0;
+      z.window = -1;
+      z.steamT = 4;
+      this.paint(z, 0xc0503a);
+      g.fx.steam(tmpV.set(z.pos.x, 1.2, z.pos.z), 10, 0.6);
+    } else if (decap) {
+      // el facón le vuela la cabeza: queda un chorro de sangre del cuello
+      z.state = 'dead';
+      z.stateT = 0;
+      z.window = -1;
+      const hp = new THREE.Vector3().setFromMatrixPosition(z.mats[2]);
+      z.hidden |= HIDE_HEAD;
+      z.fountT = 1.4;
+      g.fx.blood(hp, { x: 0, y: 1.5, z: 0 }, 30, 1.5);
+      g.fx.gib(hp, new THREE.Vector3((info.dir?.x || 0) * 3 + (Math.random() - 0.5) * 2, 3.5 + Math.random() * 2, (info.dir?.z || 0) * 3 + (Math.random() - 0.5) * 2));
+      g.audio.squish(hp);
+    } else if (type === 'freeze') {
       z.state = 'frozen';
       z.stateT = 0;
       z.freezeT = 0.9 + Math.random() * 0.8;
@@ -1685,7 +2046,7 @@ export default class Zombies {
       g.ee.dropHat(z.pos);
       g.hud.subtitle('El Capataz cayó. Se le voló el sombrero...', 3, 'boss');
       g.audio.sting();
-    } else if (type !== 'nuke') g.powerups.onKill(z.pos);
+    } else if (type !== 'nuke' && !z.dog) g.powerups.onKill(z.pos);
     g.rounds.onKill(z);
     g.ee.onKill(z, info);
     if (!z.boss && type !== 'nuke') g.activities?.onKill(z);

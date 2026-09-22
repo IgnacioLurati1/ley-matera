@@ -1,10 +1,37 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { rng } from '../core/noise';
 
 // Utilería del mapa. Cada constructor devuelve { obj, boxes } donde boxes son
 // cajas de colisión locales [x0, y0, z0, x1, y1, z1] (antes de rotar).
 // Lo que se anima se marca con userData.dynamic para no fusionarlo.
+
+// Junta las piezas sueltas (hijos directos) de un grupo en una malla por
+// material: mismo dibujo, muchas menos llamadas de dibujo. `keep` se deja
+// aparte (lo que se mueve o cambia de color).
+export function mergeByMaterial(group, keep = []) {
+  const byMat = new Map();
+  for (const o of [...group.children]) {
+    if (!o.isMesh || keep.includes(o)) continue;
+    o.updateMatrix();
+    let g = o.geometry.clone().applyMatrix4(o.matrix);
+    if (g.index) g = g.toNonIndexed();
+    for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n)) g.deleteAttribute(n);
+    if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    if (!byMat.has(o.material)) byMat.set(o.material, []);
+    byMat.get(o.material).push(g);
+    group.remove(o);
+  }
+  for (const [mat, list] of byMat) {
+    const m = new THREE.Mesh(mergeGeometries(list), mat);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    group.add(m);
+    list.forEach((x) => x.dispose());
+  }
+  return group;
+}
 
 const geoCache = new Map();
 function cached(key, make) {

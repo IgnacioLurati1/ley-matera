@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { DOORS, WALL_BUYS, PERK_SPOTS, POWER, PAP, BOX_SPOTS, BOX_START, ZONES } from '../config/map';
-import { WEAPONS, BOX_POOL, GRENADE, weaponStats } from '../config/weapons';
+import { WEAPONS, BOX_POOL, GRENADE, BOWIE, weaponStats, tierOf, maxTier, PAP_COST, ELEM_INFO } from '../config/weapons';
 import { PERKS } from '../config/perks';
 import { LOCK_COST } from '../config/rules';
 import { chalkTexture, perkLabel, toTexture } from '../core/textures';
-import { buildMate, getMats } from '../weapons/viewmodels';
+import { buildMate, buildKnife, getMats } from '../weapons/viewmodels';
 import { mesh, boxGeo, cylGeo } from './props';
 import { DOOR_H } from './World';
 
@@ -134,10 +134,11 @@ export default class Interactables {
   buildWallBuys() {
     for (const wb of WALL_BUYS) {
       const isNade = wb.weapon === 'granadas';
-      const cost = isNade ? GRENADE.wall : WEAPONS[wb.weapon].wall;
-      const w = isNade ? { name: 'Bombas de yerba', chalk: 'cyl' } : WEAPONS[wb.weapon];
+      const isBowie = wb.weapon === 'bowie';
+      const cost = isNade ? GRENADE.wall : isBowie ? BOWIE.cost : WEAPONS[wb.weapon].wall;
+      const w = isNade ? { name: 'Bombas de yerba', chalk: 'bomb' } : isBowie ? { name: BOWIE.name, chalk: 'knife' } : WEAPONS[wb.weapon];
       const a = this.anchor(wb.cell, wb.face, 0.01);
-      const wallWeapon = isNade ? null : wb.weapon;
+      const wallWeapon = isNade || isBowie ? null : wb.weapon;
       const tex = chalkTexture(w, cost);
       const plane = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.75), new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 1, depthWrite: false }));
       plane.position.set(a.x, 1.55, a.z);
@@ -145,20 +146,33 @@ export default class Interactables {
       this.root.add(plane);
       let shown = null;
       const g = this.g;
+      // la primera compra deja el mate (o el facón) "colgado" sobre el dibujo
+      const show = () => {
+        if (shown || isNade) return;
+        shown = isBowie ? buildKnife(g.textures, 'plata') : buildMate(wb.weapon, false, g.textures).root;
+        shown.scale.setScalar(isBowie ? 3 : 3.2);
+        shown.position.set(a.x + wb.face[0] * 0.12, 1.55, a.z + wb.face[1] * 0.12);
+        shown.rotation.set(0, a.rot + Math.PI / 2, isBowie ? -1.1 : 0.2);
+        this.root.add(shown);
+      };
       this.add({
         kind: 'wallbuy',
         weapon: wallWeapon,
+        isNade,
+        bowie: isBowie,
+        show,
         pos: new THREE.Vector3(a.x, 1.5, a.z),
         radius: 1.9,
         prompt: () => {
           if (isNade) return g.weapons.grenades >= GRENADE.max ? null : 'comprar bombas de yerba';
+          if (isBowie) return g.weapons.bowie ? null : `comprar el ${BOWIE.name}`;
           if (g.weapons.has(wb.weapon)) return 'comprar munición';
           // con las manos llenas se cambia el mate que tenés en la mano
           if (g.weapons.full) return `cambiar tu ${g.weapons.currentName} por el ${w.name}`;
           return `comprar ${w.name}`;
         },
         cost: () => {
-          if (isNade) return cost;
+          if (isNade || isBowie) return cost;
           const s = g.weapons.slots.find((x) => x.id === wb.weapon);
           if (s) return s.up ? 4500 : Math.round(cost / 2);
           return cost;
@@ -169,16 +183,15 @@ export default class Interactables {
             g.weapons.updateHud();
             return true;
           }
+          if (isBowie) {
+            if (g.weapons.bowie) return false;
+            g.weapons.giveBowie();
+            show();
+            return true;
+          }
           if (g.weapons.has(wb.weapon)) return g.weapons.refillAmmo(wb.weapon);
           g.weapons.give(wb.weapon);
-          // la primera compra deja el mate "colgado" sobre el dibujo
-          if (!shown) {
-            shown = buildMate(wb.weapon, false, g.textures).root;
-            shown.scale.setScalar(3.2);
-            shown.position.set(a.x + wb.face[0] * 0.12, 1.55, a.z + wb.face[1] * 0.12);
-            shown.rotation.set(0, a.rot + Math.PI / 2, 0.2);
-            this.root.add(shown);
-          }
+          show();
           return true;
         },
       });
@@ -377,30 +390,38 @@ export default class Interactables {
       radius: 2.4,
       prompt: () => {
         if (!g.world.power) return { text: 'El Pack-a-Pava necesita luz', noCost: true };
-        if (pap.state === 'working') return null;
-        if (pap.state === 'ready') return { text: `agarrar ${weaponStats(pap.entry.id, true).name}`, noCost: true };
+        if (pap.state === 'working' || pap.entry?.remote !== undefined) return null;
+        if (pap.state === 'ready') return { text: `agarrar ${weaponStats(pap.entry.id, pap.tier).name}`, noCost: true };
         const s = g.weapons.slot;
         if (!s || !WEAPONS[s.id].pap) return null;
-        if (s.up) return { text: 'Ese mate ya está mejorado', noCost: true };
-        if (g.activities?.freePap) return { text: `mejorar ${WEAPONS[s.id].name} gratis (regalo de las ánimas)`, noCost: true };
-        return `mejorar ${WEAPONS[s.id].name}`;
+        const tier = tierOf(s.up);
+        if (tier >= maxTier(s.id)) return { text: tier >= 2 ? 'Ese mate ya tiene las dos mejoras' : 'Ese mate ya está mejorado', noCost: true };
+        const what = tier ? `segunda mejora de ${weaponStats(s.id, 1).name}: ${ELEM_INFO[WEAPONS[s.id].pap.elem].desc}` : `mejorar ${WEAPONS[s.id].name}`;
+        if (g.activities?.freePap) return { text: `${what} gratis (regalo de las ánimas)`, noCost: true };
+        return what;
       },
-      cost: () => (pap.state === 'ready' || g.activities?.freePap ? 0 : 5000),
+      cost: () => {
+        if (pap.state === 'ready' || g.activities?.freePap) return 0;
+        const s = g.weapons.slot;
+        return PAP_COST[Math.min(1, s ? tierOf(s.up) : 0)];
+      },
       use: () => {
         if (!g.world.power) return false;
+        if (pap.entry?.remote !== undefined) return false;
         if (pap.state === 'ready') {
-          g.weapons.give(pap.entry.id, true);
+          g.weapons.give(pap.entry.id, pap.tier);
           this.clearPap();
           return true;
         }
         if (pap.state !== 'idle') return false;
         const s = g.weapons.slot;
-        if (!s || s.up || !WEAPONS[s.id].pap) return false;
+        if (!s || tierOf(s.up) >= maxTier(s.id)) return false;
+        pap.tier = tierOf(s.up) + 1;
         pap.entry = g.weapons.take();
         if (g.activities) g.activities.freePap = false;
         pap.state = 'working';
         pap.t = 0;
-        pap.model = buildMate(pap.entry.id, false, g.textures).root;
+        pap.model = buildMate(pap.entry.id, pap.entry.up, g.textures).root;
         pap.model.scale.setScalar(2.4);
         pap.model.position.copy(slotPos);
         pap.model.rotation.y = a.rot + Math.PI / 2;
@@ -426,7 +447,7 @@ export default class Interactables {
     ctx.fillStyle = '#e8c8ff';
     ctx.shadowColor = '#b050ff';
     ctx.shadowBlur = 16;
-    ctx.fillText('PACK-A-PAVA · $5000', 256, 50);
+    ctx.fillText(`PACK-A-PAVA · $${PAP_COST[0]}`, 256, 50);
     return toTexture(c, { repeat: false });
   }
 
@@ -455,7 +476,7 @@ export default class Interactables {
       }
       if (pap.t > 3.4) {
         pap.model.removeFromParent();
-        pap.model = buildMate(pap.entry.id, true, g.textures).root;
+        pap.model = buildMate(pap.entry.id, pap.tier, g.textures).root;
         pap.model.scale.setScalar(2.4);
         pap.model.rotation.y = this.anchor(PAP.cell, PAP.face).rot + Math.PI / 2;
         this.root.add(pap.model);
@@ -469,7 +490,8 @@ export default class Interactables {
       pap.model.position.copy(pap.slotPos).addScaledVector(pap.face, k * 0.2);
       pap.model.position.y = pap.slotPos.y + Math.sin(g.time * 3) * 0.03;
       if (Math.random() < 0.3) g.fx.sparkle(pap.model.position, [0.9, 0.5, 1], 1, 0.3);
-      if (pap.t > 12) {
+      if (pap.entry.remote !== undefined && pap.t > 2.5) this.clearPap();
+      else if (pap.t > 12) {
         g.hud.subtitle('El Pack-a-Pava se quedó con tu mate. Nunca lo dejes esperando.', 3);
         this.clearPap();
       }
@@ -609,20 +631,21 @@ export default class Interactables {
   }
 
   // Mejora el mate de un invitado (el anfitrión no lo tiene en la mano).
-  startPapFor(weaponId, playerId) {
+  startPapFor(weaponId, playerId, tier = 1) {
     const g = this.g;
     const pap = this.pap;
     if (pap.state !== 'idle') return false;
-    pap.entry = { id: weaponId, up: false, remote: playerId };
+    pap.entry = { id: weaponId, up: tier - 1, remote: playerId };
+    pap.tier = tier;
     pap.state = 'working';
     pap.t = 0;
-    pap.model = buildMate(weaponId, false, g.textures).root;
+    pap.model = buildMate(weaponId, tier - 1, g.textures).root;
     pap.model.scale.setScalar(2.4);
     pap.model.position.copy(pap.slotPos);
     pap.model.rotation.y = this.anchor(PAP.cell, PAP.face).rot + Math.PI / 2;
     this.root.add(pap.model);
     g.audio.pap(pap.slotPos);
-    g.net?.event('pap', { s: 'working', w: weaponId });
+    g.net?.event('pap', { s: 'working', w: weaponId, up: tier });
     return true;
   }
 
@@ -646,7 +669,7 @@ export default class Interactables {
 
   applyRemotePap(m) {
     const pap = this.pap;
-    if (m.s === 'working' && pap.state === 'idle') this.startPapFor(m.w, -1);
+    if (m.s === 'working' && pap.state === 'idle') this.startPapFor(m.w, -1, m.up || 1);
   }
 
   openBox() {
@@ -980,12 +1003,17 @@ export default class Interactables {
       // de invitado, lo del mapa lo decide el anfitrión
       if (g.net?.guest) {
         if (typeof pr === 'object' && pr?.info) return;
+        // munición llena: no se cobra una recarga que no hace falta
+        if (best.kind === 'wallbuy' && best.weapon && g.weapons.ammoFull(best.weapon)) {
+          g.audio.deny();
+          return;
+        }
         if (cost > 0 && g.points < cost) {
           g.audio.deny();
           g.hud.flashPoints();
           return;
         }
-        g.net.requestUse(best.index, best.kind === 'pap' ? { w: g.weapons.slot?.id } : {});
+        g.net.requestUse(best.index, best.kind === 'pap' ? { w: g.weapons.slot?.id, up: tierOf(g.weapons.slot?.up) } : {});
         return;
       }
       if (typeof pr === 'object' && pr?.noCost && cost === 0) {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { WEAPONS, weaponStats, KNIFE, GRENADE } from '../config/weapons';
+import { WEAPONS, weaponStats, tierOf, KNIFE, GRENADE, BOWIE } from '../config/weapons';
 import { buildMate, buildTermo, buildKnife, buildGrenade, buildPerkMate, muzzleTexture, getMats, VM_POSE } from './viewmodels';
 
 // Armas: inventario, disparo (balas, proyectiles, rayos en cadena, conos),
@@ -19,6 +19,8 @@ const hitTmp = {};
 const HIP = new THREE.Vector3(0.19, -0.17, -0.4);
 const ADS = new THREE.Vector3(0.0, -0.1, -0.29);
 const SPRINT = new THREE.Vector3(0.12, -0.24, -0.32);
+// inspeccionar: el mate se acerca al centro para mirarlo de cerca
+const INSPECT = new THREE.Vector3(0.04, -0.11, -0.3);
 
 export default class Weapons {
   constructor(game) {
@@ -63,6 +65,9 @@ export default class Weapons {
     this.knife = buildKnife(T);
     this.knife.visible = false;
     this.vmRoot.add(this.knife);
+    this.knifePlata = buildKnife(T, 'plata');
+    this.knifePlata.visible = false;
+    this.vmRoot.add(this.knifePlata);
     this.nade = buildGrenade(T);
     this.nade.visible = false;
     this.vmRoot.add(this.nade);
@@ -84,7 +89,7 @@ export default class Weapons {
   }
 
   reset() {
-    this.slots = [{ id: 'porongo', up: false, mag: 8, reserve: 32 }];
+    this.slots = [{ id: 'porongo', up: 0, mag: 8, reserve: 32 }];
     this.cur = 0;
     this.grenades = 2;
     this.tactical = null;
@@ -98,6 +103,7 @@ export default class Weapons {
     this.shellsLeft = 0;
     this.burst = 0;
     this.lastStand = null;
+    this.bowie = false;
     this.clearProjectiles();
     this.equipModel();
     this.updateHud();
@@ -124,7 +130,7 @@ export default class Weapons {
   get currentName() {
     const s = this.slot;
     if (!s) return 'mate';
-    return s.up ? weaponStats(s.id, true).name : WEAPONS[s.id].name;
+    return s.up ? weaponStats(s.id, s.up).name : WEAPONS[s.id].name;
   }
 
   has(id) {
@@ -132,7 +138,8 @@ export default class Weapons {
   }
 
   // Agrega un arma (o recarga munición si ya la tenés).
-  give(id, up = false) {
+  give(id, up = 0) {
+    up = tierOf(up);
     const w = WEAPONS[id];
     if (w.kind === 'tactical') {
       this.tactical = { id, count: w.count };
@@ -143,7 +150,7 @@ export default class Weapons {
     const existing = this.slots.findIndex((s) => s.id === id);
     if (existing >= 0) {
       const s = this.slots[existing];
-      s.up = up || s.up;
+      s.up = Math.max(up, tierOf(s.up));
       const full = weaponStats(id, s.up);
       s.mag = full.mag;
       s.reserve = full.reserve;
@@ -189,6 +196,21 @@ export default class Weapons {
     for (const s of this.slots) s.reserve = weaponStats(s.id, s.up).reserve;
     this.grenades = GRENADE.max;
     this.updateHud();
+  }
+
+  // ¿Ya tiene toda la munición? (para no cobrar una recarga que no hace falta)
+  ammoFull(id) {
+    const s = this.slots.find((x) => x.id === id);
+    if (!s) return false;
+    const st = weaponStats(id, s.up);
+    return s.reserve >= st.reserve && s.mag >= st.mag;
+  }
+
+  // Facón de Plata comprado en la pared: se desenvaina para mostrarlo.
+  giveBowie() {
+    this.bowie = true;
+    this.startKnife();
+    this.g.hud.subtitle(`${BOWIE.name}: los liquida de un tajo hasta la ronda ${BOWIE.oneHitUntil}.`, 4);
   }
 
   refillAmmo(id) {
@@ -301,6 +323,10 @@ export default class Weapons {
         if (this.stateT > 0.28 && !this.thrown) this.throwItem();
         if (this.stateT > 0.65) this.state = 'idle';
         break;
+      case 'inspect':
+        // correr lo corta
+        if (p.sprinting) this.state = 'idle';
+        break;
       case 'drink':
         if (this.stateT > this.drinkTime) {
           this.perkMate?.removeFromParent();
@@ -320,6 +346,18 @@ export default class Weapons {
 
   handleInput(input, st, p) {
     const g = this.g;
+    // inspeccionar (E): se corta con E de nuevo, disparando o haciendo cualquier otra cosa
+    if (this.state === 'inspect') {
+      const again = input.hit('KeyE');
+      const other = input.mouse.left || input.mouse.right || input.mouse.wheel || ['KeyR', 'KeyV', 'KeyG', 'KeyT', 'KeyQ', 'Digit1', 'Digit2', 'Digit3', 'Digit4'].some((k) => input.hit(k));
+      if (!again && !other) return;
+      this.state = 'idle';
+      if (again) return;
+    } else if (input.hit('KeyE') && this.state === 'idle' && !p.sprinting && !this.ads) {
+      this.state = 'inspect';
+      this.stateT = 0;
+      return;
+    }
     // cambiar de arma
     const count = this.slots.length;
     let next = -1;
@@ -409,7 +447,10 @@ export default class Weapons {
       g.player.lunge(best.pos, bestD - 0.9);
     }
     const point = tmpV2.set(best.pos.x, 1.3 * best.scale, best.pos.z);
-    g.zombies.damage(best, KNIFE.damage * (g.player.perks.has('bowie') ? 7 : 1), { type: 'knife', zone: 'torso', point, dir: fwd.clone() });
+    // con el Facón de Plata se liquida de un tajo (y casi siempre vuela la cabeza)
+    let dmg = KNIFE.damage;
+    if (this.bowie) dmg = g.rounds.round <= BOWIE.oneHitUntil ? 1e9 : KNIFE.damage * BOWIE.mult;
+    g.zombies.damage(best, dmg, { type: 'knife', zone: 'torso', point, dir: fwd.clone(), decap: this.bowie ? Math.random() < 0.85 : Math.random() < 0.3 });
     g.audio.knife(true);
     g.fx.addShake(0.08);
   }
@@ -527,9 +568,14 @@ export default class Weapons {
       case 'blast':
         this.fireCone(st, origin, fwd, muzzle, 'blast');
         break;
+      case 'stream':
+        this.fireStream(st, origin, fwd, muzzle);
+        break;
       default:
         break;
     }
+    // los tiros espantan a los cuervos del patio
+    if (st.sound !== 'stream' || Math.random() < 0.1) g.critters?.onNoise(muzzle);
     // en línea: los demás ven y escuchan el disparo
     if (g.net) {
       const end = tmpV2.copy(muzzle).addScaledVector(fwd, Math.min(st.range, 40));
@@ -575,8 +621,8 @@ export default class Weapons {
       let mult = 1;
       if (h.zone === 'head') mult = st.headMult;
       else if (h.zone === 'neck') mult = Math.max(1, st.headMult * 0.5);
-      g.zombies.damage(h.z, st.damage * mult * falloff * dmgMult, { type: 'bullet', zone: h.zone, arm: h.arm, point, dir, burn: st.burn });
-      if (st.explosive) this.explode(point, st.explosive.radius, st.explosive.damage, { color: [0.6, 1, 0.4] });
+      g.zombies.damage(h.z, st.damage * mult * falloff * dmgMult, { type: 'bullet', zone: h.zone, arm: h.arm, point, dir, burn: st.burn, elem: st.elem });
+      if (st.explosive) this.explode(point, st.explosive.radius, st.explosive.damage, { color: [0.6, 1, 0.4], elem: st.elem });
       if (!hitAny) {
         g.hud.hitmarker(h.zone === 'head');
         g.audio.hitmarker(h.zone === 'head');
@@ -590,9 +636,12 @@ export default class Weapons {
     if (pen > 0 && Number.isFinite(wallT) && wallT <= range) {
       endT = wallT;
       g.fx.impact(hitTmp);
-      if (st.explosive && !hitAny) this.explode(hitTmp.point, st.explosive.radius, st.explosive.damage, { color: [0.6, 1, 0.4] });
+      if (st.explosive && !hitAny) this.explode(hitTmp.point, st.explosive.radius, st.explosive.damage, { color: [0.6, 1, 0.4], elem: st.elem });
     }
-    if (pen > 0) g.ee.onShot(origin, dir, Math.min(endT, range));
+    if (pen > 0) {
+      g.ee.onShot(origin, dir, Math.min(endT, range));
+      g.secrets?.onShot(origin, dir, Math.min(endT, range));
+    }
     if (pellet < 2) {
       const end = new THREE.Vector3().copy(origin).addScaledVector(dir, Math.min(endT, 80));
       g.fx.tracer(muzzle, end, st.upgraded ? 0xffa0ff : 0xfff0c8);
@@ -691,6 +740,31 @@ export default class Weapons {
       if (next) visited.add(next);
       cur = next;
     }
+  }
+
+  // Bombilla del Diablo: un chorro de agua hirviendo que atraviesa a todos los que toca.
+  fireStream(st, origin, fwd, muzzle) {
+    const g = this.g;
+    const range = st.range;
+    const wallT = g.world.raycast(origin, fwd, range, hitTmp);
+    const maxT = Math.min(wallT, range);
+    const R = st.stream?.radius || 0.7;
+    const end = new THREE.Vector3().copy(origin).addScaledVector(fwd, maxT);
+    let hit = false;
+    for (const { z } of g.zombies.inRadius(origin, maxT + 1.5)) {
+      tmpV2.set(z.pos.x - origin.x, z.pos.y + 1 * z.scale - origin.y, z.pos.z - origin.z);
+      const along = tmpV2.dot(fwd);
+      if (along < 0.2 || along > maxT + 0.5) continue;
+      const perp = tmpV2.addScaledVector(fwd, -along).length();
+      if (perp > R + 0.35) continue;
+      const point = new THREE.Vector3().copy(origin).addScaledVector(fwd, along);
+      g.zombies.damage(z, st.damage, { type: 'scald', point, dir: fwd.clone() });
+      hit = true;
+    }
+    if (hit) g.hud.hitmarker(false);
+    g.fx.waterJet(muzzle, end, st.upgraded);
+    g.ee.onShot(origin, fwd, maxT);
+    g.secrets?.onShot(origin, fwd, maxT);
   }
 
   fireCone(st, origin, fwd, muzzle, type) {
@@ -864,12 +938,12 @@ export default class Weapons {
     const st = p.st;
     if (zhit) {
       const type = st.id === 'oro' ? 'yerba' : 'explosive';
-      g.zombies.damage(zhit.z, P.damage * (zhit.zone === 'head' ? st.headMult || 1 : 1), { type: P.radius > 0 ? type : 'bullet', zone: zhit.zone, point, dir });
+      g.zombies.damage(zhit.z, P.damage * (zhit.zone === 'head' ? st.headMult || 1 : 1), { type: P.radius > 0 ? type : 'bullet', zone: zhit.zone, point, dir, elem: st.elem });
       g.hud.hitmarker(zhit.zone === 'head');
     }
     if (P.radius > 0) {
       const color = colorArr(P.color);
-      this.explode(point, P.radius, P.splash ?? P.damage, { color, selfDamage: P.selfDamage ?? (st.id === 'porongo' ? 35 : 0), skip: zhit?.z, type: st.id === 'oro' ? 'yerba' : 'explosive', big: P.glow ? 0.6 : 1 });
+      this.explode(point, P.radius, P.splash ?? P.damage, { color, selfDamage: P.selfDamage ?? (st.id === 'porongo' ? 35 : 0), skip: zhit?.z, type: st.id === 'oro' ? 'yerba' : 'explosive', big: P.glow ? 0.6 : 1, elem: st.elem });
     } else if (!zhit && hitTmp.normal) {
       g.fx.impact({ point, normal: hitTmp.normal });
     }
@@ -880,7 +954,7 @@ export default class Weapons {
   boltBoom(p) {
     this.removeLure(p);
     p.mesh?.removeFromParent();
-    this.explode(p.pos, p.B.radius, p.B.damage, { color: p.st.upgraded ? [0.5, 1, 0.4] : [1, 0.55, 0.2], selfDamage: 60 });
+    this.explode(p.pos, p.B.radius, p.B.damage, { color: p.st.upgraded ? [0.5, 1, 0.4] : [1, 0.55, 0.2], selfDamage: 60, elem: p.st.elem });
   }
 
   detonate(p) {
@@ -896,23 +970,25 @@ export default class Weapons {
   }
 
   // Explosión con daño decreciente y línea de visión.
-  explode(pos, radius, damage, { color = [1, 0.55, 0.2], selfDamage = 0, skip = null, type = 'explosive', big = 1 } = {}) {
+  explode(pos, radius, damage, { color = [1, 0.55, 0.2], selfDamage = 0, skip = null, type = 'explosive', big = 1, elem } = {}) {
     const g = this.g;
     g.fx.explosion(pos, radius * big, color);
     g.audio.explosion(pos, big);
+    g.critters?.onNoise(pos, 22);
     const from = tmpV.copy(pos).add(tmpV2.set(0, 0.4, 0));
     for (const { z, d } of g.zombies.inRadius(pos, radius)) {
       if (z === skip) continue;
       if (!g.world.clear(from, new THREE.Vector3(z.pos.x, 1, z.pos.z))) continue;
       const k = 1 - (d / radius) * 0.6;
       const dir = new THREE.Vector3(z.pos.x - pos.x, 0.3, z.pos.z - pos.z).normalize();
-      g.zombies.damage(z, damage * k, { type, dir, point: new THREE.Vector3(z.pos.x, 1, z.pos.z) });
+      g.zombies.damage(z, damage * k, { type, dir, point: new THREE.Vector3(z.pos.x, 1, z.pos.z), elem });
     }
     const pd = g.player.pos.distanceTo(pos);
     if (selfDamage > 0 && pd < radius * 0.8 && g.world.clear(from, g.camera.position)) {
       g.player.damage(selfDamage * (1 - pd / radius), pos, true);
     }
     g.ee.onExplosion(pos, radius);
+    g.secrets?.onExplosion(pos, radius);
   }
 
   // ---------------- animación de la vista ----------------
@@ -959,6 +1035,7 @@ export default class Weapons {
     // estados
     const t = this.stateT;
     this.knife.visible = false;
+    this.knifePlata.visible = false;
     this.nade.visible = false;
     this.pavaVm.visible = false;
     this.holder.visible = this.state !== 'empty';
@@ -985,7 +1062,7 @@ export default class Weapons {
     if (this.state === 'knife') {
       lower = 0.6;
       const k = Math.min(1, t / KNIFE.time);
-      const kn = this.knife;
+      const kn = this.bowie ? this.knifePlata : this.knife;
       kn.visible = true;
       const sw = smooth(Math.min(1, k / 0.45));
       kn.position.set(0.25 - sw * 0.4, -0.12 + Math.sin(sw * Math.PI) * 0.06, -0.36 - Math.sin(sw * Math.PI) * 0.08);
@@ -1015,6 +1092,20 @@ export default class Weapons {
       pm.position.x += (1 - k) * 0.12;
       pm.position.y -= (1 - k) * 0.25;
     } else this.viewDip = Math.max(0, (this.viewDip || 0) - dt * 2);
+    // inspeccionar: lo trae al centro, inclina la boca para ver la yerba y lo
+    // va girando despacio para mostrar la calabaza y la virola
+    const insp = this.state === 'inspect' ? smooth(clamp01(t / 0.4)) : 0;
+    this.inspK = (this.inspK || 0) + (insp - (this.inspK || 0)) * Math.min(1, dt * 12);
+    const ik = this.inspK;
+    if (ik > 0.001) {
+      const c = Math.max(0, t - 0.4);
+      target.lerp(INSPECT, ik);
+      rx += ik * (0.62 + Math.sin(c * 1.05) * 0.16);
+      ry += ik * (Math.sin(c * 0.7) * 0.85 - 0.2);
+      rz += ik * (0.25 + Math.sin(c * 0.55 + 1) * 0.22);
+    }
+    const bg = this.model?.bombGroup;
+    if (bg) bg.rotation.y = ik * Math.sin(Math.max(0, t - 0.6) * 1.6) * 0.9;
     if (this.state === 'empty') lower = 1;
     target.y -= lower * 0.35;
     rx -= lower * 0.5;

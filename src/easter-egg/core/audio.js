@@ -63,30 +63,54 @@ export default class GameAudio {
     this.voices = 0;
     this.voiceMode = 'auto';
     this.naturalVoice = null;
+    this.maleVoice = null;
+    this.badVoices = new Set();
     this.pickVoice();
     this.bank = {};
     this.setVolumes({ master: 0.8, music: 0.6, sfx: 0.9 });
   }
 
-  // Solo se usan voces del navegador si son neuronales (las "naturales" de
-  // Edge y compañía); las comunes suenan a robot y se reemplazan por murmullos.
+  // Los personajes hablan con una voz en castellano del navegador, así se
+  // entiende lo que dicen. Se elige la mejor: las neuronales (las "naturales"
+  // de Edge, las de Google en Chrome) y, entre ellas, las rioplatenses y las
+  // latinas antes que las de España. Si no hay ninguna, quedan los murmullos.
   pickVoice() {
     if (!('speechSynthesis' in window)) return;
-    const choose = () => {
-      const all = speechSynthesis.getVoices().filter((v) => /^es/i.test(v.lang) && /natural|neural|online/i.test(v.name));
-      this.naturalVoice =
-        all.find((v) => /es[-_](AR|UY)/i.test(v.lang)) ||
-        all.find((v) => /es[-_](MX|US|419)/i.test(v.lang)) ||
-        all[0] ||
-        null;
-      this.onVoices?.();
-    };
-    choose();
-    speechSynthesis.onvoiceschanged = choose;
+    this.chooseVoice();
+    speechSynthesis.onvoiceschanged = () => this.chooseVoice();
+  }
+
+  chooseVoice() {
+    let all = [];
+    try {
+      all = speechSynthesis.getVoices().filter((v) => /^es([-_]|$)/i.test(v.lang) && !this.badVoices.has(v.name));
+    } catch {
+      /* sin voces */
+    }
+    const score = (v) =>
+      (/natural|neural|online/i.test(v.name) ? 100 : /google/i.test(v.name) ? 70 : 0) +
+      (/es[-_](AR|UY)/i.test(v.lang) ? 30 : /es[-_](MX|US|419|CO|CL|PE|VE)/i.test(v.lang) ? 20 : 10) +
+      (v.localService ? 0 : 5);
+    const male = (v) => /tom[aá]s|ra[uú]l|pablo|jorge|[aá]lvaro|dar[ií]o|gonzalo|mateo|gerardo|lorenzo|andr[eé]s|emilio|federico|sergio|carlos|juan|diego|alonso|enrique|luciano|alex|male|hombre/i.test(v.name);
+    all.sort((a, b) => score(b) - score(a));
+    this.voiceList = all;
+    this.naturalVoice = all[0] || null;
+    // casi todos los personajes son hombres: una voz de hombre si hay alguna aceptable
+    this.maleVoice = all.find((v) => male(v) && score(v) >= score(all[0]) - 80) || this.naturalVoice;
+    this.onVoices?.();
+  }
+
+  // La voz elegida a mano en las opciones ("v:<nombre>"), o la automática.
+  voiceFor(speaker) {
+    if (this.voiceMode.startsWith('v:')) {
+      const v = this.voiceList?.find((x) => x.name === this.voiceMode.slice(2));
+      if (v) return v;
+    }
+    return speaker === 'taza' ? this.naturalVoice : this.maleVoice;
   }
 
   get useNatural() {
-    return (this.voiceMode === 'natural' || this.voiceMode === 'auto') && !!this.naturalVoice;
+    return this.voiceMode !== 'murmur' && this.voiceMode !== 'off' && !!this.naturalVoice;
   }
 
   // Banco de sonidos de zombie: varias tomas de cada tipo, generadas una vez.
@@ -265,6 +289,7 @@ export default class GameAudio {
     if (kind === 'thunder') return this.thunder(pos);
     if (kind === 'launcher') return this.launcher(pos);
     if (kind === 'bolt') return this.boltShot(pos);
+    if (kind === 'stream') return this.streamShot(pos, upgraded);
     const p = SHOTS[kind] || SHOTS.pistol;
     const o = this.out({ pos, reverb: p.tail, gain: p.gain * (0.9 + Math.random() * 0.2) });
     this.noise(o, { t, dur: p.dur, freq: p.body * (0.9 + Math.random() * 0.2), freqEnd: 300, q: 0.9, gain: 0.9 });
@@ -276,6 +301,141 @@ export default class GameAudio {
     if (p.bolt) this.mech(t + 0.5, [0.0, 0.18, 0.3]);
     // chorrito de vapor: el mate escupe agua
     this.noise(o, { t: t + 0.02, dur: 0.22, type: 'bandpass', freq: 5200, freqEnd: 2000, q: 2, gain: 0.08 });
+  }
+
+  // Graznido de cuervo: "kraa" áspero, una o varias veces.
+  caw(pos, n = 1) {
+    const o = this.out({ pos, reverb: 0.5, gain: 0.35 });
+    for (let i = 0; i < n; i++) {
+      const t = this.now + i * (0.3 + Math.random() * 0.25);
+      const f = 560 + Math.random() * 120;
+      this.tone(o, { t, dur: 0.24, type: 'sawtooth', freq: f, freqEnd: f * 0.72, gain: 0.18, attack: 0.01 });
+      this.tone(o, { t, dur: 0.24, type: 'square', freq: f * 1.51, freqEnd: f * 1.1, gain: 0.05, attack: 0.01 });
+      this.noise(o, { t, dur: 0.22, type: 'bandpass', freq: 1400, q: 2.5, gain: 0.25 });
+    }
+  }
+
+  // Llamado de la manada de carpinchos: silbidos agudos que suben y bajan,
+  // con un eco de otros que contestan (lejano si no tiene posición).
+  howl(pos) {
+    const o = this.out({ pos, reverb: 0.85, gain: pos ? 0.4 : 0.28 });
+    const n = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const t = this.now + 0.02 + i * (0.22 + Math.random() * 0.2);
+      const f = 1500 + Math.random() * 600;
+      this.tone(o, { t, dur: 0.16, type: 'sine', freq: f, freqEnd: f * (Math.random() < 0.5 ? 1.35 : 0.75), gain: 0.2, attack: 0.02 });
+      this.tone(o, { t, dur: 0.16, type: 'triangle', freq: f * 2, freqEnd: f * 2.2, gain: 0.03, attack: 0.02 });
+    }
+  }
+
+  // "Ladrido" del carpincho: un resoplido grave y cortito, con chasquido de dientes.
+  bark(pos) {
+    const o = this.out({ pos, reverb: 0.3, gain: 0.5 });
+    const t = this.now;
+    const f = 150 + Math.random() * 40;
+    this.tone(o, { t, dur: 0.14, type: 'sawtooth', freq: f, freqEnd: f * 0.7, gain: 0.25 });
+    this.noise(o, { t, dur: 0.13, type: 'lowpass', freq: 700, gain: 0.45, brown: true });
+    // chasquidos de dientes
+    for (let i = 0; i < 3; i++) this.noise(o, { t: t + 0.18 + i * 0.07, dur: 0.015, type: 'highpass', freq: 3500, gain: 0.35 });
+  }
+
+  // Chillido del carpincho al caer: silbido cortado que se apaga.
+  yelp(pos) {
+    const t = this.now;
+    const o = this.out({ pos, reverb: 0.4, gain: 0.4 });
+    this.tone(o, { t, dur: 0.35, type: 'sine', freq: 2100, freqEnd: 700, gain: 0.25 });
+    this.noise(o, { t, dur: 0.15, type: 'bandpass', freq: 2400, q: 3, gain: 0.12 });
+  }
+
+  // Osito de juguete que revienta: el "cuic" del fuelle.
+  squeakToy(pos) {
+    const t = this.now;
+    const o = this.out({ pos, reverb: 0.3, gain: 0.5 });
+    this.tone(o, { t, dur: 0.18, type: 'square', freq: 900, freqEnd: 1500, gain: 0.08 });
+    this.tone(o, { t: t + 0.16, dur: 0.22, type: 'square', freq: 1500, freqEnd: 700, gain: 0.07 });
+    this.noise(o, { t, dur: 0.25, type: 'bandpass', freq: 2500, q: 1, gain: 0.15 });
+  }
+
+  // "La zamba del osito": caja de música, guitarra, bombo legüero y un coro
+  // fantasma, en re menor y 6/8. Devuelve cuánto dura.
+  secretSong() {
+    const c = this.ctx;
+    const t0 = this.now + 0.3;
+    const e = 0.19;
+    const bar = 6 * e;
+    const o = this.out({ gain: 0.8, reverb: 0.55, bus: this.music });
+    const pad = c.createBiquadFilter();
+    pad.type = 'lowpass';
+    pad.frequency.value = 900;
+    pad.connect(o);
+    const A = [
+      [[74, 3], [77, 2], [76, 1]], [[74, 2], [72, 1], [74, 3]], [[73, 3], [76, 2], [73, 1]], [[69, 6]],
+      [[70, 3], [74, 2], [72, 1]], [[74, 2], [77, 1], [81, 3]], [[79, 2], [77, 1], [76, 2], [73, 1]], [[74, 6]],
+    ];
+    const B = [
+      [[77, 3], [81, 2], [79, 1]], [[79, 2], [77, 1], [76, 3]], [[77, 3], [74, 2], [77, 1]], [[76, 6]],
+      [[74, 3], [77, 2], [74, 1]], [[72, 2], [74, 1], [77, 3]], [[79, 2], [77, 1], [74, 2], [70, 1]], [[73, 3], [69, 3]],
+    ];
+    const CA = ['Dm', 'Dm', 'A', 'A', 'Gm', 'Dm', 'A', 'Dm'];
+    const CB = ['F', 'C', 'Dm', 'A', 'Bb', 'F', 'Gm', 'A'];
+    const CH = { Dm: [50, 62, 65, 69], A: [45, 61, 64, 67], Gm: [43, 58, 62, 67], F: [41, 60, 65, 69], C: [48, 60, 64, 67], Bb: [46, 62, 65, 70] };
+    // intro de guitarra, A, B, A, B, A y el final
+    const form = [
+      ['intro', null, ['Dm', 'A']],
+      ['A', A, CA],
+      ['B', B, CB],
+      ['A', A, CA],
+      ['B', B, CB],
+      ['A', A, CA],
+      ['end', null, ['Dm', 'Dm']],
+    ];
+    let t = t0;
+    for (const [, mel, chords] of form) {
+      chords.forEach((ch, i) => {
+        const bt = t + i * bar;
+        const [root, ...tones] = CH[ch];
+        // guitarra: bajo en el 1 y arpegio en las otras corcheas
+        this.tone(o, { t: bt, dur: bar * 0.9, type: 'triangle', freq: midi(root), gain: 0.28, release: 0.4 });
+        [tones[0], tones[1], tones[2], tones[1], tones[0]].forEach((n, k) => {
+          this.tone(o, { t: bt + (k + 1) * e, dur: e * 1.6, type: 'triangle', freq: midi(n - 12), gain: 0.07, attack: 0.003, release: 0.3 });
+        });
+        // bombo legüero: "bom" en 1 y 4, "tac" del aro en 3 y 6
+        for (const k of [0, 3]) this.tone(o, { t: bt + k * e, dur: 0.3, freq: 70, freqEnd: 45, gain: 0.45 });
+        for (const k of [2, 5]) this.noise(o, { t: bt + k * e, dur: 0.05, type: 'bandpass', freq: 1800, q: 2, gain: 0.25 });
+        // coro fantasma de fondo
+        for (const n of tones) this.tone(pad, { t: bt, dur: bar, type: 'sawtooth', freq: midi(n), gain: 0.018, attack: 0.5, detune: (n % 3) * 6 - 6, release: 0.6 });
+        // caja de música con la melodía
+        if (mel) {
+          let mt = bt;
+          for (const [n, d] of mel[i]) {
+            this.tone(o, { t: mt, dur: d * e, freq: midi(n + 12), gain: 0.16, attack: 0.002, release: 1.1 });
+            this.tone(o, { t: mt, dur: d * e * 0.5, freq: midi(n + 24), gain: 0.04, attack: 0.002, release: 0.6 });
+            mt += d * e;
+          }
+        }
+      });
+      t += chords.length * bar;
+    }
+    // nota final larga de la caja de música
+    this.tone(o, { t, dur: 2.5, freq: midi(74 + 12), gain: 0.14, attack: 0.002, release: 2 });
+    return t - t0 + 2.5;
+  }
+
+  // Chillido de rata: dos o tres piquitos agudos.
+  squeak(pos) {
+    const o = this.out({ pos, reverb: 0.1, gain: 0.3 });
+    for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) {
+      const t = this.now + i * 0.09;
+      this.tone(o, { t, dur: 0.05, type: 'sine', freq: 3600 + Math.random() * 900, freqEnd: 4400, gain: 0.12 });
+    }
+  }
+
+  // Chorro hirviendo: siseo de vapor y burbujeo grave.
+  streamShot(pos, up) {
+    const t = this.now;
+    const o = this.out({ pos, reverb: 0.2, gain: 0.5 });
+    this.noise(o, { t, dur: 0.13, type: 'bandpass', freq: up ? 3600 : 3000, freqEnd: 2400, q: 1.2, gain: 0.35 });
+    this.tone(o, { t, dur: 0.1, type: 'sine', freq: 90 + Math.random() * 40, freqEnd: 60, gain: 0.25 });
   }
 
   mech(t, offsets) {
@@ -698,23 +858,48 @@ export default class GameAudio {
     [72, 76, 79, 84].forEach((n, i) => this.tone(o, { t: t + i * 0.05, dur: 0.6, type: 'triangle', freq: midi(n), gain: 0.3 }));
   }
 
-  // Un personaje habla. Con una voz neuronal del navegador se usa esa; si no,
-  // murmullos sintetizados que siguen el ritmo del texto. Devuelve la duración.
+  // Un personaje habla. Con una voz en castellano del navegador se entiende
+  // todo; si no hay, murmullos sintetizados que siguen el ritmo del texto.
+  // Devuelve cuánto dura (estimado), para los subtítulos y lo que sigue.
   say(text, speaker = 'abuelo') {
-    if (this.voiceMode === 'off') return Math.max(2, text.length * 0.065);
-    if (this.useNatural && 'speechSynthesis' in window) {
+    const pauses = (text.match(/[,.;:!?…]/g) || []).length;
+    const talk = (rate) => Math.max(1.6, (text.length * 0.064 + pauses * 0.22) / rate + 0.3);
+    if (this.voiceMode === 'off') return talk(1);
+    if (this.useNatural) {
       try {
+        // tono y velocidad de cada personaje (las voces neuronales a veces ignoran el tono)
+        const V = {
+          abuelo: { rate: 0.9, pitch: 0.8 },
+          anunciador: { rate: 0.82, pitch: 0.3 },
+          capataz: { rate: 0.95, pitch: 0.55 },
+          capatazJoven: { rate: 1, pitch: 0.95 },
+          radio: { rate: 1.03, pitch: 1 },
+          taza: { rate: 1.08, pitch: 1.5 },
+        }[speaker] || { rate: 1, pitch: 1 };
+        const voice = this.voiceFor(speaker);
         const u = new SpeechSynthesisUtterance(text);
-        u.voice = this.naturalVoice;
-        u.lang = this.naturalVoice.lang;
-        u.rate = speaker === 'anunciador' ? 0.85 : speaker === 'abuelo' ? 0.9 : 1;
+        u.voice = voice;
+        u.lang = voice.lang;
+        u.rate = V.rate;
+        u.pitch = V.pitch;
         u.volume = Math.min(1, this.master.gain.value * this.voice.gain.value * 1.2);
+        // si la voz falla (las de Google necesitan internet), se cambia por otra
+        u.onerror = (e) => {
+          if (e.error === 'interrupted' || e.error === 'canceled' || e.error === 'not-allowed') return;
+          this.badVoices.add(voice.name);
+          this.chooseVoice();
+          this.murmur(text, speaker);
+        };
         speechSynthesis.speak(u);
-        return Math.max(2, text.length * 0.07);
+        return talk(V.rate);
       } catch {
         /* sigue con murmullos */
       }
     }
+    return this.murmur(text, speaker);
+  }
+
+  murmur(text, speaker) {
     const { data } = speech(text, speaker);
     const buf = this.toBuffer(data);
     const fx = {

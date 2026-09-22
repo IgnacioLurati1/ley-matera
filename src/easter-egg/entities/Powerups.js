@@ -52,7 +52,7 @@ export default class Powerups {
     } else if (Math.random() < POWERUP.randomChance) this.drop(pos);
   }
 
-  drop(pos, force = false) {
+  drop(pos, force = false, forcedType = null) {
     const g = this.g;
     if (!force) this.dropsThisRound++;
     // no dejarlo afuera del mapa (zombies que mueren en la ventana)
@@ -61,7 +61,7 @@ export default class Powerups {
     if (!zone) {
       p.set(g.player.pos.x + (Math.random() - 0.5) * 2, 0, g.player.pos.z + (Math.random() - 0.5) * 2);
     }
-    const type = this.pick();
+    const type = forcedType || this.pick();
     const mesh = this.model(type);
     mesh.position.set(p.x, 1, p.z);
     g.scene.add(mesh);

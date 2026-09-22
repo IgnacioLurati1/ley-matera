@@ -573,51 +573,185 @@ function chalkStroke(ctx, pts, r, passes = 4) {
   }
 }
 
-// Dibujo de tiza del arma en la pared (con precio).
+// Siluetas de mate para los dibujos de tiza: alto y ancho relativo a cada altura
+// (0 = base, 1 = boca).
+const CHALK_MATES = {
+  round: { h: 124, w: 58, prof: [[0, 0.55], [0.08, 0.86], [0.3, 1], [0.55, 0.93], [0.76, 0.7], [0.9, 0.56], [1, 0.52]], virola: true },
+  tall: { h: 142, w: 44, prof: [[0, 0.45], [0.1, 0.76], [0.36, 0.94], [0.62, 0.86], [0.86, 0.62], [1, 0.56]], virola: true },
+  cyl: { h: 116, w: 42, prof: [[0, 0.92], [0.05, 1], [0.95, 1], [1, 0.97]], bands: true },
+  cup: { h: 112, w: 48, prof: [[0, 0.72], [0.05, 0.76], [1, 1]] },
+};
+
+function profAt(prof, t) {
+  for (let k = 1; k < prof.length; k++) {
+    const [t1, w1] = prof[k];
+    const [t0, w0] = prof[k - 1];
+    if (t <= t1) {
+      const u = (t - t0) / (t1 - t0 || 1);
+      const e = u * u * (3 - 2 * u);
+      return w0 + (w1 - w0) * e;
+    }
+  }
+  return prof[prof.length - 1][1];
+}
+
+// Mate parado, visto de costado: calabaza, boca con yerba, virola y bombilla con pico.
+function chalkMate(ctx, r, sil, straws) {
+  const S = CHALK_MATES[sil] || CHALK_MATES.round;
+  const cx = 128;
+  const base = 236;
+  const top = base - S.h;
+  const half = (t) => S.w * profAt(S.prof, t);
+  const left = [];
+  const right = [];
+  for (let k = 0; k <= 30; k++) {
+    const t = k / 30;
+    const y = base - t * S.h;
+    left.push([cx - half(t), y]);
+    right.push([cx + half(t), y]);
+  }
+  // contorno: costado izquierdo, base redondeada y costado derecho
+  chalkStroke(ctx, left, r);
+  chalkStroke(ctx, right, r);
+  const bw = half(0);
+  const bottom = [];
+  for (let k = 0; k <= 12; k++) {
+    const a = Math.PI * (k / 12);
+    bottom.push([cx - Math.cos(a) * bw, base + Math.sin(a) * 6]);
+  }
+  chalkStroke(ctx, bottom, r);
+  // boca (elipse) y la yerba asomando en montañita
+  const mw = half(1);
+  const mouth = [];
+  for (let k = 0; k <= 24; k++) {
+    const a = (k / 24) * Math.PI * 2;
+    mouth.push([cx + Math.cos(a) * mw, top + Math.sin(a) * 7]);
+  }
+  chalkStroke(ctx, mouth, r);
+  const mound = [];
+  for (let k = 0; k <= 12; k++) {
+    const u = k / 12;
+    mound.push([cx - mw * 0.85 + u * mw * 1.7, top - 2 - Math.sin(u * Math.PI) * 11 + (u > 0.5 ? (u - 0.5) * 8 : 0)]);
+  }
+  chalkStroke(ctx, mound, r, 3);
+  ctx.save();
+  ctx.lineWidth = 2;
+  for (let k = 0; k < 7; k++) {
+    const x = cx - mw * 0.6 + r() * mw * 1.1;
+    const y = top - 3 - r() * 8;
+    chalkStroke(ctx, [[x, y], [x + 3, y - 2]], r, 1);
+  }
+  ctx.restore();
+  // virola: una banda de metal abajo de la boca
+  if (S.virola) {
+    const t = 0.9;
+    const y = base - t * S.h;
+    const w = half(t);
+    chalkStroke(ctx, [[cx - w, y], [cx - w * 0.4, y + 4], [cx + w * 0.4, y + 4], [cx + w, y]], r, 3);
+  }
+  // guardas de los mates de lata o madera
+  if (S.bands) {
+    for (const t of [0.22, 0.78]) {
+      const y = base - t * S.h;
+      chalkStroke(ctx, [[cx - S.w, y], [cx + S.w, y]], r, 2);
+      const zig = [];
+      for (let k = 0; k <= 8; k++) zig.push([cx - S.w + (k / 8) * S.w * 2, y + (k % 2 ? 8 : 2)]);
+      chalkStroke(ctx, zig, r, 1);
+    }
+  }
+  // sombreado a la izquierda
+  ctx.save();
+  ctx.lineWidth = 1.6;
+  for (let k = 0; k < 9; k++) {
+    const t = 0.12 + k * 0.075;
+    const y = base - t * S.h;
+    const x0 = cx - half(t) + 6;
+    chalkStroke(ctx, [[x0, y], [x0 + 12, y - 10]], r, 1);
+  }
+  ctx.restore();
+  // bombilla: sale de la yerba, sube inclinada y termina en el pico doblado
+  for (let k = 0; k < straws; k++) {
+    const off = k * 12 - (straws - 1) * 6;
+    const sx = cx + mw * 0.25 + off;
+    const sy = top - 6;
+    const ang = 1.2;
+    // que la punta no se salga del dibujo
+    const len = Math.max(48, (sy - 22) / Math.sin(ang));
+    const ex = sx + Math.cos(ang) * len;
+    const ey = sy - Math.sin(ang) * len;
+    ctx.save();
+    ctx.lineWidth = 4;
+    chalkStroke(ctx, [[sx, sy], [ex, ey]], r, 4);
+    chalkStroke(ctx, [[ex, ey], [ex + 7, ey - 7], [ex + 18, ey - 9]], r, 4);
+    ctx.restore();
+  }
+}
+
+// Facón criollo: hoja larga con punta, guarda en S y cabo con virolas.
+function chalkKnife(ctx, r) {
+  const bx = 40;
+  const by = 222;
+  const ang = -0.62;
+  const ux = Math.cos(ang);
+  const uy = Math.sin(ang);
+  const nx = -uy;
+  const ny = ux;
+  const P = (a, b) => [bx + ux * a * 0.84 + nx * b, by + uy * a * 0.84 + ny * b];
+  // cabo
+  chalkStroke(ctx, [P(0, -9), P(70, -10), P(70, 10), P(0, 9), P(0, -9)], r);
+  for (const a of [14, 34, 54]) chalkStroke(ctx, [P(a, -11), P(a, 11)], r, 2);
+  // guarda en S
+  chalkStroke(ctx, [P(74, -26), P(70, -18), P(76, 0), P(70, 18), P(74, 26)], r);
+  // hoja con lomo recto y filo que termina en punta
+  chalkStroke(ctx, [P(78, -8), P(250, -8), P(290, 2)], r);
+  chalkStroke(ctx, [P(78, 9), P(240, 9), P(290, 2)], r);
+  ctx.save();
+  ctx.lineWidth = 1.5;
+  chalkStroke(ctx, [P(90, -2), P(235, -2)], r, 1);
+  ctx.restore();
+}
+
+// Bomba de yerba: paquete atado con piolín y mecha.
+function chalkBomb(ctx, r) {
+  const cx = 138;
+  const cy = 150;
+  chalkStroke(ctx, [[cx - 50, cy - 60], [cx + 50, cy - 60], [cx + 54, cy + 70], [cx - 54, cy + 70], [cx - 50, cy - 60]], r);
+  chalkStroke(ctx, [[cx - 52, cy], [cx + 52, cy]], r, 2);
+  chalkStroke(ctx, [[cx, cy - 60], [cx, cy + 70]], r, 2);
+  chalkStroke(ctx, [[cx, cy - 60], [cx + 8, cy - 84], [cx + 26, cy - 96]], r, 3);
+  for (let k = 0; k < 5; k++) {
+    const a = k * 1.25;
+    chalkStroke(ctx, [[cx + 26, cy - 96], [cx + 26 + Math.cos(a) * 16, cy - 96 + Math.sin(a) * 16]], r, 1);
+  }
+}
+
+// Dibujo de tiza del arma en la pared: el mate a la izquierda y a la derecha
+// el precio con el nombre abajo.
 export function chalkTexture(weapon, price) {
   const c = canvas(512, 256);
   const ctx = c.getContext('2d');
   const r = rng(price + weapon.name.length * 31);
-  ctx.strokeStyle = 'rgba(240,238,228,0.55)';
+  ctx.strokeStyle = 'rgba(240,238,228,0.6)';
   ctx.lineWidth = 3;
   ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   const sil = weapon.chalk || 'round';
-  // mate inclinado: calabaza a la izquierda, bombilla apuntando a la derecha
-  const cx = 170;
-  const cy = 130;
-  const shapes = {
-    round: { rx: 62, ry: 70 },
-    tall: { rx: 50, ry: 84 },
-    cyl: { rx: 48, ry: 72 },
-    big: { rx: 80, ry: 82 },
-    cup: { rx: 56, ry: 64 },
-  };
-  const s = shapes[sil] || shapes.round;
-  const pts = [];
-  for (let i = 0; i <= 40; i++) {
-    const a = (i / 40) * Math.PI * 2;
-    let rx = s.rx;
-    if (sil === 'cyl' || sil === 'cup') rx *= 0.85 + 0.15 * Math.abs(Math.cos(a));
-    pts.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * s.ry]);
+  if (sil === 'knife') chalkKnife(ctx, r);
+  else if (sil === 'bomb') chalkBomb(ctx, r);
+  else chalkMate(ctx, r, sil, weapon.chalkStraws || 1);
+  // precio grande y el nombre en letra chica
+  ctx.fillStyle = 'rgba(240,238,228,0.8)';
+  ctx.font = 'bold 64px "Special Elite", monospace';
+  ctx.fillText(String(price), 280, 140);
+  let size = 26;
+  ctx.font = `${size}px "Special Elite", monospace`;
+  while (ctx.measureText(weapon.name).width > 222 && size > 14) {
+    size -= 1;
+    ctx.font = `${size}px "Special Elite", monospace`;
   }
-  chalkStroke(ctx, pts, r);
-  // boca / virola
-  chalkStroke(ctx, [[cx + s.rx * 0.6, cy - s.ry * 0.75], [cx + s.rx * 0.95, cy - s.ry * 0.1]], r);
-  // bombilla (dos si es de doble caño)
-  const straws = weapon.chalkStraws || 1;
-  for (let k = 0; k < straws; k++) {
-    const oy = k * 16 - (straws - 1) * 8;
-    chalkStroke(ctx, [[cx + s.rx * 0.5, cy - s.ry * 0.35 + oy], [470, cy - 40 + oy], [490, cy - 48 + oy]], r, 5);
-  }
-  // sombreado
-  ctx.lineWidth = 1.5;
-  for (let i = 0; i < 12; i++) {
-    const y = cy - s.ry * 0.3 + i * 8;
-    chalkStroke(ctx, [[cx - s.rx * 0.5, y], [cx - s.rx * 0.2, y + 14]], r, 1);
-  }
-  ctx.font = 'bold 44px "Special Elite", monospace';
-  ctx.fillStyle = 'rgba(240,238,228,0.75)';
-  ctx.fillText(String(price), 300, 225);
+  ctx.fillStyle = 'rgba(240,238,228,0.6)';
+  ctx.fillText(weapon.name, 280, 186);
+  chalkStroke(ctx, [[280, 198], [280 + Math.min(222, ctx.measureText(weapon.name).width), 200]], r, 1);
   return toTexture(c, { repeat: false });
 }
 

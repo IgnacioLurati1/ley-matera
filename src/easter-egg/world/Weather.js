@@ -14,6 +14,8 @@ const STATES = {
   fog: { rain: 0, storm: 0, fog: 0.075, fogColor: 0x4c5555, wind: 0.05, cloud: 0.6, mist: 1, blood: 0 },
   wind: { rain: 0, storm: 0, fog: 0.036, fogColor: 0x0d0f14, wind: 1, cloud: 0.45, mist: 0, blood: 0 },
   blood: { rain: 0, storm: 0, fog: 0.045, fogColor: 0x3a0e0a, wind: 0.35, cloud: 0.3, mist: 0.35, blood: 1 },
+  // ronda de perros: niebla baja y relámpagos secos, sin lluvia
+  dogs: { rain: 0, storm: 1, fog: 0.07, fogColor: 0x262a33, wind: 0.35, cloud: 1, mist: 0.9, blood: 0 },
 };
 
 const ANNOUNCE = {
@@ -39,6 +41,8 @@ export default class Weather {
     this.nextBolt = 10;
     this.wet = 0;
     this.windDir = new THREE.Vector2(0.8, 0.35).normalize();
+    this.dusk = 0;
+    this.duskCur = 0;
     this.buildRain();
     this.wetMats = [game.world.M.dirt, game.world.M.dirtDark, game.world.M.ground].filter(Boolean).map((m) => ({ m, r: m.roughness, c: m.color.clone() }));
   }
@@ -189,6 +193,17 @@ export default class Weather {
     if (name === 'storm') this.nextBolt = 3 + Math.random() * 4;
   }
 
+  // Cada 5 rondas el cielo se pone más colorado, hasta la luna roja de la 20.
+  setRoundSky(round) {
+    const k = Math.min(1, Math.floor(round / 5) / 4);
+    if (k <= this.dusk) return;
+    this.dusk = k;
+    const lines = { 0.25: 'El cielo se tiñe de colorado...', 0.5: 'El cielo está cada vez más rojo.', 0.75: 'La luna empieza a sangrar.', 1: 'Luna roja. Esta noche ya no termina.' };
+    const text = lines[k];
+    // en las rondas del Capataz ya avisa la luna roja: esa se dice unos segundos después
+    if (text) this.g.later(k === 1 ? 1 : 6, () => this.g.hud?.subtitle(text, 3.5, 'boss'));
+  }
+
   onRound(round) {
     if (bossRound(round)) {
       this.set('blood');
@@ -217,6 +232,8 @@ export default class Weather {
     const k = Math.min(1, dt / 12);
     for (const key of ['rain', 'storm', 'fog', 'wind', 'cloud', 'mist', 'blood']) c[key] += (T[key] - c[key]) * k;
     this.fogColor.lerp(new THREE.Color(T.fogColor), k);
+    this.duskCur += (this.dusk - this.duskCur) * Math.min(1, dt / 20);
+    const red = Math.max(c.blood, this.duskCur * 0.85);
     this.timer -= dt;
     const cam = g.camera;
     const zone = g.world.zoneAt(g.player?.pos.x ?? cam.position.x, g.player?.pos.z ?? cam.position.z);
@@ -230,11 +247,11 @@ export default class Weather {
     if (sky) {
       sky.uCloud.value = c.cloud;
       sky.uFlash.value = this.flash;
-      sky.uBlood.value = c.blood;
+      sky.uBlood.value = red;
       sky.uFogAmt.value = Math.min(1, (c.fog - 0.034) * 14);
       sky.uFogColor.value.copy(this.fogColor);
     }
-    g.world.setMoon?.(c.cloud, c.blood);
+    g.world.setMoon?.(c.cloud, Math.max(c.blood, this.duskCur));
 
     // relámpagos
     this.flash = Math.max(0, this.flash - dt * 4);

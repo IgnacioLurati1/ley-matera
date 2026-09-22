@@ -536,7 +536,8 @@ export default class Activities {
         this.radioDone(radio);
         return;
       }
-      const d = g.say('radio', radio.def.lines[k]);
+      // cada compu reproduce la radio por su cuenta: no se repite a los demás
+      const d = g.say('radio', radio.def.lines[k], 'radio', { local: true });
       g.audio.radioTune(radio.pos, d + 0.4);
       g.later(d + 0.6, () => next(k + 1));
     };

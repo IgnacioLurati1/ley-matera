@@ -17,6 +17,7 @@ const CONTROLS = [
   ['R', 'Cebar (recargar)'],
   ['F', 'Comprar, abrir, usar · mantener para reconstruir barreras'],
   ['V', 'Facón (cuchillo)'],
+  ['E', 'Inspeccionar el mate'],
   ['G', 'Bomba de yerba'],
   ['T / 4', 'Pava silbadora'],
   ['1 2 3 / Q / rueda', 'Cambiar de mate'],
@@ -92,7 +93,7 @@ export default class Menus {
        <label class="mdu-field">Temblor de cámara <input type="range" min="0" max="1" step="0.05" data-set="shake"><output></output></label>
        <label class="mdu-field">Calidad <select data-set="quality"><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="ultra">Ultra</option></select></label>
        <label class="mdu-field">Invertir mouse <input type="checkbox" data-set="invertY"></label>
-       <label class="mdu-field">Voces <select data-set="voiceMode"><option value="auto">Automáticas</option><option value="natural">Naturales del navegador</option><option value="murmur">Murmullos</option><option value="off">Solo subtítulos</option></select></label>
+       <label class="mdu-field">Voces <select data-set="voiceMode"><option value="auto">Automática</option><option value="murmur">Murmullos</option><option value="off">Solo subtítulos</option></select></label>
        <p class="mdu-small" data-voice-note></p>
        <label class="mdu-field">Mostrar FPS <input type="checkbox" data-set="showFps"></label>
        <p class="mdu-small" data-gpu2></p>
@@ -119,7 +120,7 @@ export default class Menus {
        <table class="mdu-board" data-board hidden></table>
        <p class="mdu-small mdu-pause-note" data-wait hidden></p>
        <div class="mdu-list">
-         <button class="mdu-btn" data-act="restart">Jugar de nuevo</button>
+         <button class="mdu-btn" data-act="restart">Fast restart</button>
          <button class="mdu-btn" data-act="leaveRoom" hidden>Salir de la sala</button>
          <button class="mdu-btn" data-act="exit">Salir a la tienda</button>
        </div>`,
@@ -143,9 +144,31 @@ export default class Menus {
     const a = this.g.audio;
     const note = this.screens.options.querySelector('[data-voice-note]');
     if (note && a) {
-      note.textContent = a.naturalVoice
-        ? `Voz natural disponible: ${a.naturalVoice.name.replace(/Microsoft |Online |\(Natural\)| - .*/g, '').trim()}.`
-        : 'Este navegador no trae voces naturales en castellano, así que los personajes murmuran (en Edge hay voces naturales).';
+      // la lista de voces del navegador (llega tarde en algunos)
+      const sel = this.screens.options.querySelector('[data-set=voiceMode]');
+      const list = a.voiceList || [];
+      const key = list.map((x) => x.name).join('|');
+      if (sel && sel.dataset.voices !== key) {
+        sel.dataset.voices = key;
+        sel.innerHTML = '';
+        const add = (value, label) => {
+          const o = document.createElement('option');
+          o.value = value;
+          o.textContent = label;
+          sel.append(o);
+        };
+        add('auto', 'Automática');
+        for (const x of list) add(`v:${x.name}`, x.name.replace(/Microsoft |Online |\(Natural\) ?/g, '').trim());
+        add('murmur', 'Murmullos');
+        add('off', 'Solo subtítulos');
+      }
+      const v = a.voiceFor?.('abuelo') || a.maleVoice || a.naturalVoice;
+      const name = v?.name.replace(/Microsoft |Online |\(Natural\)| - .*/g, '').trim();
+      note.textContent = !v
+        ? 'Este navegador no trae voces en castellano, así que los personajes murmuran. En Edge o Chrome hablan con palabras.'
+        : /natural|neural|online|google/i.test(v.name)
+          ? `Voz: ${name}.`
+          : `Voz: ${name}. En Edge o Chrome hay voces que suenan más naturales.`;
     }
     this.screens.options.querySelectorAll('[data-set]').forEach((input) => {
       const v = s[input.dataset.set];
@@ -281,7 +304,7 @@ export default class Menus {
     const btn = (a) => s.querySelector(`[data-act="${a}"]`);
     const wait = s.querySelector('[data-wait]');
     btn('restart').hidden = role === 'guest' || lost;
-    btn('restart').textContent = role === 'host' ? 'Jugar de nuevo (todos)' : 'Jugar de nuevo';
+    btn('restart').textContent = role === 'host' ? 'Fast restart (todos)' : 'Fast restart';
     btn('leaveRoom').hidden = role === 'solo';
     btn('leaveRoom').textContent = role === 'host' ? 'Cerrar la sala' : lost ? 'Volver al título' : 'Salir de la sala';
     wait.hidden = role !== 'guest' || lost;

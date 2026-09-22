@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import { makePose, solvePose, PART_COUNT } from '../entities/skeleton';
 
-// Los otros jugadores: un gaucho con poncho de color, boina y su mate en la
-// mano, animado con el mismo esqueleto que los zombies. Arriba lleva el nombre.
+// Los otros jugadores: un gaucho con sombrero, cara con bigote, poncho de
+// color que se bambolea al moverse y su mate en la mano, animado con el mismo
+// esqueleto que los zombies. Arriba lleva el nombre.
 
 const PONCHOS = [0xa8231c, 0x1e5aa8, 0x1f7a3a, 0xc9a02a];
+const tmpRot = new THREE.Matrix4();
+const tmpEul = new THREE.Euler();
 
 export default class Avatars {
   constructor(game, session) {
@@ -22,10 +25,14 @@ export default class Avatars {
     return {
       // piel sana: la textura de los zombies (manchada) no va en los vivos
       skin: std(0xd29a74),
-      poncho: std(c, T.burlap),
+      // la textura de arpillera oscurece: el color base va más vivo
+      poncho: std(new THREE.Color(c).multiplyScalar(1.7), T.burlap),
       pants: std(0x3a3a34, T.zpants),
       boots: std(0x241a12),
       hat: std(0x2a2620),
+      band: std(0x8a1a14),
+      hair: std(0x1e1712),
+      eye: new THREE.MeshBasicMaterial({ color: 0x120c08 }),
       mate: std(0x8a6038, T.gourd),
       metal: new THREE.MeshStandardMaterial({ color: 0xd8d8d8, metalness: 1, roughness: 0.25 }),
     };
@@ -58,9 +65,53 @@ export default class Avatars {
     put(G.shin, M.pants, 10);
     put(G.foot, M.boots, 11);
     put(G.foot, M.boots, 12);
-    // la boina ya viene corrida hacia arriba: va pegada a la cabeza (parte 2),
-    // no al hueco del sombrero (13), que la dejaba flotando
-    put(G.boina, M.hat, 2);
+    // cosas pegadas a un hueso con un desplazamiento propio (sombrero, cara, poncho)
+    const extras = [];
+    const attach = (obj, part, x, y, z) => {
+      obj.matrixAutoUpdate = false;
+      group.add(obj);
+      extras.push({ obj, part, off: new THREE.Matrix4().makeTranslation(x, y, z) });
+      return obj;
+    };
+    // sombrero de ala ancha con cinta colorada
+    const hat = new THREE.Group();
+    hat.add(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.014, 20), M.hat));
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.11, 0.11, 16), M.hat);
+    crown.position.y = 0.06;
+    hat.add(crown);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.112, 0.112, 0.024, 16), M.band);
+    band.position.y = 0.02;
+    hat.add(band);
+    attach(hat, 2, 0, 0.125, -0.005);
+    // cara: ojos, nariz, bigote y pelo en la nuca
+    const face = new THREE.Group();
+    for (const s of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.013, 6, 5), M.eye);
+      eye.position.set(s * 0.045, 0.025, 0.12);
+      face.add(eye);
+      const mus = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.016, 0.02), M.hair);
+      mus.position.set(s * 0.028, -0.03, 0.125);
+      mus.rotation.z = s * -0.25;
+      face.add(mus);
+    }
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.045, 0.035), M.skin);
+    nose.position.set(0, 0, 0.13);
+    face.add(nose);
+    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.03), M.hair);
+    hair.position.set(0, 0.07, -0.115);
+    face.add(hair);
+    attach(face, 2, 0, 0, 0);
+    // poncho: cuelga de los hombros y se bambolea (el pivote queda en el cuello)
+    const poncho = new THREE.Group();
+    const cape = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.36, 0.5, 14, 1, true), M.poncho);
+    cape.material.side = THREE.DoubleSide;
+    cape.position.y = -0.25;
+    cape.scale.set(1, 1, 0.72);
+    poncho.add(cape);
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.025, 6, 14), M.poncho);
+    collar.rotation.x = Math.PI / 2;
+    poncho.add(collar);
+    const ponchoAt = attach(poncho, 1, 0, 0.27, 0);
     // el mate en la mano derecha
     const mate = new THREE.Group();
     const gourd = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), M.mate);
@@ -92,7 +143,7 @@ export default class Avatars {
       slot: r.id,
       scale: 1,
     };
-    this.list.set(r.id, { r, group, parts, hand, tag, fake, M, mats: Array.from({ length: PART_COUNT }, () => new THREE.Matrix4()), name: r.name });
+    this.list.set(r.id, { r, group, parts, hand, tag, fake, M, extras, poncho: ponchoAt, sway: new THREE.Vector2(), lastYaw: r.yaw, mats: Array.from({ length: PART_COUNT }, () => new THREE.Matrix4()), name: r.name });
   }
 
   remove(id) {
@@ -156,6 +207,21 @@ export default class Avatars {
       }
       a.hand.matrix.copy(a.mats[6]);
       a.hand.matrixWorldNeedsUpdate = true;
+      // el poncho se queda atrás al correr y se abre al girar
+      let dy = r.yaw - a.lastYaw;
+      while (dy > Math.PI) dy -= Math.PI * 2;
+      while (dy < -Math.PI) dy += Math.PI * 2;
+      a.lastYaw = r.yaw;
+      const turn = dt > 0 ? dy / dt : 0;
+      const tx = -Math.min(0.5, (r.speed || 0) * 0.08) + Math.sin(g.time * 3 + r.id) * 0.03;
+      const tz = Math.max(-0.35, Math.min(0.35, -turn * 0.08));
+      a.sway.x += (tx - a.sway.x) * Math.min(1, dt * 6);
+      a.sway.y += (tz - a.sway.y) * Math.min(1, dt * 6);
+      for (const e of a.extras) {
+        e.obj.matrix.multiplyMatrices(a.mats[e.part], e.off);
+        if (e.obj === a.poncho) e.obj.matrix.multiply(tmpRot.makeRotationFromEuler(tmpEul.set(a.sway.x, 0, a.sway.y)));
+        e.obj.matrixWorldNeedsUpdate = true;
+      }
       a.hand.visible = !r.downed && !r.dead && !r.corpse;
       a.tag.position.set(r.pos.x, r.pos.y + (r.downed ? 0.9 : 2.05), r.pos.z);
       const d = a.tag.position.distanceTo(g.camera.position);
