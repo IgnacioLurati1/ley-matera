@@ -1,5 +1,5 @@
 // Abre el juego oculto. El juego (three.js incluido) vive en un chunk aparte
-// que solo se descarga cuando alguien escribe "easter egg" en el buscador.
+// que solo se descarga cuando alguien escribe "nodeberiasveresto" en el buscador.
 
 let opening = null;
 

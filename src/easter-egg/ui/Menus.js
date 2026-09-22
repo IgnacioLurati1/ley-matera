@@ -214,7 +214,7 @@ export default class Menus {
 
   setTitleInfo({ best, gpu, integrated }) {
     const t = this.screens.title;
-    t.querySelector('[data-best]').textContent = best ? `Tu récord: ronda ${best}` : 'Escribiste "easter egg"... ahora aguantá.';
+    t.querySelector('[data-best]').textContent = best ? `Tu récord: ronda ${best}` : 'Viste lo que no deberías ver... ahora aguantá.';
     const warn = integrated
       ? `<div class="mdu-warn">Parece que el navegador está usando la placa de video integrada (${gpu}). Para usar la dedicada en Windows: Configuración › Sistema › Pantalla › Gráficos › elegí tu navegador › Alto rendimiento, y reiniciá el navegador.</div>`
       : '';

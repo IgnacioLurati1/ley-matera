@@ -10,11 +10,11 @@ import './SearchButton.css';
 
 // Lupa de la navbar: abre un buscador con sugerencias y lleva al catálogo
 // filtrado por lo que se escribió. Escribir "Ley Matera" lleva al login del
-// panel (no hay link visible para iniciar sesión) y "easter egg" abre el
-// juego oculto, que recién se descarga en ese momento.
+// panel (no hay link visible para iniciar sesión) y "nodeberiasveresto" abre
+// el juego oculto, que recién se descarga en ese momento.
 const compact = (text) => normalize(text).replace(/\s+/g, '');
 const isLoginWord = (text) => compact(text) === 'leymatera';
-const isEggWord = (text) => compact(text) === 'easteregg';
+const isEggWord = (text) => compact(text) === 'nodeberiasveresto';
 
 export default function SearchButton() {
   const { products } = useData();
