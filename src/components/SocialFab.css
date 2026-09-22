@@ -1,0 +1,73 @@
+.fab {
+  position: fixed;
+  right: calc(18px + var(--scrollbar-comp, 0px));
+  bottom: 18px;
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+.fab__btn {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 8px 24px rgb(40 50 20 / 0.35);
+  transition: transform 0.3s var(--ease), background 0.2s;
+}
+.fab__btn:hover { transform: scale(1.07); }
+.fab.is-open .fab__btn { background: var(--green-dark); transform: rotate(90deg); }
+
+/* El menú y el globito flotan sobre el botón: cerrados no ocupan lugar. */
+.fab__menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+.fab__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(12px) scale(0.9);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.35s var(--ease);
+}
+.fab__item--wa { background: #25d366; }
+.fab__item--ig { background: linear-gradient(45deg, #f09433, #dc2743 50%, #bc1888); }
+.fab.is-open .fab__item { opacity: 1; transform: none; pointer-events: auto; }
+.fab.is-open .fab__item:nth-child(2) { transition-delay: 0.06s; }
+
+.fab__hint {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  white-space: nowrap;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 10px 14px;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: var(--shadow);
+  animation: fadeUp 0.4s var(--ease);
+}

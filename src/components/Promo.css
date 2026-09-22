@@ -1,0 +1,99 @@
+/* ---------- Decoraciones laterales ---------- */
+.promo-deco { position: absolute; inset: 0; pointer-events: none; }
+.promo-deco__side {
+  position: absolute;
+  top: 6%;
+  height: 88%;
+  width: clamp(44px, 9%, 120px);
+  opacity: 0.9;
+}
+.promo-deco__side--left { left: 1.5%; }
+.promo-deco__side--right { right: 1.5%; transform: scaleX(-1); }
+
+/* ---------- Banner (home) ---------- */
+.promo-banner {
+  position: relative;
+  overflow: hidden;
+  border-radius: 24px;
+  min-height: 320px;
+  box-shadow: var(--shadow);
+  isolation: isolate;
+}
+.promo-banner__bg {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  background-color: var(--green);
+  transition: transform 6s ease;
+}
+.promo-banner:hover .promo-banner__bg { transform: scale(1.03); }
+.promo-banner__shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, rgb(0 0 0 / 0.38), rgb(0 0 0 / 0.08) 70%);
+}
+.promo-banner__content {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 28px;
+  align-items: center;
+  padding: clamp(28px, 5vw, 56px) clamp(56px, 11%, 140px);
+}
+.promo-banner__text h2,
+.panel .promo-banner__text h2 {
+  color: inherit;
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 700;
+  margin-bottom: 12px;
+  text-shadow: 0 2px 12px rgb(0 0 0 / 0.25);
+}
+.promo-banner__text p { max-width: 52ch; opacity: 0.95; font-size: 1.05rem; }
+.promo-banner__tag {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+}
+.promo-banner__meta {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  font-size: 0.95rem;
+}
+.promo-banner__meta span { display: inline-flex; align-items: center; gap: 6px; }
+.promo-banner__meta strong { font-family: var(--font-display); font-size: 1.2rem; }
+.promo-banner__products {
+  display: grid;
+  grid-template-columns: repeat(2, 150px);
+  gap: 12px;
+  justify-content: end;
+}
+.promo-banner__thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 3px solid rgb(255 255 255 / 0.85);
+  box-shadow: var(--shadow);
+}
+.promo-banner__thumb:nth-child(even) { transform: translateY(18px); }
+.promo-banner__thumb .pimg { width: 100%; height: 100%; }
+.promo-banner__thumb .badge { position: absolute; top: 8px; left: 8px; }
+
+@media (max-width: 820px) {
+  .promo-banner__content { grid-template-columns: 1fr; padding: 32px 52px; }
+  .promo-banner__products { grid-template-columns: repeat(4, 1fr); justify-content: stretch; }
+  .promo-banner__thumb:nth-child(even) { transform: none; }
+}
+@media (max-width: 520px) {
+  .promo-banner__content { padding: 28px 40px; }
+  .promo-banner__products { grid-template-columns: repeat(2, 1fr); }
+}

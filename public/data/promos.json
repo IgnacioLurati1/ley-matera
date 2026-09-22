@@ -1,0 +1,20 @@
+[
+  {
+    "id": "PR1",
+    "title": "Llegó la primavera",
+    "headline": "¡Llegó la primavera! 🌼",
+    "message": "Sacá los mates al sol: elegimos algunos favoritos con precio especial para arrancar la temporada de rondas al aire libre. Válido hasta agotar stock o hasta fin de octubre.",
+    "endDate": "2026-10-31",
+    "active": true,
+    "background": { "src": "/assets/promos/fondos/yerbal.svg", "x": 50, "y": 50, "zoom": 1 },
+    "decoration": { "type": "laurel", "color": "#f4eee0" },
+    "textColor": "#ffffff",
+    "items": [
+      { "productId": "P3", "promoPrice": 25900 },
+      { "productId": "P10", "promoPrice": 7900 },
+      { "productId": "P16", "promoPrice": 29900 },
+      { "productId": "P20", "promoPrice": null }
+    ],
+    "createdAt": "2026-09-21"
+  }
+]

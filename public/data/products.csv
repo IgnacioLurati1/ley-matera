@@ -1,0 +1,25 @@
+id,title,category,price,image,createdAt
+P1,Mate Imperial de Algarrobo con virola de alpaca,mates/algarrobo/imperiales,38500,/assets/products/demo/mate.svg,2026-08-01
+P2,Mate Imperial de Algarrobo cincelado,mates/algarrobo/imperiales,42900,/assets/products/demo/mate.svg,2026-08-03
+P3,Mate Torpedo de Algarrobo virola acero,mates/algarrobo/torpedos,29500,/assets/products/demo/mate.svg,2026-08-05
+P4,Mate Torpedo de Algarrobo forrado en cuero,mates/algarrobo/torpedos,33000,/assets/products/demo/mate.svg,2026-08-07
+P5,Mate Imperial de Calabaza premium,mates/calabaza/imperiales,45000,/assets/products/demo/mate.svg,2026-08-09
+P6,Mate Torpedo de Calabaza virola de alpaca,mates/calabaza/torpedos,36800,/assets/products/demo/mate.svg,2026-08-10
+P7,Mate de Calabaza con base de cuero crudo,mates/calabaza/con-base,31200,/assets/products/demo/mate.svg,2026-08-12
+P8,Camionero Criollo calabaza pulida base cuero,mates/camioneros,25000,/assets/products/demo/camionero.svg,2026-08-14
+P9,Camionero boca ancha cuero repujado,mates/camioneros,27900,/assets/products/demo/camionero.svg,2026-08-15
+P10,Bombilla pico de loro acero inoxidable,bombillas/acero-inoxidable,9800,/assets/products/demo/bombilla.svg,2026-08-16
+P11,Bombilla chata acero inoxidable,bombillas/acero-inoxidable,8500,/assets/products/demo/bombilla.svg,2026-08-17
+P12,Bombillón resorte acero,bombillas/bombillones,12900,/assets/products/demo/bombilla.svg,2026-08-18
+P13,Termo media manija 1 L acero,termos/media-manija,52000,/assets/products/demo/termo.svg,2026-08-19
+P14,Termo media manija 1.2 L verde oliva,termos/media-manija,58500,/assets/products/demo/termo.svg,2026-08-20
+P15,Vaso térmico 500 ml con tapa,termos/vasos-termicos,21000,/assets/products/demo/termo.svg,2026-08-21
+P16,Canasta matera eco-cuero marrón,canastas-y-bolsos/canastas/eco-cuero,34500,/assets/products/demo/canasta.svg,2026-08-22
+P17,Canasta matera de cuero vaqueta,canastas-y-bolsos/canastas/cuero,61000,/assets/products/demo/canasta.svg,2026-08-23
+P18,Morral matero de lona y cuero,canastas-y-bolsos/morrales,39900,/assets/products/demo/canasta.svg,2026-08-24
+P19,Porta mate de cuero con tapa,canastas-y-bolsos/porta-mates,15500,/assets/products/demo/canasta.svg,2026-08-25
+P20,Combo Clásico: mate torpedo + bombilla + yerbera,combos,44900,/assets/products/demo/combo.svg,2026-08-26
+P21,Combo Viajero: termo + mate + canasta eco-cuero,combos,119000,/assets/products/demo/combo.svg,2026-08-27
+P22,Grabado láser personalizado (nombre o frase),grabados,6500,/assets/products/demo/grabado.svg,2026-08-28
+P23,Yerbera y azucarera de lata,otros,11900,/assets/products/demo/otros.svg,2026-08-29
+P24,Cepillo limpia bombillas x2,otros,2500,/assets/products/demo/otros.svg,2026-08-30

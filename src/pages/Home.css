@@ -1,0 +1,94 @@
+.hero {
+  position: relative;
+  min-height: clamp(440px, 72vh, 720px);
+  display: flex;
+  align-items: center;
+  color: #fff;
+  overflow: hidden;
+  isolation: isolate;
+}
+.hero__bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, rgb(24 30 14 / 0.78) 0%, rgb(24 30 14 / 0.45) 55%, rgb(24 30 14 / 0.1) 100%),
+    var(--hero-img, url('/assets/brand/hero.webp')) center var(--hero-y, 62%) / cover no-repeat;
+  animation: heroZoom 18s ease-out both;
+}
+@keyframes heroZoom { from { transform: scale(1.08); } to { transform: scale(1); } }
+.hero__content { padding-top: 40px; padding-bottom: 40px; }
+.hero__content.is-loading { visibility: hidden; }
+.hero__content > * { animation: fadeUp 0.8s var(--ease) both; }
+.hero__content > *:nth-child(2) { animation-delay: 0.08s; }
+.hero__content > *:nth-child(3) { animation-delay: 0.16s; }
+.hero h1 {
+  font-size: clamp(2rem, 4.6vw, 3.4rem);
+  font-weight: 600;
+  max-width: 18ch;
+  margin: 10px 0 14px;
+  text-shadow: 0 2px 20px rgb(0 0 0 / 0.3);
+}
+.hero p { max-width: 46ch; font-size: clamp(1rem, 1.6vw, 1.15rem); opacity: 0.95; }
+.hero__actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+
+.home-promos {
+  display: grid;
+  gap: 24px;
+  margin-top: clamp(32px, 5vw, 56px);
+  position: relative;
+  z-index: 2;
+}
+
+.home-featured { padding-top: clamp(64px, 9vw, 110px); padding-bottom: 24px; }
+.home-featured__track { max-width: var(--container); margin: 0 auto; padding: 0 var(--gutter); }
+.home-link {
+  color: var(--action);
+  font-weight: 800;
+  text-decoration: none;
+}
+.home-link:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+.home-featured__head { max-width: var(--container); }
+
+/* Celular: foto 1/4 más baja y el texto apoyado en el piso de la imagen. */
+@media (max-width: 640px) {
+  .hero {
+    min-height: max(330px, 54vh);
+    align-items: flex-end;
+  }
+  .hero__bg {
+    background:
+      linear-gradient(0deg, rgb(24 30 14 / 0.88) 0%, rgb(24 30 14 / 0.55) 45%, rgb(24 30 14 / 0.05) 80%),
+      var(--hero-img-sm, url('/assets/brand/hero.webp')) center var(--hero-y-sm, 40%) / cover no-repeat;
+  }
+  .hero__content { padding-top: 24px; padding-bottom: 24px; }
+  .hero h1 { font-size: 1.85rem; margin: 0 0 8px; }
+  .hero p { font-size: 0.98rem; margin-bottom: 14px; }
+}
+
+.home-divider {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-top: 40px;
+  padding-bottom: 40px;
+  color: var(--green-light);
+}
+.home-divider__line { flex: 1; height: 1.5px; background: var(--line); }
+.home-divider__mate {
+  width: 42px;
+  height: 65px;
+  background: currentColor;
+  -webkit-mask: url('/assets/brand/mate-trazo.png') center / contain no-repeat;
+  mask: url('/assets/brand/mate-trazo.png') center / contain no-repeat;
+}
+
+/* Combos sobre su propia franja para distinguirse de los destacados. */
+.home-combos {
+  padding: clamp(36px, 5vw, 56px) 0 clamp(28px, 4vw, 44px);
+  background: var(--green-soft);
+}
+.home-combos .section-title p { margin: 6px 0 0; color: var(--muted); }
+/* Si el home termina en la franja de combos, el footer va pegado (sin franja clara en el medio). */
+main:has(> .home-combos:last-child) + .footer { margin-top: 0; }

@@ -1,0 +1,33 @@
+.promo-mini { margin-top: 16px; }
+.promo-mini__list { display: grid; gap: 10px; }
+.promo-mini__title { font-size: 1rem; color: var(--title); margin: 0 0 10px; }
+.promo-mini__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  isolation: isolate;
+  text-decoration: none;
+  min-height: 108px;
+  justify-content: flex-end;
+}
+.promo-mini__bg { position: absolute; inset: 0; z-index: -2; background: var(--green); }
+.promo-mini__shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(0deg, rgb(0 0 0 / 0.5), rgb(0 0 0 / 0.1));
+}
+.promo-mini__card strong { font-family: var(--font-display); font-size: 1.08rem; line-height: 1.2; }
+.promo-mini__card span { font-size: 0.82rem; opacity: 0.9; }
+.promo-mini__card .promo-mini__cta {
+  margin-top: 6px;
+  font-weight: 800;
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.promo-mini__card:hover .promo-mini__cta { text-decoration-thickness: 2px; }

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><rect width="400" height="400" fill="#f4eee0"/><circle cx="200" cy="215" r="150" fill="#e8dfc9"/>
+<path d="M140 150 Q125 260 150 300 L150 330 L250 330 L250 300 Q275 260 260 150 Z" fill="#b07a4c"/>
+<ellipse cx="200" cy="150" rx="62" ry="18" fill="#d6d9dc" stroke="#9aa0a6" stroke-width="5"/>
+<ellipse cx="200" cy="150" rx="46" ry="11" fill="#5d7a33"/>
+<text x="200" y="255" text-anchor="middle" font-family="Georgia,serif" font-style="italic" font-size="30" fill="#6b4329">Tu nombre</text>
+</svg>

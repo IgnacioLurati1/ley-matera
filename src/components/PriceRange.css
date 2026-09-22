@@ -1,0 +1,50 @@
+.prange__values {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--title);
+  margin-bottom: 6px;
+}
+.prange__slider { position: relative; height: 28px; }
+.prange__track,
+.prange__fill {
+  position: absolute;
+  top: 50%;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 99px;
+}
+.prange__track { left: 0; right: 0; background: var(--line); }
+.prange__fill { background: var(--green); }
+.prange input[type='range'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  background: none;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.prange input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--green);
+  box-shadow: var(--shadow-sm);
+  cursor: grab;
+}
+.prange input[type='range']::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--green);
+  cursor: grab;
+}
+.prange input[type='range']::-moz-range-track { background: none; }

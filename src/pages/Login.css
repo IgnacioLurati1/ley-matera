@@ -1,0 +1,21 @@
+.login { display: grid; place-items: center; padding-top: 48px; padding-bottom: 48px; }
+.login__card {
+  width: 100%;
+  max-width: 400px;
+  padding: 32px 28px;
+  border-radius: 22px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  text-align: center;
+  animation: fadeUp 0.5s var(--ease);
+}
+.login__card .logo { margin: 0 auto 12px; }
+.login__card h1 { font-size: 1.5rem; color: var(--title); margin-bottom: 4px; }
+.login__card > p { color: var(--muted); margin-bottom: 20px; }
+.login__card .field { text-align: left; }
+.login__error { color: var(--danger); font-weight: 700; }
+.login__card.is-shaking { animation: shake 0.45s; }
+@keyframes shake {
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}

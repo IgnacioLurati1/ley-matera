@@ -1,0 +1,21 @@
+.qty {
+  display: inline-flex;
+  align-items: center;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+}
+.qty button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--title);
+}
+.qty button:hover { background: var(--green-soft); }
+.qty span { min-width: 26px; text-align: center; font-weight: 800; }
+.qty--sm button { width: 28px; height: 28px; }
+.qty--sm span { min-width: 20px; font-size: 0.9rem; }

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 800" preserveAspectRatio="xMidYMid slice">
+<defs><filter id="f"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="2"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .05 0"/></filter>
+<radialGradient id="r" cx=".5" cy=".5" r=".75"><stop offset="0" stop-color="#3a4630"/><stop offset="1" stop-color="#1f271a"/></radialGradient></defs>
+<rect width="1920" height="800" fill="url(#r)"/><rect width="1920" height="800" filter="url(#f)"/>
+</svg>

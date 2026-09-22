@@ -1,0 +1,189 @@
+.nav {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 100;
+  display: grid;
+  /* minmax(0, …): el contenido ancho (la cinta de anuncios) no estira las columnas. */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  padding: 14px calc(var(--gutter) + var(--scrollbar-comp, 0px)) 12px var(--gutter);
+  background: var(--green);
+  color: #fff;
+  transition: box-shadow 0.3s, padding 0.45s var(--ease);
+}
+.nav--collapsed {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+.nav-spacer { height: var(--nav-full); }
+
+.nav__side { display: flex; align-items: center; min-height: 48px; }
+/* Por encima de la barra de anuncios: el carrito y el buscador se despliegan sobre ella. */
+.nav__side { position: relative; z-index: 2; }
+.nav__side--left { gap: 8px; }
+.nav__side--right { justify-content: flex-end; gap: 8px; }
+
+.theme-toggle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid rgb(255 255 255 / 0.45);
+  background: rgb(255 255 255 / 0.06);
+  color: #fff;
+  transition: background 0.2s;
+}
+.theme-toggle:hover { background: rgb(255 255 255 / 0.15); }
+/* El ícono gira al cambiar: la animación confirma el cambio de tema. */
+.theme-toggle__icon { display: grid; animation: themeSpin 0.45s var(--ease); }
+@keyframes themeSpin { from { transform: rotate(-90deg) scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.nav__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.nav__brand { display: block; line-height: 0; }
+.nav__logo-wrap { position: relative; display: inline-block; }
+.nav__logo {
+  border: 3px solid rgb(255 255 255 / 0.9);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.2);
+  transition: width 0.45s var(--ease), height 0.45s var(--ease), transform 0.3s var(--ease);
+}
+.nav__brand:hover .nav__logo { transform: rotate(-6deg) scale(1.04); }
+.nav__escarapela {
+  position: absolute;
+  right: -12px;
+  bottom: -6px;
+  width: 42%;
+  height: auto;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.3));
+}
+
+.nav__full {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-height: 200px;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.3s ease, max-height 0.45s var(--ease), transform 0.45s var(--ease);
+}
+.nav--collapsed .nav__full {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  overflow: hidden;
+}
+.nav__links {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.nav__links a,
+.nav__links button,
+.nav-drawer__panel a,
+.nav-drawer__panel button {
+  position: relative;
+  padding: 6px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-decoration: none;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: 999px;
+  transition: background 0.2s;
+}
+.nav__links a::after,
+.nav__links button::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 2px;
+  height: 2px;
+  background: currentColor;
+  transform: scaleX(0);
+  transition: transform 0.25s var(--ease);
+}
+.nav__links a:hover::after,
+.nav__links button:hover::after,
+.nav__links a.active::after { transform: scaleX(1); }
+.nav__links .nav__login {
+  margin-left: 8px;
+  border: 1.5px solid rgb(255 255 255 / 0.5);
+}
+.nav__links .nav__login::after { display: none; }
+.nav__links .nav__login:hover { background: rgb(255 255 255 / 0.12); }
+
+.nav__burger { display: none; color: #fff; }
+.nav__burger:hover { background: rgb(255 255 255 / 0.12); }
+
+.nav-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgb(20 25 10 / 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+.nav-drawer.is-open { opacity: 1; pointer-events: auto; }
+.nav-drawer__panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(300px, 85vw);
+  height: 100%;
+  padding: calc(var(--nav-full) + 12px) 20px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #34451f;
+  color: #fff;
+  transform: translateX(-100%);
+  transition: transform 0.35s var(--ease);
+}
+.nav-drawer.is-open .nav-drawer__panel { transform: none; }
+.nav-drawer__panel a,
+.nav-drawer__panel button { text-align: left; padding: 12px 14px; font-size: 1.1rem; }
+.nav-drawer__panel a.active,
+.nav-drawer__panel a:hover,
+.nav-drawer__panel button:hover { background: rgb(255 255 255 / 0.1); }
+
+@media (max-width: 860px) {
+  :root { --nav-full: 121px; --nav-mini: 60px; }
+  .nav__links { display: none; }
+  .nav__burger { display: inline-grid; }
+  .nav:not(.nav--collapsed) .nav__logo { width: 64px !important; height: 64px !important; }
+  .nav__side { min-height: 44px; gap: 4px; }
+  .theme-toggle { width: 40px; height: 40px; }
+}
+
+/* Barra de anuncios: ocupa todo el ancho abajo de la navbar y se esconde al
+   bajar, junto con los links. */
+.nav__announce {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 12px calc(var(--gutter) * -1) -12px;
+  max-height: 120px;
+  overflow: hidden;
+  transition: max-height 0.4s var(--ease), margin 0.4s var(--ease), opacity 0.25s ease 0.15s;
+}
+.nav__announce:empty { display: none; }
+/* Al colapsar se desvanece enseguida: así no queda una franja mientras se achica. */
+.nav--collapsed .nav__announce {
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: -8px;
+  opacity: 0;
+  transition: max-height 0.3s var(--ease), margin 0.3s var(--ease), opacity 0.12s ease;
+}

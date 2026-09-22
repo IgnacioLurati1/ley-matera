@@ -1,0 +1,107 @@
+.season-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.flake {
+  position: absolute;
+  top: -30px;
+  color: #fff;
+  text-shadow: 0 0 4px rgb(80 110 140 / 0.6);
+  animation: fall linear infinite;
+}
+@keyframes fall {
+  0% { transform: translate(0, -5vh) rotate(0); }
+  50% { transform: translate(24px, 50vh) rotate(180deg); }
+  100% { transform: translate(-12px, 105vh) rotate(360deg); }
+}
+
+.confetti {
+  position: absolute;
+  top: -20px;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0.85;
+  animation: confetti linear infinite;
+}
+@keyframes confetti {
+  0% { transform: translate(0, -5vh) rotate(0); }
+  100% { transform: translate(40px, 105vh) rotate(var(--r)); }
+}
+
+.garland {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -18px;
+  height: 26px;
+  pointer-events: none;
+}
+.garland svg { position: absolute; inset: 0; width: 100%; height: 26px; }
+.garland__bulbs {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 1%;
+}
+.garland__bulbs span {
+  width: 9px;
+  height: 13px;
+  margin-top: 9px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  background: var(--c);
+  box-shadow: 0 0 8px var(--c);
+  animation: twinkle 1.8s ease-in-out infinite;
+}
+.garland__bulbs span:nth-child(even) { margin-top: 3px; }
+@keyframes twinkle { 50% { opacity: 0.35; box-shadow: none; } }
+
+.patrio-ribbon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background: linear-gradient(#75aadb 0 33%, #fff 33% 66%, #75aadb 66%);
+}
+
+.easter {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 90;
+  pointer-events: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 8px;
+}
+.easter__eggs { display: flex; gap: 4px; align-items: flex-end; }
+.easter__eggs--right { margin-right: 84px; }
+.egg {
+  width: 22px;
+  height: 28px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  background:
+    repeating-linear-gradient(-20deg, transparent 0 6px, rgb(255 255 255 / 0.6) 6px 9px),
+    var(--c);
+  box-shadow: inset -3px -3px 0 rgb(0 0 0 / 0.08);
+  animation: wobble 2.6s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+@keyframes wobble { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+.easter__bunny {
+  position: fixed;
+  left: 50%;
+  bottom: -8px;
+  font-size: 34px;
+  animation: peek 9s ease-in-out infinite;
+}
+@keyframes peek {
+  0%, 70%, 100% { transform: translate(-50%, 70%); }
+  78%, 92% { transform: translate(-50%, 0); }
+}

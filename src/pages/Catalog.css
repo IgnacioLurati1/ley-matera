@@ -1,0 +1,137 @@
+.catalog { padding-top: 32px; padding-bottom: 40px; }
+.catalog__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.catalog__head h1 { font-size: clamp(1.8rem, 3.5vw, 2.5rem); color: var(--title); margin: 4px 0 0; }
+.catalog__search {
+  position: relative;
+  flex: 1;
+  max-width: 440px;
+  min-width: 240px;
+  color: var(--muted);
+}
+.catalog__search svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); }
+.catalog__search input {
+  width: 100%;
+  height: 48px;
+  padding: 0 18px 0 46px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: var(--paper);
+  font-size: 1rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.catalog__search input:focus {
+  outline: none;
+  border-color: var(--green-light);
+  box-shadow: 0 0 0 4px rgb(93 122 51 / 0.15);
+}
+
+.catalog__cats { display: grid; gap: 8px; margin-bottom: 24px; }
+.chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+  scrollbar-width: thin;
+  animation: fadeUp 0.35s var(--ease) both;
+}
+.chip {
+  flex: none;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: var(--paper);
+  color: var(--title);
+  font-weight: 700;
+  font-size: 0.93rem;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.chip:hover { border-color: var(--green-light); }
+.chip.is-active { background: var(--green); border-color: var(--green); color: #fff; }
+.chips--d1 .chip,
+.chips--d2 .chip { font-size: 0.87rem; padding: 6px 14px; }
+.chips--d1 { padding-left: 14px; border-left: 3px solid var(--green-soft); }
+.chips--d2 { padding-left: 28px; border-left: 3px solid var(--green-soft); }
+
+.catalog__layout {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  gap: 28px;
+  align-items: start;
+}
+.catalog__side { position: sticky; top: calc(var(--nav-mini) + 20px); }
+.catalog__filters {
+  padding: 20px;
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow-sm);
+}
+.catalog__filters-head { display: none; }
+.catalog__apply { display: none; }
+.catalog__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.catalog__filter-btn { display: none; }
+.catalog__more { display: flex; justify-content: center; margin-top: 28px; }
+.catalog__backdrop { display: none; }
+
+@media (max-width: 860px) {
+  .catalog__layout { grid-template-columns: 1fr; }
+  .catalog__side { position: static; }
+  /* En celular las promos van en una fila deslizable para no empujar los productos. */
+  .catalog__side .promo-mini { margin: 0 0 18px; }
+  .catalog__side .promo-mini__list {
+    margin: 0 calc(var(--gutter) * -1);
+    padding: 0 var(--gutter);
+    grid-auto-flow: column;
+    grid-auto-columns: min(78%, 280px);
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x mandatory;
+  }
+  .catalog__side .promo-mini__list::-webkit-scrollbar { display: none; }
+  .catalog__side .promo-mini__card { min-height: 92px; scroll-snap-align: start; }
+  .catalog__filter-btn { display: inline-flex; }
+  .catalog__filters {
+    position: fixed;
+    inset: auto 0 0 0;
+    top: auto;
+    z-index: 150;
+    max-height: 80dvh;
+    overflow: auto;
+    border-radius: 22px 22px 0 0;
+    padding: 18px 20px 24px;
+    transform: translateY(105%);
+    transition: transform 0.35s var(--ease);
+  }
+  .catalog__filters.is-open { transform: none; box-shadow: var(--shadow-lg); }
+  .catalog__filters-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    color: var(--title);
+  }
+  .catalog__apply { display: flex; margin-top: 12px; }
+  .catalog__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 140;
+    background: rgb(20 25 10 / 0.4);
+    animation: fadeIn 0.2s;
+  }
+}

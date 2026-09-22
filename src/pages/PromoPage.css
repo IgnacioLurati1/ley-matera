@@ -1,0 +1,54 @@
+.promo-hero {
+  position: relative;
+  min-height: clamp(320px, 46vh, 460px);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  overflow: hidden;
+  isolation: isolate;
+}
+.promo-hero__bg { position: absolute; inset: 0; z-index: -2; background: var(--green); overflow: hidden; }
+.promo-hero__bg img { animation: heroZoomSoft 14s ease-out both; }
+@keyframes heroZoomSoft { from { filter: saturate(0.9); } to { filter: none; } }
+.promo-hero__shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(ellipse at center, rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.1) 75%);
+}
+.promo-hero__content {
+  max-width: 720px;
+  padding: 48px clamp(64px, 12%, 150px);
+}
+.promo-hero__content > * { animation: fadeUp 0.7s var(--ease) both; }
+.promo-hero__content > *:nth-child(2) { animation-delay: 0.08s; }
+.promo-hero__content > *:nth-child(3) { animation-delay: 0.16s; }
+.promo-hero__content > *:nth-child(4) { animation-delay: 0.24s; }
+.promo-hero h1,
+.panel .promo-hero h1 {
+  color: inherit;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  font-weight: 700;
+  text-shadow: 0 2px 16px rgb(0 0 0 / 0.25);
+}
+.promo-hero p { font-size: 1.12rem; }
+.promo-hero__timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.28);
+  backdrop-filter: blur(4px);
+  font-weight: 700;
+  color: #fff;
+}
+.promo-page__products { padding-top: 40px; padding-bottom: 32px; }
+.promo-page__products h2 { color: var(--title); font-size: 1.8rem; }
+.promo-page__admin-note {
+  padding: 10px var(--gutter);
+  background: #fff3cd;
+  color: #7a5b00;
+  text-align: center;
+  font-weight: 700;
+}

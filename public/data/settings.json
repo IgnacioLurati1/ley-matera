@@ -1,0 +1,14 @@
+{
+  "dataVersion": 1,
+  "featured": ["P1", "P5", "P8", "P13", "P17", "P20", "P21", "P22"],
+  "seasons": {
+    "navidad": { "mode": "auto", "from": "12-01", "to": "01-06" },
+    "carnaval": { "mode": "auto", "from": "", "to": "" },
+    "pascua": { "mode": "auto", "from": "", "to": "" },
+    "patrio": { "mode": "auto", "from": "", "to": "" }
+  },
+  "about": {
+    "title": "Somos Ley Matera",
+    "body": "Muy pronto vas a poder conocer nuestra historia acá. Mientras tanto, te adelantamos lo importante: somos de Rosario, nos encanta el mate y creemos que no hay mejor excusa para juntarse que una buena ronda."
+  }
+}
