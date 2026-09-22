@@ -113,9 +113,11 @@
     border-radius: 22px 22px 0 0;
     padding: 18px 20px 24px;
     transform: translateY(105%);
-    transition: transform 0.35s var(--ease);
+    /* cerrado queda escondido del todo (no se llega con Tab ni lo lee un lector de pantalla) */
+    visibility: hidden;
+    transition: transform 0.35s var(--ease), visibility 0s linear 0.35s;
   }
-  .catalog__filters.is-open { transform: none; box-shadow: var(--shadow-lg); }
+  .catalog__filters.is-open { transform: none; visibility: visible; box-shadow: var(--shadow-lg); transition: transform 0.35s var(--ease); }
   .catalog__filters-head {
     display: flex;
     justify-content: space-between;

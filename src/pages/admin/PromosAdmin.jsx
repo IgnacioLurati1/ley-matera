@@ -40,8 +40,8 @@ export default function PromosAdmin() {
           {promos.map((p) => {
             const [tone, label] = statusOf(p);
             return (
-              <li key={p.id} className="alist__item" style={{ gridTemplateColumns: '120px 1fr auto' }}>
-                <div style={{ width: 120, aspectRatio: 2.4, borderRadius: 10, overflow: 'hidden', background: 'var(--green)' }}>
+              <li key={p.id} className="alist__item alist__item--wide">
+                <div className="alist__banner">
                   <FramedImage frame={p.background} />
                 </div>
                 <div className="alist__info">

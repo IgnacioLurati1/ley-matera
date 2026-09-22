@@ -179,11 +179,15 @@
   transition: max-height 0.4s var(--ease), margin 0.4s var(--ease), opacity 0.25s ease 0.15s;
 }
 .nav__announce:empty { display: none; }
-/* Al colapsar se desvanece enseguida: así no queda una franja mientras se achica. */
+/* Al colapsar desaparece de golpe, sin animación: si se desvaneciera mientras
+   la barra se achica, al bajar rápido (sobre todo en el celu) quedaba una franja
+   fantasma con el texto a medio borrar en el borde de abajo. Al volver a abrirse
+   sí entra con la transición de arriba. */
 .nav--collapsed .nav__announce {
   max-height: 0;
   margin-top: 0;
   margin-bottom: -8px;
   opacity: 0;
-  transition: max-height 0.3s var(--ease), margin 0.3s var(--ease), opacity 0.12s ease;
+  visibility: hidden;
+  transition: none;
 }

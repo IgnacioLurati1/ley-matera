@@ -12,7 +12,10 @@ import { CloseIcon, MenuIcon } from './Icons';
 import './Navbar.css';
 
 // Colapsa al bajar (queda sólo el logo) y se vuelve a abrir al subir.
-function useCollapseOnScroll() {
+// Con onlyAtTop (catálogo) solo se vuelve a abrir estando casi arriba del todo.
+// Recién se achica cuando ya bajaste más que lo que mide la barra abierta: si
+// lo hiciera antes quedaría una franja del fondo entre la barra y el contenido.
+function useCollapseOnScroll(onlyAtTop) {
   const [collapsed, setCollapsed] = useState(false);
   const last = useRef(0);
   useEffect(() => {
@@ -23,25 +26,29 @@ function useCollapseOnScroll() {
       requestAnimationFrame(() => {
         const y = window.scrollY;
         const delta = y - last.current;
+        const css = getComputedStyle(document.documentElement);
+        const full = parseFloat(css.getPropertyValue('--nav-full')) || 168;
+        const mini = parseFloat(css.getPropertyValue('--nav-mini')) || 64;
+        const minCollapse = Math.max(80, full - mini + 8);
         if (y < 80) setCollapsed(false);
-        else if (delta > 6) setCollapsed(true);
-        else if (delta < -6) setCollapsed(false);
+        else if (delta > 6 && y > minCollapse) setCollapsed(true);
+        else if (delta < -6 && !onlyAtTop) setCollapsed(false);
         last.current = y;
         ticking = false;
       });
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  }, [onlyAtTop]);
   return collapsed;
 }
 
 export default function Navbar() {
-  const collapsed = useCollapseOnScroll();
+  const location = useLocation();
+  const collapsed = useCollapseOnScroll(location.pathname.startsWith('/catalogo'));
   const [menuOpen, setMenuOpen] = useState(false);
   const { openModal } = useUI();
   const { isAdmin } = useAuth();
-  const location = useLocation();
   const seasons = useSeasons();
 
   useEffect(() => {

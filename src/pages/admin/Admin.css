@@ -69,8 +69,10 @@
 .admin-grid-2.is-stretch .picker-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .admin-grid-2.is-stretch .picker { flex: 1 1 0; max-height: none; min-height: 260px; }
 @media (max-width: 900px) {
-  .admin-grid-2, .admin-grid-3 { grid-template-columns: 1fr; }
+  /* minmax(0, …): algo ancho adentro (una vista previa, un campo de fecha) no estira la página */
+  .admin-grid-2, .admin-grid-3 { grid-template-columns: minmax(0, 1fr); }
 }
+.admin-grid-2 > *, .admin-grid-3 > * { min-width: 0; }
 
 .stat {
   display: block;
@@ -89,7 +91,7 @@
 .alist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .alist__item {
   display: grid;
-  grid-template-columns: 56px 1fr auto;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 8px 10px;
@@ -102,6 +104,26 @@
 .alist__info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alist__info span { color: var(--muted); font-size: 0.85rem; }
 .alist__actions { display: flex; gap: 4px; align-items: center; }
+/* Fila con imagen apaisada (promos). */
+.alist__item--wide { grid-template-columns: 120px minmax(0, 1fr) auto; }
+.alist__banner { width: 100%; aspect-ratio: 2.4; border-radius: 10px; overflow: hidden; background: var(--green); }
+/* En el celu los botones no entran al lado del nombre: bajan a su propia línea. */
+@media (max-width: 640px) {
+  .alist__item { grid-template-columns: 56px minmax(0, 1fr); gap: 10px; }
+  .alist__item--wide { grid-template-columns: 88px minmax(0, 1fr); }
+  /* Filas con pocos íconos (destacados): entran al costado, no hace falta bajarlos. */
+  .alist__item--icons { grid-template-columns: 48px minmax(0, 1fr) auto; }
+  .alist__item--icons .alist__img { width: 48px; height: 48px; }
+  .alist__item--icons .alist__actions { grid-column: auto; flex-wrap: nowrap; padding-top: 0; border-top: 0; gap: 0; }
+  .alist__item--icons .icon-btn { width: 36px; height: 36px; }
+  .alist__actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    padding-top: 6px;
+    border-top: 1px dashed var(--line);
+  }
+}
 .alist__actions .icon-btn { color: var(--title); }
 .alist__actions .icon-btn.is-danger { color: var(--danger); }
 .alist__actions .icon-btn.is-on { color: var(--accent); }
@@ -132,6 +154,7 @@
   background: var(--cream-2);
 }
 .segmented button {
+  white-space: nowrap;
   border: 0;
   padding: 6px 14px;
   border-radius: 999px;
@@ -141,6 +164,11 @@
   color: var(--title);
 }
 .segmented button.is-active { background: var(--paper); box-shadow: var(--shadow-sm); }
+/* En pantallas angostas los filtros pasan a dos renglones en vez de salirse. */
+@media (max-width: 560px) {
+  .segmented { display: flex; flex-wrap: wrap; border-radius: 18px; }
+  .segmented button { padding: 6px 12px; }
+}
 
 .dropzone {
   display: flex;

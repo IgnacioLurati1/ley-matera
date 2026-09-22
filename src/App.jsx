@@ -1,4 +1,4 @@
-import { Outlet, Route, Routes } from 'react-router-dom';
+import { Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import SocialFab from './components/SocialFab';
@@ -25,6 +25,8 @@ import DataAdmin from './pages/admin/DataAdmin';
 import AnnouncementAdmin from './pages/admin/AnnouncementAdmin';
 
 function SiteLayout() {
+  // En el panel el botón de redes no sirve y tapa los botones de las listas.
+  const inAdmin = useLocation().pathname.startsWith('/admin');
   return (
     <>
       <Navbar />
@@ -32,7 +34,7 @@ function SiteLayout() {
         <Outlet />
       </main>
       <Footer />
-      <SocialFab />
+      {!inAdmin && <SocialFab />}
     </>
   );
 }

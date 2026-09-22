@@ -6,6 +6,13 @@ import { SITE, whatsappLink } from '../config/site';
 import { InstagramIcon, MailIcon, WhatsAppIcon } from './Icons';
 import './Footer.css';
 
+// Abre la redacción de Gmail en otra pestaña con un mensaje de ejemplo
+// (mailto: no hace nada si la persona no tiene un programa de correo configurado).
+const gmailLink = () =>
+  `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(SITE.email)}&su=${encodeURIComponent(
+    'Consulta desde la web',
+  )}&body=${encodeURIComponent('¡Hola Ley Matera! Quería consultarles por...')}`;
+
 export default function Footer() {
   const { openModal } = useUI();
   return (
@@ -28,7 +35,7 @@ export default function Footer() {
             <a href={whatsappLink()} target="_blank" rel="noreferrer" aria-label="WhatsApp">
               <WhatsAppIcon />
             </a>
-            <a href={`mailto:${SITE.email}`} aria-label={`Mail: ${SITE.email}`} title={SITE.email}>
+            <a href={gmailLink()} target="_blank" rel="noreferrer" aria-label={`Mail: ${SITE.email}`} title={SITE.email}>
               <MailIcon />
             </a>
           </div>

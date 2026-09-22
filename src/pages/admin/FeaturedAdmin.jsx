@@ -33,7 +33,7 @@ export default function FeaturedAdmin() {
               {featured.map((id, i) => {
                 const p = pMap.get(id);
                 return (
-                  <li key={id} className="alist__item">
+                  <li key={id} className="alist__item alist__item--icons">
                     <ProductImage src={p.image} alt="" className="alist__img" />
                     <div className="alist__info">
                       <strong>{p.title}</strong>

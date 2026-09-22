@@ -235,7 +235,7 @@ export default function AdminHome() {
               <tbody>
                 {visible.map((o) => (
                   <tr key={o.id} className={`is-${o.status}`}>
-                    <td>
+                    <td className="sales__product">
                       <TextCell
                         multiline
                         value={o.description}
@@ -248,10 +248,10 @@ export default function AdminHome() {
                         {o.code && <span className="id-pill">{o.code}</span>}
                       </span>
                     </td>
-                    <td className="num">
+                    <td className="num" data-label="$ Producto">
                       <MoneyCell value={o.price} label="Precio" onSave={(price) => save(o, { price })} />
                     </td>
-                    <td>
+                    <td className="sales__client" data-label="Cliente">
                       <TextCell
                         value={o.client}
                         placeholder="Nombre (WTSP / IG)"
@@ -259,7 +259,7 @@ export default function AdminHome() {
                         onSave={(client) => save(o, { client })}
                       />
                     </td>
-                    <td className="num">
+                    <td className="num" data-label="$ Seña">
                       <MoneyCell
                         value={o.deposit}
                         label="Seña"
@@ -276,8 +276,8 @@ export default function AdminHome() {
                         </button>
                       )}
                     </td>
-                    <td className="num sales__due">{money(toPay(o))}</td>
-                    <td>
+                    <td className="num sales__due" data-label="A pagar">{money(toPay(o))}</td>
+                    <td data-label="Estado">
                       <select
                         className={`status-select is-${o.status}`}
                         value={o.status}
@@ -291,14 +291,14 @@ export default function AdminHome() {
                         ))}
                       </select>
                     </td>
-                    <td className="num">
+                    <td className="num" data-label="Ganancia">
                       {isPaid(o) ? (
                         <strong>{money(o.price)}</strong>
                       ) : (
                         <span className="sales__missing">Falta pagar</span>
                       )}
                     </td>
-                    <td>
+                    <td className="sales__del">
                       <button
                         type="button"
                         className="icon-btn is-danger"

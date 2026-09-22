@@ -246,6 +246,47 @@
   .toplist__bar { display: none; }
 }
 
+/* En el celu la planilla no entra: cada venta pasa a ser una tarjeta con sus
+   campos en dos columnas, el color del estado en el borde y el tacho arriba. */
+@media (max-width: 720px) {
+  .sales-wrap { overflow: visible; margin: 0 0 12px; padding: 0; }
+  .sales { display: block; min-width: 0; }
+  .sales thead { display: none; }
+  .sales tbody { display: grid; gap: 12px; }
+  .sales tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px 10px;
+    padding: 10px 6px 12px;
+    border: 1.5px solid var(--line);
+    border-left: 6px solid var(--st);
+    border-radius: 12px;
+    background: var(--paper);
+  }
+  .sales td { display: block; padding: 0; border: 0; }
+  .sales tr:hover td { background: none; }
+  .sales td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    padding: 0 8px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--muted);
+  }
+  .sales th.num, .sales td.num { text-align: left; }
+  .sales .cell-input--money { text-align: left; min-width: 0; }
+  .sales__product { grid-column: 1 / -1; padding-right: 40px !important; }
+  .sales__client { grid-column: 1 / -1; }
+  .sales__due { padding: 0 8px !important; }
+  .sales__due::before { padding: 0 !important; margin-bottom: 7px; }
+  .sales td.num > strong { padding: 7px 8px 0; }
+  .sales__missing { margin: 6px 0 0 8px; }
+  .sales__half { margin: 2px 0 0 8px; }
+  .status-select { margin-left: 8px; }
+  .sales__del { position: absolute; top: 4px; right: 4px; }
+}
+
 /* ---------- Registrar venta (lector de pedidos) ---------- */
 .register {
   margin-top: 14px;
