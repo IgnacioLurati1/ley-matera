@@ -33,7 +33,8 @@
   gap: 20px;
   width: max-content;
 }
-.marquee__item { width: 230px; flex: none; }
+.marquee__item { width: 230px; flex: none; display: flex; }
+.marquee__item > .pcard { flex: 1; }
 .marquee__item img { -webkit-user-drag: none; user-select: none; }
 
 .marquee__arrow {
