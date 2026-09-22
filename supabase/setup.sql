@@ -20,6 +20,7 @@ create table if not exists public.products (
 );
 alter table public.products add column if not exists stock integer check (stock >= 0);
 alter table public.products add column if not exists discount integer not null default 0 check (discount between 0 and 90);
+alter table public.products add column if not exists description text not null default '';
 
 create table if not exists public.promos (
   id          text primary key default 'PR' || nextval('promo_seq'),

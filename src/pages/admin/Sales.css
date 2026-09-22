@@ -309,6 +309,15 @@
 .register__foot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
 .register__sum { font-weight: 700; color: var(--muted); }
 .register__sum strong { color: var(--title); }
+.register__reserve {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--cream);
+  border-left: 3px solid var(--wood);
+  font-size: 0.9rem;
+}
+.reader__reserve { color: var(--wood); font-weight: 700; }
 @media (max-width: 560px) {
   .register__grid { grid-template-columns: 1fr; }
 }

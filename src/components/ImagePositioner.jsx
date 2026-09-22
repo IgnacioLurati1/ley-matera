@@ -4,7 +4,14 @@ import './ImagePositioner.css';
 
 // Editor de encuadre: arrastrá la foto para moverla y usá el zoom para recortar.
 // Trabaja sobre { src, x, y, zoom } sin modificar la imagen original.
-export default function ImagePositioner({ frame, onChange, aspect = 1, overlay = null, label = 'Arrastrá para encuadrar' }) {
+export default function ImagePositioner({
+  frame,
+  onChange,
+  aspect = 1,
+  overlay = null,
+  label = 'Arrastrá para encuadrar',
+  variants,
+}) {
   const box = useRef(null);
   const drag = useRef(null);
 
@@ -44,7 +51,7 @@ export default function ImagePositioner({ frame, onChange, aspect = 1, overlay =
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
-        <FramedImage frame={frame} alt="Vista previa" />
+        <FramedImage frame={frame} alt="Vista previa" variants={variants} />
         {overlay}
         <span className="impos__hint">{label}</span>
       </div>

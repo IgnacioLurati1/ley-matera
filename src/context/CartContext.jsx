@@ -21,14 +21,15 @@ export function CartProvider({ children }) {
   // Stock de un producto (null = no se controla) y unidades que ya hay en el
   // carrito de ese producto, sumando las que vienen de promos.
   const stockOf = useCallback((productId) => products.find((p) => p.id === productId)?.stock ?? null, [products]);
+  // Tope de unidades según el stock. Sin stock (0) no hay tope: se reserva.
+  const capOf = (stock) => (stock == null || stock === 0 ? Infinity : stock);
   const inCartOf = (list, productId, exceptKey = null) =>
     list.filter((i) => i.productId === productId && keyOf(i.productId, i.promoId) !== exceptKey).reduce((n, i) => n + i.qty, 0);
 
   // Devuelve cuántas unidades se pudieron sumar (0 si no hay más stock).
   const add = useCallback(
     (productId, promoId = null, qty = 1) => {
-      const stock = stockOf(productId);
-      const room = stock == null ? qty : Math.max(0, Math.min(qty, stock - inCartOf(items, productId)));
+      const room = Math.max(0, Math.min(qty, capOf(stockOf(productId)) - inCartOf(items, productId)));
       if (room <= 0) return 0;
       setItems((prev) => {
         const k = keyOf(productId, promoId);
@@ -47,8 +48,7 @@ export function CartProvider({ children }) {
       setItems((prev) => {
         if (qty <= 0) return prev.filter((i) => keyOf(i.productId, i.promoId) !== key);
         const item = prev.find((i) => keyOf(i.productId, i.promoId) === key);
-        const stock = item ? stockOf(item.productId) : null;
-        const max = stock == null ? qty : Math.max(1, stock - inCartOf(prev, item.productId, key));
+        const max = item ? Math.max(1, capOf(stockOf(item.productId)) - inCartOf(prev, item.productId, key)) : qty;
         return prev.map((i) => (keyOf(i.productId, i.promoId) === key ? { ...i, qty: Math.min(qty, max) } : i));
       });
     },
@@ -70,33 +70,32 @@ export function CartProvider({ children }) {
         const promoLive = promo && isPromoLive(promo);
         const promoItem = promoLive ? promo.items.find((x) => x.productId === i.productId) : null;
         const unit = unitPrice(product, promoItem?.promoPrice ?? null);
+        // Sin stock se pide igual, como reserva.
         const soldOut = product.stock === 0;
         return {
           soldOut,
-          atMax: product.stock != null && i.qty >= product.stock,
+          atMax: product.stock != null && !soldOut && i.qty >= product.stock,
           key: keyOf(i.productId, i.promoId),
           ...i,
           promoId: promoLive ? i.promoId : null,
           promo: promoLive ? promo : null,
           product,
           unit,
-          subtotal: soldOut ? 0 : unit * i.qty,
+          subtotal: unit * i.qty,
         };
       })
       .filter(Boolean);
   }, [items, products, promos]);
 
-  // Lo que se quedó sin stock después de agregarlo no entra en el pedido.
-  const orderable = lines.filter((l) => !l.soldOut);
-  const count = orderable.reduce((n, l) => n + l.qty, 0);
-  const total = orderable.reduce((n, l) => n + l.subtotal, 0);
+  const count = lines.reduce((n, l) => n + l.qty, 0);
+  const total = lines.reduce((n, l) => n + l.subtotal, 0);
   // El código no lleva precios: el lector del admin los toma siempre del catálogo.
-  const code = orderable.length ? encodeOrder(orderable) : '';
+  const code = lines.length ? encodeOrder(lines) : '';
 
   // Mensaje para WhatsApp: sin precios (el cliente podría editarlos) y sin
   // emojis, que algunos WhatsApp no muestran bien al abrir desde el link.
   const buildMessage = useCallback(() => {
-    const rows = orderable.map((l) => {
+    const rows = lines.map((l) => {
       const promo = l.promo ? ` - Promo "${l.promo.title}"` : '';
       return `- ${l.qty} x ${l.product.title} (${l.promoId ? `${l.promoId}-` : ''}${l.product.id})${promo}`;
     });
@@ -109,7 +108,7 @@ export function CartProvider({ children }) {
       '',
       '¡Muchas gracias!',
     ].join('\n');
-  }, [orderable, code]);
+  }, [lines, code]);
 
   const orderLink = useCallback(() => whatsappLink(buildMessage()), [buildMessage]);
 

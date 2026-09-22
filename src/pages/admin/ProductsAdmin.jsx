@@ -10,6 +10,7 @@ import ProductCard from '../../components/ProductCard';
 import ProductImage from '../../components/ProductImage';
 import ImagePositioner from '../../components/ImagePositioner';
 import ImageDrop from '../../components/ImageDrop';
+import { PRODUCT_SIZES } from '../../lib/media';
 import { EditIcon, StarIcon, TrashIcon } from '../../components/Icons';
 
 // Desde cuántas unidades se avisa que queda poco.
@@ -25,6 +26,7 @@ const EMPTY = {
   image: '',
   stock: null,
   discount: 0,
+  description: '',
 };
 
 // Campo numérico chico de la fila (stock / descuento): guarda al salir del
@@ -60,14 +62,18 @@ function InlineNumber({ product, field, label, title, empty, max, suffix = '', o
   );
 }
 
+// "a", "a y b", "a, b y c"
+const listJoin = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs.at(-1)}`);
+
 function ProductEditor({ initial, onClose }) {
-  const { saveProduct, stockEnabled, discountEnabled } = useData();
+  const { saveProduct, stockEnabled, discountEnabled, descriptionEnabled } = useData();
   const { run } = useUI();
   const [form, setForm] = useState({
     ...initial,
     price: initial.price === '' ? '' : String(initial.price),
     stock: initial.stock == null ? '' : String(initial.stock),
     discount: initial.discount ? String(initial.discount) : '',
+    description: initial.description ?? '',
   });
   // Encuadre de la foto: si es nueva la recortamos al publicar.
   const [frame, setFrame] = useState(initial.image ? { src: initial.image, x: 50, y: 50, zoom: 1 } : null);
@@ -170,7 +176,21 @@ function ProductEditor({ initial, onClose }) {
               }
               placeholder="Vacío = no controlar stock"
             />
-            <small>Con 0 el producto aparece como “Sin stock” y no se puede pedir.</small>
+            <small>Con 0 el producto aparece como “Sin stock” y el botón pasa a “Reservarlo”.</small>
+          </label>
+        )}
+        {descriptionEnabled && (
+          <label className="field">
+            <span>Descripción</span>
+            <textarea
+              className="textarea"
+              value={form.description}
+              onChange={set('description')}
+              placeholder="Ej: Calabaza curada a mano, virola de alpaca cincelada. Capacidad aprox. 200 ml."
+              maxLength={1500}
+              rows={5}
+            />
+            <small>Se ve al tocar el producto en el catálogo. Podés usar varios párrafos.</small>
           </label>
         )}
         <div className="field">
@@ -179,6 +199,7 @@ function ProductEditor({ initial, onClose }) {
             <>
               <ImagePositioner
                 frame={frame}
+                variants={PRODUCT_SIZES}
                 onChange={(f) => {
                   setFrame(f);
                   setFrameTouched(true);
@@ -232,7 +253,8 @@ function ProductEditor({ initial, onClose }) {
 }
 
 export default function ProductsAdmin() {
-  const { products, settings, deleteProduct, setFeatured, stockEnabled, discountEnabled } = useData();
+  const { products, settings, deleteProduct, setFeatured, stockEnabled, discountEnabled, descriptionEnabled } =
+    useData();
   const { run } = useUI();
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState('');
@@ -248,6 +270,11 @@ export default function ProductsAdmin() {
   }, [params, setParams]);
 
   const featured = settings?.featured ?? [];
+  const missingMigrations = [
+    !stockEnabled && { feature: 'el stock', file: 'migrations_stock.sql' },
+    !discountEnabled && { feature: 'los descuentos', file: 'migrations_discount.sql' },
+    !descriptionEnabled && { feature: 'las descripciones', file: 'migrations_description.sql' },
+  ].filter(Boolean);
   // Arriba de todo los que se quedaron sin stock (rojo) y después los que
   // tienen poco (amarillo), de menos a más. El resto, del más nuevo al más viejo.
   const list = useMemo(() => {
@@ -276,18 +303,17 @@ export default function ProductsAdmin() {
           + Nuevo producto
         </button>
       </div>
-      {(!stockEnabled || !discountEnabled) && (
+      {missingMigrations.length > 0 && (
         <p className="warn">
-          Para usar{' '}
-          {!stockEnabled && !discountEnabled
-            ? 'el stock y los descuentos'
-            : !stockEnabled
-              ? 'el stock'
-              : 'los descuentos'}{' '}
-          falta un paso en Supabase: abrí el SQL Editor y corré{' '}
-          {!stockEnabled && <code>supabase/migrations_stock.sql</code>}
-          {!stockEnabled && !discountEnabled && ' y '}
-          {!discountEnabled && <code>supabase/migrations_discount.sql</code>}. Después recargá esta página.
+          Para usar {listJoin(missingMigrations.map((m) => m.feature))} falta un paso en Supabase: abrí el SQL Editor y
+          corré{' '}
+          {missingMigrations.map((m, i) => (
+            <span key={m.file}>
+              {i > 0 && (i === missingMigrations.length - 1 ? ' y ' : ', ')}
+              <code>supabase/{m.file}</code>
+            </span>
+          ))}
+          . Después recargá esta página.
         </p>
       )}
       <div className="toolbar">

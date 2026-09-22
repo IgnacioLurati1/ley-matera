@@ -1,10 +1,12 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 
-// Modales globales (contacto, cómo pedir) y avisos tipo toast.
+// Modales globales (contacto, cómo pedir, ficha de un producto) y avisos tipo toast.
 const UIContext = createContext(null);
 
 export function UIProvider({ children }) {
   const [modal, setModal] = useState(null);
+  // Producto abierto en la ficha: { product, promoId, promoPrice }.
+  const [productView, setProductView] = useState(null);
   const [toasts, setToasts] = useState([]);
 
   const value = useMemo(() => {
@@ -17,6 +19,9 @@ export function UIProvider({ children }) {
       modal,
       openModal: setModal,
       closeModal: () => setModal(null),
+      productView,
+      openProduct: (product, promoId = null, promoPrice = null) => setProductView({ product, promoId, promoPrice }),
+      closeProduct: () => setProductView(null),
       toasts,
       toast,
       // Ejecuta una acción que guarda en la base y avisa el resultado.
@@ -32,7 +37,7 @@ export function UIProvider({ children }) {
         }
       },
     };
-  }, [modal, toasts]);
+  }, [modal, toasts, productView]);
 
   return <UIContext.Provider value={value}>{children}</UIContext.Provider>;
 }

@@ -45,6 +45,22 @@ export const stockToast = (moved, base) => {
 // Al borrarla sólo se devuelve si todavía no se había cobrado ni entregado
 // (si ya se pagó o entregó, el mate efectivamente se fue).
 const holdsStock = (o) => o.status !== 'cancelado';
+
+// Marca en cada item cuántas unidades no había en stock al registrar la venta
+// (`reserved`): quedan como reserva, no se descuentan ni se devuelven después.
+export const withReserved = (items, products) => {
+  const left = new Map();
+  return (items ?? []).map((i) => {
+    const stock = products.find((p) => p.id === i.productId)?.stock;
+    if (stock == null) return i;
+    const qty = i.qty || 1;
+    const avail = left.get(i.productId) ?? stock;
+    const taken = Math.min(avail, qty);
+    left.set(i.productId, avail - taken);
+    return qty > taken ? { ...i, reserved: qty - taken } : i;
+  });
+};
+
 export const restoresOnDelete = (o) => o.status === 'reservado' || o.status === 'senado';
 
 const COLS = 'id,code,client,description,items,price,deposit,status,note,created_at';
@@ -81,7 +97,7 @@ const isMissingTable = (e) =>
   (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|could not find the table/i.test(e.message ?? ''));
 
 export function OrdersProvider({ children }) {
-  const { adjustStock } = useData();
+  const { adjustStock, products } = useData();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(Boolean(supabase));
   const [missing, setMissing] = useState(false);
@@ -109,12 +125,13 @@ export function OrdersProvider({ children }) {
   const addOrder = useCallback(
     async (order) => {
       guard();
-      const saved = fromRow(ensure(await supabase.from('orders').insert(toRow(order)).select(COLS).single()));
+      const row = toRow({ ...order, items: withReserved(order.items, products) });
+      const saved = fromRow(ensure(await supabase.from('orders').insert(row).select(COLS).single()));
       setOrders((list) => [saved, ...list]);
       const changes = holdsStock(saved) ? await adjustStock(saved.items, -1) : [];
       return { order: saved, stock: { sign: -1, changes } };
     },
-    [guard, adjustStock],
+    [guard, adjustStock, products],
   );
 
   // Optimista: la tabla se actualiza al toque y si falla se vuelve atrás.

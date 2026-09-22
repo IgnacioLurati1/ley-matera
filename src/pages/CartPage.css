@@ -86,3 +86,4 @@
   .cartline__del { grid-area: del; align-self: start; }
 }
 .cartline__warn { color: var(--danger); font-size: 0.82rem; font-weight: 700; }
+.cartline__reserve { color: var(--wood); font-size: 0.82rem; font-weight: 700; }

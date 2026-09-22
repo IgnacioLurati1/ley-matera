@@ -67,6 +67,7 @@ export default function CartDropdown() {
                   <div className="cartdd__info">
                     <span className="cartdd__title">{l.product.title}</span>
                     {l.promo && <span className="badge">Promo</span>}
+                    {l.soldOut && <span className="cartdd__reserve">Reserva (sin stock)</span>}
                     <div className="cartdd__row">
                       <QtyStepper value={l.qty} onChange={(q) => setQty(l.key, q)} small />
                       <strong>{money(l.subtotal)}</strong>
@@ -79,13 +80,9 @@ export default function CartDropdown() {
               <span>Total</span>
               <strong>{money(total)}</strong>
             </div>
-            {count > 0 ? (
-              <a className="btn btn--whatsapp btn--block" href={orderLink()} target="_blank" rel="noreferrer">
-                <WhatsAppIcon size={20} /> Solicitar productos
-              </a>
-            ) : (
-              <p className="cartdd__empty">Estos productos no tienen stock ahora.</p>
-            )}
+            <a className="btn btn--whatsapp btn--block" href={orderLink()} target="_blank" rel="noreferrer">
+              <WhatsAppIcon size={20} /> Solicitar productos
+            </a>
           </>
         )}
         <Link to="/carrito" className="btn btn--ghost btn--block cartdd__details" onClick={() => setOpen(false)}>

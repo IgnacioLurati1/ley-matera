@@ -7,7 +7,7 @@ import { money } from '../../lib/format';
 import { unitPrice } from '../../lib/pricing';
 import { categoryLabel } from '../../config/categories';
 import ProductImage from '../../components/ProductImage';
-import { STATUSES, halfOf, stockToast, useOrders } from '../../context/OrdersContext';
+import { STATUSES, halfOf, stockToast, useOrders, withReserved } from '../../context/OrdersContext';
 import './Sales.css';
 
 const REGISTER_STATUSES = STATUSES.filter((s) => s.id !== 'cancelado' && s.id !== 'entregado');
@@ -17,10 +17,12 @@ const describe = (lines) =>
   lines.map((l) => `${l.qty > 1 ? `${l.qty}x ` : ''}${l.product?.title ?? l.productId}`).join(' + ');
 
 // Carga el pedido leído como venta: cliente, precio y si quedó reservado,
-// señado o pagado. Después se sigue editando en Ventas.
+// señado o pagado. Después se sigue editando en Ventas. Si trae productos sin
+// stock arranca siempre como "Reservado".
 function RegisterSale({ order, total }) {
   const { orders, addOrder, missing } = useOrders();
   const { run } = useUI();
+  const reserved = order.lines.filter((l) => l.reserved > 0);
   const [client, setClient] = useState('');
   const [description, setDescription] = useState(() => describe(order.lines));
   const [price, setPrice] = useState(String(total));
@@ -30,7 +32,7 @@ function RegisterSale({ order, total }) {
 
   const priceN = Number(price) || 0;
   const depositN = status === 'senado' ? Number(deposit) || 0 : 0;
-  const tracked = order.lines.filter((l) => l.product?.stock != null);
+  const tracked = order.lines.filter((l) => l.product?.stock != null && l.qty > l.reserved);
   const existing = order.code ? orders.find((o) => o.code === order.code) : null;
 
   const pick = (id) => {
@@ -76,6 +78,12 @@ function RegisterSale({ order, total }) {
       }}
     >
       <h4>Registrar esta venta</h4>
+      {reserved.length > 0 && (
+        <p className="register__reserve">
+          Hay productos sin stock ({reserved.map((l) => `${l.reserved} × ${l.product.title}`).join(', ')}): la venta
+          queda como <strong>Reservado</strong> y esas unidades no se descuentan del stock.
+        </p>
+      )}
       {existing && (
         <p className="warn">
           Este código ya está cargado a nombre de <strong>{existing.client || 'sin nombre'}</strong>. Si lo registrás de
@@ -152,8 +160,9 @@ function RegisterSale({ order, total }) {
         </span>
         {tracked.length > 0 && (
           <span className="hint" style={{ flexBasis: '100%', margin: 0 }}>
-            Al guardar se descuenta del stock: {tracked.map((l) => `${l.qty} × ${l.product.title}`).join(', ')}. Si
-            después la cancelás, vuelve al stock.
+            Al guardar se descuenta del stock:{' '}
+            {tracked.map((l) => `${l.qty - l.reserved} × ${l.product.title}`).join(', ')}. Si después la cancelás,
+            vuelve al stock.
           </span>
         )}
         <button className="btn" type="submit" disabled={!priceN && !description.trim()}>
@@ -165,10 +174,11 @@ function RegisterSale({ order, total }) {
 }
 
 // Resuelve los items de un pedido contra el catálogo y las promos actuales.
+// `reserved` = unidades que no hay en stock (se venden como reserva).
 function resolve(items, products, promos) {
   const pMap = new Map(products.map((p) => [p.id, p]));
   const prMap = new Map(promos.map((p) => [p.id, p]));
-  return items.map((i) => {
+  return withReserved(items, products).map((i) => {
     const product = pMap.get(i.productId);
     const promo = i.promoId ? prMap.get(i.promoId) : null;
     const promoItem = promo?.items.find((x) => x.productId === i.productId);
@@ -177,10 +187,8 @@ function resolve(items, products, promos) {
     if (i.promoId && !promo) notes.push(`La promo ${i.promoId} ya no existe`);
     else if (promo && !isPromoLive(promo)) notes.push('La promo ya no está vigente');
     if (promo && !promoItem) notes.push('El producto ya no está en esa promo');
-    if (product?.stock === 0) notes.push('Sin stock');
-    else if (product?.stock != null && product.stock < i.qty) notes.push(`Sólo hay ${product.stock} en stock`);
     const unit = product ? unitPrice(product, promoItem?.promoPrice ?? null) : 0;
-    return { ...i, product, promo, unit, subtotal: unit * i.qty, notes };
+    return { ...i, reserved: product ? (i.reserved ?? 0) : 0, product, promo, unit, subtotal: unit * i.qty, notes };
   });
 }
 
@@ -208,7 +216,7 @@ export default function OrderReader() {
       `Pedido ${o.code ?? ''}`.trim(),
       ...o.lines.map(
         (l) =>
-          `• ${l.qty} x ${l.product?.title ?? l.productId} (${l.promoId ? `${l.promoId}-` : ''}${l.productId})${l.promo ? ` [${l.promo.title}]` : ''} — ${money(l.subtotal)}`,
+          `• ${l.qty} x ${l.product?.title ?? l.productId} (${l.promoId ? `${l.promoId}-` : ''}${l.productId})${l.promo ? ` [${l.promo.title}]` : ''}${l.reserved ? ` (${l.reserved} sin stock, reserva)` : ''} — ${money(l.subtotal)}`,
       ),
       `Total: ${money(current)}`,
     ].join('\n');
@@ -272,6 +280,13 @@ export default function OrderReader() {
                       {l.product && ` · ${categoryLabel(l.product.category)}`}
                       {l.promo && ` · Promo “${l.promo.title}”`}
                     </span>
+                    {l.reserved > 0 && (
+                      <span className="reader__reserve">
+                        {l.reserved === l.qty
+                          ? 'Sin stock: va como reserva'
+                          : `Hay ${l.qty - l.reserved} en stock: ${l.reserved} ${l.reserved === 1 ? 'va' : 'van'} como reserva`}
+                      </span>
+                    )}
                     {l.notes.map((n) => (
                       <span key={n} style={{ color: 'var(--danger)', fontWeight: 700 }}>
                         ⚠ {n}

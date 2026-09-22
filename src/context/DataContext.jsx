@@ -20,6 +20,7 @@ const productFromRow = (r) => ({
   image: r.image,
   stock: r.stock ?? null,
   discount: r.discount ?? 0,
+  description: r.description ?? '',
   createdAt: r.created_at,
 });
 const productToRow = (p) => ({
@@ -29,6 +30,7 @@ const productToRow = (p) => ({
   image: p.image,
   ...(optional.stock ? { stock: p.stock ?? null } : {}),
   ...(optional.discount ? { discount: p.discount ?? 0 } : {}),
+  ...(optional.description ? { description: (p.description ?? '').trim() } : {}),
 });
 
 const promoFromRow = (r) => ({
@@ -60,10 +62,10 @@ const promoToRow = (p) => ({
   position: p.position ?? 0,
 });
 
-// Columnas que se agregaron después (stock, descuento). Si alguna todavía no
+// Columnas que se agregaron después (stock, descuento, descripción). Si alguna todavía no
 // existe en la base (falta correr su migración en supabase/), el sitio sigue
 // andando sin esa función.
-const optional = { stock: true, discount: true };
+const optional = { stock: true, discount: true, description: true };
 const productCols = () =>
   ['id,title,category,price,image,created_at', ...Object.keys(optional).filter((k) => optional[k])].join(',');
 const missingColumn = (e) =>
@@ -194,12 +196,16 @@ export function DataProvider({ children }) {
       },
 
       // Mueve el stock por una venta: sign = -1 descuenta, +1 devuelve.
-      // Sólo toca productos que controlan stock (stock no vacío).
+      // Sólo toca productos que controlan stock (stock no vacío). Las unidades
+      // que se vendieron sin stock (`reserved`) nunca salieron del stock.
       adjustStock: async (items, sign) => {
         guard();
         if (!optional.stock) return [];
         const qty = new Map();
-        (items ?? []).forEach((i) => qty.set(i.productId, (qty.get(i.productId) ?? 0) + (i.qty || 1)));
+        (items ?? []).forEach((i) => {
+          const n = (i.qty || 1) - (i.reserved || 0);
+          if (n > 0) qty.set(i.productId, (qty.get(i.productId) ?? 0) + n);
+        });
         const changes = [...qty]
           .map(([id, n]) => {
             const p = state.products.find((x) => x.id === id);
@@ -279,6 +285,7 @@ export function DataProvider({ children }) {
       readOnly,
       stockEnabled: readOnly || optional.stock,
       discountEnabled: readOnly || optional.discount,
+      descriptionEnabled: readOnly || optional.description,
       ...actions,
     }),
     [state, loading, error, readOnly, actions],

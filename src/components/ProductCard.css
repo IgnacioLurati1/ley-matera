@@ -87,5 +87,16 @@
 }
 .pcard__stock--out { color: var(--muted); }
 .pcard.is-soldout .pimg { filter: grayscale(0.7); opacity: 0.75; }
-.pcard__add:disabled { border-color: var(--line); color: var(--muted); cursor: not-allowed; }
-.pcard__add:disabled:hover { background: transparent; color: var(--muted); }
+/* Sin stock: se reserva, con el color madera para diferenciarlo de "Agregar". */
+.pcard.is-soldout .pcard__add { border-color: var(--wood); color: var(--wood); }
+.pcard.is-soldout .pcard__add:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Botón que abre la ficha: toda la tarjeta es clickeable menos "Agregar". */
+.pcard__open {
+  all: unset;
+  cursor: pointer;
+}
+.pcard__open::after { content: ''; position: absolute; inset: 0; z-index: 1; }
+.pcard__open:focus-visible { outline: none; }
+.pcard:has(.pcard__open:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
+.pcard__add { position: relative; z-index: 2; }

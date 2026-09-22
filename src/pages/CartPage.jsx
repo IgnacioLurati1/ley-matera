@@ -72,8 +72,8 @@ export default function CartPage() {
                         {money(l.unit)} c/u
                         {l.unit < l.product.price && <s> {money(l.product.price)}</s>}
                       </span>
-                      {l.soldOut && <span className="cartline__warn">Se quedó sin stock: no entra en el pedido</span>}
-                      {!l.soldOut && l.atMax && <span className="cartline__warn">No hay más unidades disponibles</span>}
+                      {l.soldOut && <span className="cartline__reserve">Sin stock: lo pedís como reserva</span>}
+                      {l.atMax && <span className="cartline__warn">No hay más unidades disponibles</span>}
                     </div>
                     <QtyStepper value={l.qty} onChange={(q) => setQty(l.key, q)} />
                     <strong className="cartline__sub">{money(l.subtotal)}</strong>
@@ -95,26 +95,18 @@ export default function CartPage() {
                   </span>
                   <strong>{money(total)}</strong>
                 </div>
-                {count === 0 ? (
-                  <p className="cartpage__note">
-                    Ninguno de estos productos tiene stock ahora. Quitalos o sumá otros para hacer el pedido.
-                  </p>
-                ) : (
-                  <>
-                    <a
-                      className="btn btn--whatsapp btn--block cartpage__order"
-                      href={orderLink()}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <WhatsAppIcon size={22} /> Solicitar productos
-                    </a>
-                    <p className="cartpage__note">
-                      Se abre WhatsApp con tu pedido listo para enviar. Te confirmamos el precio final por ahí. Tu
-                      código de pedido es <code>{code}</code>
-                    </p>
-                  </>
-                )}
+                <a
+                  className="btn btn--whatsapp btn--block cartpage__order"
+                  href={orderLink()}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <WhatsAppIcon size={22} /> Solicitar productos
+                </a>
+                <p className="cartpage__note">
+                  Se abre WhatsApp con tu pedido listo para enviar. Te confirmamos el precio final por ahí. Tu
+                  código de pedido es <code>{code}</code>
+                </p>
                 <button className="btn btn--sm btn--ghost cartpage__clear" onClick={clear}>
                   Vaciar carrito
                 </button>
