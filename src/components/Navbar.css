@@ -49,8 +49,6 @@
 .nav__brand { display: block; line-height: 0; }
 .nav__logo-wrap { position: relative; display: inline-block; }
 .nav__logo {
-  border: 3px solid rgb(255 255 255 / 0.9);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 0.2);
   transition: width 0.45s var(--ease), height 0.45s var(--ease), transform 0.3s var(--ease);
 }
 .nav__brand:hover .nav__logo { transform: rotate(-6deg) scale(1.04); }
