@@ -806,6 +806,12 @@ export default class Zombies {
       zz.stateT = 0;
       zz.twitchT = 1 + r() * 4;
       zz.twitch = 0;
+      zz.corpseT = 0;
+      zz.state = null;
+      // el lugar puede venir de un cadáver: que no herede la pose de acostado
+      zz.P.rootPitch = 0;
+      zz.P.rootRoll = 0;
+      zz.P.rootY = 0;
       zz.colors = {
         skin: SKIN[Math.floor(r() * SKIN.length)],
         shirt: SHIRT[Math.floor(r() * SHIRT.length)],
