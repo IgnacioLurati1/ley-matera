@@ -1,6 +1,6 @@
 import { createPeer, makeOffer, makeAnswer, acceptAnswer, waitOpen, packCode, unpackCode } from './rtc';
 
-// Sala de hasta 4 jugadores. La compu del anfitrión es el "servidor": simula
+// Sala de hasta 5 jugadores. La compu del anfitrión es el "servidor": simula
 // todo y les manda el estado a los demás. Para encontrarse hay dos caminos:
 //   · con código de sala corto, si el sitio trae un canal de encuentro
 //     (`signal`, lo pone la tienda con Supabase);
@@ -8,7 +8,7 @@ import { createPeer, makeOffer, makeAnswer, acceptAnswer, waitOpen, packCode, un
 //     devuelve otro (copiar y pegar por WhatsApp).
 // Una vez conectados, los datos van directo de una compu a la otra.
 
-export const MAX_PLAYERS = 4;
+export const MAX_PLAYERS = 5;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 // Los nombres llegan de otras compus: se dejan cortos y sin caracteres de HTML.

@@ -5,7 +5,7 @@ import { makePose, solvePose, PART_COUNT } from '../entities/skeleton';
 // color que se bambolea al moverse y su mate en la mano, animado con el mismo
 // esqueleto que los zombies. Arriba lleva el nombre.
 
-const PONCHOS = [0xa8231c, 0x1e5aa8, 0x1f7a3a, 0xc9a02a];
+const PONCHOS = [0xa8231c, 0x1e5aa8, 0x1f7a3a, 0xc9a02a, 0x6a2a8a];
 const tmpRot = new THREE.Matrix4();
 const tmpEul = new THREE.Euler();
 

@@ -96,8 +96,9 @@ export default class Arena {
     g.audio.bossArrive();
     g.weather.set('blood', false);
     // cada uno en su lugar (en línea no aparecen todos encimados)
-    const slot = g.net ? g.net.id : 0;
-    g.player.pos.set(ARENA.x + (slot - 1.5) * 1.6 * (g.net ? 1 : 0), 0, ARENA.z + ARENA.r - 3);
+    const ids = g.net ? [g.net.id, ...g.net.remote.keys()].sort((a, b) => a - b) : [0];
+    const slot = ids.indexOf(g.net ? g.net.id : 0);
+    g.player.pos.set(ARENA.x + (slot - (ids.length - 1) / 2) * 1.6, 0, ARENA.z + ARENA.r - 3);
     g.player.vel.set(0, 0, 0);
     g.player.yaw = 0;
     g.player.pitch = 0;
