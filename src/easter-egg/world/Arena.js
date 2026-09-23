@@ -95,11 +95,19 @@ export default class Arena {
     g.post.flash(1.6);
     g.audio.bossArrive();
     g.weather.set('blood', false);
-    g.player.pos.set(ARENA.x, 0, ARENA.z + ARENA.r - 3);
+    // cada uno en su lugar (en línea no aparecen todos encimados)
+    const slot = g.net ? g.net.id : 0;
+    g.player.pos.set(ARENA.x + (slot - 1.5) * 1.6 * (g.net ? 1 : 0), 0, ARENA.z + ARENA.r - 3);
     g.player.vel.set(0, 0, 0);
     g.player.yaw = 0;
     g.player.pitch = 0;
-    if (g.player.downed) g.player.downed = false;
+    // al final van todos: el que estaba caído o mirando vuelve a pelear
+    if (!g.player.alive || g.player.downed) {
+      g.player.revive();
+      g.player.eye = 1.62;
+      g.hud.setSpectate(null);
+      g.hud.setDowned(null);
+    }
     g.player.health = g.player.maxHealth;
     g.weapons.maxAmmo();
     g.hud.location(this.name, 'Donde el diablo enseña a payar');
@@ -130,15 +138,47 @@ export default class Arena {
     g.later(4, () => g.win());
   }
 
+  // El anfitrión elige a quién (a cualquiera de los que están en pie) y avisa:
+  // todos la ven volar y cada uno se fija si le pega a él.
   fireball(from) {
     const g = this.g;
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff6a1a).multiplyScalar(3), toneMapped: false }));
+    const targets = [];
+    if (g.player.canBeHit()) targets.push(g.player.pos);
+    if (g.net) for (const r of g.net.remote.values()) if (!r.dead && !r.downed) targets.push(r.pos);
+    if (!targets.length) return;
+    const tp = targets[Math.floor(Math.random() * targets.length)];
+    const vel = new THREE.Vector3(tp.x, tp.y + 1.5, tp.z).sub(from).normalize().multiplyScalar(15);
+    this.spawnFireball(from, vel);
+    g.net?.event('fireball', { x: +from.x.toFixed(2), y: +from.y.toFixed(2), z: +from.z.toFixed(2), vx: +vel.x.toFixed(2), vy: +vel.y.toFixed(2), vz: +vel.z.toFixed(2) });
+  }
+
+  spawnFireball(from, vel) {
+    const g = this.g;
+    this.fireMat ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff6a1a).multiplyScalar(3), toneMapped: false });
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8), this.fireMat);
     mesh.position.copy(from);
     g.scene.add(mesh);
-    const target = g.camera.position.clone();
-    const vel = target.sub(from).normalize().multiplyScalar(15);
-    this.fireballs.push({ mesh, vel, t: 0, from: from.clone() });
+    this.fireballs.push({ mesh, vel: vel.clone(), t: 0, from: from.clone() });
     g.audio.launcher(from);
+  }
+
+  // Las bolas de fuego vuelan igual en todas las compus; cada uno se cuida la suya.
+  updateFireballs(dt) {
+    const g = this.g;
+    for (let i = this.fireballs.length - 1; i >= 0; i--) {
+      const f = this.fireballs[i];
+      f.t += dt;
+      f.mesh.position.addScaledVector(f.vel, dt);
+      if (Math.random() < 0.8) g.fx.fire(f.mesh.position, 0.2, 1);
+      const hit = g.player.canBeHit() && f.mesh.position.distanceTo(g.camera.position) < 0.9;
+      if (hit || f.t > 4 || f.mesh.position.y < 0.1) {
+        if (hit) g.player.damage(45, f.from);
+        g.fx.explosion(f.mesh.position, 1.2, [1, 0.45, 0.15]);
+        g.audio.explosion(f.mesh.position, 0.5);
+        f.mesh.removeFromParent();
+        this.fireballs.splice(i, 1);
+      }
+    }
   }
 
   update(dt) {
@@ -156,6 +196,7 @@ export default class Arena {
       }
       for (const b of this.braziers) if (Math.random() < 0.5) g.fx.fire(b, 0.5, 1);
       for (const l of this.lights) l.intensity = 34 + Math.sin(this.t * 11 + l.position.x) * 6;
+      this.updateFireballs(dt);
       return;
     }
     // nadie sale del círculo
@@ -190,8 +231,7 @@ export default class Arena {
       b.speed = k < 0.5 ? 4.3 : 3.2;
       // bolas de fuego a distancia
       this.fireT -= dt;
-      const d = Math.hypot(g.player.pos.x - b.pos.x, g.player.pos.z - b.pos.z);
-      if (this.fireT <= 0 && d > 4 && !b.dead && b.state === 'chase') {
+      if (this.fireT <= 0 && !b.dead && b.state === 'chase') {
         this.fireT = k < 0.5 ? 2.6 : 4.2;
         const hand = tmpV.set(b.pos.x + Math.sin(b.yaw) * 0.8, 2.6, b.pos.z + Math.cos(b.yaw) * 0.8).clone();
         this.fireball(hand);
@@ -205,21 +245,7 @@ export default class Arena {
         g.powerups.drop(new THREE.Vector3(ARENA.x + (Math.random() - 0.5) * 12, 0, ARENA.z + (Math.random() - 0.5) * 12), true);
       }
     }
-    // bolas de fuego en vuelo
-    for (let i = this.fireballs.length - 1; i >= 0; i--) {
-      const f = this.fireballs[i];
-      f.t += dt;
-      f.mesh.position.addScaledVector(f.vel, dt);
-      if (Math.random() < 0.8) g.fx.fire(f.mesh.position, 0.2, 1);
-      const hit = f.mesh.position.distanceTo(g.camera.position) < 0.9;
-      if (hit || f.t > 4 || f.mesh.position.y < 0.1) {
-        if (hit) g.player.damage(45, f.from);
-        g.fx.explosion(f.mesh.position, 1.2, [1, 0.45, 0.15]);
-        g.audio.explosion(f.mesh.position, 0.5);
-        f.mesh.removeFromParent();
-        this.fireballs.splice(i, 1);
-      }
-    }
+    this.updateFireballs(dt);
   }
 
   wave(n) {

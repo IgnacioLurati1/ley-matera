@@ -117,7 +117,8 @@ export default class Pombero {
   // Cae un potenciador (lo llama quien simula: en solitario o el anfitrión).
   onDrop(item) {
     const g = this.g;
-    if (g.net?.guest || this.z.active || g.time < this.next || (g.rounds?.round || 0) < 2) return;
+    // arriba en el altillo no lo va a buscar
+    if (g.net?.guest || this.z.active || g.time < this.next || (g.rounds?.round || 0) < 2 || item.pos.y > 1) return;
     if (Math.random() > CHANCE) return;
     this.next = g.time + COOLDOWN;
     g.later(1.5 + Math.random() * 2, () => this.spawn(item));

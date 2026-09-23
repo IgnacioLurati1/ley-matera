@@ -11,6 +11,7 @@ const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const tmpV3 = new THREE.Vector3();
+const UP_AXIS = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0);
 const DRINK_DIP = 0.2;
 const DRINK_DIR = new THREE.Vector3(-0.55, 0.25, 0.8).normalize();
@@ -46,6 +47,20 @@ export default class Weapons {
     this.vmScene.add(this.vmRoot);
     this.holder = new THREE.Group();
     this.vmRoot.add(this.holder);
+    // mano izquierda de los mates akimbo (espejada)
+    this.holder2 = new THREE.Group();
+    this.vmRoot.add(this.holder2);
+    this.side = 0;
+    this.kickL = 0;
+    // recarga "cambiar la yerba": la yerba lavada que cae al volcar
+    this.crumbs = [];
+    const crumbMat = new THREE.SpriteMaterial({ map: T.dot, color: 0x6f7c30, transparent: true, depthWrite: false });
+    for (let i = 0; i < 40; i++) {
+      const s = new THREE.Sprite(crumbMat.clone());
+      s.visible = false;
+      this.vmRoot.add(s);
+      this.crumbs.push({ s, life: 0, vel: new THREE.Vector3() });
+    }
 
     this.termo = buildTermo(T);
     this.termo.root.visible = false;
@@ -135,6 +150,23 @@ export default class Weapons {
 
   has(id) {
     return this.slots.some((s) => s.id === id);
+  }
+
+  // ¿Tengo el Mate del Chiquitijuein? (también si está en el Pack-a-Pava)
+  hasLuz() {
+    if (this.has('luzmala')) return true;
+    const pap = this.g.interact?.pap;
+    return !!pap?.entry && pap.entry.id === 'luzmala' && pap.entry.remote === undefined && pap.state !== 'idle';
+  }
+
+  // Saca un mate de las manos (al morirse se pierde el del Chiquitijuein).
+  drop(id) {
+    const i = this.slots.findIndex((s) => s.id === id);
+    if (i < 0) return;
+    this.slots.splice(i, 1);
+    if (!this.slots.length) this.slots.push({ id: 'porongo', up: 0, mag: 8, reserve: 32 });
+    this.cur = Math.min(this.cur, this.slots.length - 1);
+    this.startRaise();
   }
 
   // Agrega un arma (o recarga munición si ya la tenés).
@@ -243,6 +275,8 @@ export default class Weapons {
 
   equipModel() {
     this.holder.clear();
+    this.holder2.clear();
+    this.model2 = null;
     const s = this.slot;
     if (!s) return;
     const key = `${s.id}|${s.up}`;
@@ -254,6 +288,23 @@ export default class Weapons {
     this.model = m;
     this.holder.add(m.root);
     m.muzzle.add(this.flash);
+    if (WEAPONS[s.id].akimbo) {
+      // el de la otra mano: el mismo mate espejado
+      let m2 = this.models.get(`${key}|L`);
+      if (!m2) {
+        m2 = buildMate(s.id, s.up, this.T);
+        m2.root.scale.x *= -1;
+        this.models.set(`${key}|L`, m2);
+      }
+      this.model2 = m2;
+      this.holder2.add(m2.root);
+    }
+    this.side = 0;
+  }
+
+  // El mate que dispara ahora (con akimbo, van alternando).
+  get firing() {
+    return this.side && this.model2 ? this.model2 : this.model;
   }
 
   updateHud() {
@@ -275,11 +326,13 @@ export default class Weapons {
     this.fireCd -= dt;
     this.bloom = Math.max(0, this.bloom - dt * 1.6);
     this.recoilKick = Math.max(0, this.recoilKick - dt * 9);
+    this.kickL = Math.max(0, this.kickL - dt * 9);
     const st = this.stats;
     const canAct = p.alive && !g.paused;
 
     // ADS
-    const wantAds = canAct && input.mouse.right && !p.sprinting && this.state !== 'drink' && this.state !== 'knife' && st;
+    // con un mate en cada mano no se apunta con la mira
+    const wantAds = canAct && input.mouse.right && !p.sprinting && this.state !== 'drink' && this.state !== 'knife' && st && !st.akimbo;
     this.adsT += ((wantAds ? 1 : 0) - this.adsT) * Math.min(1, dt * 14);
     this.ads = this.adsT > 0.6;
 
@@ -410,7 +463,8 @@ export default class Weapons {
     this.state = 'reload';
     this.stateT = 0;
     this.reloadTime = st.reload * g.player.reloadMult;
-    if (!st.shellReload) this.pourSnd = g.audio.pour(this.reloadTime);
+    if (st.yerbaReload) this.pourSnd = g.audio.yerbaChange?.(this.reloadTime);
+    else if (!st.shellReload) this.pourSnd = g.audio.pour(this.reloadTime);
     else g.audio.mech(g.audio.now, [0]);
   }
 
@@ -523,6 +577,11 @@ export default class Weapons {
     const rateMult = p.perks.has('doubletap') ? 1.33 : 1;
     this.fireCd = 60 / st.rpm / rateMult;
     s.mag--;
+    // akimbo: tira una mano y después la otra
+    if (this.model2) {
+      this.side ^= 1;
+      this.firing.muzzle.add(this.flash);
+    }
     this.updateHud();
     g.audio.shot(st.sound, null, st.upgraded);
     g.stats.shots++;
@@ -542,7 +601,8 @@ export default class Weapons {
 
     const kick = st.recoil * (this.ads ? 0.6 : 1) * (p.crouching ? 0.8 : 1);
     p.addRecoil(kick * 0.35, (Math.random() - 0.5) * kick * 0.25);
-    this.recoilKick = Math.min(1.5, this.recoilKick + kick * 6 + 0.3);
+    if (this.model2 && this.side) this.kickL = Math.min(1.5, this.kickL + kick * 6 + 0.3);
+    else this.recoilKick = Math.min(1.5, this.recoilKick + kick * 6 + 0.3);
     this.bloom = Math.min(1, this.bloom + st.recoil * 2);
     this.flashT = 0.05;
     if (!st.special || st.kind === 'projectile') {
@@ -571,6 +631,9 @@ export default class Weapons {
       case 'stream':
         this.fireStream(st, origin, fwd, muzzle);
         break;
+      case 'wisp':
+        this.fireWisps(st, fwd, muzzle);
+        break;
       default:
         break;
     }
@@ -587,7 +650,7 @@ export default class Weapons {
 
   muzzleWorld(out) {
     // posición de la punta de la bombilla (en el espacio de la cámara) pasada al mundo
-    this.model.muzzle.getWorldPosition(out);
+    this.firing.muzzle.getWorldPosition(out);
     return this.g.camera.localToWorld(out);
   }
 
@@ -655,6 +718,55 @@ export default class Weapons {
     const hits = g.zombies.raycast(origin, dir, Math.min(t, range));
     const tt = hits.length ? hits[0].t : Math.min(t, range);
     return new THREE.Vector3().copy(origin).addScaledVector(dir, tt);
+  }
+
+  // Mate del Chiquitijuein: suelta lucecitas que buscan solas a los muertos.
+  fireWisps(st, fwd, muzzle) {
+    const W = st.wisp;
+    this.wispMat ||= new THREE.SpriteMaterial({ map: this.T.dot, color: 0x9aff6a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
+    for (let i = 0; i < W.count; i++) {
+      const a = (i - (W.count - 1) / 2) * 0.28;
+      const dir = fwd.clone().applyAxisAngle(UP_AXIS, a);
+      dir.y += 0.12 + Math.random() * 0.08;
+      dir.normalize();
+      const mesh = new THREE.Sprite(this.wispMat);
+      mesh.scale.setScalar(0.4);
+      this.spawnProjectile({ kind: 'wisp', pos: muzzle.clone(), vel: dir.multiplyScalar(W.speed * 0.5), gravity: 0, W, st, mesh, life: W.life, seek: 0 });
+    }
+  }
+
+  // Cada lucecita busca al muerto más cercano y dobla hacia él.
+  steerWisp(p, dt) {
+    const g = this.g;
+    p.seek -= dt;
+    if (p.seek <= 0 || !p.target?.active || p.target.dead) {
+      p.seek = 0.25;
+      let best = null;
+      let bd = 26;
+      for (const { z, d } of g.zombies.inRadius(p.pos, 26)) {
+        if (d < bd) {
+          bd = d;
+          best = z;
+        }
+      }
+      p.target = best;
+    }
+    const speed = Math.min(p.W.speed, p.vel.length() + dt * p.W.speed * 1.5);
+    if (p.target) {
+      const t = p.target;
+      tmpV2.set(t.pos.x - p.pos.x, t.pos.y + 1.2 * (t.scale || 1) - p.pos.y, t.pos.z - p.pos.z).normalize().multiplyScalar(speed);
+      p.vel.lerp(tmpV2, Math.min(1, dt * p.W.turn));
+    }
+    // un temblor de luz mala
+    p.vel.x += (Math.random() - 0.5) * dt * 6;
+    p.vel.y += (Math.random() - 0.5) * dt * 6;
+    p.vel.setLength(speed);
+    this.g.fx.sparkle(p.pos, [0.6, 1, 0.45], 1, 0.06);
+    p.mesh.scale.setScalar(0.34 + Math.sin(p.t * 30) * 0.06);
+  }
+
+  wispBoom(p, point) {
+    this.explode(point, p.W.radius, p.W.damage, { color: [0.55, 1, 0.4], big: 0.45 });
   }
 
   fireProjectile(st, origin, fwd, muzzle, spread) {
@@ -822,6 +934,15 @@ export default class Weapons {
         this.projectiles.splice(i, 1);
         continue;
       }
+      if (p.kind === 'wisp') {
+        if (p.t > p.life) {
+          this.wispBoom(p, p.pos);
+          p.mesh?.removeFromParent();
+          this.projectiles.splice(i, 1);
+          continue;
+        }
+        this.steerWisp(p, dt);
+      }
       if (p.t > p.life && p.kind === 'shot') {
         p.mesh?.removeFromParent();
         this.projectiles.splice(i, 1);
@@ -926,6 +1047,11 @@ export default class Weapons {
   // Devuelve true si el proyectil terminó.
   onProjectileHit(p, point, dir, zhit) {
     const g = this.g;
+    if (p.kind === 'wisp') {
+      this.wispBoom(p, point);
+      p.mesh?.removeFromParent();
+      return true;
+    }
     if (p.kind === 'bolt') {
       p.stuck = { z: zhit ? zhit.z : null, until: p.t + p.B.fuse };
       p.pos.copy(point);
@@ -1042,7 +1168,22 @@ export default class Weapons {
     let lower = 0;
     if (this.state === 'raise') lower = 1 - Math.min(1, t / 0.35);
     let pour = null;
-    if (this.state === 'reload' && st && !st.shellReload) {
+    let yerbaK = null;
+    if (this.state === 'reload' && st?.yerbaReload) {
+      // cambiar la yerba: se vuelcan hacia afuera (la yerba lavada cae), bajan
+      // a cargar yerba nueva de la bolsa y vuelven a subir llenos
+      const k = Math.min(1, t / this.reloadTime);
+      const dump = smooth(clamp01(k / 0.14)) * (1 - smooth(clamp01((k - 0.28) / 0.1)));
+      rz -= dump * 0.95;
+      rx -= dump * 0.3;
+      target.x -= dump * 0.1;
+      target.y += dump * 0.09;
+      target.z -= dump * 0.03;
+      // un sacudón al final del volcado para que salga todo
+      rz += dump * Math.sin(t * 38) * 0.05 * smooth(clamp01((k - 0.16) / 0.06));
+      lower = Math.max(lower, smooth(clamp01((k - 0.3) / 0.14)) * (1 - smooth(clamp01((k - 0.7) / 0.16))));
+      yerbaK = k;
+    } else if (this.state === 'reload' && st && !st.shellReload) {
       // cebar: el mate se acerca y muestra la boca; el termo se la busca
       const k = Math.min(1, t / this.reloadTime);
       const tilt = smooth(clamp01(k / 0.2)) * (1 - smooth(clamp01((k - 0.84) / 0.16)));
@@ -1113,7 +1254,15 @@ export default class Weapons {
     pose.pos.lerp(target, Math.min(1, dt * 18));
     this.holder.position.copy(pose.pos);
     this.holder.rotation.set(rx, ry, rz);
+    // la otra mano: la misma pose espejada (con su propio retroceso)
+    this.holder2.visible = !!this.model2 && this.holder.visible;
+    if (this.model2) {
+      const dk = this.kickL - rk;
+      this.holder2.position.set(-pose.pos.x, pose.pos.y, pose.pos.z + dk * 0.025);
+      this.holder2.rotation.set(rx + dk * 0.09, -ry, -rz);
+    }
     this.animatePour(pour, dt);
+    this.animateYerba(yerbaK, dt);
 
     // fogonazo
     this.flashT = (this.flashT || 0) - dt;
@@ -1199,6 +1348,40 @@ export default class Weapons {
       p.s.material.opacity = a * (1 - a) * 1.1;
       p.s.scale.setScalar(0.012 + (1 - a) * 0.05);
       if (p.life <= 0) p.s.visible = false;
+    }
+  }
+
+  // "Cambiar la yerba": la vieja cae en migas al volcar; la nueva vuelve con
+  // los mates cuando suben.
+  animateYerba(k, dt) {
+    const models = [this.model, this.model2].filter(Boolean);
+    if (k === null) {
+      for (const m of models) if (m.yerba) m.yerba.visible = true;
+    } else {
+      this.holder.updateMatrixWorld(true);
+      this.holder2.updateMatrixWorld(true);
+      for (const m of models) if (m.yerba) m.yerba.visible = k < 0.2 || k > 0.62;
+      // migas de yerba cayendo mientras están volcados
+      if (k > 0.1 && k < 0.3) {
+        for (const m of models) {
+          if (Math.random() > dt * 70) continue;
+          const c = this.crumbs.find((x) => x.life <= 0);
+          if (!c) break;
+          c.life = 0.6;
+          m.mouth.getWorldPosition(c.s.position);
+          c.vel.set((Math.random() - 0.5) * 0.06, -0.1, -0.05 + (Math.random() - 0.5) * 0.05);
+          c.s.visible = true;
+        }
+      }
+    }
+    for (const c of this.crumbs) {
+      if (c.life <= 0) continue;
+      c.life -= dt;
+      c.vel.y -= dt * 1.2;
+      c.s.position.addScaledVector(c.vel, dt);
+      c.s.scale.setScalar(0.009 + Math.random() * 0.004);
+      c.s.material.opacity = Math.min(1, c.life * 3);
+      if (c.life <= 0) c.s.visible = false;
     }
   }
 

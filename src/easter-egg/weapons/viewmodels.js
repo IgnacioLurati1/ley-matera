@@ -15,6 +15,8 @@ function mats(T) {
   MATS = {
     gourd: std({ map: T.gourd, roughness: 0.75 }),
     gourdDark: std({ map: T.gourd, color: 0x6a4a30, roughness: 0.7 }),
+    // la calabaza de la Salamanca: verdosa, con un brillo apagado de adentro
+    gourdLuz: std({ map: T.gourd, color: 0x7a9a6a, roughness: 0.55, emissive: 0x143a10, emissiveIntensity: 0.9 }),
     wood: std({ map: T.woodCarved, roughness: 0.65 }),
     woodDark: std({ map: T.woodCarved, color: 0x7a5238, roughness: 0.6 }),
     plastic: std({ color: 0xe8589a, roughness: 0.35 }),
@@ -418,6 +420,26 @@ export function buildMate(id, upgraded, T) {
       addVirola(M.silver, 0.01);
       bomb = { len: 0.19 };
       break;
+    case 'luzmala': {
+      // calabaza oscura con virola de plata; la yerba brilla verde
+      addBody('calabaza', M.gourdLuz);
+      addVirola(M.silver, 0.014);
+      mate.userData.glowYerba = true;
+      bomb = { len: 0.2 };
+      break;
+    }
+    case 'gemelos': {
+      // calabacitas oscuras con una faja de cuero trenzado (van de a dos)
+      addBody('porongo', M.gourdDark);
+      scaleBody(0.84, 0.86);
+      addVirola(M.bronze, 0.01);
+      const faja = tor(rAt(top.y * 0.45) + 0.001, 0.004, M.leather, 6, 28);
+      faja.rotation.x = Math.PI / 2;
+      faja.position.y = top.y * 0.45;
+      mate.add(faja);
+      bomb = { len: 0.16 };
+      break;
+    }
     case 'madera': {
       addBody('cilindro', M.wood);
       for (const y of [0.02, 0.05, 0.08]) {
@@ -636,7 +658,11 @@ export function buildMate(id, upgraded, T) {
       addVirola(virola);
   }
 
-  if (id !== 'cocido' && !mate.userData.hornTop) mate.add(yerba(top.r, top.y, M));
+  if (id !== 'cocido' && !mate.userData.hornTop) {
+    mate.userData.yerba = yerba(top.r, top.y, M);
+    if (mate.userData.glowYerba) mate.userData.yerba.material = M.glowGreen;
+    mate.add(mate.userData.yerba);
+  }
 
   let muzzle = new THREE.Object3D();
   if (bomb) {
@@ -678,6 +704,13 @@ export function buildMate(id, upgraded, T) {
       muzzle.add(fil);
       anim.glow.push(fil);
     }
+    if (id === 'luzmala') {
+      // la lucecita espera en la punta de la bombilla
+      const orb = sph(0.016, M.glowGreen);
+      orb.position.y = 0.03;
+      muzzle.add(orb);
+      anim.glow.push(orb);
+    }
     if (id === 'tronador') {
       const bell = cyl(0.03, 0.008, 0.04, M.copper, 16);
       bell.position.y = 0.012;
@@ -704,8 +737,9 @@ export function buildMate(id, upgraded, T) {
   tilt.updateMatrixWorld(true);
   const tip = new THREE.Vector3();
   muzzle.getWorldPosition(tip);
-  return { root: tilt, muzzle, anim, upgraded, tip, mouth, mate, bombGroup: mate.userData.bombGroup || null };
+  return { root: tilt, muzzle, anim, upgraded, tip, mouth, mate, bombGroup: mate.userData.bombGroup || null, yerba: mate.userData.yerba || null };
 }
+
 
 // Termo para la animación de recarga (cebar = recargar): cuerpo pintado,
 // hombro de acero, tapón con pico vertedor, manija y la mano izquierda.

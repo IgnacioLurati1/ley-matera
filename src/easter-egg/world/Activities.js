@@ -579,7 +579,18 @@ export default class Activities {
         obj.add(mesh(boxGeo(0.06, 0.012, 0.05), M.brass, 0.14, 0.02, 0));
       }
       this.root.add(obj);
-      const part = { def, obj, taken: false };
+      // halo y un haz de luz que sube: se ven de lejos
+      const fx = new THREE.Group();
+      fx.position.set(def.pos[0], def.pos[1], def.pos[2]);
+      const halo = new THREE.Sprite(this.partHaloMat());
+      halo.scale.setScalar(1.1);
+      halo.position.y = 0.2;
+      fx.add(halo);
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.16, 3.2, 10, 1, true), this.partBeamMat());
+      beam.position.y = 1.6;
+      fx.add(beam);
+      this.root.add(fx);
+      const part = { def, obj, fx, halo, taken: false };
       this.parts[def.id] = part;
       g.interact.add({
         kind: 'part',
@@ -589,13 +600,7 @@ export default class Activities {
         cost: () => 0,
         use: () => {
           if (part.taken) return false;
-          part.taken = true;
-          obj.visible = false;
-          g.audio.shell();
-          const got = Object.values(this.parts).filter((p) => p.taken).length;
-          g.hud.toast(`Pieza del escudo: ${got} de ${PARTS.length}`);
-          g.hud.setParts(Object.values(this.parts).map((p) => p.taken));
-          if (got === PARTS.length) g.hud.subtitle('Tenés todo para el escudo. Armalo en la mesa de trabajo del patio.', 4);
+          this.takePart(def.id);
           return true;
         },
       });
@@ -644,6 +649,57 @@ export default class Activities {
     });
   }
 
+  // Una pieza del escudo agarrada (por cualquiera: las piezas son del equipo).
+  takePart(id, remote = false) {
+    const g = this.g;
+    const part = this.parts[id];
+    if (!part || part.taken) return;
+    part.taken = true;
+    part.obj.visible = false;
+    part.fx.visible = false;
+    g.audio.shell();
+    if (!remote) g.net?.event('part', { id });
+    const got = Object.values(this.parts).filter((p) => p.taken).length;
+    g.hud.toast(`Pieza del escudo: ${got} de ${PARTS.length}`);
+    if (got === PARTS.length) g.hud.subtitle('Tenés todo para el escudo. Armalo en la mesa de trabajo del patio.', 4);
+  }
+
+  partHaloMat() {
+    this.haloMat ||= new THREE.SpriteMaterial({ map: this.g.textures.dot, color: 0xffd27a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.8 });
+    return this.haloMat;
+  }
+
+  partBeamMat() {
+    if (this.beamMat) return this.beamMat;
+    // degradé de abajo (fuerte) hacia arriba (nada)
+    const c = document.createElement('canvas');
+    c.width = 4;
+    c.height = 64;
+    const ctx = c.getContext('2d');
+    const grd = ctx.createLinearGradient(0, 0, 0, 64);
+    grd.addColorStop(0, 'rgba(255,255,255,0)');
+    grd.addColorStop(1, 'rgba(255,255,255,1)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, 4, 64);
+    this.beamMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), color: 0xffc860, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.35, side: THREE.DoubleSide });
+    return this.beamMat;
+  }
+
+  updateParts(dt) {
+    const g = this.g;
+    if (!this.parts) return;
+    const pulse = 0.75 + Math.sin(g.time * 3) * 0.25;
+    if (this.haloMat) this.haloMat.opacity = 0.55 + pulse * 0.35;
+    if (this.beamMat) this.beamMat.opacity = 0.2 + pulse * 0.15;
+    for (const p of Object.values(this.parts)) {
+      if (p.taken) continue;
+      p.obj.rotation.y += dt * 0.6;
+      if (Math.random() < dt * 6) g.fx.sparkle(tmpV.set(p.def.pos[0], p.def.pos[1] + 0.25, p.def.pos[2]), [1, 0.85, 0.45], 1, 0.35);
+    }
+    // contador de piezas siempre a la vista hasta armar el escudo
+    g.hud.setParts(this.shieldBuilt ? null : Object.values(this.parts).map((p) => p.taken));
+  }
+
   equipShield() {
     const g = this.g;
     g.player.shield = { hp: SHIELD_HP };
@@ -672,6 +728,7 @@ export default class Activities {
   update(dt) {
     this.updateJars(dt);
     this.updateTraps(dt);
+    this.updateParts(dt);
   }
 
   dispose() {

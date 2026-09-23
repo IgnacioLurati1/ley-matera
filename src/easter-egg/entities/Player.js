@@ -129,6 +129,11 @@ export default class Player {
     this.downed = false;
     this.eye = 3.2;
     this.g.hud.hurt(0);
+    // el Mate del Chiquitijuein se pierde: se puede volver a armar
+    if (this.g.weapons.has('luzmala')) {
+      this.g.weapons.drop('luzmala');
+      this.g.net?.net.send({ t: 'ev', e: 'sub', x: 'Se perdió el Mate del Chiquitijuein: se puede volver a armar en el altillo.', d: 3.5 });
+    }
     this.g.hud.subtitle('Caíste. Volvés en la próxima ronda.', 5);
     this.g.net?.net.send({ t: 'ev', e: 'dead', id: this.g.net.id });
   }
@@ -271,15 +276,19 @@ export default class Player {
     this.pos.x += this.vel.x * dt;
     this.pos.z += this.vel.z * dt;
     this.pos.y += this.vel.y * dt;
-    if (this.pos.y <= 0) {
+    // el piso de abajo, la escalera o el altillo
+    const floor = g.world.floorAt(this.pos.x, this.pos.z, this.pos.y - this.vel.y * dt);
+    // bajando la escalera se pega al escalón en vez de ir dando saltitos
+    if (this.onGround && this.vel.y <= 0 && this.pos.y > floor && this.pos.y - floor < 0.45) this.pos.y = floor;
+    if (this.pos.y <= floor) {
       if (!this.onGround && this.vel.y < -3) {
         g.audio.land();
         this.landKick = Math.min(1, -this.vel.y / 8);
       }
-      this.pos.y = 0;
+      this.pos.y = floor;
       this.vel.y = 0;
       this.onGround = true;
-    }
+    } else if (this.pos.y > floor + 0.05) this.onGround = false;
     this.landKick = Math.max(0, this.landKick - dt * 4);
     g.world.collide(this.pos, PLAYER.radius, this.pos.y + 0.05, this.pos.y + 1.7);
 

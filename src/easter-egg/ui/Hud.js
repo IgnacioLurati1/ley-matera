@@ -47,6 +47,7 @@ export default class Hud {
     this.shield = el('div', 'mdu-shield', bl, '<i>⛨</i><b><s></s></b>');
     this.perks = el('div', 'mdu-perks', bl);
     this.parts = el('div', 'mdu-parts', r);
+    this.craft = el('div', 'mdu-parts mdu-craft', r);
     this.team = el('div', 'mdu-team', r);
     this.round = el('div', 'mdu-round', bl);
     const br = el('div', 'mdu-br', r);
@@ -82,6 +83,7 @@ export default class Hud {
     this.setPerks([]);
     this.setShield(null);
     this.setParts(null);
+    this.setCraft(null);
     this.setBossBar(null);
     this.setInventory({ calabaza: false, bombilla: false, yerba: false, agua: false }, true);
     this.setHint(null);
@@ -217,8 +219,17 @@ export default class Hud {
   }
 
   // Piezas del escudo juntadas (arriba a la derecha, debajo del inventario).
+  // Piezas del Mate del Chiquitijuein (hasta que alguien lo arma).
+  setCraft(list) {
+    this.set('craft', list ? list.map((x) => (x ? 1 : 0)).join('') : null, () => {
+      this.craft.innerHTML = list ? `<span>Chiquitijuein</span>${list.map((got) => `<i class="${got ? 'is-got' : ''}">◈</i>`).join('')}` : '';
+    });
+  }
+
   setParts(list) {
-    this.parts.innerHTML = list ? list.map((got) => `<i class="${got ? 'is-got' : ''}">⛨</i>`).join('') : '';
+    this.set('parts', list ? list.map((x) => (x ? 1 : 0)).join('') : null, () => {
+      this.parts.innerHTML = list ? `<span>Escudo</span>${list.map((got) => `<i class="${got ? 'is-got' : ''}">⛨</i>`).join('')}` : '';
+    });
   }
 
   // Compañeros de sala: nombre, vida y si están caídos.

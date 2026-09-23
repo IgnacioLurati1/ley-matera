@@ -59,11 +59,13 @@ export default class Powerups {
     const zone = g.world.zoneAt(pos.x, pos.z);
     const p = pos.clone();
     if (!zone) {
-      p.set(g.player.pos.x + (Math.random() - 0.5) * 2, 0, g.player.pos.z + (Math.random() - 0.5) * 2);
+      p.set(g.player.pos.x + (Math.random() - 0.5) * 2, g.player.pos.y, g.player.pos.z + (Math.random() - 0.5) * 2);
     }
+    // en el piso donde cayó (abajo o en el altillo)
+    p.y = g.world.floorAt(p.x, p.z, p.y || 0);
     const type = forcedType || this.pick();
     const mesh = this.model(type);
-    mesh.position.set(p.x, 1, p.z);
+    mesh.position.set(p.x, p.y + 1, p.z);
     g.scene.add(mesh);
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0x40ff60, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.7 }));
     glow.scale.setScalar(1.6);
@@ -72,7 +74,7 @@ export default class Powerups {
     const item = { id, type, mesh, t: 0, pos: p };
     this.items.push(item);
     g.audio.powerupSpawn(mesh.position);
-    g.net?.event('pup', { id, type, x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
+    g.net?.event('pup', { id, type, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2) });
     // muy de vez en cuando, el Pombero viene a llevárselo
     g.pombero?.onDrop(item);
   }
@@ -87,12 +89,12 @@ export default class Powerups {
     }
     const g = this.g;
     const mesh = this.model(m.type);
-    mesh.position.set(m.x, 1, m.z);
+    mesh.position.set(m.x, (m.y || 0) + 1, m.z);
     g.scene.add(mesh);
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0x40ff60, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.7 }));
     glow.scale.setScalar(1.6);
     mesh.add(glow);
-    this.items.push({ id: m.id, type: m.type, mesh, t: 0, pos: new THREE.Vector3(m.x, 0, m.z) });
+    this.items.push({ id: m.id, type: m.type, mesh, t: 0, pos: new THREE.Vector3(m.x, m.y || 0, m.z) });
     g.audio.powerupSpawn(mesh.position);
   }
 
@@ -180,13 +182,13 @@ export default class Powerups {
       const it = this.items[i];
       it.t += dt;
       it.mesh.rotation.y += dt * 1.8;
-      it.mesh.position.y = 1 + Math.sin(it.t * 2.5) * 0.08;
+      it.mesh.position.y = it.pos.y + 1 + Math.sin(it.t * 2.5) * 0.08;
       const left = POWERUP.lifetime - it.t;
       it.mesh.visible = left > 6 || Math.floor(it.t * (left < 3 ? 8 : 4)) % 2 === 0;
       if (Math.random() < 0.2) g.fx.sparkle(it.mesh.position, [0.4, 1, 0.5], 1, 0.6);
       const dx = g.player.pos.x - it.mesh.position.x;
       const dz = g.player.pos.z - it.mesh.position.z;
-      if (dx * dx + dz * dz < 1.44 && g.player.alive) {
+      if (dx * dx + dz * dz < 1.44 && g.player.alive && Math.abs(g.player.pos.y - it.pos.y) < 1.5) {
         if (g.net?.guest) {
           // el anfitrión confirma: el efecto es para todos
           g.net.net.send({ t: 'pupget', id: it.id });

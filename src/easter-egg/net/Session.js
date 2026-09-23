@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import Avatars from './Avatars';
 import { GRENADE, maxTier } from '../config/weapons';
 import { POMBERO_ID } from '../entities/Pombero';
+import { levelOf } from '../world/Attic';
 
 // Sincronización de la partida. El anfitrión simula todo (zombies, rondas,
 // puertas, caja, clima) y manda 15 fotos por segundo con las posiciones; los
@@ -81,13 +82,15 @@ export default class Session {
   }
 
   // Jugador más cercano a un punto (para que los zombies repartan atención).
-  nearest(x, z) {
+  nearest(x, z, y = 0) {
     const g = this.g;
+    const lv = levelOf(y);
+    const far = (p) => (levelOf(p.pos.y) === lv ? 0 : 900);
     let best = g.player.alive && !g.player.downed ? g.player : null;
-    let bd = best ? (best.pos.x - x) ** 2 + (best.pos.z - z) ** 2 : Infinity;
+    let bd = best ? (best.pos.x - x) ** 2 + (best.pos.z - z) ** 2 + far(best) : Infinity;
     for (const r of this.remote.values()) {
       if (r.dead || r.downed) continue;
-      const d = (r.pos.x - x) ** 2 + (r.pos.z - z) ** 2;
+      const d = (r.pos.x - x) ** 2 + (r.pos.z - z) ** 2 + far(r);
       if (d < bd) {
         bd = d;
         best = r;
@@ -141,14 +144,15 @@ export default class Session {
   }
 
   playerFlags(p) {
-    return (p.crouching ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.downed ? 4 : 0) | (!p.alive ? 8 : 0) | (p.moving ? 16 : 0);
+    const luz = p === this.g.player && this.g.weapons?.hasLuz?.();
+    return (p.crouching ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.downed ? 4 : 0) | (!p.alive ? 8 : 0) | (p.moving ? 16 : 0) | (luz ? 32 : 0);
   }
 
   writePlayer(v, o, id, p) {
     v.setUint8(o, id);
     v.setInt16(o + 1, Math.round(p.pos.x * 50), true);
     v.setInt16(o + 3, Math.round(p.pos.z * 50), true);
-    v.setUint8(o + 5, Math.max(0, Math.min(255, Math.round((p.pos.y + 1) * 60))));
+    v.setUint8(o + 5, Math.max(0, Math.min(255, Math.round((p.pos.y + 1) * 30))));
     v.setInt16(o + 6, Math.round((p.yaw % (Math.PI * 2)) * 5000), true);
     v.setInt8(o + 8, Math.max(-127, Math.min(127, Math.round(p.pitch * 80))));
     v.setUint8(o + 9, this.playerFlags(p));
@@ -164,7 +168,7 @@ export default class Session {
       id,
       x: v.getInt16(o + 1, true) / 50,
       z: v.getInt16(o + 3, true) / 50,
-      y: v.getUint8(o + 5) / 60 - 1,
+      y: v.getUint8(o + 5) / 30 - 1,
       yaw: v.getInt16(o + 6, true) / 5000,
       pitch: v.getInt8(o + 8) / 80,
       crouch: !!(flags & 1),
@@ -172,6 +176,7 @@ export default class Session {
       downed: !!(flags & 4),
       dead: !!(flags & 8),
       moving: !!(flags & 16),
+      hasLuz: !!(flags & 32),
       weapon: v.getUint8(o + 10),
       health: v.getUint8(o + 11),
       size: PLAYER_BYTES,
@@ -199,7 +204,7 @@ export default class Session {
       v.setUint8(o, r.id);
       v.setInt16(o + 1, Math.round(n.x * 50), true);
       v.setInt16(o + 3, Math.round(n.z * 50), true);
-      v.setUint8(o + 5, Math.max(0, Math.min(255, Math.round((n.y + 1) * 60))));
+      v.setUint8(o + 5, Math.max(0, Math.min(255, Math.round((n.y + 1) * 30))));
       v.setInt16(o + 6, Math.round(n.yaw * 5000), true);
       v.setInt8(o + 8, Math.max(-127, Math.min(127, Math.round(n.pitch * 80))));
       v.setUint8(o + 9, r.flags || 0);
@@ -213,7 +218,7 @@ export default class Session {
       v.setInt16(o + 4, Math.round(z.pos.z * 50), true);
       v.setInt16(o + 6, Math.round(z.yaw * 5000), true);
       v.setUint8(o + 8, STATES.indexOf(z.state) + 1);
-      v.setUint8(o + 9, (z.crawler ? 1 : 0) | (z.dead ? 2 : 0) | (SPEEDS.indexOf(z.speedType) << 2) | (z.hidden & (1 << 2) ? 16 : 0) | (z.dog ? 32 : 0));
+      v.setUint8(o + 9, (z.crawler ? 1 : 0) | (z.dead ? 2 : 0) | (SPEEDS.indexOf(z.speedType) << 2) | (z.hidden & (1 << 2) ? 16 : 0) | (z.dog ? 32 : 0) | (z.level ? 64 : 0));
       o += ZOMBIE_BYTES;
     }
     if (boss) {
@@ -275,7 +280,7 @@ export default class Session {
       const f = v.getUint8(o + 9);
       o += ZOMBIE_BYTES;
       seen.add(id);
-      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', noHead: !!(f & 16), dog: !!(f & 32) });
+      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', noHead: !!(f & 16), dog: !!(f & 32), level: !!(f & 64) });
     }
     this.g.zombies.pruneRemote(seen);
     if (hasBoss) {
@@ -312,7 +317,8 @@ export default class Session {
     r.buf.push({ t: now, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch });
     if (r.buf.length > 16) r.buf.shift();
     r.net = p;
-    r.flags = (p.crouch ? 1 : 0) | (p.sprint ? 2 : 0) | (p.downed ? 4 : 0) | (p.dead ? 8 : 0) | (p.moving ? 16 : 0);
+    r.flags = (p.crouch ? 1 : 0) | (p.sprint ? 2 : 0) | (p.downed ? 4 : 0) | (p.dead ? 8 : 0) | (p.moving ? 16 : 0) | (p.hasLuz ? 32 : 0);
+    r.hasLuz = p.hasLuz;
     r.downed = p.downed;
     r.dead = p.dead;
     r.moving = p.moving;
@@ -480,6 +486,8 @@ export default class Session {
       arena: g.arena.active,
       ee: g.ee.fullState(),
       shield: g.activities.shieldBuilt,
+      parts: Object.values(g.activities.parts || {}).filter((p) => p.taken).map((p) => p.def.id),
+      lmparts: Object.values(g.curandero?.parts || {}).filter((p) => p.taken).map((p) => p.def.id),
       start: [g.player.pos.x, g.player.pos.z],
     });
   }
@@ -503,6 +511,8 @@ export default class Session {
     g.rounds.round = m.round;
     g.hud.setRound(m.round);
     if (m.shield) g.activities.shieldBuilt = true;
+    for (const id of m.parts || []) g.activities.takePart(id, true);
+    for (const id of m.lmparts || []) g.curandero?.takePart(id, true);
     if (m.ee) g.ee.applyRemote(m.ee);
     // aparecer cerca del anfitrión (en una partida nueva, cada uno en su lugar)
     if (!m.restart) g.player.pos.set(m.start[0], 0, m.start[1]);
@@ -632,6 +642,11 @@ export default class Session {
       const gift = g.activities.giftFor(jar);
       return reply(true, { gift });
     }
+    if (kind === 'lmbench') {
+      // el Mate del Chiquitijuein: uno solo a la vez (lo decide el anfitrión)
+      const ok = g.curandero.claimFor(from);
+      return reply(ok, ok ? { w: 'luzmala' } : {});
+    }
     if (kind === 'luzmala') {
       // cavó un invitado: el anfitrión decide qué sale y se lo manda
       const res = g.luz.dig();
@@ -726,6 +741,15 @@ export default class Session {
       case 'shield':
         g.activities.shieldBuilt = true;
         break;
+      case 'part':
+        g.activities.takePart(m.id, true);
+        break;
+      case 'lmpart':
+        g.curandero?.takePart(m.id, true);
+        break;
+      case 'lmcraft':
+        if (g.curandero) g.curandero.claim = { id: m.id, until: g.time + 4 };
+        break;
       case 'ee':
         g.ee.applyRemote(m);
         break;
@@ -737,6 +761,9 @@ export default class Session {
         break;
       case 'arena':
         g.arena.start();
+        break;
+      case 'fireball':
+        g.arena.spawnFireball(new THREE.Vector3(m.x, m.y, m.z), new THREE.Vector3(m.vx, m.vy, m.vz));
         break;
       case 'win':
         g.win(m);
@@ -784,5 +811,5 @@ export default class Session {
   }
 }
 
-export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn'];
+export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn', 'whipWind', 'whip', 'chargeWind', 'charge', 'stunned', 'enrage', 'summon', 'stairs', 'fall'];
 export const SPEEDS = ['walk', 'run', 'sprint'];

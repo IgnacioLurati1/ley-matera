@@ -168,7 +168,7 @@ export default class DogRig {
       }
       tmpE.set(pitch, z.yaw, roll, 'YXZ');
       tmpQ.setFromEuler(tmpE);
-      tmpV.set(z.pos.x, 0, z.pos.z);
+      tmpV.set(z.pos.x, z.baseY || 0, z.pos.z);
       const s = z.scale || 1;
       tmpM.compose(tmpV, tmpQ, tmpS(s));
       // cuerpo
@@ -204,12 +204,13 @@ export default class DogRig {
     const s = z.scale || 1;
     const fx = Math.sin(z.yaw);
     const fz = Math.cos(z.yaw);
-    const head = { x: z.pos.x + fx * 0.56 * s, y: (HIP_Y + 0.24) * s, z: z.pos.z + fz * 0.56 * s, r: 0.15 * s };
+    const by = z.baseY || 0;
+    const head = { x: z.pos.x + fx * 0.56 * s, y: by + (HIP_Y + 0.24) * s, z: z.pos.z + fz * 0.56 * s, r: 0.15 * s };
     const th = sphereHit(o, d, head, maxT);
     let best = th === null ? null : { t: th, zone: 'head' };
     // cuerpo: tres esferas a lo largo
     for (const k of [-0.25, 0, 0.25]) {
-      const c = { x: z.pos.x + fx * k * s, y: (HIP_Y + 0.1) * s, z: z.pos.z + fz * k * s, r: 0.26 * s };
+      const c = { x: z.pos.x + fx * k * s, y: by + (HIP_Y + 0.1) * s, z: z.pos.z + fz * k * s, r: 0.26 * s };
       const t = sphereHit(o, d, c, maxT);
       if (t !== null && (!best || t < best.t)) best = { t, zone: 'torso' };
     }

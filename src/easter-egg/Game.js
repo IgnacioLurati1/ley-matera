@@ -15,6 +15,9 @@ import Powerups from './entities/Powerups';
 import EasterEgg from './entities/EasterEgg';
 import Pombero from './entities/Pombero';
 import LuzMala from './world/LuzMala';
+import Curandero from './world/Curandero';
+import Ambience from './fx/Ambience';
+import { ATTIC_NAME, ATTIC_SUB, STAIR_BOTTOM, inAtticRect, levelOf } from './world/Attic';
 import Weather from './world/Weather';
 import Activities from './world/Activities';
 import Decor from './world/Decor';
@@ -290,6 +293,8 @@ export default class Game {
     this.interact = new Interactables(this);
     this.activities = new Activities(this);
     this.luz = new LuzMala(this);
+    this.curandero = new Curandero(this);
+    this.ambience = new Ambience(this);
     this.zombies = new Zombies(this);
     this.rounds = new Rounds(this);
     this.powerups = new Powerups(this);
@@ -421,9 +426,9 @@ export default class Game {
 
   // Jugadores vivos (el local y los remotos), para que los zombies elijan.
   // El jugador de pie más cercano; los tirados no cuentan (null si no queda nadie).
-  nearestPlayer(x, z) {
+  nearestPlayer(x, z, y = 0) {
     if (!this.net) return this.player.canBeHit() ? this.player : null;
-    return this.net.nearest(x, z);
+    return this.net.nearest(x, z, y);
   }
 
   // Le pega a quien corresponda: si es un jugador remoto, se le avisa.
@@ -900,7 +905,9 @@ export default class Game {
     else if (this.state === 'playing') this.player.update(dt, IDLE_INPUT);
     else if (this.endCam) this.updateEnd(dt);
     else this.player.updateCamera(this.camera);
-    this.nav.update(this.player.pos.x, this.player.pos.z);
+    // arriba en el altillo: los de abajo van hacia la escalera
+    if (levelOf(this.player.pos.y) === 1) this.nav.update(STAIR_BOTTOM.x, STAIR_BOTTOM.z);
+    else this.nav.update(this.player.pos.x, this.player.pos.z);
     if (active) this.weapons.update(dt, input);
     if (active) this.interact.update(dt, input);
     this.barriers.update(dt);
@@ -910,12 +917,14 @@ export default class Game {
     this.powerups.update(dt);
     this.pombero.update(dt);
     this.luz.update(dt);
+    this.curandero.update(dt);
     this.activities.update(dt);
     this.net?.update(dt);
     this.decor.update(dt);
     this.critters.update(dt);
     this.ee.update(dt);
     this.world.update(dt, this.time);
+    this.ambience.update(dt);
     this.weather.update(dt);
     this.fx.update(dt, this.camera);
     this.hud.update(dt);
@@ -939,8 +948,15 @@ export default class Game {
 
     // luz del lugar para iluminar el mate en la mano
     const zone = this.world.zoneAt(this.player.pos.x, this.player.pos.z);
+    const upstairs = levelOf(this.player.pos.y) === 1 && inAtticRect(this.player.pos.x, this.player.pos.z);
     if (this.arena?.active) this.hud.setRoom(this.arena.name);
+    else if (upstairs) this.hud.setRoom(ATTIC_NAME);
     else if (zone) this.hud.setRoom(ZONES[zone].name);
+    // la primera vez que sube, el cartel del lugar
+    if (upstairs && !this.atticSeen) {
+      this.atticSeen = true;
+      this.hud.location(ATTIC_NAME, ATTIC_SUB);
+    }
     this.audio.outdoor = !zone || !!ZONES[zone].outdoor;
     const lit = zone && ZONES[zone].outdoor ? 0.7 : this.world.power ? 1 : 0.6;
     this.lightLevel = (this.lightLevel ?? lit) + (lit - (this.lightLevel ?? lit)) * Math.min(1, dt * 2);

@@ -328,6 +328,18 @@ export default class GameAudio {
     }
   }
 
+  // Cambiar la yerba: golpecitos al volcar el mate, el crujido de la yerba
+  // cayendo y el shhh del paquete llenándolo.
+  yerbaChange(dur = 2.5) {
+    const o = this.out({ gain: 0.7, reverb: 0.15 });
+    const t = this.now;
+    for (let i = 0; i < 3; i++) this.noise(o, { t: t + dur * 0.12 + i * 0.07, dur: 0.05, type: 'bandpass', freq: 900, q: 2, gain: 0.5 });
+    this.noise(o, { t: t + dur * 0.14, dur: dur * 0.18, type: 'bandpass', freq: 2600, q: 0.8, gain: 0.18, attack: 0.03 });
+    for (const [a, b] of [[0.4, 0.52], [0.54, 0.66]]) this.noise(o, { t: t + dur * a, dur: dur * (b - a), type: 'bandpass', freq: 3200, q: 0.6, gain: 0.22, attack: 0.05 });
+    const stopAt = t + dur;
+    return { stop: () => o.gain.setTargetAtTime(0, Math.min(this.now, stopAt), 0.02) };
+  }
+
   // Silbido del Pombero: dos cortitos que suben y uno largo que cae, como
   // llamando desde el monte.
   pombero(pos) {

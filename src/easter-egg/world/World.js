@@ -4,6 +4,7 @@ import GeoBuilder from './GeoBuilder';
 import { buildProp, mesh, cylGeo } from './props';
 import { rng } from '../core/noise';
 import { MAP_W, MAP_H, WALL_H, ZONES, DOORS, WINDOWS, PROPS, LIGHTS } from '../config/map';
+import { buildAttic, blockStairCells, floorAt, inStair, STAIR } from './Attic';
 
 export const CELL = { OUT: 0, FLOOR: 1, WALL: 2, DOOR: 3, WINDOW: 4 };
 const SILL = 0.95;
@@ -33,6 +34,7 @@ export default class World {
     this.makeMaterials();
     this.makeGrid();
     this.buildArchitecture();
+    this.attic = buildAttic(this);
     this.buildProps();
     this.buildOutside();
     this.buildSky();
@@ -256,7 +258,14 @@ export default class World {
         }
       }
     }
+    // la escalera del altillo: abajo es la rampa, no se camina por ahí
+    blockStairCells(this);
     this.navVersion = (this.navVersion || 0) + 1;
+  }
+
+  // Altura del piso bajo (x, z) para algo que está a la altura y (el altillo).
+  floorAt(x, z, y = 0) {
+    return floorAt(x, z, y);
   }
 
   openDoor(i) {
@@ -327,6 +336,12 @@ export default class World {
       const [x0, z0, x1, z1] = Z.rect;
       gb.flat(Z.floor, x0, z0, x1 + 1, z1 + 1, 0.001, true);
       if (Z.outdoor) continue;
+      if (k === 'H') {
+        // la oficina tiene el hueco de la escalera del altillo y no lleva vigas
+        gb.flat(Z.ceil, x0, z0, STAIR.x0, z1 + 1, H, false);
+        gb.flat(Z.ceil, STAIR.x0, z0, x1 + 1, STAIR.z0, H, false);
+        continue;
+      }
       gb.flat(Z.ceil, x0, z0, x1 + 1, z1 + 1, H, false);
       const alongX = x1 - x0 < z1 - z0;
       const metal = Z.ceil === 'corrugated';
@@ -539,7 +554,8 @@ export default class World {
   // ---------------- luces ----------------
   buildLights() {
     const s = this.scene;
-    this.hemi = new THREE.HemisphereLight(0x4a5a80, 0x2a1a10, 0.9);
+    // el color de abajo ilumina techos y vigas: que se lean aunque no haya luz
+    this.hemi = new THREE.HemisphereLight(0x4a5a80, 0x6e5238, 0.95);
     s.add(this.hemi);
     this.ambient = new THREE.AmbientLight(0x505060, 0.5);
     s.add(this.ambient);
@@ -694,12 +710,12 @@ export default class World {
       }
     }
     // techo (solo si ese punto está bajo techo)
-    if (d.y > 1e-6) {
+    if (d.y > 1e-6 && o.y < WALL_H) {
       const t = (WALL_H - o.y) / d.y;
       if (t < best) {
         const px = o.x + d.x * t;
         const pz = o.z + d.z * t;
-        if (this.isIndoorCell(Math.floor(px), Math.floor(pz))) {
+        if (this.isIndoorCell(Math.floor(px), Math.floor(pz)) && !inStair(px, pz)) {
           best = t;
           nx = 0;
           ny = -1;

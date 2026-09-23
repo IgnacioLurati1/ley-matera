@@ -188,6 +188,11 @@
   font-size: 18px;
   color: rgba(232, 200, 120, 0.3);
 }
+.mdu-parts span { align-self: center; margin-right: 2px; font-size: 13px; letter-spacing: 0.04em; color: rgba(232, 200, 120, 0.75); }
+.mdu-craft { top: 114px; }
+.mdu-craft i { color: rgba(140, 255, 110, 0.3); border-color: rgba(140, 255, 110, 0.35); }
+.mdu-craft span { color: rgba(160, 255, 130, 0.8); }
+.mdu-craft i.is-got { color: #9aff6a; border-color: #9aff6a; box-shadow: 0 0 10px rgba(140, 255, 110, 0.5); }
 .mdu-parts i.is-got { color: #e8c878; border-color: #e8c878; box-shadow: 0 0 10px rgba(232, 200, 120, 0.5); }
 .mdu-lobby { min-width: min(560px, 90vw); }
 .mdu-lobby__code { font-size: 20px; }
@@ -281,7 +286,7 @@
 .mdu-team {
   position: absolute;
   right: 28px;
-  top: 118px;
+  top: 156px;
   display: grid;
   gap: 6px;
   min-width: 140px;
@@ -300,7 +305,7 @@
   top: 26px;
   transform: translateX(-50%);
   display: none;
-  width: min(560px, 60vw);
+  width: min(520px, 42vw);
   text-align: center;
 }
 .mdu-bossbar.is-on { display: block; }
