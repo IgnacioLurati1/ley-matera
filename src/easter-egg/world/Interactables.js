@@ -681,6 +681,7 @@ export default class Interactables {
     box.state = 'spinning';
     box.t = 0;
     box.uses++;
+    box.taker = null; // si la abrió un invitado, lo anota el anfitrión después
     g.audio.boxOpen(box.center);
     // la taza de café aparece a partir del 4to uso (no en fire sale)
     const coffeeChance = box.uses >= 4 && !g.powerups.active.firesale ? 0.18 + (box.uses - 4) * 0.03 : 0;
@@ -793,7 +794,11 @@ export default class Interactables {
         }
         if (k > 1.2 && !box.refunded) {
           box.refunded = true;
-          if (!g.powerups.active.firesale) g.addPoints(950, null, true);
+          // la plata vuelve al que la abrió (en línea puede ser un invitado)
+          if (g.powerups.active.firesale) {
+            // en fire sale no se devuelve nada
+          } else if (box.taker != null && g.net?.host && box.taker !== g.net.id) g.net.givePts(box.taker, 950);
+          else g.addPoints(950, null, true);
           g.audio.whoosh(box.center);
         }
         if (k > 4.5) {
@@ -1005,8 +1010,8 @@ export default class Interactables {
     if (input.hit('KeyF')) {
       const cost = best.cost();
       const pr = best.prompt();
-      // de invitado, lo del mapa lo decide el anfitrión
-      if (g.net?.guest) {
+      // de invitado, lo del mapa lo decide el anfitrión (salvo lo que es de cada uno)
+      if (g.net?.guest && !best.local) {
         if (typeof pr === 'object' && pr?.info) return;
         // munición llena: no se cobra una recarga que no hace falta
         if (best.kind === 'wallbuy' && best.weapon && g.weapons.ammoFull(best.weapon)) {

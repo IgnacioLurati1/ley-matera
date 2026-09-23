@@ -60,6 +60,9 @@ export default class EasterEgg {
     this.hasHat = false;
     this.arenaGone = false;
     this.hatObj = null;
+    // quiénes ya agarraron su Mate de Oro (lo lleva el anfitrión)
+    this.oro = new Set();
+    this.myOro = false;
     this.root = new THREE.Group();
     game.scene.add(this.root);
     this.buildAbuelo();
@@ -210,19 +213,38 @@ export default class EasterEgg {
       radius: 2.4,
       prompt: () => {
         if (!g.world.power || this.arenaGone) return null;
-        if (this.done) return this.hasHat ? { text: 'darle el sombrero del Capataz al Abuelo', noCost: true } : null;
+        if (this.done) {
+          if (!this.myOro || !this.hasHat) return null;
+          const missing = this.missingOro();
+          if (missing.length) return { text: `Falta que ${missing.join(', ')} agarre${missing.length > 1 ? 'n' : ''} su Mate de Oro`, noCost: true, info: true };
+          return { text: 'darle el sombrero del Capataz al Abuelo', noCost: true };
+        }
         const all = Object.values(this.items).every(Boolean);
         return all ? { text: 'cebarle un mate al Abuelo', noCost: true } : null;
       },
       cost: () => 0,
       use: () => {
         if (this.done) {
-          if (!this.hasHat || this.arenaGone) return false;
+          if (!this.hasHat || this.arenaGone || this.missingOro().length) return false;
           this.giveHat();
           return true;
         }
         if (!Object.values(this.items).every(Boolean)) return false;
         this.complete();
+        return true;
+      },
+    });
+    // el Mate de Oro: cada uno va a buscar el suyo a la mano del Abuelo
+    I.add({
+      kind: 'oro',
+      local: true,
+      pos: this.abueloPos.clone().add(new THREE.Vector3(0.32, -0.25, 0.3)),
+      radius: 2.4,
+      prompt: () => (this.done && !this.myOro && !this.arenaGone ? { text: 'agarrar tu Mate de Oro', noCost: true } : null),
+      cost: () => 0,
+      use: () => {
+        if (!this.done || this.myOro) return false;
+        this.takeOro();
         return true;
       },
     });
@@ -454,6 +476,10 @@ export default class EasterEgg {
     }
     if (m.hat) this.dropHat(new THREE.Vector3(m.hat[0], 0, m.hat[1]));
     if (m.hatTaken && this.hatObj) this.hatObj.visible = false;
+    if (m.oro) {
+      this.oro = new Set(m.oro);
+      if (this.oro.has(g.net?.id)) this.myOro = true;
+    }
   }
 
   netSync() {
@@ -469,12 +495,13 @@ export default class EasterEgg {
       nlev: this.leverCount,
       lev: this.levers.map((l) => (l.down ? 1 : 0)),
       calabaza: this.calabazaState === 'taken' ? 'taken' : null,
+      oro: [...this.oro],
     });
   }
 
   // Estado completo para un jugador que entra a mitad de partida.
   fullState() {
-    return { items: this.items, kiln: this.kiln, hearth: this.hearth, done: this.done, hasHat: this.hasHat, nlev: this.leverCount, calabaza: this.calabazaState === 'taken' ? 'taken' : null };
+    return { items: this.items, kiln: this.kiln, hearth: this.hearth, done: this.done, hasHat: this.hasHat, nlev: this.leverCount, calabaza: this.calabazaState === 'taken' ? 'taken' : null, oro: [...this.oro] };
   }
 
   onZone(k) {
@@ -554,14 +581,15 @@ export default class EasterEgg {
     });
   }
 
-  // El premio (cada jugador en su compu): el Mate de Oro.
+  // El premio (cada jugador en su compu): el Abuelo deja cebado el Mate de
+  // Oro y cada uno lo va a buscar cuando quiere (no te cambia lo que tenés).
   reward() {
     const g = this.g;
     const secs = this.secs ?? Math.round(g.time - (this.started ?? g.time));
     g.audio.fanfare();
     g.post.flash(1.5);
     g.zombies.setEyeColor(0x39a8ff);
-    if (g.player.alive) g.weapons.give('oro');
+    g.later(3, () => g.hud.subtitle(g.net ? 'El Abuelo les cebó el Mate de Oro: cada uno vaya a buscar el suyo a la capilla.' : 'El Abuelo te cebó el Mate de Oro: agarralo de su mano.', 5));
     g.hud.setInventory(null);
     g.hud.achievement('La Ronda del Abuelo', `Easter egg completado en ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
     g.stats.easterEgg = true;
@@ -570,6 +598,36 @@ export default class EasterEgg {
     const mate = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), mats.gold);
     mate.position.set(0.32, 0.95, 0.3);
     this.chair.rocker.add(mate);
+  }
+
+  takeOro() {
+    const g = this.g;
+    this.myOro = true;
+    g.weapons.give('oro');
+    g.audio.powerupGrab();
+    g.fx.sparkle(this.abueloPos, [1, 0.85, 0.3], 14, 0.6);
+    const id = g.net?.id ?? 0;
+    if (g.net?.guest) g.net.net.send({ t: 'oro' });
+    else this.gotOro(id);
+  }
+
+  // El anfitrión anota quién ya tiene el suyo y les avisa a todos.
+  gotOro(id) {
+    const g = this.g;
+    this.oro.add(id);
+    g.net?.event('ee', { oro: [...this.oro] });
+    if (g.net && this.hasHat && !this.missingOro().length) this.announce('Todos tienen su Mate de Oro. Llévenle el sombrero al Abuelo.', 4);
+  }
+
+  // Nombres de los que todavía no agarraron su Mate de Oro.
+  missingOro() {
+    const g = this.g;
+    if (!g.net) return this.myOro ? [] : ['vos'];
+    const out = [];
+    const me = g.net.id;
+    if (!this.myOro && !this.oro.has(me)) out.push('vos');
+    for (const id of g.net.remote.keys()) if (!this.oro.has(id)) out.push(g.net.nameOf(id));
+    return out;
   }
 
   // Alt+K (solo): todo listo para el último paso, para probar la pelea final.
@@ -617,7 +675,7 @@ export default class EasterEgg {
           this.toastAll('Conseguiste: Sombrero del Capataz');
           g.net?.event('ee', { hatTaken: 1 });
           this.netSync();
-          if (this.done) this.announce('Llévenle el sombrero al Abuelo, en la capilla.', 4);
+          if (this.done) this.announce(this.missingOro().length ? 'Primero tienen que agarrar todos su Mate de Oro; después, el sombrero al Abuelo.' : 'Llévenle el sombrero al Abuelo, en la capilla.', 4);
           return true;
         },
       });

@@ -393,6 +393,10 @@ export default class Session {
     });
     net.on('pts', (m) => g.addPoints(m.v, null, true));
     // plata que te convida un compañero (el anfitrión la pasa si no es para él)
+    // un invitado agarró su Mate de Oro
+    net.on('oro', (m, from) => {
+      if (this.host) g.ee.gotOro(from);
+    });
     net.on('gift', (m, from) => {
       const n = Math.max(0, Math.min(5000, m.n | 0));
       if (!n) return;
@@ -451,6 +455,11 @@ export default class Session {
       const r = this.remote.get(m.id);
       if (r) r.downed = false;
     });
+  }
+
+  // Puntos que se ganó un invitado con algo que simula el anfitrión.
+  givePts(id, v) {
+    this.pts.set(id, (this.pts.get(id) || 0) + v);
   }
 
   giftPoints(to, n) {
@@ -652,6 +661,12 @@ export default class Session {
       const res = g.luz.dig();
       return reply(!!res, { luz: res });
     }
+    if (kind === 'repair') {
+      // la tabla la pone el anfitrión, pero los puntos son del que la clavó
+      const w = it.window;
+      if (g.barriers.count(w.i) >= 6) return reply(false);
+      return reply(true, { board: g.barriers.repair(w.i) ? 1 : 0 });
+    }
     if (kind === 'bench') {
       const res = g.activities.benchUse(true);
       return reply(!!res, { shield: true, built: res });
@@ -669,6 +684,10 @@ export default class Session {
     }
     const it = g.interact.list[m.i];
     const cost = it ? it.cost() : 0;
+    if (m.board != null) {
+      if (m.board) g.addPoints(10, null, false, 'board');
+      return;
+    }
     if (cost > 0) g.spend(cost);
     else g.audio.purchase();
     if (m.w) g.weapons.give(m.w, m.up || 0);
@@ -761,6 +780,12 @@ export default class Session {
         break;
       case 'arena':
         g.arena.start();
+        break;
+      case 'frain':
+        g.arena.spawnRain(m.p);
+        break;
+      case 'ward':
+        g.arena.setWard(!!m.on);
         break;
       case 'fireball':
         g.arena.spawnFireball(new THREE.Vector3(m.x, m.y, m.z), new THREE.Vector3(m.vx, m.vy, m.vz));

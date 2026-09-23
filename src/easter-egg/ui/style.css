@@ -309,7 +309,7 @@
   text-align: center;
 }
 .mdu-bossbar.is-on { display: block; }
-.mdu-bossbar span { font-family: 'Creepster', 'Special Elite', serif; font-size: 30px; color: #ff6a4a; text-shadow: 0 0 12px #a01000, var(--shadow); }
+.mdu-bossbar span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'Creepster', 'Special Elite', serif; font-size: clamp(18px, 2.6vw, 30px); color: #ff6a4a; text-shadow: 0 0 12px #a01000, var(--shadow); }
 .mdu-bossbar b { display: block; height: 12px; margin-top: 6px; background: rgba(0, 0, 0, 0.7); border: 1px solid #a02a1a; }
 .mdu-bossbar s { display: block; height: 100%; background: linear-gradient(90deg, #6a0a04, #e0401a); transition: width 0.2s; }
 .mdu-perks {

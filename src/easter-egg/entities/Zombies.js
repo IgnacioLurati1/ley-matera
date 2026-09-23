@@ -878,6 +878,16 @@ export default class Zombies {
       z.limp = 0;
       z.headTilt = 0;
       z.armOff = 0;
+      // sin esto la pose sale NaN y el jefe no se dibuja en el invitado
+      z.yaw = b.yaw;
+      z.phase = 0;
+      z.state = b.state;
+      z.stateT = 0;
+      z.attackT = 0;
+      z.corpseT = 0;
+      z.twitchT = 0;
+      z.twitch = 0;
+      z.window = -1;
       this.boss = z;
       this.bossRig.rig.visible = true;
       this.bossRig.hat.visible = !b.mandinga;
@@ -897,7 +907,7 @@ export default class Zombies {
       z.state = b.state;
       z.stateT = 0;
     }
-    this.g.hud.setBossBar(b.mandinga ? 'El Mandinga' : 'El Capataz', b.hp);
+    this.g.hud.setBossBar(b.mandinga ? (this.g.arena?.ward ? 'El Mandinga (protegido)' : 'El Mandinga') : 'El Capataz', b.hp);
   }
 
   // Animación de los zombies que maneja otro (sin pensar ni chocar).
@@ -2190,6 +2200,11 @@ export default class Zombies {
       return true;
     }
     if (z.pombero) return g.pombero.damage(amount, info);
+    // el Mandinga envuelto en fuego no recibe daño hasta que caigan los peones
+    if (z.mandinga && g.arena?.ward) {
+      if (info.point && Math.random() < 0.5) g.fx.sparks(info.point, 0.6, { x: 0, y: 1, z: 0 }, [1, 0.5, 0.15]);
+      return false;
+    }
     this.lastPoints = 0;
     let dmg = amount;
     const type = info.type || 'bullet';
