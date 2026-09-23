@@ -101,9 +101,12 @@ export default class Session {
     const g = this.g;
     this.interpolate();
     this.avatars.update(dt);
-    // en línea, si todos quedaron tirados, se terminó (lo decide el anfitrión)
-    if (this.host && g.state === 'playing' && this.remote.size) {
-      const me = !g.player.alive || g.player.downed;
+    // en línea, si todos quedaron tirados, se terminó (lo decide el anfitrión).
+    // También si el anfitrión quedó tirado y se fueron todos: nadie lo levanta.
+    // (Tirado con Quick Revive en solitario no cuenta: se levanta solo.)
+    if (this.host && g.state === 'playing') {
+      const p = g.player;
+      const me = !p.alive || (p.downed && p.bleed > 0);
       const out = me && [...this.remote.values()].every((r) => r.dead || r.downed);
       this.outT = out ? this.outT + dt : 0;
       if (this.outT > 0.8) g.gameOver(true);
@@ -383,6 +386,18 @@ export default class Session {
       g.onHostGone();
     });
     net.on('pts', (m) => g.addPoints(m.v, null, true));
+    // plata que te convida un compañero (el anfitrión la pasa si no es para él)
+    net.on('gift', (m, from) => {
+      const n = Math.max(0, Math.min(5000, m.n | 0));
+      if (!n) return;
+      if (this.host && m.to !== this.id) {
+        this.net.to(m.to, { t: 'gift', to: m.to, n, from });
+        return;
+      }
+      const src = this.host ? from : m.from;
+      g.receivePoints(n);
+      g.hud.subtitle(`${this.nameOf(src)} te convidó ${n}.`, 3);
+    });
     // un invitado le pegó a un osito
     net.on('secret', (m) => {
       if (!this.host || m.k !== 'bear') return;
@@ -430,6 +445,11 @@ export default class Session {
       const r = this.remote.get(m.id);
       if (r) r.downed = false;
     });
+  }
+
+  giftPoints(to, n) {
+    if (this.host) this.net.to(to, { t: 'gift', to, n, from: this.id });
+    else this.net.send({ t: 'gift', to, n });
   }
 
   nameOf(id) {
@@ -612,6 +632,11 @@ export default class Session {
       const gift = g.activities.giftFor(jar);
       return reply(true, { gift });
     }
+    if (kind === 'luzmala') {
+      // cavó un invitado: el anfitrión decide qué sale y se lo manda
+      const res = g.luz.dig();
+      return reply(!!res, { luz: res });
+    }
     if (kind === 'bench') {
       const res = g.activities.benchUse(true);
       return reply(!!res, { shield: true, built: res });
@@ -642,6 +667,7 @@ export default class Session {
     }
     if (m.gift) g.activities.applyGift(m.gift);
     if (m.shield) g.activities.equipShield();
+    if (m.luz) g.luz.applyReward(m.luz);
   }
 
   // El anfitrión avisa un cambio del mundo.
@@ -705,6 +731,9 @@ export default class Session {
         break;
       case 'pomb':
         g.pombero?.applyEvent(m);
+        break;
+      case 'luz':
+        g.luz?.applyEvent(m);
         break;
       case 'arena':
         g.arena.start();

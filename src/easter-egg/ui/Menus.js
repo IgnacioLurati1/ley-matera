@@ -1,5 +1,8 @@
 import Lobby from './Lobby';
 
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const QUALITY_LABEL = { low: 'Baja', medium: 'Media', high: 'Alta', ultra: 'Ultra' };
+
 // Menús: carga, título, controles, opciones, pausa, sala en línea y fin del juego.
 
 const h = (html) => {
@@ -16,6 +19,7 @@ const CONTROLS = [
   ['C', 'Agacharse'],
   ['R', 'Cebar (recargar)'],
   ['F', 'Comprar, abrir, usar · mantener para reconstruir barreras'],
+  ['F (en línea)', 'Mantener: levantar a un compañero caído · mirándolo, convidarle 500'],
   ['V', 'Facón (cuchillo)'],
   ['E', 'Inspeccionar el mate'],
   ['G', 'Bomba de yerba'],
@@ -91,7 +95,7 @@ export default class Menus {
        <label class="mdu-field">Música <input type="range" min="0" max="1" step="0.05" data-set="music"><output></output></label>
        <label class="mdu-field">Efectos <input type="range" min="0" max="1" step="0.05" data-set="sfx"><output></output></label>
        <label class="mdu-field">Temblor de cámara <input type="range" min="0" max="1" step="0.05" data-set="shake"><output></output></label>
-       <label class="mdu-field">Calidad <select data-set="quality"><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="ultra">Ultra</option></select></label>
+       <label class="mdu-field">Calidad <select data-set="quality"><option value="auto">Automática</option><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="ultra">Ultra</option></select></label>
        <label class="mdu-field">Invertir mouse <input type="checkbox" data-set="invertY"></label>
        <label class="mdu-field">Voces <select data-set="voiceMode"><option value="auto">Automática</option><option value="murmur">Murmullos</option><option value="off">Solo subtítulos</option></select></label>
        <p class="mdu-small" data-voice-note></p>
@@ -175,6 +179,12 @@ export default class Menus {
       if (input.type === 'checkbox') input.checked = !!v;
       else input.value = v;
     });
+    // calidad automática: muestra en cuál quedó
+    const q = this.screens.options.querySelector('[data-set=quality]');
+    if (q) {
+      q.querySelector('option[value=auto]').textContent = `Automática (${QUALITY_LABEL[s.quality] || s.quality})`;
+      if (s.qualityMode === 'auto') q.value = 'auto';
+    }
     this.syncOutputs();
   }
 
@@ -235,14 +245,19 @@ export default class Menus {
     }
   }
 
-  setTitleInfo({ best, gpu, integrated }) {
+  setTitleInfo({ best, gpu = {} }) {
     const t = this.screens.title;
     t.querySelector('[data-best]').textContent = best ? `Tu récord: ronda ${best}` : 'Viste lo que no deberías ver... ahora aguantá.';
-    const warn = integrated
-      ? `<div class="mdu-warn">Parece que el navegador está usando la placa de video integrada (${gpu}). Para usar la dedicada en Windows: Configuración › Sistema › Pantalla › Gráficos › elegí tu navegador › Alto rendimiento, y reiniciá el navegador.</div>`
-      : '';
-    t.querySelector('[data-gpu]').innerHTML = `${gpu ? `<p class="mdu-small" style="margin-top:6px">Placa de video: ${gpu}</p>` : ''}${warn}`;
-    this.screens.options.querySelector('[data-gpu2]').textContent = gpu ? `Placa de video en uso: ${gpu}` : '';
+    const name = esc(gpu.name || '');
+    const shown = gpu.unknown ? `no se sabe, el navegador no la muestra${gpu.brave ? ' (en Brave la ves escribiendo brave://gpu en la barra)' : ''}` : name;
+    let warn = '';
+    if (gpu.software) {
+      warn = `<div class="mdu-warn">El navegador está dibujando sin placa de video (${name}), así que el juego va a andar muy lento. Activá la aceleración por hardware (Configuración › Sistema › Usar aceleración de gráficos cuando esté disponible) y reiniciá el navegador. Si sigue igual, faltan los drivers de la placa de video: bajalos de la página de Intel, AMD o NVIDIA.</div>`;
+    } else if (gpu.integrated) {
+      warn = `<div class="mdu-warn">Parece que el navegador está usando la placa de video integrada (${name}). Si tenés una dedicada, en Windows: Configuración › Sistema › Pantalla › Gráficos › elegí tu navegador › Alto rendimiento, y reiniciá el navegador.</div>`;
+    }
+    t.querySelector('[data-gpu]').innerHTML = `${shown ? `<p class="mdu-small" style="margin-top:6px">Placa de video: ${shown}</p>` : ''}${warn}`;
+    this.screens.options.querySelector('[data-gpu2]').textContent = shown ? `Placa de video en uso: ${gpu.unknown ? shown : gpu.name}` : '';
   }
 
   // Qué se puede hacer en la pausa según cómo se esté jugando.
@@ -293,7 +308,6 @@ export default class Menus {
     const table = s.querySelector('[data-board]');
     table.hidden = !board || board.length < 2;
     if (!table.hidden) {
-      const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
       table.innerHTML = `<thead><tr><th>Matero</th><th>Bajas</th><th>Cabezas</th><th>Caídas</th><th>Levantó</th></tr></thead><tbody>${board
         .map((b) => `<tr><td>${esc(b.name)}</td><td>${b.kills}</td><td>${b.heads}</td><td>${b.downs}</td><td>${b.revives}</td></tr>`)
         .join('')}</tbody>`;

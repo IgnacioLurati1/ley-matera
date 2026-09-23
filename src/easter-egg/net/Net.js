@@ -56,6 +56,12 @@ export default class Net {
 
   on(type, fn) {
     this.handlers.set(type, fn);
+    // lo que llegó antes de que la partida escuchara (ej. el estado del mundo
+    // al entrar a una partida ya empezada) se entrega ahora
+    const early = this.early?.filter((e) => e.msg.t === type);
+    if (!early?.length) return;
+    this.early = this.early.filter((e) => e.msg.t !== type);
+    for (const e of early) fn(e.msg, e.from);
   }
 
   status(text) {
@@ -212,7 +218,12 @@ export default class Net {
       this.onPlayers?.(list);
       return;
     }
-    this.handlers.get(msg.t)?.(msg, from);
+    const h = this.handlers.get(msg.t);
+    if (h) h(msg, from);
+    else if (this.guest) {
+      this.early = this.early || [];
+      if (this.early.length < 64) this.early.push({ msg, from });
+    }
   }
 
   send(msg) {

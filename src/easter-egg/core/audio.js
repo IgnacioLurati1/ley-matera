@@ -876,7 +876,9 @@ export default class GameAudio {
     const pauses = (text.match(/[,.;:!?…]/g) || []).length;
     const talk = (rate) => Math.max(1.6, (text.length * 0.064 + pauses * 0.22) / rate + 0.3);
     if (this.voiceMode === 'off') return talk(1);
-    if (this.useNatural) {
+    // en automática el Capataz murmura (con la voz del navegador pierde la gracia)
+    const murmurOnly = this.voiceMode === 'auto' && (speaker === 'capataz' || speaker === 'capatazJoven');
+    if (this.useNatural && !murmurOnly) {
       try {
         // tono y velocidad de cada personaje (las voces neuronales a veces ignoran el tono)
         const V = {
@@ -928,7 +930,9 @@ export default class GameAudio {
     const t = this.now;
     const o = this.out({ gain: 0.5, reverb: 0.6 });
     this.tone(o, { t, dur: 0.8, type: 'sawtooth', freq: 55, freqEnd: 40, gain: 0.3 });
-    return this.say(text, 'anunciador');
+    // el anunciador de los potenciadores murmura (con voz del navegador no queda)
+    if (this.voiceMode === 'off') return Math.max(1.6, text.length * 0.064);
+    return this.murmur(text, 'anunciador');
   }
 
   // Radio vieja: barrido de sintonía, silbido y estática de fondo mientras habla.

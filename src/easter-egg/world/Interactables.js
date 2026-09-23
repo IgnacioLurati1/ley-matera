@@ -8,6 +8,9 @@ import { buildMate, buildKnife, getMats } from '../weapons/viewmodels';
 import { mesh, boxGeo, cylGeo } from './props';
 import { DOOR_H } from './World';
 
+// Cuánto le convidás a un compañero por apretada.
+const SHARE = 500;
+
 // Todo lo que se usa con F: puertas, dibujos de tiza, perks (paquetes de
 // yerba gigantes), caja misteriosa, Pack-a-Pava, la palanca de la luz y las
 // barreras. También los candados que pone el Capataz.
@@ -954,6 +957,8 @@ export default class Interactables {
     this.setCurrent(best);
     if (!best) {
       this.holdT = 0;
+      // en línea, mirando a un compañero: convidarle plata
+      if (g.net && this.shareCheck(dt, input, fwd)) return;
       g.hud.setHold(null);
       return;
     }
@@ -1035,6 +1040,51 @@ export default class Interactables {
         if (cost > 0) g.audio.purchase();
       } else g.audio.deny();
     }
+  }
+
+  // Compañero en pie justo adelante: manteniendo F le convidás plata (para
+  // que el que quedó corto pueda abrir una puerta o comprarse un perk).
+  shareCheck(dt, input, fwd) {
+    const g = this.g;
+    let best = null;
+    for (const r of g.net.remote.values()) {
+      if (r.downed || r.dead) continue;
+      const dx = r.pos.x - g.player.pos.x;
+      const dz = r.pos.z - g.player.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 2.2 || d < 0.05) continue;
+      if ((dx * fwd.x + dz * fwd.z) / d / Math.max(0.3, Math.hypot(fwd.x, fwd.z)) < 0.85) continue;
+      best = r;
+      break;
+    }
+    if (!best) {
+      this.shareT = 0;
+      return false;
+    }
+    g.hud.setHint(`Mantené [F] para convidarle ${SHARE} a ${best.name}`);
+    if (!input.key('KeyF')) {
+      this.shareT = 0;
+      this.shareLock = false;
+      g.hud.setHold(null);
+      return true;
+    }
+    // una vez por apretada (para no vaciarte la cuenta sin querer)
+    if (this.shareLock) return true;
+    this.shareT = (this.shareT || 0) + dt;
+    g.hud.setHold(Math.min(1, this.shareT / 0.8));
+    if (this.shareT < 0.8) return true;
+    this.shareT = 0;
+    this.shareLock = true;
+    g.hud.setHold(null);
+    if (!g.spend(SHARE)) {
+      g.audio.deny();
+      g.hud.flashPoints();
+      return true;
+    }
+    g.net.giftPoints(best.id, SHARE);
+    g.audio.purchase();
+    g.hud.subtitle(`Le convidaste ${SHARE} a ${best.name}.`, 2.5);
+    return true;
   }
 
   // Compañero caído cerca: se lo levanta manteniendo F.

@@ -64,6 +64,7 @@ export default class Rounds {
       g.weapons.updateHud();
     }
     g.powerups.newRound();
+    g.luz?.onRound(this.round);
     g.weather?.onRound(this.round);
     g.weather?.setRoundSky(this.round);
     if (this.dogs) {
@@ -99,7 +100,8 @@ export default class Rounds {
 
   update(dt) {
     const g = this.g;
-    if (this.state === 'remote') return;
+    // terminada la partida no aparecen más ni arranca otra ronda
+    if (this.state === 'remote' || g.state !== 'playing') return;
     if (this.state === 'break') {
       this.breakT -= dt;
       if (this.breakT <= 0) this.nextRound();

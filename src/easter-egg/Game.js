@@ -14,6 +14,7 @@ import Rounds from './entities/Rounds';
 import Powerups from './entities/Powerups';
 import EasterEgg from './entities/EasterEgg';
 import Pombero from './entities/Pombero';
+import LuzMala from './world/LuzMala';
 import Weather from './world/Weather';
 import Activities from './world/Activities';
 import Decor from './world/Decor';
@@ -39,7 +40,11 @@ const QUALITY = {
   high: { pr: 1.25, shadows: true, shadowSize: 2048 },
   ultra: { pr: 2, shadows: true, shadowSize: 4096 },
 };
-const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.55, sfx: 0.9, shake: 1, quality: 'ultra', invertY: false, voiceMode: 'auto', showFps: false, v: 2 };
+const QUALITY_ORDER = ['low', 'medium', 'high', 'ultra'];
+const QUALITY_LABEL = { low: 'Baja', medium: 'Media', high: 'Alta', ultra: 'Ultra' };
+// Calidad automática: si en partida anda por debajo de esto, baja un escalón.
+const MIN_FPS = 40;
+const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.55, sfx: 0.9, shake: 1, quality: 'ultra', qualityMode: 'auto', invertY: false, voiceMode: 'auto', showFps: false, v: 3 };
 
 // Entrada vacía: el jugador sigue con su física pero no toca nada (menú abierto en línea).
 const IDLE_INPUT = { mouse: { dx: 0, dy: 0 }, sensitivity: 1, invertY: false, key: () => false, hit: () => false };
@@ -81,7 +86,9 @@ export default class Game {
     // la calidad por defecto pasó de Alta a Ultra: el que nunca la tocó, sube
     if (!saved.v && saved.quality === 'high') saved.quality = 'ultra';
     if (saved.voiceMode === 'natural') saved.voiceMode = 'auto';
-    saved.v = 2;
+    // la calidad pasó a ser automática (según la placa y los FPS) salvo que se elija a mano
+    if ((saved.v || 0) < 3) saved.qualityMode = 'auto';
+    saved.v = 3;
     this.settings = { ...DEFAULTS, ...saved };
     this.best = store.get(BEST_KEY) || 0;
     this.paused = false;
@@ -115,6 +122,8 @@ export default class Game {
     r.shadowMap.type = THREE.PCFShadowMap;
     r.shadowMap.autoUpdate = false;
     this.gpu = this.detectGpu();
+    if (this.settings.qualityMode === 'auto') this.settings.quality = this.autoQuality();
+    this.perf = { t: 0, n: 0, warm: false };
 
     await step(0.15, 'Pintando paredes y calcáreos…');
     this.textures = buildTextures();
@@ -148,7 +157,7 @@ export default class Game {
     this.renderer.compile(this.weapons.vmScene, this.weapons.vmCamera);
     await step(1, 'Listo.');
     this.menus.hideLoading();
-    this.menus.setTitleInfo({ best: this.best, gpu: this.gpu.name, integrated: this.gpu.integrated });
+    this.menus.setTitleInfo({ best: this.best, gpu: this.gpu });
     this.menus.show('title');
     this.state = 'title';
     this.last = performance.now();
@@ -200,8 +209,55 @@ export default class Game {
       .replace(/,\s*$/, '')
       .replace(/\s*\(0x[0-9A-F]+\)/gi, '')
       .trim();
-    const integrated = /Intel|UHD|Iris|Radeon\(TM\) Graphics|Radeon Graphics|Vega \d+ Graphics|Microsoft Basic|SwiftShader|llvmpipe/i.test(clean) && !/NVIDIA|GeForce|RTX|GTX|Arc A\d/i.test(clean);
-    return { name: clean, integrated };
+    // sin placa: el navegador dibuja con el procesador (drivers faltantes o aceleración apagada)
+    const software = /SwiftShader|llvmpipe|softpipe|Basic Render|Microsoft Basic|Software/i.test(clean);
+    const integrated = !software && /Intel|UHD|Iris|Radeon\(TM\) Graphics|Radeon Graphics|Vega \d+ Graphics/i.test(clean) && !/NVIDIA|GeForce|RTX|GTX|Arc A\d/i.test(clean);
+    // algunos navegadores (Brave) esconden el modelo
+    const unknown = !software && !integrated && !/NVIDIA|GeForce|RTX|GTX|Quadro|AMD|Radeon|Intel|Arc|Apple|Mali|Adreno|PowerVR|Qualcomm/i.test(clean);
+    return { name: clean, integrated, software, unknown, brave: !!navigator.brave };
+  }
+
+  // Calidad de entrada según la placa: Ultra solo si es dedicada.
+  autoQuality() {
+    const gp = this.gpu || {};
+    if (gp.software) return 'low';
+    if (gp.integrated) return 'medium';
+    if (gp.unknown) return 'high';
+    return 'ultra';
+  }
+
+  // Mide los FPS en partida; en automática, si anda lento baja la calidad un
+  // escalón y avisa (nunca la sube sola, para que no ande cambiando).
+  watchPerf(ms) {
+    const p = this.perf;
+    if (!p) return;
+    const on = this.settings.qualityMode === 'auto' && this.state === 'playing' && !this.paused && !this.menuOpen;
+    if (!on || ms > 250) {
+      // pausa, menú o pestaña en segundo plano: se vuelve a medir de cero
+      if (!on) p.warm = false;
+      p.t = 0;
+      p.n = 0;
+      return;
+    }
+    p.t += ms;
+    p.n++;
+    if (p.t < 4000) return;
+    const fps = (p.n * 1000) / p.t;
+    p.t = 0;
+    p.n = 0;
+    // la primera tanda no cuenta (compila, carga texturas)
+    if (!p.warm) {
+      p.warm = true;
+      return;
+    }
+    const i = QUALITY_ORDER.indexOf(this.settings.quality);
+    if (fps >= MIN_FPS || i <= 0) return;
+    this.settings.quality = QUALITY_ORDER[i - 1];
+    store.set(SETTINGS_KEY, this.settings);
+    this.applyQuality();
+    this.resize();
+    p.warm = false;
+    this.hud.toast(`Calidad ${QUALITY_LABEL[this.settings.quality]}: la bajamos para que ande más fluido`);
   }
 
   // Arma (o rearma) todo el mundo de juego desde cero.
@@ -233,6 +289,7 @@ export default class Game {
     }
     this.interact = new Interactables(this);
     this.activities = new Activities(this);
+    this.luz = new LuzMala(this);
     this.zombies = new Zombies(this);
     this.rounds = new Rounds(this);
     this.powerups = new Powerups(this);
@@ -677,6 +734,14 @@ export default class Game {
     this.hud.addPoints(v);
   }
 
+  // Plata que te pasa un compañero (no cuenta como ganada para los potenciadores).
+  receivePoints(n) {
+    this.points += n;
+    this.hud.setPoints(this.points);
+    this.hud.addPoints(n);
+    this.audio.purchase();
+  }
+
   spend(n) {
     if (this.points < n) return false;
     this.points -= n;
@@ -732,6 +797,12 @@ export default class Game {
 
   // ---------------- opciones ----------------
   setSetting(k, v) {
+    if (k === 'quality') {
+      // "auto" elige según la placa; cualquier otra queda fija
+      this.settings.qualityMode = v === 'auto' ? 'auto' : 'manual';
+      if (v === 'auto') v = this.autoQuality();
+      if (this.perf) this.perf.warm = false;
+    }
     this.settings[k] = v;
     store.set(SETTINGS_KEY, this.settings);
     if (k === 'sensitivity') this.input.sensitivity = v;
@@ -781,6 +852,7 @@ export default class Game {
   // ---------------- bucle ----------------
   loop(now) {
     this.raf = requestAnimationFrame(this.loop);
+    this.watchPerf(now - this.last);
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     if (this.settings.showFps) {
@@ -837,6 +909,7 @@ export default class Game {
     this.arena.update(dt);
     this.powerups.update(dt);
     this.pombero.update(dt);
+    this.luz.update(dt);
     this.activities.update(dt);
     this.net?.update(dt);
     this.decor.update(dt);
