@@ -25,8 +25,9 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          BASE_PATH: /${{ github.event.repository.name }}/
-          SITE_URL: https://ignaciolurati1.github.io/${{ github.event.repository.name }}
+          # Con dominio propio (variable SITE_DOMAIN, ej. leymatera.com.ar) el sitio vive en la raíz.
+          BASE_PATH: ${{ vars.SITE_DOMAIN && '/' || format('/{0}/', github.event.repository.name) }}
+          SITE_URL: ${{ vars.SITE_DOMAIN && format('https://{0}', vars.SITE_DOMAIN) || format('https://ignaciolurati1.github.io/{0}', github.event.repository.name) }}
           GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ vars.VITE_SUPABASE_KEY }}
