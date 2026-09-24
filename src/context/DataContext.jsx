@@ -5,6 +5,7 @@ import { todayISO } from '../lib/format';
 import { BACKGROUND_SIZES, PRODUCT_SIZES, removeVariants, uploadVariants } from '../lib/media';
 import { backgroundVariants, productVariants } from '../lib/image';
 import { assetUrl } from '../lib/assets';
+import { whatsappFrom, whatsappLink } from '../config/site';
 
 // Fuente de datos de todo el sitio: Supabase (tablas products, promos, settings).
 // Si no hay credenciales configuradas (.env), se leen los archivos de
@@ -303,6 +304,16 @@ export const isPromoLive = (promo, today = todayISO()) =>
 export const useLivePromos = () => {
   const { promos } = useData();
   return useMemo(() => promos.filter((p) => isPromoLive(p)), [promos]);
+};
+
+// WhatsApp al que van el carrito, las consultas y las redes (editable en el admin).
+export const useWhatsApp = () => {
+  const { settings } = useData();
+  const saved = settings?.whatsapp;
+  return useMemo(() => {
+    const { display, number } = whatsappFrom(saved);
+    return { display, number, link: (text) => whatsappLink(text, number) };
+  }, [saved]);
 };
 
 export const useProductMap = () => {

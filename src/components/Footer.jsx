@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import Logo from './Logo';
 import { useUI } from '../context/UIContext';
 import { CATEGORIES } from '../config/categories';
-import { SITE, whatsappLink } from '../config/site';
+import { SITE } from '../config/site';
+import { useWhatsApp } from '../context/DataContext';
 import { InstagramIcon, MailIcon, WhatsAppIcon } from './Icons';
 import './Footer.css';
 
@@ -15,6 +16,7 @@ const gmailLink = () =>
 
 export default function Footer() {
   const { openModal } = useUI();
+  const whatsapp = useWhatsApp();
   return (
     <footer className="footer">
       <div className="container footer__grid">
@@ -32,7 +34,7 @@ export default function Footer() {
             <a href={SITE.instagramUrl} target="_blank" rel="noreferrer" aria-label="Instagram">
               <InstagramIcon />
             </a>
-            <a href={whatsappLink()} target="_blank" rel="noreferrer" aria-label="WhatsApp">
+            <a href={whatsapp.link()} target="_blank" rel="noreferrer" aria-label="WhatsApp">
               <WhatsAppIcon />
             </a>
             <a href={gmailLink()} target="_blank" rel="noreferrer" aria-label={`Mail: ${SITE.email}`} title={SITE.email}>

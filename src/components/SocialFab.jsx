@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { SITE, whatsappLink } from '../config/site';
+import { SITE } from '../config/site';
+import { useWhatsApp } from '../context/DataContext';
 import { local } from '../lib/storage';
 import { ChatIcon, CloseIcon, InstagramIcon, WhatsAppIcon } from './Icons';
 import './SocialFab.css';
@@ -9,6 +10,7 @@ const HINT_KEY = 'lm-fab-hint-seen';
 
 // Burbuja flotante abajo a la derecha con acceso directo a las redes.
 export default function SocialFab() {
+  const whatsapp = useWhatsApp();
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(() => Boolean(local.get(HINT_KEY)));
   const [hint, setHint] = useState(false);
@@ -40,7 +42,7 @@ export default function SocialFab() {
         </button>
       )}
       <div className="fab__menu">
-        <a href={whatsappLink('¡Hola Ley Matera!')} target="_blank" rel="noreferrer" className="fab__item fab__item--wa">
+        <a href={whatsapp.link('¡Hola Ley Matera!')} target="_blank" rel="noreferrer" className="fab__item fab__item--wa">
           <WhatsAppIcon size={20} /> WhatsApp
         </a>
         <a href={SITE.instagramUrl} target="_blank" rel="noreferrer" className="fab__item fab__item--ig">

@@ -6,6 +6,7 @@ import { getImageSize, previewDataUrl, resizedVariants, tinyPlaceholder } from '
 import { ABOUT_SIZES, BACKGROUND_SIZES, removeVariants, uploadVariants } from '../../lib/media';
 import { DEFAULT_ABOUT_IMAGE, DEFAULT_HERO, heroFrom } from '../../lib/siteContent';
 import { assetUrl } from '../../lib/assets';
+import { whatsappFrom, whatsappLink, whatsappNumberFrom } from '../../config/site';
 
 const DEFAULT_ABOUT = { title: 'Somos Ley Matera', body: '', image: DEFAULT_ABOUT_IMAGE, imageY: null };
 
@@ -236,9 +237,72 @@ function AboutEditor() {
   );
 }
 
+// Número al que llegan los pedidos del carrito, las consultas y el botón de redes.
+function WhatsAppEditor() {
+  const { settings, updateSettings } = useData();
+  const { run } = useUI();
+  const current = whatsappFrom(settings?.whatsapp);
+  const [display, setDisplay] = useState(current.display);
+
+  useEffect(() => {
+    setDisplay(whatsappFrom(settings?.whatsapp).display);
+  }, [settings?.whatsapp]);
+
+  const number = whatsappNumberFrom(display);
+  const changed = display.trim() !== current.display;
+
+  return (
+    <div className="panel">
+      <h2>WhatsApp</h2>
+      <p className="hint">
+        A este número llegan los pedidos del carrito, las consultas y el botón de WhatsApp del sitio.
+      </p>
+      <div className="admin-grid-2">
+        <label className="field">
+          <span>Número</span>
+          <input
+            className="input"
+            inputMode="tel"
+            value={display}
+            maxLength={24}
+            onChange={(e) => setDisplay(e.target.value)}
+            placeholder="Ej: 341 611 1209"
+          />
+          <small>Código de área sin el 0 y número sin el 15. Así se muestra en Contacto.</small>
+          {!number && display.trim() && (
+            <small style={{ color: 'var(--danger)' }}>Tiene que tener 10 números (ej: 341 611 1209).</small>
+          )}
+        </label>
+        <div className="field">
+          <span>Probar</span>
+          <a
+            className={`btn btn--whatsapp btn--sm ${number ? '' : 'is-disabled'}`}
+            href={number ? whatsappLink('Prueba desde el panel de Ley Matera', number) : undefined}
+            target="_blank"
+            rel="noreferrer"
+            aria-disabled={!number}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            Abrir chat con {number ? `+${number}` : '…'}
+          </a>
+          <small>Abrí el chat antes de guardar para confirmar que es el número correcto.</small>
+        </div>
+      </div>
+      <button
+        className="btn"
+        disabled={!number || !changed}
+        onClick={() => run(() => updateSettings({ whatsapp: { display: display.trim() } }), 'WhatsApp guardado')}
+      >
+        Guardar WhatsApp
+      </button>
+    </div>
+  );
+}
+
 export default function DataAdmin() {
   return (
     <>
+      <WhatsAppEditor />
       <HeroEditor />
       <AboutEditor />
     </>

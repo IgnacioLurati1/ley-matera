@@ -3,8 +3,8 @@ import { useLocation } from 'react-router-dom';
 import Modal from './Modal';
 import ProductDetail from './ProductDetail';
 import { useUI } from '../context/UIContext';
-import { useProductMap } from '../context/DataContext';
-import { SITE, whatsappLink } from '../config/site';
+import { useProductMap, useWhatsApp } from '../context/DataContext';
+import { SITE } from '../config/site';
 import { InstagramIcon, WhatsAppIcon } from './Icons';
 import './GlobalModals.css';
 
@@ -16,13 +16,14 @@ const STEPS = [
 ];
 
 export function ContactLinks() {
+  const whatsapp = useWhatsApp();
   return (
     <div className="contact-links">
-      <a className="contact-card contact-card--wa" href={whatsappLink('¡Hola Ley Matera! Tengo una consulta:')} target="_blank" rel="noreferrer">
+      <a className="contact-card contact-card--wa" href={whatsapp.link('¡Hola Ley Matera! Tengo una consulta:')} target="_blank" rel="noreferrer">
         <WhatsAppIcon size={30} />
         <div>
           <strong>WhatsApp</strong>
-          <span>{SITE.whatsappDisplay}</span>
+          <span>{whatsapp.display}</span>
         </div>
       </a>
       <a className="contact-card contact-card--ig" href={SITE.instagramUrl} target="_blank" rel="noreferrer">

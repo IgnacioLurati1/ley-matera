@@ -9,5 +9,23 @@ export const SITE = {
   email: 'leymaterarosario@gmail.com',
 };
 
-export const whatsappLink = (text = '') =>
-  `https://wa.me/${SITE.whatsappNumber}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+export const whatsappLink = (text = '', number = SITE.whatsappNumber) =>
+  `https://wa.me/${number}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+
+// Número cargado en Admin → Editar (settings.whatsapp = { display }), o el de siempre.
+// Se escribe como en Argentina ("341 611 1209"); para wa.me se le saca el 0 del
+// código de área y se le agrega el 549 adelante.
+export const whatsappNumberFrom = (display) => {
+  let d = String(display ?? '').replace(/\D/g, '');
+  if (d.startsWith('549')) return d;
+  if (d.startsWith('54')) return `549${d.slice(2)}`;
+  d = d.replace(/^0/, '');
+  return d.length === 10 ? `549${d}` : '';
+};
+
+export const whatsappFrom = (saved) => {
+  const number = whatsappNumberFrom(saved?.display);
+  return number
+    ? { display: saved.display.trim(), number }
+    : { display: SITE.whatsappDisplay, number: SITE.whatsappNumber };
+};

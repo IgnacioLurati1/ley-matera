@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { local } from '../lib/storage';
-import { useData, isPromoLive } from './DataContext';
+import { useData, useWhatsApp, isPromoLive } from './DataContext';
 import { encodeOrder } from '../lib/orderCode';
 import { unitPrice } from '../lib/pricing';
-import { SITE, whatsappLink } from '../config/site';
+import { SITE } from '../config/site';
 
 const CartContext = createContext(null);
 const KEY = 'lm-cart';
@@ -11,6 +11,7 @@ const keyOf = (productId, promoId) => (promoId ? `${promoId}-${productId}` : pro
 
 export function CartProvider({ children }) {
   const { products, promos } = useData();
+  const whatsapp = useWhatsApp();
   // Guardamos sólo ids y cantidades: los precios siempre salen del catálogo actual.
   const [items, setItems] = useState(() => local.get(KEY, []));
   const [open, setOpen] = useState(false);
@@ -110,7 +111,7 @@ export function CartProvider({ children }) {
     ].join('\n');
   }, [lines, code]);
 
-  const orderLink = useCallback(() => whatsappLink(buildMessage()), [buildMessage]);
+  const orderLink = useCallback(() => whatsapp.link(buildMessage()), [whatsapp, buildMessage]);
 
   const value = useMemo(
     () => ({ items, lines, count, total, code, open, setOpen, add, setQty, remove, clear, bump, buildMessage, orderLink, stockOf }),
