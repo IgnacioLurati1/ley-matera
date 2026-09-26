@@ -44,6 +44,7 @@ export const TrashIcon = make(
 );
 export const ChevronDown = make(<path d="m6 9 6 6 6-6" />);
 export const ChevronRight = make(<path d="m9 6 6 6-6 6" />);
+export const ChevronLeft = make(<path d="m15 6-6 6 6 6" />);
 export const ArrowLeft = make(<path d="M19 12H5m6-6-6 6 6 6" />);
 export const FilterIcon = make(<path d="M4 5h16l-6 8v5l-4 2v-7L4 5Z" />);
 export const UserIcon = make(

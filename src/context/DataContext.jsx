@@ -19,6 +19,7 @@ const productFromRow = (r) => ({
   category: r.category,
   price: r.price,
   image: r.image,
+  images: r.images ?? [],
   stock: r.stock ?? null,
   discount: r.discount ?? 0,
   description: r.description ?? '',
@@ -32,7 +33,11 @@ const productToRow = (p) => ({
   ...(optional.stock ? { stock: p.stock ?? null } : {}),
   ...(optional.discount ? { discount: p.discount ?? 0 } : {}),
   ...(optional.description ? { description: (p.description ?? '').trim() } : {}),
+  ...(optional.images ? { images: p.images ?? [] } : {}),
 });
+
+// Todas las fotos de un producto, la principal primero.
+export const productPhotos = (p) => [p.image, ...(p.images ?? [])].filter(Boolean);
 
 const promoFromRow = (r) => ({
   id: r.id,
@@ -63,10 +68,10 @@ const promoToRow = (p) => ({
   position: p.position ?? 0,
 });
 
-// Columnas que se agregaron después (stock, descuento, descripción). Si alguna todavía no
+// Columnas que se agregaron después (stock, descuento, descripción, fotos extra). Si alguna todavía no
 // existe en la base (falta correr su migración en supabase/), el sitio sigue
 // andando sin esa función.
-const optional = { stock: true, discount: true, description: true };
+const optional = { stock: true, discount: true, description: true, images: true };
 const productCols = () =>
   ['id,title,category,price,image,created_at', ...Object.keys(optional).filter((k) => optional[k])].join(',');
 const missingColumn = (e) =>
@@ -129,38 +134,52 @@ export function DataProvider({ children }) {
 
   const actions = useMemo(
     () => ({
-      // Guarda un producto. `frame` = encuadre de una foto nueva ({src,x,y,zoom}),
-      // o null si la foto no cambió. Devuelve el producto guardado.
-      saveProduct: async (product, frame = null) => {
+      // Guarda un producto. `photos` = sus fotos en orden, la principal primero:
+      // [{ src, x, y, zoom, upload }]. Las que traen `upload` (nuevas o
+      // reencuadradas) se recortan y se suben; el resto queda como está.
+      // Sin `photos` no se tocan las fotos. Devuelve el producto guardado.
+      saveProduct: async (product, photos = null) => {
         guard();
-        let image = product.image;
         let saved = product.id
           ? product
           : productFromRow(
               ensure(
                 await supabase
                   .from('products')
-                  .insert(productToRow({ ...product, image: '' }))
+                  .insert(productToRow({ ...product, image: '', images: [] }))
                   .select(productCols())
                   .single(),
               ),
             );
 
-        if (frame) {
-          image = await uploadVariants('products', saved.id, await productVariants(frame.src, frame));
+        let { image, images } = product;
+        if (photos) {
+          const urls = [];
+          for (const [i, ph] of photos.entries()) {
+            urls.push(
+              ph.upload
+                ? await uploadVariants('products', i ? `${saved.id}-${i}` : saved.id, await productVariants(ph.src, ph))
+                : ph.src,
+            );
+          }
+          [image = '', ...images] = urls;
         }
         saved = productFromRow(
           ensure(
             await supabase
               .from('products')
-              .update(productToRow({ ...product, image }))
+              .update(productToRow({ ...product, image, images }))
               .eq('id', saved.id)
               .select(productCols())
               .single(),
           ),
         );
-        const previous = product.id ? state.products.find((p) => p.id === product.id)?.image : null;
-        if (frame && previous && previous !== image) removeVariants(previous, PRODUCT_SIZES);
+        // Borra del storage las fotos que se quitaron o se reemplazaron.
+        if (photos && product.id) {
+          const kept = new Set(productPhotos(saved));
+          const before = state.products.find((p) => p.id === product.id);
+          if (before) productPhotos(before).filter((u) => !kept.has(u)).forEach((u) => removeVariants(u, PRODUCT_SIZES));
+        }
 
         setState((s) => ({
           ...s,
@@ -187,7 +206,7 @@ export function DataProvider({ children }) {
               .eq('id', pr.id),
           ),
         );
-        if (product) removeVariants(product.image, PRODUCT_SIZES);
+        if (product) productPhotos(product).forEach((u) => removeVariants(u, PRODUCT_SIZES));
         setState((s) => ({
           ...s,
           products: s.products.filter((p) => p.id !== id),
@@ -287,6 +306,7 @@ export function DataProvider({ children }) {
       stockEnabled: readOnly || optional.stock,
       discountEnabled: readOnly || optional.discount,
       descriptionEnabled: readOnly || optional.description,
+      imagesEnabled: readOnly || optional.images,
       ...actions,
     }),
     [state, loading, error, readOnly, actions],

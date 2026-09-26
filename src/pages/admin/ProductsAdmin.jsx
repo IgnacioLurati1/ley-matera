@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useData } from '../../context/DataContext';
+import { productPhotos, useData } from '../../context/DataContext';
 import { useUI } from '../../context/UIContext';
 import { FLAT_CATEGORIES, categoryLabel, inCategory } from '../../config/categories';
 import { salePrice } from '../../lib/pricing';
@@ -8,6 +8,7 @@ import { money, normalize } from '../../lib/format';
 import Modal from '../../components/Modal';
 import ProductCard from '../../components/ProductCard';
 import ProductImage from '../../components/ProductImage';
+import FramedImage from '../../components/FramedImage';
 import ImagePositioner from '../../components/ImagePositioner';
 import ImageDrop from '../../components/ImageDrop';
 import { PRODUCT_SIZES } from '../../lib/media';
@@ -24,6 +25,7 @@ const EMPTY = {
   category: '',
   price: '',
   image: '',
+  images: [],
   stock: null,
   discount: 0,
   description: '',
@@ -65,8 +67,102 @@ function InlineNumber({ product, field, label, title, empty, max, suffix = '', o
 // "a", "a y b", "a, b y c"
 const listJoin = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs.at(-1)}`);
 
+// Fotos por producto como máximo (cada una se sube en 800 y 400 px).
+const MAX_PHOTOS = 8;
+let photoKey = 0;
+// Foto del editor: encuadre + `upload` si hay que recortarla y subirla al publicar.
+const newPhoto = (src, upload) => ({ key: ++photoKey, src, x: 50, y: 50, zoom: 1, upload });
+
+// Fotos del producto: la grande se encuadra; abajo, las miniaturas para elegir,
+// ordenar y quitar. La primera es la principal (la del catálogo).
+function PhotosField({ photos, setPhotos, max }) {
+  const [current, setCurrent] = useState(0);
+  const cur = Math.min(current, photos.length - 1);
+  const photo = photos[cur];
+
+  const add = (src) => {
+    setPhotos((ps) => (ps.length >= max ? ps : [...ps, newPhoto(src, true)]));
+    setCurrent(Infinity);
+  };
+  const moveTo = (to) => {
+    setPhotos((ps) => {
+      const next = ps.filter((_, i) => i !== cur);
+      next.splice(to, 0, ps[cur]);
+      return next;
+    });
+    setCurrent(to);
+  };
+
+  if (!photo) {
+    return (
+      <ImageDrop
+        multiple={max > 1}
+        label={max > 1 ? 'Subí las fotos' : 'Subí una foto'}
+        hint={`Recomendado: cuadradas, mínimo 800 × 800 px, fondo claro.${max > 1 ? ` Hasta ${max} fotos.` : ''}`}
+        onImage={add}
+      />
+    );
+  }
+  return (
+    <>
+      <ImagePositioner
+        key={photo.key}
+        frame={photo}
+        variants={PRODUCT_SIZES}
+        onChange={(f) => setPhotos((ps) => ps.map((p, i) => (i === cur ? { ...f, upload: true } : p)))}
+        aspect={1}
+      />
+      <div className="photos">
+        {photos.map((p, i) => (
+          <button
+            type="button"
+            key={p.key}
+            className={`photos__thumb ${i === cur ? 'is-on' : ''}`}
+            onClick={() => setCurrent(i)}
+            aria-label={`Foto ${i + 1}${i === 0 ? ' (principal)' : ''}`}
+          >
+            <FramedImage frame={p} variants={PRODUCT_SIZES} />
+            {i === 0 && <span className="photos__main">Principal</span>}
+          </button>
+        ))}
+        {photos.length < max && <ImageDrop compact multiple label="Agregar" onImage={add} />}
+      </div>
+      <div className="photos__actions">
+        {photos.length > 1 && (
+          <>
+            <button type="button" className="btn btn--sm btn--ghost" disabled={cur === 0} onClick={() => moveTo(cur - 1)}>
+              ← Mover
+            </button>
+            <button
+              type="button"
+              className="btn btn--sm btn--ghost"
+              disabled={cur === photos.length - 1}
+              onClick={() => moveTo(cur + 1)}
+            >
+              Mover →
+            </button>
+            {cur > 0 && (
+              <button type="button" className="btn btn--sm btn--ghost" onClick={() => moveTo(0)}>
+                Hacer principal
+              </button>
+            )}
+          </>
+        )}
+        <button
+          type="button"
+          className="btn btn--sm btn--ghost"
+          onClick={() => setPhotos((ps) => ps.filter((_, i) => i !== cur))}
+        >
+          {photos.length > 1 ? 'Quitar' : 'Cambiar foto'}
+        </button>
+      </div>
+      {max > 1 && <small>La principal se ve en el catálogo; todas se ven al abrir el producto. Hasta {max} fotos.</small>}
+    </>
+  );
+}
+
 function ProductEditor({ initial, onClose }) {
-  const { saveProduct, stockEnabled, discountEnabled, descriptionEnabled } = useData();
+  const { saveProduct, stockEnabled, discountEnabled, descriptionEnabled, imagesEnabled } = useData();
   const { run } = useUI();
   const [form, setForm] = useState({
     ...initial,
@@ -75,9 +171,8 @@ function ProductEditor({ initial, onClose }) {
     discount: initial.discount ? String(initial.discount) : '',
     description: initial.description ?? '',
   });
-  // Encuadre de la foto: si es nueva la recortamos al publicar.
-  const [frame, setFrame] = useState(initial.image ? { src: initial.image, x: 50, y: 50, zoom: 1 } : null);
-  const [frameTouched, setFrameTouched] = useState(false);
+  // Fotos con su encuadre: las nuevas o reencuadradas se recortan al publicar.
+  const [photos, setPhotos] = useState(() => productPhotos(initial).map((src) => newPhoto(src, false)));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -87,23 +182,22 @@ function ProductEditor({ initial, onClose }) {
   const discount = Math.min(90, Number(String(form.discount).replace(/\D/g, '')) || 0);
 
   const publish = async () => {
-    if (!form.title.trim() || !form.category || !price || !frame?.src) {
+    if (!form.title.trim() || !form.category || !price || !photos.length) {
       setError('Completá categoría, título, precio y foto antes de publicar.');
       return;
     }
     setSaving(true);
     setError('');
-    // Si la foto es nueva o se reencuadró, se sube recortada en 800 y 400 px (WebP).
-    const newFrame = frameTouched || frame.src.startsWith('data:') ? frame : null;
+    // Las fotos nuevas o reencuadradas se suben recortadas en 800 y 400 px (WebP).
     const saved = await run(
-      () => saveProduct({ ...form, title: form.title.trim(), price, stock, discount }, newFrame),
+      () => saveProduct({ ...form, title: form.title.trim(), price, stock, discount }, photos),
       (p) => (initial.id ? 'Cambios guardados' : `Producto publicado (${p.id})`),
     );
     setSaving(false);
     if (saved) onClose();
   };
 
-  const previewProduct = { ...form, price, stock, discount, image: frame?.src ?? '' };
+  const previewProduct = { ...form, price, stock, discount, image: photos[0]?.src ?? '' };
 
   return (
     <div className="admin-grid-2">
@@ -194,36 +288,8 @@ function ProductEditor({ initial, onClose }) {
           </label>
         )}
         <div className="field">
-          <span>Foto</span>
-          {frame ? (
-            <>
-              <ImagePositioner
-                frame={frame}
-                variants={PRODUCT_SIZES}
-                onChange={(f) => {
-                  setFrame(f);
-                  setFrameTouched(true);
-                }}
-                aspect={1}
-              />
-              <button
-                type="button"
-                className="btn btn--sm btn--ghost"
-                style={{ marginTop: 8 }}
-                onClick={() => setFrame(null)}
-              >
-                Cambiar foto
-              </button>
-            </>
-          ) : (
-            <ImageDrop
-              hint="Recomendado: cuadrada, mínimo 800 × 800 px, fondo claro."
-              onImage={(src) => {
-                setFrame({ src, x: 50, y: 50, zoom: 1 });
-                setFrameTouched(true);
-              }}
-            />
-          )}
+          <span>{imagesEnabled ? 'Fotos' : 'Foto'}</span>
+          <PhotosField photos={photos} setPhotos={setPhotos} max={imagesEnabled ? MAX_PHOTOS : 1} />
         </div>
       </div>
 
@@ -231,7 +297,7 @@ function ProductEditor({ initial, onClose }) {
         <div className="preview-frame">
           <span className="preview-frame__label">Así se va a ver en el catálogo</span>
           <div style={{ maxWidth: 260, margin: '0 auto' }}>
-            <ProductCard product={previewProduct} frame={frame} preview />
+            <ProductCard product={previewProduct} frame={photos[0]} preview />
           </div>
         </div>
         {error && (
@@ -253,8 +319,16 @@ function ProductEditor({ initial, onClose }) {
 }
 
 export default function ProductsAdmin() {
-  const { products, settings, deleteProduct, setFeatured, stockEnabled, discountEnabled, descriptionEnabled } =
-    useData();
+  const {
+    products,
+    settings,
+    deleteProduct,
+    setFeatured,
+    stockEnabled,
+    discountEnabled,
+    descriptionEnabled,
+    imagesEnabled,
+  } = useData();
   const { run } = useUI();
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState('');
@@ -274,6 +348,7 @@ export default function ProductsAdmin() {
     !stockEnabled && { feature: 'el stock', file: 'migrations_stock.sql' },
     !discountEnabled && { feature: 'los descuentos', file: 'migrations_discount.sql' },
     !descriptionEnabled && { feature: 'las descripciones', file: 'migrations_description.sql' },
+    !imagesEnabled && { feature: 'varias fotos por producto', file: 'migrations_images.sql' },
   ].filter(Boolean);
   // Arriba de todo los que se quedaron sin stock (rojo) y después los que
   // tienen poco (amarillo), de menos a más. El resto, del más nuevo al más viejo.
