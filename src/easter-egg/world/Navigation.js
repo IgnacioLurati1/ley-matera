@@ -1,3 +1,6 @@
+import { canStep } from './Levels';
+import TowerNav from './TowerNav';
+
 // Campo de flujo: distancia (Dijkstra, 8 vecinos) desde la celda del jugador a
 // todas las celdas caminables. Todos los zombies lo comparten: cada uno solo
 // mira qué vecino está más cerca del jugador. Se recalcula cuando el jugador
@@ -17,6 +20,9 @@ const NB = [
 
 export default class Navigation {
   constructor(world) {
+    // en la torre (pisos apilados) el campo de flujo es por capas: mismo uso,
+    // pero todo recibe además la altura
+    if (world.tower) return new TowerNav(world);
     this.w = world;
     const n = world.W * world.H;
     this.dist = new Float32Array(n).fill(Infinity);
@@ -29,6 +35,18 @@ export default class Navigation {
   blocked(x, z) {
     const w = this.w;
     return !w.inside(x, z) || w.navBlock[w.idx(x, z)] === 1;
+  }
+
+  // ¿Se puede pasar de (x, z) a la vecina (dx, dz)? Además de las celdas, los
+  // bordes que tapa algo a caballo (World.computeNavEdges); en diagonal, los
+  // cuatro bordes del rincón.
+  edgeOpen(x, z, dx, dz) {
+    const E = this.w.navEdge;
+    if (!E) return true;
+    const W = this.w.W;
+    const bit = (xx, zz, ddx, ddz) => (E[zz * W + xx] & (ddx > 0 ? 1 : ddx < 0 ? 2 : ddz > 0 ? 4 : 8)) === 0;
+    if (!dx || !dz) return bit(x, z, dx, dz);
+    return bit(x, z, dx, 0) && bit(x + dx, z, 0, dz) && bit(x, z, 0, dz) && bit(x, z + dz, dx, 0);
   }
 
   // Calcula desde (x, z) en metros. force: recalcular aunque no cambie la celda.
@@ -65,6 +83,8 @@ export default class Navigation {
     heap.clear();
     dist[start] = 0;
     heap.push(start, 0);
+    // lo que cuesta cada celda (el agua honda, entities/swim.js); sin agua, todo 1
+    const cost = w.navCost;
     while (heap.size) {
       const [i, d] = heap.pop();
       if (d > dist[i]) continue;
@@ -76,14 +96,58 @@ export default class Navigation {
         if (this.blocked(nx, nz)) continue;
         // sin cortar esquinas en diagonal
         if (dx && dz && (this.blocked(x + dx, z) || this.blocked(x, z + dz))) continue;
+        // con alturas: no se cruza un desnivel (solo escaleras y rampas)
+        if (w.pass && !canStep(w, x, z, dx, dz)) continue;
+        if (!this.edgeOpen(x, z, dx, dz)) continue;
         const ni = nz * W + nx;
-        const nd = d + c;
+        const nd = d + (cost ? c * cost[ni] : c);
         if (nd < dist[ni]) {
           dist[ni] = nd;
           heap.push(ni, nd);
         }
       }
+      // lo que une dos lugares sin caminar (la telesilla del penal): world.navLinks,
+      // celda → [[celda, costo], ...]
+      const links = w.navLinks?.get(i);
+      if (links) {
+        for (const [ni, c] of links) {
+          const nd = d + c;
+          if (nd < dist[ni]) {
+            dist[ni] = nd;
+            heap.push(ni, nd);
+          }
+        }
+      }
     }
+  }
+
+  // ¿Se puede ir en línea recta de (ax, az) a (bx, bz) sin pisar una celda
+  // bloqueada? (sin contar la de salida ni la de llegada)
+  lineFree(ax, az, bx, bz) {
+    let cx = Math.floor(ax);
+    let cz = Math.floor(az);
+    const tx = Math.floor(bx);
+    const tz = Math.floor(bz);
+    const dx = bx - ax;
+    const dz = bz - az;
+    const sx = dx > 0 ? 1 : -1;
+    const sz = dz > 0 ? 1 : -1;
+    const tdx = Math.abs(1 / (dx || 1e-9));
+    const tdz = Math.abs(1 / (dz || 1e-9));
+    let tmx = dx > 0 ? (cx + 1 - ax) * tdx : (ax - cx) * tdx;
+    let tmz = dz > 0 ? (cz + 1 - az) * tdz : (az - cz) * tdz;
+    for (let k = 0; k < 64; k++) {
+      if (tmx < tmz) {
+        tmx += tdx;
+        cx += sx;
+      } else {
+        tmz += tdz;
+        cz += sz;
+      }
+      if (cx === tx && cz === tz) return true;
+      if (this.blocked(cx, cz)) return false;
+    }
+    return true;
   }
 
   distAt(x, z) {
@@ -95,8 +159,10 @@ export default class Navigation {
   }
 
   // Dirección sugerida (en out.x, out.z) para ir hacia el jugador desde (x, z).
-  // Mira dos pasos adelante para suavizar el recorrido.
-  direction(x, z, out) {
+  // Mira dos pasos adelante para suavizar el recorrido; look 1: al centro de
+  // la celda siguiente (los jefes, más anchos: cortando la esquina de dos
+  // celdas se trababan contra la baranda de una pasarela).
+  direction(x, z, out, _y, look = 2) {
     const w = this.w;
     const W = w.W;
     let cx = Math.floor(x);
@@ -105,7 +171,7 @@ export default class Navigation {
     let tx = cx + 0.5;
     let tz = cz + 0.5;
     let found = false;
-    for (let step = 0; step < 2; step++) {
+    for (let step = 0; step < look; step++) {
       let best = this.dist[cz * W + cx];
       let bx = -1;
       let bz = -1;
@@ -114,6 +180,8 @@ export default class Navigation {
         const nz = cz + dz;
         if (this.blocked(nx, nz)) continue;
         if (dx && dz && (this.blocked(cx + dx, cz) || this.blocked(cx, cz + dz))) continue;
+        if (w.pass && !canStep(w, cx, cz, dx, dz)) continue;
+        if (!this.edgeOpen(cx, cz, dx, dz)) continue;
         const d = this.dist[nz * W + nx];
         if (d < best) {
           best = d;

@@ -18,6 +18,7 @@ const WALL_POOLS = {
   F: [['panel', 3], ['warning', 2], ['conduit', 2], ['tools', 1], ['blood', 0.5]],
   G: [['poster', 2], ['tools', 2], ['rope', 2], ['conduit', 1], ['blood', 1]],
   H: [['frame', 3], ['clock', 1], ['calendar', 1], ['shelf', 2], ['blood', 0.5]],
+  I: [['cross', 3], ['blood', 1]],
 };
 
 // Muebles agregados a cada habitación: [tipo, x, z, rotación].
@@ -67,7 +68,7 @@ export default class Decor {
     this.furniture();
     this.clutter();
     this.ceiling();
-    this.shafts();
+    // (los haces de luna por las ventanas van en fx/Ambience)
     this.moteT = 0;
   }
 
@@ -171,16 +172,17 @@ export default class Decor {
       case 'poster':
       case 'posterOld': {
         const k = [ATLAS.tareferos, ATLAS.horario, ATLAS.prohibido, ATLAS.calendario, ATLAS.carpincho][Math.floor(r() * 5)];
+        // (cada cartel queda adentro de su metro de pared: si no, se pisa con el de al lado)
         const p = this.atlasPlane(k, 0.8, 1.08);
-        p.position.set(jit(), 1.6 + r() * 0.15, 0.012);
+        p.position.set((r() - 0.5) * 0.16, 1.6 + r() * 0.15, 0.012 + ((g.position.x * 7 + g.position.z * 3) % 4) * 0.001);
         p.rotation.z = (r() - 0.5) * 0.08;
         g.add(p);
         break;
       }
       case 'ad': {
         const k = [ATLAS.carpincho, ATLAS.tranquera, ATLAS.nanduti][Math.floor(r() * 3)];
-        const p = this.atlasPlane(k, 1.0, 1.0);
-        p.position.set(jit(), 1.75, 0.012);
+        const p = this.atlasPlane(k, 0.9, 0.9);
+        p.position.set((r() - 0.5) * 0.08, 1.75, 0.012 + ((g.position.x * 7 + g.position.z * 3) % 4) * 0.001);
         g.add(p);
         break;
       }
@@ -722,73 +724,8 @@ export default class Decor {
     }
   }
 
-  // ---------------- haces de luna por las ventanas ----------------
-  shafts() {
-    const moon = this.world.moonDir.clone();
-    const ray = moon.clone().negate().normalize();
-    const geos = [];
-    for (const w of WINDOWS) {
-      const [ox, oz] = w.out;
-      // solo las ventanas que miran a la luna (norte y oeste)
-      if (ox * moon.x + oz * moon.z <= 0.1) continue;
-      const cx = w.cell[0] + 0.5 - ox * 0.45;
-      const cz = w.cell[1] + 0.5 - oz * 0.45;
-      const len = 5.5;
-      // dos planos cruzados a lo largo del rayo
-      for (let k = 0; k < 2; k++) {
-        const geo = new THREE.PlaneGeometry(len, k ? 1.0 : 1.3, 8, 1);
-        geo.translate(len / 2, 0, 0);
-        const m = new THREE.Mesh(geo);
-        m.position.set(cx, 1.65, cz);
-        // eje x del plano sobre el rayo
-        const x = ray.clone();
-        const side = new THREE.Vector3(-oz, 0, ox);
-        const up = k ? new THREE.Vector3().crossVectors(x, side).normalize() : side.clone();
-        const z = new THREE.Vector3().crossVectors(x, up).normalize();
-        m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, up, z));
-        m.updateMatrix();
-        geos.push(geo.applyMatrix4(m.matrix));
-      }
-    }
-    if (!geos.length) return;
-    const geo = mergeAll(geos);
-    this.shaftU = { uTime: { value: 0 }, uK: { value: 1 }, uColor: { value: new THREE.Color(0.55, 0.65, 0.95) } };
-    const mat = new THREE.ShaderMaterial({
-      uniforms: this.shaftU,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-      vertexShader: `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-      fragmentShader: `
-        uniform float uTime, uK; uniform vec3 uColor; varying vec2 vUv; varying vec3 vW;
-        float h(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
-        void main(){
-          float along = vUv.x;
-          float across = 1.0 - abs(vUv.y - 0.5) * 2.0;
-          float a = smoothstep(0.0, 0.12, along) * (1.0 - along) * smoothstep(0.0, 0.6, across);
-          // motas de polvo que brillan dentro del haz
-          vec3 cell = floor(vW * 18.0 + vec3(0.0, uTime * 0.6, 0.0));
-          float mote = step(0.985, h(cell)) * 0.8;
-          gl_FragColor = vec4(uColor * (a * 0.075 + mote * a) * uK, 1.0);
-        }`,
-    });
-    const m = new THREE.Mesh(geo, mat);
-    m.renderOrder = 6;
-    m.frustumCulled = false;
-    this.world.root.add(m);
-  }
-
   update(dt) {
     const g = this.g;
-    if (this.shaftU) {
-      this.shaftU.uTime.value = g.time;
-      const wth = g.weather?.cur;
-      const cloud = wth ? wth.cloud : 0.15;
-      const blood = wth ? wth.blood : 0;
-      this.shaftU.uK.value = (1 - cloud * 0.7) + (g.weather?.flash || 0) * 4;
-      this.shaftU.uColor.value.setRGB(0.55 + blood * 0.4, 0.65 - blood * 0.45, 0.95 - blood * 0.7);
-    }
     // polvo flotando cerca del jugador bajo techo
     if (!g.player) return;
     this.moteT -= dt;
@@ -802,20 +739,6 @@ export default class Decor {
     tmpV.set((Math.random() - 0.5) * 0.08, (Math.random() - 0.4) * 0.05, (Math.random() - 0.5) * 0.08);
     g.fx.add.spawn(x, 0.4 + Math.random() * 2.6, z, tmpV.x, tmpV.y, tmpV.z, { color: [0.55, 0.48, 0.38], size: 0.014, life: 5 + Math.random() * 3, alpha: 0.55 });
   }
-}
-
-function mergeAll(list) {
-  const pos = [];
-  const uv = [];
-  for (const g of list) {
-    const gi = g.index ? g.toNonIndexed() : g;
-    pos.push(...gi.attributes.position.array);
-    uv.push(...gi.attributes.uv.array);
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  return out;
 }
 
 // Vitral: paños de colores con plomo negro.

@@ -1,0 +1,983 @@
+/* El HUD de cada mapa (Hud.setTheme pone data-map en .mdu-hud). La base de
+   style.css es la de El Molino; acá cada mapa cambia colores, letras y
+   adornos. Las variables (--red, --gold...) también las usan las animaciones
+   de la ronda, así que cambiarlas alcanza para que el destello siga el tema. */
+
+/* ---------------- común: una sombra detrás de las esquinas ---------------- */
+.mdu-hud[data-map] .mdu-bl,
+.mdu-hud[data-map] .mdu-br {
+  isolation: isolate;
+}
+.mdu-hud[data-map] .mdu-bl::before,
+.mdu-hud[data-map] .mdu-br::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -50px -70px -30px -60px;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 35% 70%, var(--plate, rgba(0, 0, 0, 0.4)), transparent 68%);
+}
+.mdu-hud[data-map] .mdu-br::before {
+  background: radial-gradient(ellipse at 65% 70%, var(--plate, rgba(0, 0, 0, 0.4)), transparent 68%);
+}
+.mdu-hud[data-map] .mdu-tally path { stroke: var(--tally, var(--red)); }
+.mdu-hud[data-map] .mdu-round.is-changing .mdu-tally path { animation-name: mdu-tallytheme; }
+@keyframes mdu-tallytheme {
+  0%, 15% { stroke: #fff; }
+  100% { stroke: var(--tally, var(--red)); }
+}
+/* (los subtítulos: el cartel con un filete arriba y abajo del color del mapa;
+   el resto del estilo, al final: "los subtítulos de cada mapa") */
+.mdu-hud[data-map] .mdu-line {
+  background:
+    linear-gradient(90deg, transparent, var(--sub-rule, transparent) 16%, var(--sub-rule, transparent) 84%, transparent) top / 100% 1px no-repeat,
+    linear-gradient(90deg, transparent, var(--sub-rule, transparent) 16%, var(--sub-rule, transparent) 84%, transparent) bottom / 100% 1px no-repeat,
+    linear-gradient(90deg, transparent, var(--subbg, rgba(6, 5, 4, 0.62)) 12%, var(--subbg, rgba(6, 5, 4, 0.62)) 88%, transparent);
+}
+
+/* ---------------- El Molino: el clásico, sangre y yerba ---------------- */
+.mdu-hud[data-map='molino'] {
+  --leaf: #a4c85a;
+  --subbg: rgba(12, 10, 4, 0.66);
+}
+/* el punto de la sala es una hoja de yerba */
+.mdu-hud[data-map='molino'] .mdu-room::before {
+  width: 9px;
+  height: 9px;
+  margin-top: -5px;
+  border-radius: 0 70%;
+  background: var(--leaf);
+  box-shadow: 0 0 8px rgba(164, 200, 90, 0.7);
+}
+.mdu-hud[data-map='molino'] .mdu-loc b { color: #e9dcbc; text-shadow: 0 0 14px rgba(120, 0, 0, 0.55), var(--shadow); }
+.mdu-hud[data-map='molino'] .mdu-loc span { color: #cfe0a8; }
+
+/* ---------------- La Tapera: el atardecer en la chacra ---------------- */
+.mdu-hud[data-map='granja'] {
+  --red: #e0752c;
+  --red-hi: #ffc070;
+  --gold: #ffc45a;
+  --tally: #de6a26;
+  --plate: rgba(34, 14, 4, 0.5);
+  --subbg: rgba(32, 15, 6, 0.68);
+  color: #f6e4c4;
+}
+.mdu-hud[data-map='granja'] .mdu-round { font-family: 'Rye', 'Special Elite', serif; }
+.mdu-hud[data-map='granja'] .mdu-round__num {
+  font-size: 96px;
+  letter-spacing: 1px;
+  text-shadow: 0 3px 0 #3a1204, 0 0 16px rgba(255, 120, 30, 0.4);
+}
+/* marcas de hierro al rojo, como la de la hacienda */
+.mdu-hud[data-map='granja'] .mdu-tally path {
+  stroke-width: 8;
+  stroke-linecap: square;
+  filter: drop-shadow(0 0 5px rgba(255, 120, 40, 0.55));
+}
+.mdu-hud[data-map='granja'] .mdu-points {
+  font-family: 'Rye', 'Special Elite', serif;
+  font-size: 32px;
+  color: #fbe3b4;
+  text-shadow: 0 2px 0 #2a0e02, 0 0 10px rgba(255, 140, 40, 0.35);
+}
+.mdu-hud[data-map='granja'] .mdu-mag b { font-family: 'Rye', 'Special Elite', serif; font-size: 36px; color: #fbe8c6; }
+.mdu-hud[data-map='granja'] .mdu-wname { color: #f0c890; }
+.mdu-hud[data-map='granja'] .mdu-room::before {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+.mdu-hud[data-map='granja'] .mdu-loc b {
+  font-family: 'Rye', 'Special Elite', serif;
+  font-size: 36px;
+  color: #ffd79a;
+  text-shadow: 0 2px 0 #3a1204, 0 0 16px rgba(255, 110, 20, 0.5);
+}
+.mdu-hud[data-map='granja'] .mdu-toast { color: #ffe2b0; text-shadow: 0 0 14px rgba(255, 140, 40, 0.8), var(--shadow); }
+.mdu-hud[data-map='granja'] .mdu-inv i,
+.mdu-hud[data-map='granja'] .mdu-parts i { border-radius: 2px; }
+
+/* ---------------- Mate of the Dead: el penal ---------------- */
+.mdu-hud[data-map='penal'] {
+  --red: #d4692c;
+  --red-hi: #ffb070;
+  --gold: #7fe3ff;
+  --tally: #e4ddd0;
+  --plate: rgba(8, 14, 20, 0.55);
+  --subbg: rgba(8, 14, 22, 0.72);
+  color: #dfe5e9;
+}
+.mdu-hud[data-map='penal'] .mdu-round { font-family: 'Stardos Stencil', 'Special Elite', serif; font-weight: 700; }
+.mdu-hud[data-map='penal'] .mdu-round__num {
+  font-size: 104px;
+  letter-spacing: 4px;
+  text-shadow: 0 3px 0 #1a0a02, 0 0 14px rgba(0, 0, 0, 0.8);
+}
+/* las rayitas del preso que cuenta los días en la pared de la celda, detrás
+   de los barrotes */
+.mdu-hud[data-map='penal'] .mdu-round::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -8px -16px -4px;
+  background: repeating-linear-gradient(90deg, rgba(150, 162, 172, 0.2) 0 4px, transparent 4px 24px);
+  border-top: 4px solid rgba(150, 162, 172, 0.22);
+  border-bottom: 4px solid rgba(150, 162, 172, 0.22);
+  -webkit-mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+}
+.mdu-hud[data-map='penal'] .mdu-tally path {
+  stroke-width: 5;
+  stroke-linecap: butt;
+}
+.mdu-hud[data-map='penal'] .mdu-points {
+  font-family: 'Stardos Stencil', 'Special Elite', serif;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #eef2f4;
+}
+.mdu-hud[data-map='penal'] .mdu-popups span { color: #ffcf5a; }
+.mdu-hud[data-map='penal'] .mdu-mag b { font-family: 'Stardos Stencil', 'Special Elite', serif; font-weight: 700; }
+.mdu-hud[data-map='penal'] .mdu-wname { color: #b8c6d0; letter-spacing: 0.04em; }
+.mdu-hud[data-map='penal'] .mdu-room::before {
+  border-radius: 1px;
+  box-shadow: 0 0 10px var(--gold);
+}
+.mdu-hud[data-map='penal'] .mdu-loc b {
+  font-family: 'Stardos Stencil', 'Special Elite', serif;
+  font-weight: 700;
+  font-size: 34px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #e8dccb;
+}
+/* las cargas del gaucho life, abajo del cartel de la zona (se pisaban) */
+.mdu-hud[data-map='penal'] .mdu-vida { top: 138px; }
+.mdu-hud[data-map='penal'] .mdu-toast { color: #d6f6ff; text-shadow: 0 0 14px rgba(90, 210, 255, 0.85), var(--shadow); }
+.mdu-hud[data-map='penal'] .mdu-ach { border-color: #7fa6b8; background: linear-gradient(180deg, rgba(16, 24, 30, 0.94), rgba(6, 10, 14, 0.94)); }
+.mdu-hud[data-map='penal'] .mdu-ach small { color: #8fb6c8; }
+.mdu-hud[data-map='penal'] .mdu-inv i,
+.mdu-hud[data-map='penal'] .mdu-parts i { border-radius: 0; }
+
+/* ---------------- Revelaciones Materas: la torre ---------------- */
+.mdu-hud[data-map='torre'] {
+  --red: #e2b24c;
+  --red-hi: #fff1b8;
+  --gold: #f3d27a;
+  --sky: #9cc4ff;
+  --plate: rgba(6, 8, 24, 0.55);
+  --subbg: rgba(8, 10, 28, 0.72);
+  color: #f1ead8;
+}
+/* la ronda en números romanos, dorada, con un filete abajo */
+.mdu-hud[data-map='torre'] .mdu-round {
+  font-family: 'Cinzel', 'Special Elite', serif;
+  font-weight: 900;
+  min-height: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid;
+  border-image: linear-gradient(90deg, rgba(243, 210, 122, 0.85), transparent) 1;
+}
+.mdu-hud[data-map='torre'] .mdu-round__num {
+  font-size: 80px;
+  letter-spacing: 3px;
+  text-shadow: 0 0 18px rgba(255, 210, 120, 0.55), 0 2px 0 #3a2a08;
+}
+.mdu-hud[data-map='torre'] .mdu-points {
+  font-family: 'Cinzel', 'Special Elite', serif;
+  font-weight: 700;
+  font-size: 32px;
+  color: #fff3d0;
+  text-shadow: 0 0 12px rgba(156, 196, 255, 0.45), var(--shadow);
+}
+.mdu-hud[data-map='torre'] .mdu-mag b { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 700; font-size: 36px; }
+.mdu-hud[data-map='torre'] .mdu-mag span { font-family: 'Cinzel', 'Special Elite', serif; }
+.mdu-hud[data-map='torre'] .mdu-wname { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 700; color: #e8dcb8; }
+/* el punto de la sala es una estrella de cuatro puntas */
+.mdu-hud[data-map='torre'] .mdu-room::before {
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  left: -2px;
+  border-radius: 0;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  box-shadow: none;
+  filter: drop-shadow(0 0 4px var(--sky));
+}
+.mdu-hud[data-map='torre'] .mdu-room { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 700; font-size: 16px; }
+.mdu-hud[data-map='torre'] .mdu-loc b {
+  font-family: 'Cinzel', 'Special Elite', serif;
+  font-weight: 700;
+  font-size: 32px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: #fff0c8;
+  text-shadow: 0 0 18px rgba(243, 210, 122, 0.6), var(--shadow);
+}
+.mdu-hud[data-map='torre'] .mdu-toast { color: #fff2c8; text-shadow: 0 0 14px rgba(243, 210, 122, 0.85), var(--shadow); }
+.mdu-hud[data-map='torre'] .mdu-ach { border-color: #d8b25a; background: linear-gradient(180deg, rgba(14, 16, 40, 0.94), rgba(6, 7, 20, 0.94)); }
+.mdu-hud[data-map='torre'] .mdu-inv i,
+.mdu-hud[data-map='torre'] .mdu-parts i { border-radius: 50%; }
+
+/* El cartel de los pasos del easter egg de la torre (entities/TowerEgg.js):
+   corto, con fondo, y una fila de rombos con el avance. */
+.mdu-obj {
+  position: absolute;
+  right: 28px;
+  top: 154px;
+  width: min(300px, 40vw);
+  box-sizing: border-box;
+  padding: 9px 14px 11px;
+  border: 1px solid rgba(243, 210, 122, 0.35);
+  border-radius: 4px;
+  background: linear-gradient(180deg, rgba(10, 12, 32, 0.82), rgba(6, 7, 20, 0.74));
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+  font-family: 'Cinzel', 'Special Elite', serif;
+  color: #f4ecd8;
+  text-shadow: 0 1px 2px #000;
+  pointer-events: none;
+  transition: opacity 0.4s;
+}
+.mdu-obj header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(243, 210, 122, 0.85);
+}
+.mdu-obj__pips { display: flex; gap: 4px; }
+.mdu-obj__pips i {
+  width: 6px;
+  height: 6px;
+  transform: rotate(45deg);
+  border: 1px solid rgba(243, 210, 122, 0.55);
+}
+.mdu-obj__pips i.is-done { background: #f3d27a; }
+.mdu-obj__pips i.is-now { background: #9cc4ff; border-color: #9cc4ff; box-shadow: 0 0 6px #9cc4ff; }
+.mdu-obj p {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.mdu-obj small {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: rgba(232, 226, 210, 0.8);
+}
+.mdu-obj__count {
+  display: block;
+  margin-top: 4px;
+  font-size: 22px;
+  color: #f3d27a;
+}
+.mdu-obj ul {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+/* (los renglones dicen qué, dónde y por dónde: más chicos, así el cartel no baja hasta las balas) */
+.mdu-obj li { font-size: 13px; font-weight: 700; line-height: 1.3; margin-top: 3px; }
+.mdu-obj li::before { content: '◇'; margin-right: 6px; color: #f3d27a; }
+.mdu-obj li.is-done { opacity: 0.5; }
+.mdu-obj li.is-done::before { content: '◆'; }
+.mdu-obj li span { font-size: 13px; font-weight: 500; color: rgba(232, 226, 210, 0.8); }
+.mdu-obj .is-locked { font-style: normal; color: #ffb07a; }
+
+/* ---------------- compañero caído: el ícono de reanimar (Hud.setRevives) ----------------
+   Se ve a través de las paredes; pasa de blanco a rojo mientras se desangra y
+   el anillo muestra el tiempo que le queda. Fuera de vista va al borde con una
+   flechita que apunta hacia donde está. */
+/* encima de los carteles del HUD (debajo de la tabla de puntos) */
+.mdu-revives {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.mdu-revive {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+.mdu-revive__in {
+  --c: color-mix(in srgb, #ff2e1c calc(var(--k, 0) * 100%), #fff3d2);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  justify-items: center;
+  width: 140px;
+  transform: translate(-50%, -22px);
+  color: var(--c);
+}
+.mdu-revive__icon {
+  width: 44px;
+  height: 44px;
+  box-sizing: border-box;
+  padding: 11px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.6) 58%, transparent 60%);
+  fill: var(--c);
+  filter: drop-shadow(0 0 5px rgba(255, 50, 30, calc(0.35 + var(--k, 0) * 0.5)));
+  animation: mdu-revive 1.1s ease-in-out infinite;
+}
+.mdu-revive.is-late .mdu-revive__icon { animation-duration: 0.45s; }
+@keyframes mdu-revive {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.13); }
+}
+/* el tiempo que le queda: el anillo se vacía */
+.mdu-revive__ring {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  margin-left: -22px;
+  border-radius: 50%;
+  background: conic-gradient(var(--c) calc((1 - var(--k, 0)) * 360deg), rgba(0, 0, 0, 0.45) 0);
+  -webkit-mask: radial-gradient(circle, transparent 17px, #000 18px);
+  mask: radial-gradient(circle, transparent 17px, #000 18px);
+}
+.mdu-revive b {
+  margin-top: 3px;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  font-weight: normal;
+}
+.mdu-revive small { font-size: 12px; color: rgba(239, 232, 212, 0.85); }
+.mdu-revive__arrow {
+  display: none;
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  border-left: 10px solid var(--c);
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  transform: translate(-50%, -50%) rotate(var(--ang, 0rad)) translateX(33px);
+  filter: drop-shadow(0 0 3px #000);
+}
+.mdu-revive.is-edge .mdu-revive__arrow { display: block; }
+.mdu-hud[data-map='torre'] .mdu-revive b { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 700; }
+.mdu-hud[data-map='granja'] .mdu-revive b { font-family: 'Rye', 'Special Elite', serif; }
+.mdu-hud[data-map='penal'] .mdu-revive b { font-family: 'Stardos Stencil', 'Special Elite', serif; font-weight: 700; letter-spacing: 1px; }
+
+/* ---------------- tabla de puntos (mantener Tab, Hud.setBoard) ---------------- */
+/* encima de todo el HUD (el cartel de pasos de la torre, los compañeros) */
+.mdu-scores {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 17%;
+  width: min(700px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 14px 18px 12px;
+  border: 1px solid var(--board-line, rgba(179, 18, 15, 0.45));
+  border-top: 3px solid var(--red);
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--board-bg, rgba(16, 9, 6, 0.92)), var(--board-bg2, rgba(6, 4, 3, 0.88)));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
+  text-shadow: 0 1px 2px #000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -8px);
+  transition: opacity 0.12s, transform 0.12s, visibility 0.12s;
+}
+.mdu-scores.is-on {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+.mdu-scores header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--board-line, rgba(179, 18, 15, 0.45));
+}
+.mdu-scores header b {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--board-title, 'Creepster'), 'Special Elite', serif;
+  font-weight: normal;
+  font-size: 28px;
+  letter-spacing: 1px;
+  color: var(--red-hi);
+}
+.mdu-scores header span { flex: none; font-size: 15px; color: rgba(239, 232, 212, 0.8); }
+.mdu-scores table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.mdu-scores th {
+  padding: 4px 6px 6px;
+  font-size: 11px;
+  font-weight: normal;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: right;
+  color: rgba(239, 232, 212, 0.55);
+}
+.mdu-scores th:nth-child(2) { text-align: left; }
+.mdu-scores td {
+  padding: 7px 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 17px;
+  text-align: right;
+}
+/* los puntos, en el color del mapa */
+.mdu-scores td:nth-child(3) { font-size: 19px; color: var(--gold); }
+.mdu-scores td.mdu-scores__pos { width: 22px; font-size: 14px; text-align: center; color: rgba(239, 232, 212, 0.45); }
+.mdu-scores td.mdu-scores__name {
+  width: 36%;
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.mdu-scores__name em {
+  margin-left: 8px;
+  font-size: 12px;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ff9a86;
+}
+.mdu-scores tr.is-me td { background: rgba(255, 255, 255, 0.07); }
+.mdu-scores tr.is-me td.mdu-scores__pos { box-shadow: inset 3px 0 0 var(--red); }
+.mdu-scores tr.is-me .mdu-scores__name span { color: #fff; }
+.mdu-scores tr.is-dead td { opacity: 0.5; }
+.mdu-scores tr.is-dead .mdu-scores__name em { color: rgba(239, 232, 212, 0.8); }
+@media (max-width: 600px) {
+  .mdu-scores { padding: 10px 10px 8px; }
+  .mdu-scores header b { font-size: 22px; }
+  .mdu-scores th { padding: 4px 3px 6px; font-size: 9px; letter-spacing: 0; }
+  .mdu-scores td { padding: 6px 3px; font-size: 14px; }
+  .mdu-scores td:nth-child(3) { font-size: 15px; }
+}
+/* cada mapa, con sus letras y colores */
+.mdu-hud[data-map='granja'] .mdu-scores {
+  --board-title: 'Rye';
+  --board-line: rgba(224, 117, 44, 0.4);
+  --board-bg: rgba(34, 16, 6, 0.92);
+  --board-bg2: rgba(16, 7, 2, 0.88);
+}
+.mdu-hud[data-map='penal'] .mdu-scores {
+  --board-title: 'Stardos Stencil';
+  --board-line: rgba(150, 162, 172, 0.35);
+  --board-bg: rgba(12, 18, 24, 0.93);
+  --board-bg2: rgba(5, 9, 13, 0.9);
+}
+.mdu-hud[data-map='penal'] .mdu-scores header b { font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #e8dccb; }
+.mdu-hud[data-map='torre'] .mdu-scores {
+  --board-title: 'Cinzel';
+  --board-line: rgba(243, 210, 122, 0.35);
+  --board-bg: rgba(12, 14, 38, 0.92);
+  --board-bg2: rgba(6, 7, 20, 0.88);
+}
+.mdu-hud[data-map='torre'] .mdu-scores header b { font-weight: 700; letter-spacing: 3px; color: #fff0c8; }
+.mdu-hud[data-map='torre'] .mdu-scores td { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 700; }
+/* el ping de cada uno: verde, amarillo o rojo */
+.mdu-scores td.mdu-scores__ping { font-size: 14px; color: rgba(239, 232, 212, 0.55); }
+.mdu-scores td.mdu-scores__ping.is-ok { color: #8fdc7a; }
+.mdu-scores td.mdu-scores__ping.is-meh { color: #f0c85a; }
+.mdu-scores td.mdu-scores__ping.is-bad { color: #ff7a5a; }
+
+/* ---------------- opción: tamaño de los subtítulos (Hud.setSubScale) ---------------- */
+/* (en pantallas angostas no llega a la tarjeta del arma, abajo a la derecha: a 1280 se pisaban) */
+.mdu-hud .mdu-subs { width: min(calc(820px * var(--sub-scale, 1)), 92vw, max(calc(540px * var(--sub-scale, 1)), calc(100% - 720px))); }
+.mdu-hud .mdu-line { font-size: calc(var(--sub-size, 19px) * var(--sub-scale, 1)); }
+.mdu-hud .mdu-line.is-radio span { font-size: calc(17px * var(--sub-scale, 1)); }
+
+/* ---------------- en línea: la conexión anda mal (Hud.setNet) ---------------- */
+.mdu-netwarn {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 84px;
+  padding: 4px 12px 4px 30px;
+  border: 1px solid rgba(255, 150, 90, 0.5);
+  border-radius: 3px;
+  background: rgba(20, 8, 4, 0.78);
+  font-size: 14px;
+  color: #ffc2a0;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.mdu-netwarn.is-on { opacity: 1; }
+/* rayitas de señal, la última apagada */
+.mdu-netwarn::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 14px;
+  height: 11px;
+  margin-top: -6px;
+  background: linear-gradient(90deg, #ffc2a0 0 3px, transparent 3px 5px, #ffc2a0 5px 8px, transparent 8px 10px, rgba(255, 194, 160, 0.3) 10px 13px, transparent 13px);
+  -webkit-mask: linear-gradient(to top left, #000 50%, transparent 50%);
+  mask: linear-gradient(to top left, #000 50%, transparent 50%);
+  animation: mdu-netwarn 1s steps(2) infinite;
+}
+@keyframes mdu-netwarn {
+  50% { opacity: 0.4; }
+}
+
+/* ---------------- Der Mateendrache: el castillo ---------------- */
+/* acero y hielo con oro viejo; la ronda en letra gótica, como en un códice */
+.mdu-hud[data-map='castillo'] {
+  --red: #cfe6ff;
+  --red-hi: #ffffff;
+  --gold: #e8c46a;
+  --tally: #d8ecff;
+  --plate: rgba(6, 10, 22, 0.55);
+  --subbg: rgba(8, 12, 26, 0.74);
+  color: #e8eef6;
+}
+.mdu-hud[data-map='castillo'] .mdu-round {
+  font-family: 'UnifrakturMaguntia', 'Cinzel', serif;
+  padding-bottom: 6px;
+  border-bottom: 1px solid;
+  border-image: linear-gradient(90deg, rgba(232, 196, 106, 0.8), rgba(160, 210, 255, 0.35), transparent) 1;
+}
+.mdu-hud[data-map='castillo'] .mdu-round__num {
+  font-size: 96px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 18px rgba(120, 190, 255, 0.55), 0 3px 0 #0a1428;
+}
+.mdu-hud[data-map='castillo'] .mdu-tally path { stroke-width: 4.5; }
+.mdu-hud[data-map='castillo'] .mdu-points {
+  font-family: 'Cinzel', 'Special Elite', serif;
+  font-weight: 700;
+  font-size: 32px;
+  color: #f4f0e0;
+  text-shadow: 0 0 12px rgba(232, 196, 106, 0.45), var(--shadow);
+}
+.mdu-hud[data-map='castillo'] .mdu-popups span { color: #ffe08a; }
+.mdu-hud[data-map='castillo'] .mdu-mag b { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 700; font-size: 36px; }
+.mdu-hud[data-map='castillo'] .mdu-mag span { font-family: 'Cinzel', 'Special Elite', serif; }
+.mdu-hud[data-map='castillo'] .mdu-wname { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 700; color: #d8e6f4; }
+/* el punto de la sala es un copo de nieve */
+.mdu-hud[data-map='castillo'] .mdu-room::before {
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  left: -2px;
+  border-radius: 0;
+  clip-path: polygon(50% 0, 58% 34%, 93% 25%, 66% 50%, 93% 75%, 58% 66%, 50% 100%, 42% 66%, 7% 75%, 34% 50%, 7% 25%, 42% 34%);
+  box-shadow: none;
+  filter: drop-shadow(0 0 4px #9ad0ff);
+}
+.mdu-hud[data-map='castillo'] .mdu-loc b {
+  font-family: 'UnifrakturMaguntia', 'Cinzel', serif;
+  font-size: 38px;
+  color: #eef4ff;
+  text-shadow: 0 0 16px rgba(120, 190, 255, 0.55), 0 2px 0 #0a1428;
+}
+.mdu-hud[data-map='castillo'] .mdu-loc span { font-family: 'Cinzel', 'Special Elite', serif; color: #a8c8e8; letter-spacing: 0.04em; }
+.mdu-hud[data-map='castillo'] .mdu-toast { color: #dff0ff; text-shadow: 0 0 14px rgba(120, 190, 255, 0.85), var(--shadow); }
+.mdu-hud[data-map='castillo'] .mdu-ach { border-color: #8fb4d8; background: linear-gradient(180deg, rgba(14, 22, 40, 0.94), rgba(6, 10, 20, 0.94)); }
+.mdu-hud[data-map='castillo'] .mdu-ach small { color: #a8c8e8; }
+
+/* ---------------- el escudo, sus piezas y el gaucho life de cada mapa ----------------
+   (Hud.setShield, setParts, setVida). La base, en style.css, es la del Molino:
+   el escudo de tranquera en cuero y tientos y las piezas en un papel de estraza
+   clavado con una chinche, tildadas con birome. */
+
+/* La Tapera: el escudo de paja al sol del atardecer y las piezas en una tabla
+   del galpón, marcadas a fuego */
+.mdu-hud[data-map='granja'] .mdu-shield {
+  --sh-c: #ffd79a;
+  --sh-dim: rgba(255, 196, 110, 0.35);
+  --sh-bar: linear-gradient(90deg, #8a4a10, #e0a040 55%, #ffe29a);
+  --sh-glow: rgba(255, 140, 40, 0.5);
+  --sh-font: 'Rye', 'Special Elite', serif;
+}
+.mdu-hud[data-map='granja'] .mdu-plan {
+  --pl-bg: repeating-linear-gradient(180deg, #74421e 0 25px, #4e2a10 25px 27px);
+  --pl-ink: #ffe2b0;
+  --pl-dim: rgba(255, 226, 176, 0.32);
+  --pl-got: #ffa040;
+  --pl-font: 'Rye', 'Special Elite', serif;
+  transform: rotate(0.8deg);
+  border-radius: 3px;
+  text-shadow: 0 1px 0 #2a0e02;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6), inset 0 0 0 2px rgba(40, 18, 4, 0.6), inset 0 0 22px rgba(20, 8, 0, 0.6);
+}
+/* dos clavos en vez de la chinche */
+.mdu-hud[data-map='granja'] .mdu-plan::before {
+  left: 7px;
+  top: 5px;
+  width: 7px;
+  height: 7px;
+  margin: 0;
+  background: radial-gradient(circle at 35% 35%, #e0d8c8, #6a645a 60%, #2a2622);
+  box-shadow: 198px 0 0 #6a645a, 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+.mdu-hud[data-map='granja'] .mdu-plan header { border-bottom-style: solid; border-bottom-color: rgba(255, 190, 110, 0.3); }
+.mdu-hud[data-map='granja'] .mdu-plan li { border-radius: 2px; }
+.mdu-hud[data-map='granja'] .mdu-plan li.is-got { border-color: #ffa040; background: rgba(0, 0, 0, 0.25); color: #ffd79a; }
+.mdu-hud[data-map='granja'] .mdu-plan li.is-got svg { filter: drop-shadow(0 0 3px rgba(255, 110, 20, 0.95)) drop-shadow(0 0 7px rgba(255, 110, 20, 0.5)); }
+.mdu-hud[data-map='granja'] .mdu-plan li.is-got::after { content: '✦'; top: 1px; right: 4px; font-size: 12px; color: #ffa040; }
+
+/* Mate of the Dead: el escudo de barrotes en acero y el legajo del penal, con
+   el broche arriba, las piezas numeradas y el sello del guardia */
+.mdu-hud[data-map='penal'] .mdu-shield {
+  --sh-c: #d6e2ea;
+  --sh-dim: rgba(150, 170, 184, 0.45);
+  --sh-bar: linear-gradient(90deg, #3a4a56, #8fa2ae 60%, #c8f2ff);
+  --sh-glow: rgba(127, 227, 255, 0.3);
+  --sh-font: 'Stardos Stencil', 'Special Elite', serif;
+}
+.mdu-hud[data-map='penal'] .mdu-shield__name { font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.mdu-hud[data-map='penal'] .mdu-plan {
+  --pl-bg: linear-gradient(180deg, rgba(34, 44, 52, 0.95), rgba(16, 22, 28, 0.95));
+  --pl-ink: #dfe5e9;
+  --pl-dim: rgba(160, 176, 188, 0.38);
+  --pl-got: #ffcf5a;
+  --pl-font: 'Stardos Stencil', 'Special Elite', serif;
+  padding-top: 10px;
+  border: 1px solid rgba(150, 162, 172, 0.45);
+  border-top: 12px solid #4e585f;
+  transform: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
+}
+.mdu-hud[data-map='penal'] .mdu-plan::before {
+  top: -10px;
+  width: 38px;
+  height: 7px;
+  margin-left: -19px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #d0d8de, #6a747c);
+}
+.mdu-hud[data-map='penal'] .mdu-plan header b { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.mdu-hud[data-map='penal'] .mdu-plan li {
+  border-style: solid;
+  border-radius: 0;
+  background: repeating-linear-gradient(90deg, rgba(150, 162, 172, 0.1) 0 3px, transparent 3px 10px);
+}
+.mdu-hud[data-map='penal'] .mdu-plan li span { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+.mdu-hud[data-map='penal'] .mdu-plan li.is-got { border-color: rgba(223, 229, 233, 0.8); background: rgba(255, 207, 90, 0.07); }
+.mdu-hud[data-map='penal'] .mdu-plan li.is-got::after {
+  content: 'OK';
+  top: 3px;
+  right: 1px;
+  padding: 0 2px;
+  border: 2px solid #d4692c;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  color: #ff8a4a;
+  transform: rotate(-14deg);
+}
+.mdu-hud[data-map='penal'] .mdu-vida header span { font-family: 'Stardos Stencil', 'Special Elite', serif; font-weight: 700; }
+
+/* Revelaciones Materas: la tapa de pava en bronce y las piezas en nichos de
+   arco como las ventanas de la torre, numeradas en romanos */
+.mdu-hud[data-map='torre'] .mdu-shield {
+  --sh-c: #fff0c8;
+  --sh-dim: rgba(243, 210, 122, 0.45);
+  --sh-bar: linear-gradient(90deg, #8a6014, #e2b24c 55%, #fff1b8);
+  --sh-glow: rgba(243, 210, 122, 0.55);
+  --sh-font: 'Cinzel', 'Special Elite', serif;
+}
+.mdu-hud[data-map='torre'] .mdu-shield__name { font-weight: 700; letter-spacing: 0.08em; }
+.mdu-hud[data-map='torre'] .mdu-plan {
+  --pl-bg: linear-gradient(180deg, rgba(14, 16, 40, 0.92), rgba(6, 7, 20, 0.9));
+  --pl-ink: #f4ecd8;
+  --pl-dim: rgba(243, 210, 122, 0.32);
+  --pl-got: #f3d27a;
+  --pl-font: 'Cinzel', 'Special Elite', serif;
+  padding-top: 14px;
+  border: 1px solid rgba(243, 210, 122, 0.45);
+  border-radius: 4px;
+  transform: none;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5), inset 0 0 0 3px rgba(6, 7, 20, 0.9), inset 0 0 0 4px rgba(243, 210, 122, 0.22);
+}
+/* una estrella de cuatro puntas en vez de la chinche */
+.mdu-hud[data-map='torre'] .mdu-plan::before {
+  top: -6px;
+  width: 13px;
+  height: 13px;
+  margin-left: -6px;
+  border-radius: 0;
+  background: #f3d27a;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  box-shadow: none;
+}
+.mdu-hud[data-map='torre'] .mdu-plan header b { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; }
+.mdu-hud[data-map='torre'] .mdu-plan li { padding-top: 9px; border-style: solid; border-radius: 40px 40px 4px 4px; }
+.mdu-hud[data-map='torre'] .mdu-plan li i {
+  left: 50%;
+  top: -7px;
+  padding: 0 3px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #f3d27a;
+  background: #0b0d24;
+  opacity: 1;
+  transform: translateX(-50%);
+}
+.mdu-hud[data-map='torre'] .mdu-plan li.is-got { border-color: #f3d27a; background: radial-gradient(circle at 50% 40%, rgba(243, 210, 122, 0.22), transparent 70%); color: #fff0c8; }
+.mdu-hud[data-map='torre'] .mdu-plan li.is-got svg { filter: drop-shadow(0 0 4px rgba(243, 210, 122, 0.85)); }
+.mdu-hud[data-map='torre'] .mdu-plan li.is-got::after { content: '✦'; top: 4px; right: 4px; font-size: 11px; color: #9cc4ff; }
+
+/* Der Mateendrache: el escudo de caballero en hielo y oro y las piezas en un
+   códice heráldico, con escarcha arriba y la letra gótica */
+.mdu-hud[data-map='castillo'] .mdu-shield {
+  --sh-c: #eef4ff;
+  --sh-dim: rgba(232, 196, 106, 0.5);
+  --sh-bar: linear-gradient(90deg, #2a4a7a, #7ab8ff 55%, #eaf6ff);
+  --sh-glow: rgba(120, 190, 255, 0.5);
+  --sh-font: 'UnifrakturMaguntia', 'Cinzel', serif;
+}
+.mdu-hud[data-map='castillo'] .mdu-shield__name { font-size: 18px; letter-spacing: 0.02em; }
+.mdu-hud[data-map='castillo'] .mdu-plan {
+  --pl-bg: linear-gradient(180deg, rgba(16, 26, 48, 0.94), rgba(6, 10, 22, 0.92));
+  --pl-ink: #e8eef6;
+  --pl-dim: rgba(168, 200, 232, 0.3);
+  --pl-got: #e8c46a;
+  --pl-font: 'Cinzel', 'Special Elite', serif;
+  border: 1px solid rgba(232, 196, 106, 0.55);
+  transform: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6), inset 0 0 0 3px rgba(6, 10, 22, 0.9), inset 0 0 0 4px rgba(143, 180, 216, 0.35);
+}
+/* escarcha en el borde de arriba, en vez de la chinche */
+.mdu-hud[data-map='castillo'] .mdu-plan::before {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 7px;
+  margin: 0;
+  border-radius: 0;
+  background: repeating-linear-gradient(90deg, rgba(230, 242, 255, 0.9) 0 3px, transparent 3px 5px, rgba(230, 242, 255, 0.5) 5px 7px, transparent 7px 12px);
+  -webkit-mask: linear-gradient(180deg, #000, transparent);
+  mask: linear-gradient(180deg, #000, transparent);
+  box-shadow: none;
+}
+.mdu-hud[data-map='castillo'] .mdu-plan header b { font-family: 'UnifrakturMaguntia', 'Cinzel', serif; font-size: 19px; color: #eef4ff; }
+.mdu-hud[data-map='castillo'] .mdu-plan header em { font-weight: 700; }
+.mdu-hud[data-map='castillo'] .mdu-plan li { border-style: solid; border-radius: 2px 2px 50% 50% / 2px 2px 26% 26%; }
+.mdu-hud[data-map='castillo'] .mdu-plan li.is-got { border-color: #e8c46a; background: linear-gradient(180deg, rgba(120, 190, 255, 0.2), rgba(120, 190, 255, 0.03)); color: #dff0ff; }
+.mdu-hud[data-map='castillo'] .mdu-plan li.is-got svg { filter: drop-shadow(0 0 4px rgba(120, 190, 255, 0.9)); }
+.mdu-hud[data-map='castillo'] .mdu-plan li.is-got::after { content: '❄'; top: 1px; right: 4px; font-size: 12px; color: #bfe0ff; }
+
+/* ---------------- Mate no Numa: los esteros ---------------- */
+/* la luna fría sobre el agua (verde pálido y acero) y la madera mojada del
+   obraje; el colorado del Gauchito queda para lo que avisa (sin balas, pocos
+   puntos, el escudo roto). La ronda y los nombres en la letra del mapa. */
+.mdu-hud[data-map='esteros'] {
+  --red: #cfeedd;
+  --red-hi: #ff6a52;
+  --gold: #bfe8a8;
+  --tally: #b8dcc8;
+  --plate: rgba(4, 14, 12, 0.55);
+  --subbg: rgba(4, 14, 12, 0.74);
+  color: #e6f0ea;
+}
+.mdu-hud[data-map='esteros'] .mdu-round { font-family: 'Kaushan Script', 'Special Elite', serif; }
+.mdu-hud[data-map='esteros'] .mdu-round__num {
+  font-size: 104px;
+  letter-spacing: 0;
+  text-shadow: 0 0 18px rgba(120, 230, 170, 0.5), 0 3px 0 #04140e;
+}
+/* rayitas de tiza verde, finas, como marcas en un poste del muelle */
+.mdu-hud[data-map='esteros'] .mdu-tally path { stroke-width: 6; filter: drop-shadow(0 0 4px rgba(120, 230, 170, 0.45)); }
+.mdu-hud[data-map='esteros'] .mdu-points {
+  font-family: 'Kaushan Script', 'Special Elite', serif;
+  font-size: 32px;
+  color: #eef6e8;
+  text-shadow: 0 0 12px rgba(120, 230, 170, 0.4), var(--shadow);
+}
+.mdu-hud[data-map='esteros'] .mdu-popups span { color: #c8f0a0; }
+.mdu-hud[data-map='esteros'] .mdu-popups span.is-neg { color: #ff7a62; }
+.mdu-hud[data-map='esteros'] .mdu-mag b { font-family: 'Kaushan Script', 'Special Elite', serif; font-size: 36px; color: #eef6ee; }
+.mdu-hud[data-map='esteros'] .mdu-mag b.is-empty { color: #ff6a52; }
+.mdu-hud[data-map='esteros'] .mdu-wname { color: #b8d4c4; letter-spacing: 0.03em; }
+/* el punto de la sala es una hoja de irupé (redonda, con el borde levantado y la muesca) */
+.mdu-hud[data-map='esteros'] .mdu-room::before {
+  width: 11px;
+  height: 11px;
+  margin-top: -5.5px;
+  left: -1px;
+  background: radial-gradient(circle at 50% 50%, #5a9a5a 0 52%, #bfe8a8 58% 72%, transparent 76%);
+  -webkit-mask: conic-gradient(from 150deg, transparent 0 22deg, #000 22deg);
+  mask: conic-gradient(from 150deg, transparent 0 22deg, #000 22deg);
+  box-shadow: none;
+  filter: drop-shadow(0 0 4px rgba(150, 230, 160, 0.8));
+}
+.mdu-hud[data-map='esteros'] .mdu-loc b {
+  font-family: 'Kaushan Script', 'Special Elite', serif;
+  font-size: 38px;
+  color: #eef6ee;
+  text-shadow: 0 0 16px rgba(120, 230, 170, 0.5), 0 2px 0 #04140e;
+}
+.mdu-hud[data-map='esteros'] .mdu-loc span { color: #9fc8b0; letter-spacing: 0.03em; }
+.mdu-hud[data-map='esteros'] .mdu-toast { color: #e2fbe8; text-shadow: 0 0 14px rgba(110, 230, 160, 0.85), var(--shadow); }
+.mdu-hud[data-map='esteros'] .mdu-ach { border-color: #6fa88a; background: linear-gradient(180deg, rgba(10, 26, 22, 0.94), rgba(4, 12, 10, 0.94)); }
+.mdu-hud[data-map='esteros'] .mdu-ach small { color: #9fc8b0; }
+.mdu-hud[data-map='esteros'] .mdu-inv i,
+.mdu-hud[data-map='esteros'] .mdu-parts i { border-radius: 40% 60% 55% 45% / 50% 45% 55% 50%; }
+.mdu-hud[data-map='esteros'] .mdu-revive b { font-family: 'Kaushan Script', 'Special Elite', serif; }
+.mdu-hud[data-map='esteros'] .mdu-scores {
+  --board-title: 'Kaushan Script';
+  --board-line: rgba(150, 230, 180, 0.3);
+  --board-bg: rgba(8, 22, 18, 0.93);
+  --board-bg2: rgba(3, 10, 8, 0.9);
+}
+.mdu-hud[data-map='esteros'] .mdu-scores header b { color: #e6f6ea; }
+
+/* el escudo de cuero de yacaré (las escamas en la barra) y las piezas en una
+   tabla mojada del muelle, atada con tientos */
+.mdu-hud[data-map='esteros'] .mdu-shield {
+  --sh-c: #e2f2e2;
+  --sh-dim: rgba(150, 200, 170, 0.4);
+  --sh-bar: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.28) 0 1px, transparent 1px 7px), linear-gradient(90deg, #2e4a2a, #6f9a5a 55%, #d2f0b8);
+  --sh-glow: rgba(120, 230, 170, 0.4);
+  --sh-font: 'Kaushan Script', 'Special Elite', serif;
+}
+.mdu-hud[data-map='esteros'] .mdu-plan {
+  --pl-bg: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 9px), linear-gradient(180deg, #2e2a20, #1a1812 70%, #121510);
+  --pl-ink: #e8f0e0;
+  --pl-dim: rgba(190, 220, 200, 0.32);
+  --pl-got: #bfe8a8;
+  --pl-font: 'Kaushan Script', 'Special Elite', serif;
+  transform: rotate(-0.6deg);
+  border-radius: 3px;
+  text-shadow: 0 1px 0 #060806;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(150, 200, 170, 0.22), inset 0 -10px 18px rgba(40, 90, 70, 0.25);
+}
+/* el tiento que ata la tabla, en vez de la chinche */
+.mdu-hud[data-map='esteros'] .mdu-plan::before {
+  left: 0;
+  top: 7px;
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  border-radius: 2px;
+  background: repeating-linear-gradient(135deg, #8a6a44 0 3px, #5a4228 3px 6px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  opacity: 0.85;
+}
+.mdu-hud[data-map='esteros'] .mdu-plan header { padding-top: 6px; border-bottom-style: solid; border-bottom-color: rgba(150, 220, 180, 0.22); }
+.mdu-hud[data-map='esteros'] .mdu-plan li { border-radius: 3px; }
+.mdu-hud[data-map='esteros'] .mdu-plan li.is-got { border-color: #9fd88a; background: rgba(120, 230, 170, 0.08); color: #e2f6d8; }
+.mdu-hud[data-map='esteros'] .mdu-plan li.is-got svg { filter: drop-shadow(0 0 4px rgba(120, 230, 170, 0.85)); }
+.mdu-hud[data-map='esteros'] .mdu-plan li.is-got::after { content: '✓'; top: 1px; right: 4px; font-size: 13px; color: #bfe8a8; }
+
+/* ---------------- los subtítulos de cada mapa (Hud.subtitle / Hud.speak) ----------------
+   Quién habla va con la letra y el color del mapa; el texto, en una letra que
+   se lea bien (la del mapa si se lee de corrido, si no la de máquina de
+   escribir de siempre); el cartel con los filetes del mapa (arriba, "común").
+   Los que tienen color propio (el Abuelo, los jefes, la radio, las almas:
+   style.css) quedan como están. */
+.mdu-hud[data-map] .mdu-line b {
+  font-family: var(--sub-name-font, inherit);
+  font-size: var(--sub-name-size, 1em);
+  font-weight: var(--sub-name-weight, normal);
+  letter-spacing: var(--sub-name-ls, normal);
+  text-transform: var(--sub-name-case, none);
+}
+.mdu-hud[data-map] .mdu-line:not(.is-abuelo):not(.is-capataz):not(.is-radio) b {
+  color: var(--sub-name, var(--gold));
+  text-shadow: var(--sub-name-glow, var(--shadow));
+}
+.mdu-hud[data-map] .mdu-line:not(.is-radio) span { font-family: var(--sub-font, inherit); }
+.mdu-hud[data-map] .mdu-line.is-talk:not(.is-abuelo):not(.is-boss):not(.is-soul):not(.is-radio) span { color: var(--sub-ink, inherit); }
+.mdu-hud[data-map] .mdu-line.is-info:not(.is-abuelo):not(.is-boss):not(.is-soul):not(.is-radio) span { color: var(--sub-info, #e8dcc6); }
+
+/* El Molino: el nombre en la letra de terror, con un resplandor de sangre */
+.mdu-hud[data-map='molino'] {
+  --sub-name-font: 'Creepster', 'Special Elite', serif;
+  --sub-name-size: 1.12em;
+  --sub-name-ls: 0.04em;
+  --sub-name-glow: 0 0 10px rgba(179, 18, 15, 0.75), var(--shadow);
+  --sub-rule: rgba(179, 18, 15, 0.6);
+}
+/* La Tapera: letra de cartel de almacén de campo, filetes de hierro al rojo */
+.mdu-hud[data-map='granja'] {
+  --sub-name-font: 'Rye', 'Special Elite', serif;
+  --sub-name-size: 0.95em;
+  --sub-name-glow: 0 0 10px rgba(255, 120, 30, 0.45), var(--shadow);
+  --sub-ink: #f6e4c4;
+  --sub-info: #f0d2a8;
+  --sub-rule: rgba(222, 106, 38, 0.6);
+}
+/* El penal: el nombre estarcido como en el uniforme, en una chapa remachada */
+.mdu-hud[data-map='penal'] {
+  --sub-name-font: 'Stardos Stencil', 'Special Elite', serif;
+  --sub-name-size: 0.9em;
+  --sub-name-weight: 700;
+  --sub-name-ls: 0.08em;
+  --sub-name-case: uppercase;
+  --sub-name-glow: 0 0 10px rgba(90, 210, 255, 0.5), var(--shadow);
+  --sub-ink: #dfe5e9;
+  --sub-info: #b8c6d0;
+}
+.mdu-hud[data-map='penal'] .mdu-line {
+  padding: 5px 24px 6px;
+  border-radius: 0;
+  border: 1px solid rgba(127, 227, 255, 0.22);
+  border-left: 3px solid rgba(228, 221, 208, 0.42);
+  border-right: 3px solid rgba(228, 221, 208, 0.42);
+  background:
+    radial-gradient(circle at 8px 50%, rgba(200, 212, 218, 0.6) 0 1.6px, transparent 2.3px) left / 16px 100% no-repeat,
+    radial-gradient(circle at 8px 50%, rgba(200, 212, 218, 0.6) 0 1.6px, transparent 2.3px) right / 16px 100% no-repeat,
+    linear-gradient(180deg, rgba(20, 30, 40, 0.8), rgba(8, 14, 22, 0.82));
+}
+/* La torre: letras romanas doradas sobre azul noche */
+.mdu-hud[data-map='torre'] {
+  --sub-name-font: 'Cinzel', 'Special Elite', serif;
+  --sub-name-weight: 700;
+  --sub-name-size: 0.95em;
+  --sub-name-glow: 0 0 10px rgba(243, 210, 122, 0.45), var(--shadow);
+  --sub-font: 'Cinzel', 'Special Elite', serif;
+  --sub-size: 18px;
+  --sub-ink: #f1ead8;
+  --sub-info: #d8ccb0;
+  --sub-rule: rgba(243, 210, 122, 0.55);
+}
+/* El castillo: el nombre en letra gótica dorada, el texto en romanas, filetes de hielo */
+.mdu-hud[data-map='castillo'] {
+  --sub-name-font: 'UnifrakturMaguntia', 'Cinzel', serif;
+  --sub-name-size: 1.25em;
+  --sub-name-glow: 0 0 12px rgba(120, 190, 255, 0.5), var(--shadow);
+  --sub-font: 'Cinzel', 'Special Elite', serif;
+  --sub-size: 18px;
+  --sub-ink: #e8eef6;
+  --sub-info: #c4d6ea;
+  --sub-rule: rgba(170, 205, 240, 0.5);
+}
+/* Los esteros: el nombre a mano, verde de luna sobre el agua */
+.mdu-hud[data-map='esteros'] {
+  --sub-name-font: 'Kaushan Script', 'Special Elite', serif;
+  --sub-name-size: 1.15em;
+  --sub-name-glow: 0 0 10px rgba(120, 230, 170, 0.45), var(--shadow);
+  --sub-ink: #e6f0ea;
+  --sub-info: #c4dccd;
+  --sub-rule: rgba(150, 230, 180, 0.4);
+}

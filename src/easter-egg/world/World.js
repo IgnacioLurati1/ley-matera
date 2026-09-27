@@ -3,14 +3,39 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import GeoBuilder from './GeoBuilder';
 import { buildProp, mesh, cylGeo } from './props';
 import { rng } from '../core/noise';
-import { MAP_W, MAP_H, WALL_H, ZONES, DOORS, WINDOWS, PROPS, LIGHTS } from '../config/map';
+import { MAP_W, MAP_H, WALL_H, ZONES, DOORS, WINDOWS, PROPS, LIGHTS, FEATURES, SKY, MAP_ID, zoneRects, PLAYER_START, START_ZONE } from '../config/map';
+import { buildRoofs } from './Roofs';
+import { farmTextures, penalTextures } from '../core/textures';
 import { buildAttic, blockStairCells, floorAt, inStair, STAIR } from './Attic';
+import { buildFarmOutside, buildFences } from './Farm';
+import { registerPenalProps } from './penalProps';
+import { registerMolinoProps } from './molinoProps';
+import { EDGE_RAIL, EDGE_BARS, computeHeights, addLevelBoxes, buildLevelArchitecture, buildTerrain, heightAt, ceilAt, rayTerrain } from './Levels';
+import Tower from './Tower';
+import { castleMaterials } from './castleTextures';
+import { installCastleHooks, buildCastle } from './Castle';
+import { buildMountain } from './Mountain';
+import { registerCastleProps } from './castleProps';
+import { installEsterosHooks, buildEsteros, esterosMaterials } from './Esteros';
+import { buildCastleSky } from './castleSky';
+import Night from '../fx/Night';
+import { ARENA } from './Arena';
 
 export const CELL = { OUT: 0, FLOOR: 1, WALL: 2, DOOR: 3, WINDOW: 4 };
+// Qué es cada celda de borde: pared, alambrado (se ve y se tira por encima) o maíz.
+// En el penal también hay barandas bajas (el muelle) y rejas altas (los patios).
+export const EDGE = { WALL: 0, FENCE: 1, CORN: 2, RAIL: EDGE_RAIL, BARS: EDGE_BARS };
+const FENCE_H = 1.25;
+const CORN_H = 2.6;
+const GATE_H = 1.6;
 const SILL = 0.95;
 const HEAD = 2.35;
 const DOOR_H = 2.7;
-const SURFACE = { planks: 'wood', parquet: 'wood', planksDark: 'wood', dirt: 'dirt', dirtDark: 'dirt', calcareo: 'tile', terracotta: 'tile', concrete: 'concrete' };
+// lámparas del mapa prendidas a la vez (las más cercanas a la cámara; ver
+// cullLights). Solo en los mapas con muchas (el penal): los demás quedan igual
+const MAX_LIGHTS = 10;
+const CULL_FROM = 13;
+const SURFACE = { planks: 'wood', parquet: 'wood', planksDark: 'wood', dirt: 'dirt', dirtDark: 'dirt', grass: 'dirt', calcareo: 'tile', terracotta: 'tile', concrete: 'concrete', snow: 'dirt', snowPave: 'dirt' };
 
 // Mapa: grilla, arquitectura, utilería, luces, cielo; colisiones y rayos.
 export default class World {
@@ -21,24 +46,56 @@ export default class World {
     this.W = MAP_W;
     this.H = MAP_H;
     this.zoneKeys = Object.keys(ZONES);
+    // pisos a distintas alturas (el penal); los otros mapas son planos
+    this.levels = !!FEATURES.levels;
+    // la torre de Revelaciones Materas: pisos apilados (world/Tower.js)
+    this.tower = null;
     this.boxes = [];
     this.cellBoxes = Array.from({ length: MAP_W * MAP_H }, () => []);
-    this.dynamic = { flywheels: [], lamps: [], kilnGlow: null, candles: null, bucket: null };
+    this.dynamic = { flywheels: [], fans: [], lamps: [], kilnGlow: null, candles: null, bucket: null };
     this.lights = [];
     this.power = false;
+    // luz del día: 1 atardecer, 0 noche cerrada (el molino es siempre de noche)
+    this.daylight = SKY.daylight || 0;
+    this.dayCur = this.daylight;
     this.root = new THREE.Group();
     this.scene.add(this.root);
   }
 
   build() {
     this.makeMaterials();
+    if (FEATURES.tower) {
+      this.tower = new Tower(this);
+      this.tower.build();
+      this.buildProps();
+      this.buildSky();
+      this.buildLights();
+      this.computeNavBlock();
+      return;
+    }
+    // el castillo: la montaña, las almenas y los puentes (ganchos de Levels)
+    if (FEATURES.castle) installCastleHooks(this);
+    // el estero: el suelo suave, el pajonal entre zonas (world/Esteros.js)
+    if (FEATURES.esteros) installEsterosHooks(this);
     this.makeGrid();
-    this.buildArchitecture();
-    this.attic = buildAttic(this);
+    if (this.levels) buildLevelArchitecture(this, DOORS);
+    else this.buildArchitecture();
+    if (FEATURES.attic) this.attic = buildAttic(this);
+    if (FEATURES.farm) buildFences(this);
     this.buildProps();
-    this.buildOutside();
+    if (FEATURES.farm) buildFarmOutside(this);
+    else if (FEATURES.castle) {
+      buildMountain(this);
+      buildCastle(this);
+    } else if (FEATURES.esteros) buildEsteros(this);
+    else if (this.levels) buildTerrain(this);
+    else this.buildOutside();
+    // techos de adorno (el molino)
+    buildRoofs(this, MAP_ID);
     this.buildSky();
     this.buildLights();
+    // la luz arranca donde corresponde (sol del atardecer o luna)
+    if (this.sunDir) this.updateDay(0);
     this.computeNavBlock();
   }
 
@@ -54,7 +111,8 @@ export default class World {
     return this.inside(x, z) ? this.grid[this.idx(x, z)] : CELL.OUT;
   }
 
-  zoneAt(x, z) {
+  zoneAt(x, z, y) {
+    if (this.tower) return this.tower.zoneAt(x, z, y ?? this.hintY());
     const cx = Math.floor(x);
     const cz = Math.floor(z);
     if (!this.inside(cx, cz)) return null;
@@ -69,9 +127,10 @@ export default class World {
 
   isIndoorCell(cx, cz) {
     if (!this.inside(cx, cz)) return false;
-    const t = this.grid[this.idx(cx, cz)];
+    const i = this.idx(cx, cz);
+    const t = this.grid[i];
     if (t === CELL.OUT) return false;
-    if (t !== CELL.FLOOR) return true;
+    if (t !== CELL.FLOOR) return this.edge[i] === EDGE.WALL;
     const zk = this.zoneKeys[this.zone[this.idx(cx, cz)]];
     return !ZONES[zk].outdoor;
   }
@@ -161,6 +220,50 @@ export default class World {
     M.packGreen = std(null, { c: 0x2f6a3a });
     M.packBlue = std(null, { c: 0x1e4f9c });
     M.packWhite = std(null, { c: 0xece2cc });
+    // la torre usa lo de todos los mapas (cada tanda de pisos es de uno)
+    if (FEATURES.penal || FEATURES.tower || FEATURES.castle || FEATURES.esteros) {
+      penalTextures(T);
+      M.stoneWall = std(T.stoneWall, { bump: 1.4 });
+      M.stoneStep = std(T.stoneWall, { c: 0xa8a298, bump: 1 });
+      M.cellWall = std(T.cellWall, { bump: 1.1 });
+      M.whitewash = std(T.whitewash, { bump: 1.1 });
+      M.damero = std(T.damero, { r: 0.6 });
+      M.azulejo = std(T.azulejo, { r: 0.35, bump: 0.4 });
+      M.rock = std(T.rock, { bump: 1.6 });
+      M.grass = std(T.grass, { bump: 0.6 });
+      // Phong y no Standard: el Standard reflejaba el environment del estudio
+      // (manchas blancas que encandilaban); así solo brilla la luna sobre el río
+      M.water = new THREE.MeshPhongMaterial({ color: 0x0e1c22, specular: 0x4a5a70, shininess: 70, transparent: true, opacity: 0.93 });
+      M.rust = std(T.metal, { c: 0x8a4a28, r: 0.7, m: 0.3 });
+      M.bars = std(T.metal, { c: 0x3a3632, r: 0.45, m: 0.8 });
+      M.yerbaBush = std(null, { c: 0x2e4a22, flat: true, r: 1 });
+      M.redCloth = std(null, { c: 0xa0181a, side: THREE.DoubleSide });
+      M.whiteCloth = std(null, { c: 0xd8d0c0, side: THREE.DoubleSide });
+      M.fence = std(T.planks, { c: 0xb8aa94 });
+      M.fenceDark = std(T.planksDark, { c: 0x6e6252 });
+    }
+    if (FEATURES.farm || FEATURES.tower) {
+      farmTextures(T);
+      M.adobe = std(T.adobe, { bump: 1.2 });
+      M.barn = std(T.barn, { bump: 1 });
+      M.corrugatedWall = std(T.corrugated, { r: 0.6, m: 0.4, bump: 1 });
+      M.grass = std(T.grass, { bump: 0.6 });
+      M.fence = std(T.fence, { c: 0xb8aa94 });
+      M.fenceDark = std(T.fence, { c: 0x6e6252 });
+      M.corn = new THREE.MeshStandardMaterial({ map: T.corn, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xd8c890 });
+      M.straw = std(T.burlap, { c: 0xe0c070 });
+      M.silo = std(T.metal, { c: 0xb8bcc0, r: 0.45, m: 0.6 });
+      M.rust = std(T.metal, { c: 0x8a4a28, r: 0.7, m: 0.3 });
+      M.tractor = std(T.metal, { c: 0xb03a1c, r: 0.5, m: 0.3 });
+      M.pumpkin = std(null, { c: 0xd0701a, r: 0.6 });
+      M.greenLeaf = std(null, { c: 0x3a5a24, flat: true, r: 1 });
+      M.yerbaBush = std(null, { c: 0x2e4a22, flat: true, r: 1 });
+      M.whiteCloth = std(null, { c: 0xd8d0c0, side: THREE.DoubleSide });
+      M.redCloth = std(null, { c: 0x8a2a1a, side: THREE.DoubleSide });
+    }
+    // el castillo: granito, nieve, lajas, hielo y pizarra (world/castleTextures.js)
+    if (FEATURES.castle) castleMaterials(T, M, std);
+    if (FEATURES.esteros) esterosMaterials(T, M, std);
     this.M = M;
   }
 
@@ -171,13 +274,33 @@ export default class World {
     this.zone = new Int8Array(n).fill(-1);
     this.doorAt = new Int16Array(n).fill(-1);
     this.windowAt = new Int16Array(n).fill(-1);
+    // alturas: piso de cada celda, terreno de afuera y alto de las paredes
+    this.fy = new Float32Array(n);
+    this.ty = new Float32Array(n);
+    this.top = new Float32Array(n).fill(WALL_H);
+    this.rampAt = new Int16Array(n).fill(-1);
+    // techo propio de un rectángulo (0 = el de la zona)
+    this.roofC = new Float32Array(n);
     this.zoneKeys.forEach((k, zi) => {
-      const [x0, z0, x1, z1] = ZONES[k].rect;
-      for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+      const zy = ZONES[k].y || 0;
+      const set = (x, z, y = zy, roof = 0) => {
+        if (!this.inside(x, z)) return;
         this.grid[this.idx(x, z)] = CELL.FLOOR;
         this.zone[this.idx(x, z)] = zi;
+        this.fy[this.idx(x, z)] = y;
+        this.roofC[this.idx(x, z)] = roof;
+      };
+      for (const [x0, z0, x1, z1, ry, rr] of zoneRects(k)) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) set(x, z, ry ?? zy, rr || 0);
+      // zona redonda (el prado): las celdas cuyo centro cae adentro
+      const C = ZONES[k].circle;
+      if (C) {
+        for (let z = Math.floor(C.z - C.r); z <= Math.ceil(C.z + C.r); z++) {
+          for (let x = Math.floor(C.x - C.r); x <= Math.ceil(C.x + C.r); x++) if (Math.hypot(x + 0.5 - C.x, z + 0.5 - C.z) <= C.r) set(x, z);
+        }
       }
     });
+    // el estero: donde dos zonas de afuera se tocan queda pajonal (world/Esteros.js)
+    this.seams?.(this);
     // paredes: toda celda exterior que toca un piso
     for (let z = 0; z < MAP_H; z++) {
       for (let x = 0; x < MAP_W; x++) {
@@ -195,18 +318,64 @@ export default class World {
         this.doorAt[this.idx(x, z)] = i;
       }
     });
+    // borde de cada celda: si toca una zona techada es pared; si no, alambrado o maíz
+    this.edge = new Uint8Array(n);
+    this.owner = new Int8Array(n).fill(-1);
+    for (let z = 0; z < MAP_H; z++) {
+      for (let x = 0; x < MAP_W; x++) {
+        const i = this.idx(x, z);
+        if (this.grid[i] === CELL.OUT || this.grid[i] === CELL.FLOOR) continue;
+        let indoor = -1;
+        let corn = false;
+        let fence = false;
+        let rail = false;
+        let bars = false;
+        let solid = false;
+        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+          if (this.type(x + dx, z + dz) !== CELL.FLOOR) continue;
+          const zi = this.zone[this.idx(x + dx, z + dz)];
+          const Z = ZONES[this.zoneKeys[zi]];
+          if (!Z.outdoor) indoor = zi;
+          else if (Z.edge === 'corn') corn = true;
+          else if (Z.edge === 'rail') rail = true;
+          else if (Z.edge === 'bars') bars = true;
+          else if (Z.fence) fence = true;
+          else solid = true;
+        }
+        this.owner[i] = indoor;
+        // una pared de verdad le gana a la reja, y la reja a la baranda
+        if (indoor >= 0 || solid) this.edge[i] = EDGE.WALL;
+        else this.edge[i] = corn ? EDGE.CORN : fence ? EDGE.FENCE : bars ? EDGE.BARS : rail ? EDGE.RAIL : EDGE.WALL;
+      }
+    }
     WINDOWS.forEach((w, i) => {
       const [x, z] = w.cell;
       this.grid[this.idx(x, z)] = CELL.WINDOW;
       this.windowAt[this.idx(x, z)] = i;
     });
     this.doorOpen = new Uint8Array(DOORS.length);
+    if (this.levels) {
+      computeHeights(this);
+      addLevelBoxes(this, DOORS);
+      return;
+    }
     // cajas de colisión de la arquitectura
     for (let z = 0; z < MAP_H; z++) {
       for (let x = 0; x < MAP_W; x++) {
         const t = this.grid[this.idx(x, z)];
-        if (t === CELL.WALL) this.addBox([x, 0, z, x + 1, WALL_H, z + 1], { kind: 'wall' });
-        else if (t === CELL.WINDOW) {
+        const edge = this.edge[this.idx(x, z)];
+        // alambrado: frena al que camina pero los tiros y la vista pasan por arriba
+        if (t === CELL.WALL && edge === EDGE.FENCE) this.addBox([x, 0, z, x + 1, FENCE_H, z + 1], { kind: 'fence', shoot: false });
+        else if (t === CELL.WALL && edge === EDGE.CORN) this.addBox([x, 0, z, x + 1, CORN_H, z + 1], { kind: 'corn' });
+        else if (t === CELL.WALL) this.addBox([x, 0, z, x + 1, WALL_H, z + 1], { kind: 'wall' });
+        else if (t === CELL.WINDOW && edge !== EDGE.WALL) {
+          // tranquera tapiada del alambrado: sin marco, solo las tablas
+          this.addBox([x, 0, z, x + 1, WALL_H, z + 1], { kind: 'window', shoot: false, window: this.windowAt[this.idx(x, z)] });
+        } else if (t === CELL.DOOR && edge !== EDGE.WALL) {
+          const door = this.doorAt[this.idx(x, z)];
+          const b = this.addBox([x, 0, z, x + 1, edge === EDGE.CORN ? CORN_H : GATE_H, z + 1], { kind: 'door', door, shoot: edge === EDGE.CORN });
+          (DOORS[door].boxes ||= []).push(b);
+        } else if (t === CELL.WINDOW) {
           this.addBox([x, 0, z, x + 1, SILL, z + 1], { kind: 'wall' });
           this.addBox([x, HEAD, z, x + 1, WALL_H, z + 1], { kind: 'wall' });
           this.addBox([x, 0, z, x + 1, WALL_H, z + 1], { kind: 'window', shoot: false, window: this.windowAt[this.idx(x, z)] });
@@ -233,6 +402,11 @@ export default class World {
 
   // Celdas que los zombies no pueden pisar (paredes, utilería, puertas cerradas).
   computeNavBlock() {
+    if (this.tower) {
+      this.tower.computeNav();
+      this.navVersion = (this.navVersion || 0) + 1;
+      return;
+    }
     const n = MAP_W * MAP_H;
     this.navBlock = new Uint8Array(n);
     for (let z = 0; z < MAP_H; z++) {
@@ -249,9 +423,16 @@ export default class World {
         }
         const cx = x + 0.5;
         const cz = z + 0.5;
+        // con alturas, cuenta lo que está sobre el piso de esa celda (no el suelo ni las barandas)
+        const fy = this.levels ? this.fy[i] : 0;
         for (const b of this.cellBoxes[i]) {
-          if (!b.active || !b.solid || b.y0 > 1) continue;
-          if (cx > b.x0 - 0.2 && cx < b.x1 + 0.2 && cz > b.z0 - 0.2 && cz < b.z1 + 0.2) {
+          if (!b.active || !b.solid || b.y0 > fy + 1) continue;
+          if (this.levels && (b.y1 < fy + 0.3 || b.kind === 'rail' || b.kind === 'ground')) continue;
+          // navCell: bloquea toda celda que toca (el redondel de la granja)
+          // (en el molino, plano, con más margen: si no, los bancos de la capilla y los
+          // estantes dejan celdas "libres" donde un muerto se traba contra la madera)
+          const pad = this.levels ? 0.2 : 0.32;
+          if (b.navCell || (cx > b.x0 - pad && cx < b.x1 + pad && cz > b.z0 - pad && cz < b.z1 + pad)) {
             this.navBlock[i] = 1;
             break;
           }
@@ -260,12 +441,121 @@ export default class World {
     }
     // la escalera del altillo: abajo es la rampa, no se camina por ahí
     blockStairCells(this);
+    this.computeNavEdges();
     this.navVersion = (this.navVersion || 0) + 1;
   }
 
+  // Los bordes entre dos celdas libres que no se pueden cruzar: una caja a
+  // caballo del borde (un banco, un yunque, la baranda del costado de una
+  // escalera) no tapa el centro de ninguna de las dos celdas, pero el cuerpo
+  // de un muerto no pasa. Bits: 1 +x, 2 -x, 4 +z, 8 -z. (El campo de flujo
+  // no los cruza: si no, los muertos caminaban contra eso sin parar.)
+  computeNavEdges() {
+    const n = MAP_W * MAP_H;
+    const E = (this.navEdge = new Uint8Array(n));
+    const R = 0.26;
+    const spans = [];
+    for (let z = 0; z < MAP_H; z++) {
+      for (let x = 0; x < MAP_W; x++) {
+        const i = this.idx(x, z);
+        if (this.navBlock[i]) continue;
+        for (const [dx, dz, bit, back] of [[1, 0, 1, 2], [0, 1, 4, 8]]) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if (!this.inside(nx, nz)) continue;
+          const j = this.idx(nx, nz);
+          if (this.navBlock[j]) continue;
+          // La línea que comparten (a lo largo de `u`, de u0 a u0 + 1): se tapa
+          // si no queda un hueco del ancho de un cuerpo entre lo que la cruza
+          // (barandas de escalera, muebles a caballo) y las paredes de los costados.
+          const L = dx ? nx : nz;
+          const u0 = dx ? z : x;
+          const fy = this.levels ? heightAt(this, x + 0.5 + dx * 0.5, z + 0.5 + dz * 0.5) : 0;
+          spans.length = 0;
+          // los costados: si la celda de al lado (de una o de otra) es pared
+          for (const s of [-1, 1]) {
+            const ax = dx ? x : x + s;
+            const az = dx ? z + s : z;
+            const bx = dx ? nx : x + s;
+            const bz = dx ? z + s : nz;
+            if (!this.inside(ax, az) || this.navBlock[this.idx(ax, az)] || !this.inside(bx, bz) || this.navBlock[this.idx(bx, bz)]) spans.push(s < 0 ? [u0 - 1, u0 + R] : [u0 + 1 - R, u0 + 2]);
+          }
+          for (const c of [i, j]) {
+            for (const b of this.cellBoxes[c]) {
+              if (!b.active || !b.solid || b.kind === 'ground' || b.kind === 'window') continue;
+              if (b.y1 <= fy + 0.15 || b.y0 >= fy + 1.7) continue;
+              const a0 = dx ? b.x0 : b.z0;
+              const a1 = dx ? b.x1 : b.z1;
+              if (a1 <= L - R || a0 >= L + R) continue;
+              const v0 = dx ? b.z0 : b.x0;
+              const v1 = dx ? b.z1 : b.x1;
+              if (v1 + R <= u0 || v0 - R >= u0 + 1) continue;
+              spans.push([v0 - R, v1 + R]);
+            }
+          }
+          if (!spans.length) continue;
+          spans.sort((p, q) => p[0] - q[0]);
+          let reach = u0;
+          for (const [v0, v1] of spans) {
+            if (v0 > reach + 0.02) break;
+            if (v1 > reach) reach = v1;
+          }
+          if (reach >= u0 + 1 - 0.02) {
+            E[i] |= bit;
+            E[j] |= back;
+          }
+        }
+      }
+    }
+  }
+
+  // ¿Entra un cuerpo de radio r (de y0 a y1) parado en (x, z)?
+  circleFree(x, z, r, y0, y1) {
+    const cx = Math.floor(x);
+    const cz = Math.floor(z);
+    const r2 = r * r;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!this.inside(cx + dx, cz + dz)) continue;
+        for (const b of this.cellBoxes[this.idx(cx + dx, cz + dz)]) {
+          if (!b.active || !b.solid || b.kind === 'window') continue;
+          if (b.y1 <= y0 || b.y0 >= y1) continue;
+          const nx = Math.max(b.x0, Math.min(x, b.x1));
+          const nz = Math.max(b.z0, Math.min(z, b.z1));
+          if ((x - nx) ** 2 + (z - nz) ** 2 < r2) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // ¿Pasa ese cuerpo en línea recta de (ax, az) a (bx, bz)? (la vista a la
+  // altura de los ojos no ve los cajones, los bancos ni las barandas bajas)
+  sweepFree(ax, az, bx, bz, r, y0, y1) {
+    const len = Math.hypot(bx - ax, bz - az);
+    const n = Math.max(1, Math.ceil(len / 0.3));
+    for (let k = 1; k <= n; k++) {
+      const u = k / n;
+      if (!this.circleFree(ax + (bx - ax) * u, az + (bz - az) * u, r, y0, y1)) return false;
+    }
+    return true;
+  }
+
   // Altura del piso bajo (x, z) para algo que está a la altura y (el altillo).
-  floorAt(x, z, y = 0) {
-    return floorAt(x, z, y);
+  floorAt(x, z, y) {
+    // en la torre importa la altura: sin ella, la del jugador local
+    if (this.tower) return this.tower.floorAt(x, z, y ?? this.hintY());
+    return this.levels ? heightAt(this, x, z) : floorAt(x, z, y ?? 0);
+  }
+
+  // Cuánta agua hay en (x, z) (el estero y el penal la ponen; acá no hay).
+  waterDepth() {
+    return 0;
+  }
+
+  // A qué altura se busca el piso cuando el que pregunta no dice (la torre).
+  hintY() {
+    return this.g.player?.pos.y ?? 0;
   }
 
   openDoor(i) {
@@ -291,31 +581,48 @@ export default class World {
       const uOff = lx * right[0] + lz * right[1];
       gb.wall(key, lx, lz, rx, rz, y0, y1, [n[0], 0, n[1]], H, uOff);
     };
-    const wallMatFor = (nx, nz) => {
+    // la cara de afuera de una pared: la del edificio (adobe, chapa...) o el ladrillo de siempre
+    const wallMatFor = (nx, nz, x, z) => {
       const t = this.type(nx, nz);
-      if (t === CELL.FLOOR) return ZONES[this.zoneKeys[this.zone[this.idx(nx, nz)]]].wall;
-      return 'exterior';
+      // del lado de una zona con paredes propias, esas (un patio con alambrado no tiene: va la de afuera)
+      if (t === CELL.FLOOR) {
+        const w = ZONES[this.zoneKeys[this.zone[this.idx(nx, nz)]]].wall;
+        if (w) return w;
+      }
+      const o = this.inside(x, z) ? this.owner[this.idx(x, z)] : -1;
+      return (o >= 0 && ZONES[this.zoneKeys[o]].ext) || 'exterior';
     };
+    // el alambrado y el maíz se ven "de afuera" desde la pared de al lado
+    const openCell = (x, z) => this.inside(x, z) && this.grid[this.idx(x, z)] !== CELL.FLOOR && this.edge[this.idx(x, z)] !== EDGE.WALL;
     for (let z = 0; z < MAP_H; z++) {
       for (let x = 0; x < MAP_W; x++) {
         const t = this.type(x, z);
         if (!isWallish(t)) continue;
+        // lo del alambrado y el maíz lo arma world/Farm.js
+        if (this.edge[this.idx(x, z)] !== EDGE.WALL) {
+          if (t === CELL.DOOR) {
+            const d = DOORS[this.doorAt[this.idx(x, z)]];
+            gb.flat(ZONES[d.zones[0]].floor, x, z, x + 1, z + 1, 0.001, true);
+          }
+          continue;
+        }
         for (const n of dirs) {
           const nx = x + n[0];
           const nz = z + n[1];
-          const nt = this.type(nx, nz);
+          let nt = this.type(nx, nz);
+          if (openCell(nx, nz)) nt = CELL.OUT;
           if (t === CELL.WALL) {
-            if (nt === CELL.FLOOR || nt === CELL.OUT) face(wallMatFor(nx, nz), x, z, n, 0, H);
+            if (nt === CELL.FLOOR || nt === CELL.OUT) face(wallMatFor(nx, nz, x, z), x, z, n, 0, H);
             else if (nt === CELL.DOOR) face('trim', x, z, n, 0, DOOR_H);
             else if (nt === CELL.WINDOW) face('trim', x, z, n, SILL, HEAD);
           } else if (t === CELL.WINDOW) {
             if (nt === CELL.FLOOR || nt === CELL.OUT) {
-              const k = wallMatFor(nx, nz);
+              const k = wallMatFor(nx, nz, x, z);
               face(k, x, z, n, 0, SILL);
               face(k, x, z, n, HEAD, H);
             }
           } else if (t === CELL.DOOR) {
-            if (nt === CELL.FLOOR || nt === CELL.OUT) face(wallMatFor(nx, nz), x, z, n, DOOR_H, H);
+            if (nt === CELL.FLOOR || nt === CELL.OUT) face(wallMatFor(nx, nz, x, z), x, z, n, DOOR_H, H);
           }
         }
         gb.flat('wallTop', x, z, x + 1, z + 1, H, true);
@@ -333,10 +640,21 @@ export default class World {
     // pisos, techos y vigas
     for (const k of this.zoneKeys) {
       const Z = ZONES[k];
-      const [x0, z0, x1, z1] = Z.rect;
+      if (Z.circle) {
+        // piso celda por celda (lo redondo)
+        const zi = this.zoneKeys.indexOf(k);
+        for (let i = 0; i < this.zone.length; i++) {
+          if (this.zone[i] !== zi) continue;
+          const cx = i % MAP_W;
+          const cz = (i - cx) / MAP_W;
+          gb.flat(Z.floor, cx, cz, cx + 1, cz + 1, 0.001, true);
+        }
+        continue;
+      }
+      for (const [x0, z0, x1, z1] of zoneRects(k)) {
       gb.flat(Z.floor, x0, z0, x1 + 1, z1 + 1, 0.001, true);
       if (Z.outdoor) continue;
-      if (k === 'H') {
+      if (k === 'H' && FEATURES.attic) {
         // la oficina tiene el hueco de la escalera del altillo y no lleva vigas
         gb.flat(Z.ceil, x0, z0, STAIR.x0, z1 + 1, H, false);
         gb.flat(Z.ceil, STAIR.x0, z0, x1 + 1, STAIR.z0, H, false);
@@ -356,10 +674,12 @@ export default class World {
         if (alongX) gb.box('truss', mid - 0.08, H - 0.4, z0, mid + 0.08, H - 0.26, z1 + 1);
         else gb.box('truss', x0, H - 0.4, mid - 0.08, x1 + 1, H - 0.26, mid + 0.08);
       }
+      }
     }
     // marcos de ventana
     for (const w of WINDOWS) {
       const [x, z] = w.cell;
+      if (this.edge[this.idx(x, z)] !== EDGE.WALL) continue;
       const [ox, oz] = w.out;
       const ix = x + 0.5 - ox * 0.45;
       const iz = z + 0.5 - oz * 0.45;
@@ -393,10 +713,16 @@ export default class World {
         merged.set(o.material, list);
       });
     };
-    PROPS.forEach((def, i) => {
+    // (el castillo usa también algunos del penal: celdas, grilletes, la cocina)
+    if (FEATURES.penal || FEATURES.tower || FEATURES.castle || FEATURES.esteros) registerPenalProps();
+    if (FEATURES.cemetery) registerMolinoProps();
+    if (FEATURES.castle) registerCastleProps();
+    PROPS.forEach((d, i) => {
+      const def = this.levels && d.y == null ? { ...d, y: this.floorAt(d.pos[0], d.pos[1]) } : d;
       const res = buildProp(def, this.M, 1000 + i * 17);
       if (!res) return;
-      for (const b of res.boxes) this.addBox(b, { kind: 'prop' });
+      // (firm: la utilería chica que igual frena al Luisón, el fogón: World.collide lowProp)
+      for (const b of res.boxes) this.addBox(b, { kind: 'prop', firm: !!res.firm });
       addStatic(res.obj);
       // partes animadas: quedan como objetos propios
       const dyn = [];
@@ -413,8 +739,13 @@ export default class World {
         d.quaternion.copy(wq);
         this.root.add(d);
         if (d.name === 'flywheel') this.dynamic.flywheels.push(d);
+        else if (d.name === 'fan') this.dynamic.fans.push(d);
         else if (d.name === 'kilnGlow') this.dynamic.kilnGlow = d;
         else if (d.name === 'candles') this.dynamic.candles = d;
+        // reflectores y faros que giran (el penal)
+        else if (d.name === 'spin') (this.dynamic.spins ||= []).push(d);
+        // la roldana, la soga y el balde del aljibe (los mueve el easter egg del molino)
+        else if (d.name === 'wellRig') (this.dynamic.wells ||= []).push(d);
         else this.dynamic.lamps.push(d);
       }
       res.obj.traverse((o) => {
@@ -432,7 +763,8 @@ export default class World {
       if (!g) continue;
       g.computeBoundingSphere();
       const m = new THREE.Mesh(g, mat);
-      m.castShadow = true;
+      // (las llamas del castillo no tiran sombra)
+      m.castShadow = !mat.userData?.noShadow;
       m.receiveShadow = true;
       m.matrixAutoUpdate = false;
       this.root.add(m);
@@ -469,6 +801,8 @@ export default class World {
       const x = -30 + r() * (MAP_W + 60);
       const z = -30 + r() * (MAP_H + 60);
       if (x > 0 && x < MAP_W && z > 0 && z < MAP_H) continue;
+      // la Salamanca queda al este del molino: adentro de la cueva no hay monte
+      if (Math.hypot(x - ARENA.x, z - ARENA.z) < ARENA.r + 5) continue;
       const h = 5 + r() * 7;
       p.set(x, h / 2, z);
       s.set(1 + r(), h, 1 + r());
@@ -488,6 +822,11 @@ export default class World {
   }
 
   buildSky() {
+    // el castillo: noche de alta montaña con la Vía Láctea (world/castleSky.js)
+    if (FEATURES.castle) {
+      buildCastleSky(this);
+      return;
+    }
     const geo = new THREE.SphereGeometry(300, 32, 16);
     const mat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
@@ -500,10 +839,16 @@ export default class World {
         uBlood: { value: 0 },
         uFogAmt: { value: 0 },
         uFogColor: { value: new THREE.Color(0x0b0d14) },
+        uDay: { value: this.dayCur },
+        uSun: { value: new THREE.Vector3(...(SKY.sun || [-0.86, 0.1, -0.5])).normalize() },
+        // los colores de la noche (SKY.colors; el estero la quiere más oscura y sin el resplandor rojizo)
+        uHorizon: { value: new THREE.Vector3(...(SKY.colors?.horizon || [0.1, 0.07, 0.09])) },
+        uZenith: { value: new THREE.Vector3(...(SKY.colors?.zenith || [0.012, 0.018, 0.04])) },
+        uGlow: { value: new THREE.Vector3(...(SKY.colors?.glow || [0.16, 0.04, 0.02])) },
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
       fragmentShader: `
-        varying vec3 vDir; uniform float uTime, uCloud, uFlash, uBlood, uFogAmt; uniform vec3 uFogColor;
+        varying vec3 vDir; uniform float uTime, uCloud, uFlash, uBlood, uFogAmt, uDay; uniform vec3 uFogColor, uSun, uHorizon, uZenith, uGlow;
         float hash(vec3 p){ p = fract(p*0.3183099+.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
         float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float vnoise(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); f = f*f*(3.0-2.0*f);
@@ -511,19 +856,27 @@ export default class World {
         float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ s += a * vnoise(p); p *= 2.03; a *= 0.5; } return s; }
         void main(){
           float h = vDir.y;
-          vec3 horizon = mix(vec3(0.10,0.07,0.09), vec3(0.22,0.04,0.03), uBlood);
-          vec3 zenith = mix(vec3(0.012,0.018,0.04), vec3(0.05,0.01,0.012), uBlood);
+          vec3 horizon = mix(uHorizon, vec3(0.22,0.04,0.03), uBlood);
+          vec3 zenith = mix(uZenith, vec3(0.05,0.01,0.012), uBlood);
           vec3 col = mix(horizon, zenith, smoothstep(-0.05, 0.55, h));
           // resplandor rojizo tipo BO1 en el horizonte
-          col += mix(vec3(0.16,0.04,0.02), vec3(0.35,0.05,0.02), uBlood) * pow(1.0 - abs(h), 12.0);
+          col += mix(uGlow, vec3(0.35,0.05,0.02), uBlood) * pow(1.0 - abs(h), 12.0);
+          // atardecer: cielo anaranjado abajo, violeta arriba y el sol ya bajo
+          float sd = max(dot(vDir, uSun), 0.0);
+          vec3 dusk = mix(vec3(0.95, 0.42, 0.16), vec3(0.2, 0.16, 0.36), smoothstep(-0.02, 0.5, h));
+          dusk += vec3(1.0, 0.55, 0.22) * pow(sd, 6.0) * 0.55 + vec3(1.0, 0.8, 0.5) * pow(sd, 90.0) * 2.5;
+          dusk = mix(dusk, vec3(0.12, 0.06, 0.05), smoothstep(0.0, -0.25, h));
+          col = mix(col, dusk, uDay);
           vec3 cell = floor(vDir * 180.0);
-          float star = step(0.9975, hash(cell)) * smoothstep(0.05, 0.4, h);
+          float star = step(0.9975, hash(cell)) * smoothstep(0.05, 0.4, h) * (1.0 - smoothstep(0.1, 0.5, uDay));
           star *= 0.6 + 0.4 * sin(uTime * 2.0 + hash(cell + 3.0) * 30.0);
           // nubes que tapan las estrellas y se iluminan con los relámpagos
           vec2 cp = vDir.xz / (h + 0.25) * 1.6 + vec2(uTime * 0.012, uTime * 0.004);
           float cl = smoothstep(0.62 - uCloud * 0.45, 0.95 - uCloud * 0.2, fbm(cp)) * smoothstep(-0.02, 0.15, h);
           col += vec3(star) * (1.0 - cl);
           vec3 cloudCol = mix(vec3(0.045, 0.045, 0.055), vec3(0.09, 0.02, 0.02), uBlood);
+          // las nubes del atardecer se prenden de naranja del lado del sol
+          cloudCol = mix(cloudCol, mix(vec3(0.35, 0.18, 0.2), vec3(1.0, 0.5, 0.25), pow(sd, 3.0)), uDay);
           col = mix(col, cloudCol, cl * 0.9);
           col += uFlash * (vec3(0.35, 0.4, 0.55) * (0.4 + cl * 1.2)) * smoothstep(-0.1, 0.3, h);
           col = mix(col, uFogColor, uFogAmt * (1.0 - smoothstep(0.0, 0.7, h) * 0.5));
@@ -535,11 +888,12 @@ export default class World {
     sky.renderOrder = -1;
     this.sky = sky;
     this.root.add(sky);
-    // luna
-    const moonDir = new THREE.Vector3(-0.45, 0.62, -0.64).normalize();
+    // luna (SKY.moon: dónde está y qué tan grande; la luna llena la dibuja fx/Night)
+    const MS = SKY.moon || {};
+    const moonDir = new THREE.Vector3(...(MS.dir || [-0.45, 0.62, -0.64])).normalize();
     const moonMat = new THREE.SpriteMaterial({ map: this.T.dot, color: 0xdfe8ff, fog: false, depthWrite: false, transparent: true });
     const moon = new THREE.Sprite(moonMat);
-    moon.scale.set(22, 22, 1);
+    moon.scale.set(MS.size || 22, MS.size || 22, 1);
     moon.position.copy(moonDir).multiplyScalar(260).add(new THREE.Vector3(MAP_W / 2, 0, MAP_H / 2));
     this.root.add(moon);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.T.dot, color: 0x5a6a90, fog: false, depthWrite: false, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending }));
@@ -549,6 +903,22 @@ export default class World {
     this.moonDir = moonDir;
     this.moonSprite = moon;
     this.moonHalo = halo;
+    // la noche del estero: luna llena, niebla sobre el agua y luciérnagas
+    if (SKY.night) this.night = new Night(this.g, this, SKY.night);
+    // el sol del atardecer (solo en los mapas que tienen día)
+    if (SKY.daylight) {
+      this.sunDir = new THREE.Vector3(...(SKY.sun || [-0.86, 0.1, -0.5])).normalize();
+      const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.T.dot, color: 0xffc27a, fog: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending }));
+      sun.scale.set(34, 34, 1);
+      sun.position.copy(this.sunDir).multiplyScalar(250).add(new THREE.Vector3(MAP_W / 2, 0, MAP_H / 2));
+      this.root.add(sun);
+      this.sunSprite = sun;
+    }
+  }
+
+  // Cuánta luz de día queda (la granja se va haciendo de noche con el easter egg).
+  setDaylight(k) {
+    this.daylight = Math.max(0, Math.min(1, k));
   }
 
   // ---------------- luces ----------------
@@ -564,12 +934,24 @@ export default class World {
     moon.target.position.set(MAP_W / 2, 0, MAP_H / 2);
     moon.castShadow = true;
     const sc = moon.shadow.camera;
-    sc.left = -45;
-    sc.right = 45;
-    sc.top = 45;
-    sc.bottom = -45;
+    // el penal es más grande (y más alto): la sombra tiene que tapar todo
+    const big = this.levels && !FEATURES.farm;
+    const half = this.tower ? 50 : big ? 66 : 45;
+    sc.left = -half;
+    sc.right = half;
+    sc.top = half;
+    sc.bottom = -half;
     sc.near = 1;
-    sc.far = 140;
+    sc.far = this.tower ? 240 : big ? 180 : 140;
+    // la torre: la luna apunta a la mitad de la altura para que la sombra tape todos los pisos
+    if (this.tower) {
+      moon.position.y += 30;
+      moon.target.position.y = 30;
+    } else if (FEATURES.castle) {
+      // el castillo está en la montaña: la sombra mira a la altura de los salones
+      moon.position.y += 28;
+      moon.target.position.y = 28;
+    }
     moon.shadow.bias = -0.0008;
     moon.shadow.normalBias = 0.04;
     s.add(moon, moon.target);
@@ -588,23 +970,73 @@ export default class World {
         bulb.position.set(...L.pos);
         const shade = new THREE.Mesh(shadeGeo, this.M.metalGreen);
         shade.position.set(L.pos[0], L.pos[1] + 0.1, L.pos[2]);
-        const wire = mesh(cylGeo(0.006, 0.006, WALL_H - L.pos[1], 4), this.M.black, L.pos[0], (WALL_H + L.pos[1]) / 2 + 0.1, L.pos[2]);
-        this.root.add(bulb, shade, wire);
+        // el cable sube hasta el techo de ese lugar
+        const roof = this.levels ? Math.min(ceilAt(this, Math.floor(L.pos[0]), Math.floor(L.pos[2])), L.pos[1] + 6) : WALL_H;
+        const wire = mesh(cylGeo(0.006, 0.006, Math.max(0.05, roof - L.pos[1]), 4), this.M.black, L.pos[0], (roof + L.pos[1]) / 2 + 0.1, L.pos[2]);
+        this.root.add(bulb);
+        // la pantalla y el cable no se mueven: van con la utilería fundida (un dibujo menos cada uno)
+        if (this.addStatic) {
+          const fixed = new THREE.Group();
+          fixed.add(shade, wire);
+          this.addStatic(fixed);
+        } else this.root.add(shade, wire);
         entry.bulb = bulb;
       }
       this.lights.push(entry);
     }
     this.setPower(false);
+    // (el penal: muchas lámparas) prendidas de entrada las del arranque
+    if (this.lights.length >= CULL_FROM) this.cullLights(0, new THREE.Vector3(PLAYER_START.x, (ZONES[START_ZONE]?.y ?? 0) + 1.6, PLAYER_START.z));
+  }
+
+  // Cada luz puntual encarece todo lo que se dibuja (el penal tiene más de
+  // veinte). Quedan prendidas solo las MAX_LIGHTS más cercanas a la cámara y
+  // siempre la misma cantidad, así los materiales no se recompilan al cambiar.
+  // Las demás están lejos: casi no alumbran lo que se ve.
+  cullLights(dt, at = this.g.camera.position) {
+    this.lightT = (this.lightT || 0) - dt;
+    if (this.lightT > 0) return;
+    this.lightT = 0.25;
+    const here = this.zoneAt(at.x, at.z, at.y);
+    for (const e of this.lights) {
+      const [x, y, z] = e.def.pos;
+      // lo de otro piso cuenta más lejos; la que ya está prendida, un poco más cerca (sin parpadeos)
+      e.d2 = ((x - at.x) ** 2 + ((y - at.y) * 1.8) ** 2 + (z - at.z) ** 2) * (e.light.visible ? 0.8 : 1);
+      // las del lugar donde se está cuentan como más cerca (el fogón del gran
+      // salón alumbra desde la otra punta) y las que tapa una pared, más lejos
+      if (here && e.def.zone === here) e.d2 *= 0.3;
+      else if (e.d2 < 900 && !this.sees(at, x, y, z)) e.d2 *= 2.5;
+    }
+    const order = [...this.lights].sort((a, b) => a.d2 - b.d2);
+    order.forEach((e, i) => {
+      e.light.visible = i < MAX_LIGHTS;
+    });
+  }
+
+  // ¿Se ve el punto (x, y, z) desde `at`? Lo que lo tapa pegado a él (la
+  // campana del fogón, la reja del brasero) no cuenta.
+  sees(at, x, y, z) {
+    const d = Math.hypot(x - at.x, y - at.y, z - at.z);
+    if (d < 1) return true;
+    const dir = (this.seeDir ||= new THREE.Vector3()).set((x - at.x) / d, (y - at.y) / d, (z - at.z) / d);
+    let t = Infinity;
+    // (al terminar el castillo, la config del mapa vuelve antes que el mundo)
+    try {
+      t = this.raycast(at, dir, d, (this.seeHit ||= {}));
+    } catch {
+      return true;
+    }
+    return t === Infinity || t > d - 1.5;
   }
 
   // Luna tapada por nubes o teñida de rojo (clima).
   setMoon(cloud, blood) {
     if (!this.moonSprite) return;
     const vis = 1 - cloud * 0.75;
-    this.moonSprite.material.color.setRGB(0.87 + blood * 0.13, 0.9 - blood * 0.62, 1 - blood * 0.72).multiplyScalar(vis);
+    this.moonSprite.material.color.setRGB(0.87 + blood * 0.13, 0.9 - blood * 0.62, 1 - blood * 0.72).multiplyScalar(vis * (SKY.moon?.glow ?? 1));
     this.moonHalo.material.color.setRGB(0.35 + blood * 0.45, 0.42 - blood * 0.3, 0.56 - blood * 0.45);
     this.moonHalo.material.opacity = 0.35 * vis + blood * 0.2;
-    this.moonBase = 0.9 * (1 - cloud * 0.45);
+    this.moonBase = 0.9 * (1 - cloud * 0.45) * (SKY.moon?.light ?? 1);
     this.blood = blood;
   }
 
@@ -612,10 +1044,36 @@ export default class World {
   setFlash(k, blood = 0) {
     if (!this.moon) return;
     const base = this.moonBase ?? 0.9;
-    this.moon.intensity = base + k * 6;
-    this.moon.color.setRGB(0.62 + k * 0.38 + blood * 0.3, 0.7 + k * 0.3 - blood * 0.45, 1 - blood * 0.55);
-    this.hemi.intensity = 0.9 + k * 1.6;
-    this.hemi.color.setRGB(0.29 + blood * 0.2, 0.35 - blood * 0.18, 0.5 - blood * 0.3);
+    const d = this.dayCur || 0;
+    // de día la luz grande es el sol bajo: anaranjada y más fuerte
+    this.moon.intensity = base + k * 6 + d * 0.7;
+    this.moon.color.setRGB(0.62 + k * 0.38 + blood * 0.3 + d * 0.38, 0.7 + k * 0.3 - blood * 0.45 - d * 0.1, 1 - blood * 0.55 - d * 0.55);
+    this.hemi.intensity = (this.hemiBase ?? 0.9) + k * 1.6 + d * 0.5;
+    this.hemi.color.setRGB(0.29 + blood * 0.2 + d * 0.5, 0.35 - blood * 0.18 + d * 0.2, 0.5 - blood * 0.3 - d * 0.05);
+  }
+
+  // El sol baja de a poco (unos 20 s por paso) y la luz grande pasa de sol a luna.
+  updateDay(dt) {
+    this.dayCur += Math.sign(this.daylight - this.dayCur) * Math.min(Math.abs(this.daylight - this.dayCur), dt / 20);
+    const d = this.dayCur;
+    if (this.sky) this.sky.material.uniforms.uDay.value = d;
+    if (this.sunDir && this.moon) {
+      // el sol se hunde en el horizonte mientras sube la luna
+      const sunDir = this.sunDir.clone();
+      sunDir.y = -0.08 + d * 0.2;
+      const dir = this.moonDir.clone().lerp(sunDir.normalize(), Math.min(1, d * 1.6)).normalize();
+      this.moon.position.copy(dir).multiplyScalar(60).add(new THREE.Vector3(MAP_W / 2, 0, MAP_H / 2));
+      this.sunSprite.position.copy(sunDir).multiplyScalar(250).add(new THREE.Vector3(MAP_W / 2, 0, MAP_H / 2));
+      this.sunSprite.material.opacity = Math.min(1, d * 1.5);
+      this.moonSprite.material.opacity = 1 - Math.min(1, d * 1.4);
+      this.moonHalo.visible = d < 0.6;
+      // las sombras son estáticas: se rehacen de vez en cuando mientras baja
+      this.shadowT = (this.shadowT || 0) - dt;
+      if (this.shadowT <= 0) {
+        this.shadowT = 0.5;
+        this.g.renderer.shadowMap.needsUpdate = true;
+      }
+    }
   }
 
   setPower(on) {
@@ -631,6 +1089,10 @@ export default class World {
 
   update(dt, t) {
     if (this.sky) this.sky.material.uniforms.uTime.value = t;
+    if (Math.abs(this.dayCur - this.daylight) > 0.001) this.updateDay(dt);
+    // con luz de día el brillo (bloom) solo en lo que de verdad brilla
+    const bloom = this.g.post?.bloom;
+    if (bloom) bloom.threshold = 0.85 + this.dayCur * 0.6;
     for (const e of this.lights) {
       const L = e.def;
       let k = 1;
@@ -645,12 +1107,21 @@ export default class World {
       e.light.intensity = (e.target ?? e.base) * k;
       if (e.bulb && !L.kind) e.bulb.material.emissiveIntensity = 3 * k * (this.power ? 1 : L.noPower);
     }
+    if (this.lights.length >= CULL_FROM) this.cullLights(dt);
     if (this.dynamic.kilnGlow) this.dynamic.kilnGlow.material.emissiveIntensity = 2.5 + Math.sin(t * 11) * 0.6 + Math.random() * 0.4;
     if (this.power) for (const w of this.dynamic.flywheels) w.rotateX(dt * 9);
+    // el molino de viento gira siempre (aunque no sople)
+    for (const f of this.dynamic.fans) f.rotateZ(dt * (1.6 + Math.sin(t * 0.3) * 0.5));
+    for (const s of this.dynamic.spins || []) s.rotateY(dt * s.userData.speed);
+    if (this.cornU) this.cornU.value = t;
+    this.tower?.update(dt, t);
+    // lo que se mueve solo en el castillo (las llamas)
+    this.extraUpdate?.(dt, t);
   }
 
   // ---------------- colisiones ----------------
   // Empuja un círculo (x,z,radio) fuera de las cajas sólidas entre y0 e y1.
+  // opts.skip: un tipo de caja que no frena (el Luisón atraviesa el pajonal, 'corn')
   collide(pos, radius, y0, y1, opts = {}) {
     const cx = Math.floor(pos.x);
     const cz = Math.floor(pos.z);
@@ -663,6 +1134,10 @@ export default class World {
           for (const b of this.cellBoxes[this.idx(x, z)]) {
             if (!b.active || !b.solid) continue;
             if (opts.ignoreWindows && b.kind === 'window') continue;
+            if (opts.skip && b.kind === opts.skip) continue;
+            // (lowProp: la utilería chica del piso, más baja que esto, no frena:
+            // troncos, escombros; no la firm, el fogón; el Luisón, Zombies.bossColl)
+            if (opts.lowProp != null && b.kind === 'prop' && !b.firm && b.y1 < opts.lowProp) continue;
             if (b.y1 <= y0 || b.y0 >= y1) continue;
             const nx = Math.max(b.x0, Math.min(pos.x, b.x1));
             const nz = Math.max(b.z0, Math.min(pos.z, b.z1));
@@ -709,8 +1184,8 @@ export default class World {
         bestBox = 'floor';
       }
     }
-    // techo (solo si ese punto está bajo techo)
-    if (d.y > 1e-6 && o.y < WALL_H) {
+    // techo (solo si ese punto está bajo techo); con alturas se mira celda por celda
+    if (!this.levels && d.y > 1e-6 && o.y < WALL_H) {
       const t = (WALL_H - o.y) / d.y;
       if (t < best) {
         const px = o.x + d.x * t;
@@ -734,10 +1209,36 @@ export default class World {
     let tmx = d.x > 0 ? (cx + 1 - o.x) * tdx : (o.x - cx) * tdx;
     let tmz = d.z > 0 ? (cz + 1 - o.z) * tdz : (o.z - cz) * tdz;
     let tEnter = 0;
+    let axis = -1;
     const seen = this._seen || (this._seen = new Set());
     seen.clear();
+    const tn = this._tn || (this._tn = { nx: 0, ny: 0, nz: 0 });
     for (let steps = 0; steps < 400; steps++) {
       if (tEnter > best) break;
+      // (en la torre las losas son cajas: no pasa por acá)
+      if (this.levels && !this.tower && this.inside(cx, cz)) {
+        // el piso de esta celda (terreno, pisos altos, rampas) y su techo
+        const tExit = Math.min(tmx, tmz, best);
+        const th = rayTerrain(this, o, d, cx, cz, tEnter, tExit, axis, stepX, stepZ, tn);
+        if (th < best) {
+          best = th;
+          nx = tn.nx;
+          ny = tn.ny;
+          nz = tn.nz;
+          bestBox = 'floor';
+        }
+        const ceil = ceilAt(this, cx, cz);
+        if (ceil < Infinity && d.y > 1e-6) {
+          const tc = (ceil - o.y) / d.y;
+          if (tc >= tEnter && tc <= tExit && tc < best) {
+            best = tc;
+            nx = 0;
+            ny = -1;
+            nz = 0;
+            bestBox = 'ceiling';
+          }
+        }
+      }
       if (this.inside(cx, cz)) {
         for (const b of this.cellBoxes[this.idx(cx, cz)]) {
           if (!b.active || !b.shoot || seen.has(b)) continue;
@@ -756,10 +1257,12 @@ export default class World {
         tEnter = tmx;
         tmx += tdx;
         cx += stepX;
+        axis = 0;
       } else {
         tEnter = tmz;
         tmz += tdz;
         cz += stepZ;
+        axis = 1;
       }
     }
     if (best >= maxT) return Infinity;

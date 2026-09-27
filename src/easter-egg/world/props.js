@@ -53,6 +53,23 @@ export function cylGeo(rt, rb, h, seg = 12, open = false) {
   return cached(`c${rt}|${rb}|${h}|${seg}|${open}`, () => new THREE.CylinderGeometry(rt, rb, h, seg, 1, open));
 }
 
+// El aljibe: altura de la roldana y dónde queda el balde (k: 0 abajo, en el
+// agua; 1 arriba, al lado de la roldana). La soga va de la roldana al asa.
+const WELL_PULLEY_Y = 2.96;
+export function setWellBucket(rig, k) {
+  const bucket = rig.getObjectByName('bucket');
+  const rope = rig.getObjectByName('rope');
+  const pulley = rig.getObjectByName('pulley');
+  const y = 0.45 + k * 2.05;
+  bucket.position.y = y;
+  const from = y + 0.23;
+  const len = Math.max(0.02, WELL_PULLEY_Y - from);
+  rope.scale.y = len;
+  rope.position.y = from + len / 2;
+  // lo que sube el balde lo enrolla la roldana (radio 8 cm)
+  pulley.rotation.z = -k * 2.05 / 0.08;
+}
+
 export function mesh(geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y, z);
@@ -160,7 +177,10 @@ const BUILDERS = {
     B(g, L + 0.8, 0.05, 1.8, M.roofTin, 0, 2.3, 0, 0.08, 0, 0);
     return { obj: g, boxes: [[-L / 2 - 0.1, 0, -0.7, L / 2 + 0.1, 2.3, 0.7]] };
   },
-  // Aljibe con arco de hierro, roldana y balde.
+  // Aljibe con arco de hierro, roldana y balde. Los parantes se apoyan en el
+  // brocal y la roldana cuelga de la clave del arco. La roldana, la soga y el
+  // balde van aparte ('wellRig', dinámico): el balde arranca abajo, en el agua,
+  // y el easter egg del molino lo sube y lo baja (setWellBucket).
   well(M) {
     const g = new THREE.Group();
     const ring = mesh(cylGeo(0.85, 0.9, 0.9, 20, true), M.brickRound, 0, 0.45, 0);
@@ -171,15 +191,35 @@ const BUILDERS = {
     g.add(cap);
     const water = mesh(new THREE.CircleGeometry(0.7, 20), M.water, 0, 0.35, 0, -Math.PI / 2);
     g.add(water);
-    for (const x of [-0.8, 0.8]) C(g, 0.03, 0.03, 1.4, M.iron, x, 1.6, 0, 0, 0, 0, 6);
+    // parantes: del brocal (0,9) al arranque del arco (2,3), con su planchuela
+    for (const x of [-0.8, 0.8]) {
+      C(g, 0.035, 0.035, 1.4, M.iron, x, 1.6, 0, 0, 0, 0, 6);
+      B(g, 0.14, 0.03, 0.14, M.iron, x, 0.915, 0);
+    }
     const arch = mesh(new THREE.TorusGeometry(0.8, 0.025, 6, 20, Math.PI), M.iron, 0, 2.3, 0);
     g.add(arch);
-    const scroll = mesh(new THREE.TorusGeometry(0.2, 0.015, 6, 14), M.iron, 0, 2.75, 0);
+    // el remate, parado arriba de la clave (3,1)
+    const scroll = mesh(new THREE.TorusGeometry(0.16, 0.015, 6, 14), M.iron, 0, 3.26, 0);
     g.add(scroll);
-    C(g, 0.08, 0.08, 0.04, M.iron, 0, 2.2, 0, Math.PI / 2, 0, 0, 12);
-    C(g, 0.006, 0.006, 1.1, M.rope, 0, 1.6, 0.06, 0, 0, 0, 4);
-    const bucket = C(g, 0.13, 0.1, 0.22, M.metal, 0, 1.05, 0.06, 0, 0, 0, 12);
+    // la horquilla de la roldana, colgada de la clave
+    for (const z of [-0.035, 0.035]) B(g, 0.03, 0.2, 0.012, M.iron, 0, WELL_PULLEY_Y + 0.07, z);
+    const rig = new THREE.Group();
+    rig.name = 'wellRig';
+    rig.userData.dynamic = true;
+    const pulley = new THREE.Group();
+    pulley.name = 'pulley';
+    pulley.position.y = WELL_PULLEY_Y;
+    C(pulley, 0.08, 0.08, 0.04, M.iron, 0, 0, 0, Math.PI / 2, 0, 0, 12);
+    // un rayo de la roldana: así se ve cómo gira
+    B(pulley, 0.15, 0.018, 0.046, M.metal, 0, 0, 0);
+    rig.add(pulley);
+    const rope = C(rig, 0.006, 0.006, 1, M.rope, 0.08, 0, 0, 0, 0, 0, 4);
+    rope.name = 'rope';
+    const bucket = C(rig, 0.13, 0.1, 0.22, M.metal, 0.08, 0, 0, 0, 0, 0, 12);
     bucket.name = 'bucket';
+    bucket.add(mesh(new THREE.TorusGeometry(0.12, 0.008, 4, 12, Math.PI), M.iron, 0, 0.11, 0));
+    setWellBucket(rig, 0);
+    g.add(rig);
     return { obj: g, boxes: [[-0.95, 0, -0.95, 0.95, 1, 0.95]] };
   },
   tree(M, o, r) {
@@ -421,6 +461,508 @@ const BUILDERS = {
     }
     return { obj: g, boxes: [[-0.9, 0, -0.2, 0.9, 2.2, 0.2]] };
   },
+
+  // ---------------- la granja ----------------
+  // Fogón: ronda de piedras, leña cruzada y brasas.
+  fogon(M, o, r) {
+    const g = new THREE.Group();
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      const st = mesh(cached('stone', () => new THREE.IcosahedronGeometry(0.16, 0)), M.stone, Math.cos(a) * 0.62, 0.1, Math.sin(a) * 0.62, r(), r(), r());
+      st.scale.set(1.2, 0.8, 1);
+      g.add(st);
+    }
+    for (let i = 0; i < 4; i++) C(g, 0.06, 0.07, 0.9, M.log, 0, 0.12, 0, Math.PI / 2 - 0.25, (i / 4) * Math.PI, 0, 6);
+    g.add(mesh(cylGeo(0.4, 0.45, 0.06, 12), M.fireGlow, 0, 0.04, 0));
+    return { obj: g, boxes: [[-0.8, 0, -0.8, 0.8, 0.35, 0.8]] };
+  },
+  // Tronco para sentarse al lado del fogón.
+  logseat(M) {
+    const g = new THREE.Group();
+    C(g, 0.22, 0.24, 1.4, M.log, 0, 0.22, 0, 0, 0, Math.PI / 2, 9);
+    return { obj: g, boxes: [[-0.7, 0, -0.24, 0.7, 0.44, 0.24]] };
+  },
+  // Ombú: tronco gordo con raíces que asoman y una copa enorme.
+  ombu(M, o, r) {
+    const g = new THREE.Group();
+    C(g, 0.45, 0.8, 3.2, M.bark, 0, 1.6, 0, 0, 0, 0, 10);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + r() * 0.4;
+      C(g, 0.1, 0.28, 1.6, M.bark, Math.cos(a) * 0.8, 0.2, Math.sin(a) * 0.8, Math.sin(a) * 1.25, 0, -Math.cos(a) * 1.25, 6);
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + r();
+      C(g, 0.12, 0.25, 3, M.bark, Math.cos(a) * 1, 3.8, Math.sin(a) * 1, Math.sin(a) * 0.8, 0, -Math.cos(a) * 0.8, 7);
+    }
+    for (let i = 0; i < 14; i++) {
+      const a = r() * Math.PI * 2;
+      const d = 0.5 + r() * 2.6;
+      const sc = 1.3 + r() * 1.1;
+      const m = mesh(cached('leaf', () => new THREE.IcosahedronGeometry(1, 1)), M.leaf, Math.cos(a) * d, 5 + r() * 1.6, Math.sin(a) * d);
+      m.scale.set(sc, sc * 0.65, sc);
+      g.add(m);
+    }
+    return { obj: g, boxes: [[-0.85, 0, -0.85, 0.85, 3.5, 0.85]] };
+  },
+  // Tendedero con ropa que quedó colgada.
+  washline(M, o, r) {
+    const g = new THREE.Group();
+    for (const x of [-2, 2]) {
+      C(g, 0.05, 0.06, 2.2, M.log, x, 1.1, 0, 0, 0, 0, 6);
+      B(g, 0.05, 0.05, 0.5, M.log, x, 2.12, 0);
+    }
+    C(g, 0.006, 0.006, 4, M.rope, 0, 2.05, 0, 0, 0, Math.PI / 2, 4);
+    const cloths = [M.whiteCloth, M.redCloth, M.whiteCloth, M.redCloth];
+    for (let i = 0; i < 4; i++) {
+      const w = 0.5 + r() * 0.3;
+      const h = 0.6 + r() * 0.4;
+      g.add(mesh(new THREE.PlaneGeometry(w, h), cloths[i], -1.4 + i * 0.95, 2.05 - h / 2, 0, (r() - 0.5) * 0.3, (r() - 0.5) * 0.2, (r() - 0.5) * 0.1));
+    }
+    return { obj: g, boxes: [[-2.08, 0, -0.08, -1.92, 2.2, 0.08], [1.92, 0, -0.08, 2.08, 2.2, 0.08]] };
+  },
+  // Cocina a leña de hierro, con su caño y la pava arriba.
+  stove(M) {
+    const g = new THREE.Group();
+    B(g, 1.3, 0.82, 0.7, M.iron, 0, 0.41, 0);
+    B(g, 1.36, 0.05, 0.76, M.metal, 0, 0.845, 0);
+    B(g, 0.3, 0.25, 0.02, M.fireGlow, -0.3, 0.35, 0.36);
+    for (const x of [-0.05, 0.25, 0.5]) B(g, 0.12, 0.03, 0.02, M.brass, x, 0.62, 0.36);
+    C(g, 0.08, 0.08, 2.8, M.iron, 0.45, 2.25, -0.2, 0, 0, 0, 8);
+    C(g, 0.13, 0.15, 0.2, M.metal, -0.3, 0.97, 0.05, 0, 0, 0, 12);
+    return { obj: g, boxes: [[-0.66, 0, -0.36, 0.66, 0.9, 0.36]] };
+  },
+  // Catre con colchón de chala y la frazada colorada.
+  bed(M) {
+    const g = new THREE.Group();
+    B(g, 1.0, 0.08, 2.0, M.woodDark, 0, 0.35, 0);
+    for (const [a, b] of [[-0.46, -0.95], [0.46, -0.95], [-0.46, 0.95], [0.46, 0.95]]) B(g, 0.07, 0.4, 0.07, M.woodDark, a, 0.2, b);
+    for (const a of [-0.46, 0.46]) B(g, 0.07, 0.8, 0.07, M.woodDark, a, 0.4, -0.95);
+    B(g, 1.0, 0.07, 0.06, M.woodDark, 0, 0.75, -0.95);
+    R(g, 0.92, 0.14, 1.9, M.sack, 0, 0.46, 0.02, 0.05);
+    R(g, 0.94, 0.06, 1.2, M.redCloth, 0, 0.55, 0.35, 0.03);
+    R(g, 0.5, 0.1, 0.3, M.clothWhite, 0, 0.58, -0.7, 0.04);
+    return { obj: g, boxes: [[-0.52, 0, -1, 0.52, 0.6, 1]] };
+  },
+  // Surcos de la huerta: tierra levantada con plantas.
+  huerta(M, o, r) {
+    const g = new THREE.Group();
+    const boxes = [];
+    for (let k = 0; k < 3; k++) {
+      const z = (k - 1) * 0.95;
+      B(g, 4, 0.22, 0.55, M.dirtDark, 0, 0.11, z);
+      for (let x = -1.8; x <= 1.8; x += 0.45) {
+        const m = mesh(cached('leaf', () => new THREE.IcosahedronGeometry(1, 1)), M.greenLeaf, x + (r() - 0.5) * 0.1, 0.3, z + (r() - 0.5) * 0.1);
+        const sc = 0.14 + r() * 0.1;
+        m.scale.set(sc, sc * 0.8, sc);
+        g.add(m);
+      }
+      boxes.push([-2, 0, z - 0.28, 2, 0.35, z + 0.28]);
+    }
+    return { obj: g, boxes };
+  },
+  // Zapallos entre las guías.
+  zapallos(M, o, r) {
+    const g = new THREE.Group();
+    for (let i = 0; i < 7; i++) {
+      const s = 0.18 + r() * 0.14;
+      const m = mesh(cached('pumpkin', () => new THREE.SphereGeometry(1, 12, 8)), M.pumpkin, (r() - 0.5) * 2, s * 0.8, (r() - 0.5) * 1.1);
+      m.scale.set(s * 1.2, s * 0.85, s * 1.2);
+      g.add(m);
+      C(g, 0.015, 0.02, 0.08, M.log, m.position.x, s * 1.6, m.position.z, 0, 0, 0, 5);
+    }
+    for (let i = 0; i < 10; i++) {
+      const m = mesh(cached('leaf', () => new THREE.IcosahedronGeometry(1, 1)), M.greenLeaf, (r() - 0.5) * 2.4, 0.08, (r() - 0.5) * 1.4);
+      m.scale.set(0.3, 0.08, 0.3);
+      g.add(m);
+    }
+    return { obj: g, boxes: [[-1.1, 0, -0.6, 1.1, 0.45, 0.6]] };
+  },
+  // Espantapájaros chico de la huerta (el grande es otra cosa).
+  espantajo(M) {
+    const g = new THREE.Group();
+    C(g, 0.04, 0.05, 2.3, M.log, 0, 1.15, 0, 0, 0, 0, 6);
+    C(g, 0.035, 0.035, 1.5, M.log, 0, 1.65, 0, 0, 0, Math.PI / 2, 6);
+    R(g, 0.46, 0.55, 0.24, M.redCloth, 0, 1.45, 0, 0.06);
+    const head = mesh(cached('sackHead', () => new THREE.SphereGeometry(0.17, 10, 8)), M.sack, 0, 2.02, 0);
+    head.scale.set(1, 1.15, 0.95);
+    g.add(head);
+    C(g, 0.34, 0.34, 0.03, M.straw, 0, 2.2, 0, 0.1, 0, 0.08, 14);
+    C(g, 0.14, 0.17, 0.16, M.straw, 0, 2.28, 0, 0.1, 0, 0.08, 12);
+    for (const s of [-1, 1]) {
+      for (let i = 0; i < 4; i++) C(g, 0.006, 0.01, 0.2, M.straw, s * 0.78, 1.64 - i * 0.02, (i - 1.5) * 0.03, 0, 0, s * (1.3 + i * 0.15), 4);
+    }
+    return { obj: g, boxes: [[-0.08, 0, -0.08, 0.08, 2.2, 0.08]] };
+  },
+  // Surco de yerba mate: plantas bajas y tupidas en fila.
+  yerbal(M, o, r) {
+    const g = new THREE.Group();
+    const L = o.len || 5;
+    for (let x = -L / 2 + 0.4; x <= L / 2 - 0.3; x += 0.62) {
+      C(g, 0.04, 0.06, 0.4, M.bark, x, 0.2, 0, 0, 0, 0, 5);
+      for (let k = 0; k < 3; k++) {
+        const m = mesh(cached('leaf', () => new THREE.IcosahedronGeometry(1, 1)), M.yerbaBush, x + (r() - 0.5) * 0.3, 0.6 + r() * 0.35, (r() - 0.5) * 0.3);
+        const sc = 0.32 + r() * 0.16;
+        m.scale.set(sc, sc * 0.9, sc);
+        g.add(m);
+      }
+    }
+    return { obj: g, boxes: [[-L / 2, 0, -0.42, L / 2, 1.1, 0.42]] };
+  },
+  // Silo de chapa con techo cónico, anillos y escalera.
+  silo(M) {
+    const g = new THREE.Group();
+    const R0 = 2.1;
+    const H = 10;
+    C(g, R0, R0, H, M.silo, 0, H / 2, 0, 0, 0, 0, 28);
+    for (let y = 1; y < H; y += 1.25) C(g, R0 + 0.02, R0 + 0.02, 0.06, M.metal, 0, y, 0, 0, 0, 0, 28);
+    g.add(mesh(new THREE.ConeGeometry(R0 + 0.15, 1.6, 28), M.silo, 0, H + 0.8, 0));
+    C(g, 0.25, 0.25, 0.4, M.metal, 0, H + 1.7, 0, 0, 0, 0, 10);
+    // escalera de gato por el costado
+    for (const x of [-0.22, 0.22]) C(g, 0.02, 0.02, H, M.rust, x, H / 2, R0 + 0.12, 0, 0, 0, 5);
+    for (let y = 0.4; y < H; y += 0.35) B(g, 0.44, 0.02, 0.02, M.rust, 0, y, R0 + 0.12);
+    // boca de descarga abajo
+    B(g, 0.6, 0.6, 0.3, M.rust, 0, 0.5, -R0 - 0.1);
+    return { obj: g, boxes: [[-R0, 0, -R0 - 0.25, R0, H, R0 + 0.2]] };
+  },
+  // Silo reventado: medio cuerpo, chapas dobladas y el techo en el piso.
+  siloRoto(M, o, r) {
+    const g = new THREE.Group();
+    const R0 = 2.0;
+    const segs = 14;
+    for (let i = 0; i < segs; i++) {
+      if (i === 3 || i === 4) continue;
+      const a = (i / segs) * Math.PI * 2;
+      const h = 2 + r() * 3.5;
+      const w = (2 * Math.PI * R0) / segs;
+      const m = mesh(boxGeo(w, 1, 0.05), M.silo, Math.cos(a) * R0, h / 2, Math.sin(a) * R0, (r() - 0.5) * 0.15, -a + Math.PI / 2, 0);
+      m.scale.y = h;
+      g.add(m);
+    }
+    g.add(mesh(new THREE.ConeGeometry(R0 + 0.1, 1.5, 24), M.rust, 2.6, 0.6, -1.4, 0.9, 0.3, 0.4));
+    for (let i = 0; i < 5; i++) R(g, 0.8, 0.5, 0.6, M.sackYerba, (r() - 0.5) * 2, 0.25, (r() - 0.5) * 2, 0.1, r());
+    return { obj: g, boxes: [[-R0 - 0.1, 0, -R0 - 0.1, R0 + 0.1, 3, R0 + 0.1], [1.6, 0, -2.6, 3.8, 1.3, -0.3]] };
+  },
+  // Box del establo: medias paredes, comedero atrás y la puerta abierta.
+  stall(M) {
+    const g = new THREE.Group();
+    const wood = M.barn || M.woodDark;
+    B(g, 2.2, 1.3, 0.08, wood, 0, 0.65, -0.95);
+    for (const x of [-1.1, 1.1]) B(g, 0.08, 1.3, 1.9, wood, x, 0.65, 0);
+    B(g, 1.2, 0.35, 0.45, M.woodDark, 0, 1.12, -0.68);
+    R(g, 1.0, 0.18, 0.35, M.hay, 0, 1.3, -0.68, 0.05);
+    B(g, 0.08, 1.2, 1.0, M.woodDark, -0.8, 0.6, 1.3, 0, -0.9, 0);
+    return { obj: g, boxes: [[-1.15, 0, -1, 1.15, 1.3, -0.4], [-1.15, 0, -1, -1.05, 1.3, 0.95], [1.05, 0, -1, 1.15, 1.3, 0.95]] };
+  },
+  // Bebedero de chapa con agua.
+  trough(M) {
+    const g = new THREE.Group();
+    B(g, 2.4, 0.55, 0.6, M.metal, 0, 0.3, 0);
+    B(g, 2.3, 0.02, 0.5, M.water, 0, 0.5, 0);
+    for (const x of [-1, 1]) B(g, 0.1, 0.1, 0.7, M.iron, x, 0.04, 0);
+    return { obj: g, boxes: [[-1.2, 0, -0.3, 1.2, 0.6, 0.3]] };
+  },
+  // Rollo de pasto (fardo redondo), acostado.
+  rollo(M) {
+    const g = new THREE.Group();
+    C(g, 0.75, 0.75, 1.2, M.hay, 0, 0.75, 0, 0, 0, Math.PI / 2, 18);
+    for (const x of [-0.3, 0.3]) g.add(mesh(new THREE.TorusGeometry(0.755, 0.01, 4, 24), M.rope, x, 0.75, 0, 0, Math.PI / 2, 0));
+    return { obj: g, boxes: [[-0.6, 0, -0.75, 0.6, 1.5, 0.75]] };
+  },
+  // Tractor viejo colorado.
+  tractor(M) {
+    const g = new THREE.Group();
+    R(g, 2.0, 0.7, 0.8, M.tractor, 0.3, 1.05, 0, 0.1);
+    R(g, 0.9, 0.7, 0.7, M.tractor, 1.35, 0.95, 0, 0.1);
+    B(g, 0.05, 0.4, 0.5, M.black, 1.82, 1.0, 0);
+    C(g, 0.06, 0.07, 1.0, M.iron, 0.9, 1.9, 0.25, 0, 0, 0, 8);
+    B(g, 0.5, 0.08, 0.5, M.leather, -0.55, 1.5, 0);
+    B(g, 0.5, 0.35, 0.06, M.leather, -0.82, 1.7, 0, 0, 0, 0.2);
+    C(g, 0.18, 0.18, 0.03, M.black, -0.1, 1.9, 0, 0, 0, 1.0, 14);
+    C(g, 0.025, 0.025, 0.5, M.iron, 0.02, 1.65, 0, 0, 0, 1.0, 5);
+    for (const z of [-0.7, 0.7]) {
+      C(g, 0.75, 0.75, 0.38, M.tire, -0.6, 0.75, z, Math.PI / 2, 0, 0, 18);
+      C(g, 0.42, 0.42, 0.4, M.tractor, -0.6, 0.75, z, Math.PI / 2, 0, 0, 12);
+      C(g, 0.4, 0.4, 0.25, M.tire, 1.4, 0.4, z * 0.8, Math.PI / 2, 0, 0, 14);
+      C(g, 0.22, 0.22, 0.27, M.tractor, 1.4, 0.4, z * 0.8, Math.PI / 2, 0, 0, 10);
+    }
+    return { obj: g, boxes: [[-1.4, 0, -0.95, 1.9, 1.7, 0.95]] };
+  },
+  // Molino de viento: torre de hierro, rueda de aspas (gira siempre) y la cola.
+  windmill(M) {
+    const g = new THREE.Group();
+    const H = 8;
+    for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      g.add(mesh(cylGeo(0.05, 0.06, H + 0.2, 5), M.iron, a * 0.6, H / 2, b * 0.6, b * 0.12, 0, -a * 0.12));
+    }
+    for (let y = 1.5; y < H; y += 1.6) {
+      const w = 1.2 * (1 - y / H) + 0.3;
+      for (const [x, z, ry] of [[0, -w / 2, 0], [0, w / 2, 0], [-w / 2, 0, Math.PI / 2], [w / 2, 0, Math.PI / 2]]) B(g, w, 0.04, 0.04, M.iron, x, y, z, 0, ry, 0);
+    }
+    B(g, 0.6, 0.08, 0.6, M.woodDark, 0, H, 0);
+    const fan = new THREE.Group();
+    fan.userData.dynamic = true;
+    fan.name = 'fan';
+    fan.position.set(0, H + 0.4, 0.5);
+    fan.add(mesh(cylGeo(0.12, 0.12, 0.2, 10), M.iron, 0, 0, 0, Math.PI / 2, 0, 0));
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      fan.add(mesh(boxGeo(0.16, 1.2, 0.02), M.metal, Math.cos(a) * 0.75, Math.sin(a) * 0.75, 0, 0, 0.35, a - Math.PI / 2));
+    }
+    fan.add(mesh(new THREE.TorusGeometry(1.2, 0.02, 4, 32), M.iron, 0, 0, 0));
+    // gira entera: sus 18 piezas en 2 mallas (cada una se dibuja cada cuadro)
+    mergeByMaterial(fan);
+    g.add(fan);
+    B(g, 0.05, 0.05, 1.8, M.iron, 0, H + 0.4, -0.6);
+    B(g, 0.04, 0.9, 0.9, M.metal, 0, H + 0.4, -1.5);
+    C(g, 0.04, 0.04, H, M.iron, 0.1, H / 2, 0.1, 0, 0, 0, 5);
+    return { obj: g, boxes: [[-0.75, 0, -0.75, 0.75, 2.5, 0.75]] };
+  },
+  // Tanque australiano de chapa con agua.
+  tank(M) {
+    const g = new THREE.Group();
+    g.add(mesh(cylGeo(1.8, 1.8, 1.1, 28, true), M.rust, 0, 0.55, 0));
+    g.add(mesh(new THREE.CircleGeometry(1.78, 28), M.water, 0, 0.9, 0, -Math.PI / 2));
+    g.add(mesh(new THREE.TorusGeometry(1.8, 0.04, 4, 28), M.metal, 0, 1.1, 0, Math.PI / 2, 0, 0));
+    return { obj: g, boxes: [[-1.8, 0, -1.8, 1.8, 1.1, 1.8]] };
+  },
+
+  // ---------------- detalles de la granja ----------------
+  // Los de pared tienen la espalda en z = 0 (la pared) y miran hacia +z.
+  // Galería: techo de chapa sobre postes, adelante de la pared del rancho.
+  galeria(M, o) {
+    const g = new THREE.Group();
+    const L = o.len || 8;
+    const D = 2.2;
+    for (let x = -L / 2 + 0.15; x <= L / 2; x += L / 3) C(g, 0.07, 0.08, 2.75, M.log, x, 1.37, D - 0.15, 0, 0, 0, 7);
+    B(g, L + 0.2, 0.12, 0.12, M.log, 0, 2.72, D - 0.15);
+    B(g, L + 0.2, 0.1, 0.1, M.log, 0, 3.15, 0.1);
+    for (let x = -L / 2 + 0.3; x <= L / 2; x += 1.1) B(g, 0.07, 0.07, D + 0.3, M.woodDark, x, 2.95, D / 2, 0.19, 0, 0);
+    const roof = mesh(boxGeo(L + 0.6, 0.03, D + 0.6), M.roofTin, 0, 3.02, D / 2, 0.19, 0, 0);
+    g.add(roof);
+    const boxes = [];
+    for (let x = -L / 2 + 0.15; x <= L / 2; x += L / 3) boxes.push([x - 0.1, 0, D - 0.25, x + 0.1, 2.7, D - 0.05]);
+    return { obj: g, boxes };
+  },
+  // Tablero con herramientas colgadas: pala, rastrillo, azada, serrucho y soga.
+  toolrack(M) {
+    const g = new THREE.Group();
+    B(g, 1.9, 0.9, 0.04, M.woodDark, 0, 1.55, 0.03);
+    // pala
+    C(g, 0.018, 0.018, 1.2, M.log, -0.7, 1.4, 0.1, 0, 0, 0.05, 6);
+    B(g, 0.22, 0.28, 0.02, M.metal, -0.72, 0.72, 0.1, 0, 0, 0.05);
+    // rastrillo
+    C(g, 0.016, 0.016, 1.3, M.log, -0.35, 1.45, 0.1, 0, 0, -0.04, 6);
+    B(g, 0.36, 0.03, 0.03, M.iron, -0.33, 2.1, 0.1);
+    for (let i = 0; i < 7; i++) B(g, 0.01, 0.08, 0.01, M.iron, -0.48 + i * 0.05, 2.15, 0.1);
+    // azada
+    C(g, 0.017, 0.017, 1.15, M.log, 0.05, 1.45, 0.1, 0, 0, 0.03, 6);
+    B(g, 0.2, 0.14, 0.02, M.iron, 0.07, 2.02, 0.14, 0.9, 0, 0);
+    // serrucho
+    B(g, 0.5, 0.14, 0.01, M.metal, 0.48, 1.6, 0.08, 0, 0, 0.15);
+    B(g, 0.12, 0.1, 0.03, M.woodDark, 0.77, 1.63, 0.08);
+    // soga enrollada
+    g.add(mesh(new THREE.TorusGeometry(0.14, 0.025, 6, 16), M.rope, 0.75, 1.25, 0.08));
+    return { obj: g, boxes: [] };
+  },
+  // Cuadro viejo en la pared (un paisaje oscurecido por el humo).
+  picture(M) {
+    const g = new THREE.Group();
+    B(g, 0.62, 0.48, 0.03, M.woodDark, 0, 1.75, 0.02);
+    B(g, 0.52, 0.38, 0.01, M.leather, 0, 1.75, 0.04);
+    B(g, 0.46, 0.06, 0.012, M.dirtDark, 0, 1.64, 0.045);
+    return { obj: g, boxes: [] };
+  },
+  // Cruz de madera con un rosario.
+  cross(M) {
+    const g = new THREE.Group();
+    B(g, 0.06, 0.5, 0.03, M.woodDark, 0, 1.9, 0.02);
+    B(g, 0.3, 0.06, 0.03, M.woodDark, 0, 2.0, 0.02);
+    g.add(mesh(new THREE.TorusGeometry(0.1, 0.006, 4, 16), M.brass, 0, 1.7, 0.04));
+    return { obj: g, boxes: [] };
+  },
+  // Ollas colgando de una barra arriba de la cocina.
+  potrack(M) {
+    const g = new THREE.Group();
+    B(g, 1.3, 0.04, 0.04, M.iron, 0, 2.35, 0.35);
+    for (let i = 0; i < 4; i++) {
+      const x = -0.5 + i * 0.33;
+      C(g, 0.004, 0.004, 0.2, M.iron, x, 2.24, 0.35, 0, 0, 0, 4);
+      C(g, 0.1 + (i % 2) * 0.03, 0.08, 0.14, i % 2 ? M.copper : M.iron, x, 2.07, 0.35, 0, 0, 0, 12);
+    }
+    return { obj: g, boxes: [] };
+  },
+  // Ropero de dos puertas con espejo.
+  wardrobe(M) {
+    const g = new THREE.Group();
+    B(g, 1.3, 2.05, 0.58, M.woodDark, 0, 1.03, 0.3);
+    B(g, 1.36, 0.08, 0.62, M.woodDark, 0, 2.1, 0.3);
+    B(g, 0.01, 1.8, 0.01, M.black, 0, 1.05, 0.595);
+    B(g, 0.36, 0.9, 0.01, M.glassDark, -0.32, 1.25, 0.6);
+    for (const x of [-0.06, 0.06]) C(g, 0.015, 0.015, 0.04, M.brass, x, 1.1, 0.61, Math.PI / 2, 0, 0, 6);
+    return { obj: g, boxes: [[-0.66, 0, 0, 0.66, 2.1, 0.6]] };
+  },
+  // Baúl de cuero con tachas.
+  chest(M) {
+    const g = new THREE.Group();
+    B(g, 0.9, 0.45, 0.5, M.leather, 0, 0.23, 0);
+    const lid = mesh(cylGeo(0.25, 0.25, 0.9, 12, false), M.leather, 0, 0.45, 0, 0, 0, Math.PI / 2);
+    lid.scale.set(1, 1, 0.6);
+    g.add(lid);
+    for (const x of [-0.3, 0.3]) B(g, 0.05, 0.62, 0.52, M.brass, x, 0.35, 0);
+    return { obj: g, boxes: [[-0.46, 0, -0.26, 0.46, 0.62, 0.26]] };
+  },
+  // Alfombra tejida (colorada con guarda).
+  rug(M) {
+    const g = new THREE.Group();
+    B(g, 2.2, 0.012, 1.4, M.redCloth, 0, 0.006, 0);
+    B(g, 1.9, 0.014, 0.08, M.clothWhite, 0, 0.007, 0.5);
+    B(g, 1.9, 0.014, 0.08, M.clothWhite, 0, 0.007, -0.5);
+    return { obj: g, boxes: [] };
+  },
+  // Mecedora vacía (se mece sola cuando nadie mira).
+  rocker(M) {
+    const g = new THREE.Group();
+    for (const s of [-0.25, 0.25]) {
+      const arc = mesh(new THREE.TorusGeometry(0.8, 0.02, 5, 16, 0.9), M.woodDark, s, 0.82, 0.05);
+      arc.rotation.set(0, Math.PI / 2, Math.PI + 1.12);
+      g.add(arc);
+      B(g, 0.04, 0.42, 0.04, M.woodDark, s, 0.28, 0.18);
+      B(g, 0.04, 0.95, 0.04, M.woodDark, s, 0.55, -0.2, -0.15, 0, 0);
+    }
+    B(g, 0.55, 0.05, 0.42, M.woodDark, 0, 0.47, 0);
+    for (let i = 0; i < 5; i++) B(g, 0.03, 0.5, 0.02, M.woodDark, -0.18 + i * 0.09, 0.78, -0.25, -0.15, 0, 0);
+    return { obj: g, boxes: [[-0.32, 0, -0.35, 0.32, 1, 0.32]] };
+  },
+  // Silla de paja.
+  chair(M) {
+    const g = new THREE.Group();
+    chair(g, M, 0, 0, 0);
+    return { obj: g, boxes: [[-0.25, 0, -0.25, 0.25, 0.9, 0.25]] };
+  },
+  // Mesita con velas (la luz de la atahona).
+  candles(M) {
+    const g = new THREE.Group();
+    B(g, 0.5, 0.05, 0.4, M.woodDark, 0, 0.8, 0);
+    for (const [a, b] of [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.15], [0.2, 0.15]]) B(g, 0.04, 0.8, 0.04, M.woodDark, a, 0.4, b);
+    for (const [x, h] of [[-0.1, 0.22], [0.05, 0.16], [0.15, 0.26]]) {
+      C(g, 0.025, 0.025, h, M.candle, x, 0.83 + h / 2, 0, 0, 0, 0, 8);
+      g.add(mesh(cached('flame', () => new THREE.ConeGeometry(0.02, 0.06, 6)), M.flame, x, 0.86 + h + 0.03, 0));
+    }
+    return { obj: g, boxes: [[-0.27, 0, -0.22, 0.27, 0.85, 0.22]] };
+  },
+  // Ramas de yerba colgadas a secar de un palo cerca del techo.
+  yerbahang(M, o, r) {
+    const g = new THREE.Group();
+    C(g, 0.03, 0.03, 3, M.log, 0, 3.1, 0, 0, 0, Math.PI / 2, 6);
+    for (let i = 0; i < 7; i++) {
+      const x = -1.3 + i * 0.43;
+      C(g, 0.004, 0.004, 0.3, M.rope, x, 2.95, 0, 0, 0, 0, 4);
+      const b = mesh(cylGeo(0.02, 0.14, 0.55, 6), M.yerbaBranch, x, 2.55, 0, (r() - 0.5) * 0.2, r() * 3, 0);
+      g.add(b);
+    }
+    return { obj: g, boxes: [] };
+  },
+  // Cubiertas viejas apiladas.
+  tires(M) {
+    const g = new THREE.Group();
+    for (let i = 0; i < 3; i++) g.add(mesh(cached('tire', () => new THREE.TorusGeometry(0.36, 0.13, 8, 18)), M.tire, (i % 2) * 0.05, 0.13 + i * 0.25, 0, Math.PI / 2, 0, i * 0.3));
+    return { obj: g, boxes: [[-0.5, 0, -0.5, 0.5, 0.75, 0.5]] };
+  },
+  // Carretilla con tierra.
+  barrow(M) {
+    const g = new THREE.Group();
+    B(g, 0.7, 0.3, 0.55, M.metal, 0, 0.5, 0, 0, 0, 0.08);
+    B(g, 0.62, 0.05, 0.48, M.dirtDark, 0, 0.64, 0);
+    g.add(mesh(cached('bwheel', () => new THREE.TorusGeometry(0.18, 0.05, 6, 14)), M.tire, 0.5, 0.22, 0, 0, Math.PI / 2, 0));
+    for (const z of [-0.2, 0.2]) {
+      C(g, 0.02, 0.02, 1.2, M.log, -0.3, 0.45, z, 0, 0, Math.PI / 2 - 0.25, 6);
+      C(g, 0.02, 0.02, 0.4, M.iron, -0.05, 0.2, z, 0, 0, 0.2, 5);
+    }
+    return { obj: g, boxes: [[-0.9, 0, -0.3, 0.7, 0.7, 0.3]] };
+  },
+  // Gallinero: casilla de tablas con techo inclinado, tejido y rampa.
+  coop(M, o, r) {
+    const g = new THREE.Group();
+    B(g, 2.4, 0.08, 1.6, M.woodDark, 0, 0.5, 0);
+    for (const [x, z] of [[-1.15, -0.75], [1.15, -0.75], [-1.15, 0.75], [1.15, 0.75]]) B(g, 0.08, 1.9, 0.08, M.log, x, 0.95, z);
+    B(g, 2.4, 1.2, 0.05, M.barn || M.wood, 0, 1.15, -0.78);
+    for (const x of [-1.18, 1.18]) B(g, 0.05, 1.2, 1.6, M.barn || M.wood, x, 1.15, 0);
+    // tejido de alambre adelante
+    for (let x = -1.1; x <= 1.1; x += 0.2) B(g, 0.008, 1.2, 0.008, M.iron, x, 1.15, 0.8);
+    for (let y = 0.6; y <= 1.75; y += 0.2) B(g, 2.3, 0.008, 0.008, M.iron, 0, y, 0.8);
+    B(g, 2.6, 0.04, 1.9, M.roofTin, 0, 1.95, 0, -0.18, 0, 0);
+    B(g, 0.4, 0.03, 1.1, M.wood, 0.7, 0.25, 1.2, 0.45, 0, 0);
+    // plumas y maíz tirado
+    for (let i = 0; i < 8; i++) B(g, 0.03, 0.01, 0.06, i % 2 ? M.clothWhite : M.packYellow, (r() - 0.5) * 2, 0.02, 1.1 + r() * 0.6, 0, r() * 3, 0);
+    return { obj: g, boxes: [[-1.25, 0, -0.85, 1.25, 1.9, 0.85]] };
+  },
+  // Fuentón de lata con agua.
+  washtub(M) {
+    const g = new THREE.Group();
+    g.add(mesh(cylGeo(0.5, 0.42, 0.35, 18, true), M.metal, 0, 0.18, 0));
+    g.add(mesh(new THREE.CircleGeometry(0.47, 18), M.water, 0, 0.28, 0, -Math.PI / 2));
+    for (const x of [-0.5, 0.5]) g.add(mesh(new THREE.TorusGeometry(0.06, 0.01, 4, 10, Math.PI), M.iron, x, 0.33, 0, 0, Math.PI / 2, 0));
+    return { obj: g, boxes: [[-0.5, 0, -0.5, 0.5, 0.36, 0.5]] };
+  },
+  // Acoplado para granos, oxidado, con una rueda pinchada.
+  trailer(M) {
+    const g = new THREE.Group();
+    B(g, 4, 1.1, 2, M.rust, 0, 1.25, 0);
+    B(g, 4.1, 0.08, 2.1, M.metal, 0, 1.82, 0);
+    B(g, 4.2, 0.15, 0.2, M.iron, 0, 0.62, -0.7);
+    B(g, 4.2, 0.15, 0.2, M.iron, 0, 0.62, 0.7);
+    B(g, 1.4, 0.1, 0.1, M.iron, 2.7, 0.55, 0, 0, 0, 0.12);
+    for (const [x, z, s] of [[-1.3, 1.05, 1], [-1.3, -1.05, 1], [1.3, 1.05, 1], [1.3, -1.05, 0.8]]) {
+      C(g, 0.45 * s, 0.45 * s, 0.25, M.tire, x, 0.45 * s, z, Math.PI / 2, 0, 0, 14);
+      C(g, 0.22, 0.22, 0.27, M.rust, x, 0.45 * s, z, Math.PI / 2, 0, 0, 10);
+    }
+    // grano que se derramó
+    g.add(mesh(new THREE.ConeGeometry(0.7, 0.3, 12), M.packYellow, -2.3, 0.15, 0.4));
+    return { obj: g, boxes: [[-2.1, 0, -1.2, 3.4, 1.9, 1.2]] };
+  },
+  // Montura en su caballete, con el pelero abajo.
+  saddle(M) {
+    const g = new THREE.Group();
+    for (const x of [-0.35, 0.35]) {
+      B(g, 0.05, 0.85, 0.05, M.woodDark, x, 0.42, -0.2, 0.3, 0, 0);
+      B(g, 0.05, 0.85, 0.05, M.woodDark, x, 0.42, 0.2, -0.3, 0, 0);
+    }
+    C(g, 0.06, 0.06, 0.9, M.log, 0, 0.85, 0, 0, 0, Math.PI / 2, 8);
+    B(g, 0.7, 0.04, 0.8, M.redCloth, 0, 0.9, 0, 0, 0, 0);
+    const seat = mesh(cylGeo(0.3, 0.3, 0.55, 12, false), M.leather, 0, 0.97, 0, 0, 0, Math.PI / 2);
+    seat.scale.set(1, 1, 0.5);
+    g.add(seat);
+    B(g, 0.08, 0.14, 0.1, M.leather, 0.3, 1.12, 0);
+    for (const z of [-0.3, 0.3]) C(g, 0.01, 0.01, 0.5, M.leather, 0, 0.7, z, 0, 0, 0, 4);
+    return { obj: g, boxes: [[-0.45, 0, -0.45, 0.45, 1.15, 0.45]] };
+  },
+  // Tarros de leche de aluminio.
+  milkcans(M) {
+    const g = new THREE.Group();
+    for (const [x, z] of [[-0.25, 0], [0.25, 0.05], [0, -0.35]]) {
+      C(g, 0.18, 0.2, 0.55, M.metal, x, 0.28, z, 0, 0, 0, 14);
+      C(g, 0.1, 0.18, 0.12, M.metal, x, 0.61, z, 0, 0, 0, 14);
+      C(g, 0.11, 0.11, 0.05, M.iron, x, 0.69, z, 0, 0, 0, 12);
+    }
+    return { obj: g, boxes: [[-0.48, 0, -0.58, 0.48, 0.72, 0.28]] };
+  },
+  // Arado de mancera, oxidado.
+  plow(M) {
+    const g = new THREE.Group();
+    C(g, 0.035, 0.035, 2.2, M.log, 0, 0.55, 0, 0, 0, Math.PI / 2 - 0.35, 6);
+    for (const z of [-0.2, 0.2]) C(g, 0.025, 0.025, 0.9, M.log, -0.95, 0.75, z, 0, 0, 0.5, 6);
+    B(g, 0.5, 0.35, 0.05, M.rust, 0.7, 0.18, 0, 0, 0.4, 0.3);
+    B(g, 0.35, 0.05, 0.3, M.iron, 0.85, 0.05, 0);
+    return { obj: g, boxes: [[-1.2, 0, -0.3, 1.1, 0.9, 0.3]] };
+  },
+  // Garrafa de gas.
+  gastank(M) {
+    const g = new THREE.Group();
+    C(g, 0.16, 0.16, 0.55, M.drumRed, 0, 0.3, 0, 0, 0, 0, 14);
+    C(g, 0.1, 0.16, 0.08, M.drumRed, 0, 0.61, 0, 0, 0, 0, 14);
+    C(g, 0.03, 0.03, 0.08, M.brass, 0, 0.69, 0, 0, 0, 0, 8);
+    return { obj: g, boxes: [[-0.17, 0, -0.17, 0.17, 0.7, 0.17]] };
+  },
 };
 
 // Construye un prop y devuelve el objeto posicionado más sus cajas en mundo.
@@ -428,14 +970,26 @@ export function buildProp(def, M, seed) {
   const make = BUILDERS[def.type];
   if (!make) return null;
   const r = rng(seed);
-  const { obj, boxes } = make(M, def, r);
+  const { obj, boxes, firm } = make(M, def, r);
   const [x, z] = def.pos;
   const rot = def.rot || 0;
-  obj.position.set(x, 0, z);
+  // en los mapas con alturas el prop se apoya en el piso de su celda
+  const y = def.y || 0;
+  obj.position.set(x, y, z);
   obj.rotation.y = rot;
   obj.updateMatrixWorld(true);
-  const world = boxes.map((b) => rotateBox(b, x, z, rot));
-  return { obj, boxes: world };
+  const world = boxes.map((b) => {
+    const w = rotateBox(b, x, z, rot);
+    w[1] += y;
+    w[4] += y;
+    return w;
+  });
+  return { obj, boxes: world, firm };
+}
+
+// Constructores de utilería de otro mapa (el penal suma los suyos).
+export function addBuilders(more) {
+  Object.assign(BUILDERS, more);
 }
 
 // Caja local -> caja alineada a ejes en mundo (conservadora si hay rotación).

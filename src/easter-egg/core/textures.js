@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { makeNoise, rng } from './noise';
+import { drawPerkIcon } from '../ui/perkIcons';
 
 // Texturas procedurales pintadas en canvas: no se descarga ninguna imagen.
 
@@ -47,6 +48,97 @@ export function toTexture(c, { repeat = true, srgb = true, aniso = 8 } = {}) {
   return t;
 }
 
+// Mipmaps para lo recortado con alphaTest (pasto, cañas, flecos de paja): al
+// achicarse, las hojas finitas se promedian con el fondo transparente, el alfa
+// baja del corte y de lejos el pasto se deshace en rayitas de un pixel. Acá
+// cada nivel se achica a mano (el color pesado por el alfa) y después se le
+// sube el alfa hasta que tape la misma parte que el original (la cobertura
+// del corte se conserva). Los niveles van como ImageData (sin pasar por un
+// canvas, que redondea el color de lo casi transparente).
+export function coverageMips(tex, cutoff = 0.5) {
+  const src = tex?.image;
+  if (!src || !src.width || tex.userData.coverage) return tex;
+  let w = src.width;
+  let h = src.height;
+  let data = src.getContext ? src.getContext('2d').getImageData(0, 0, w, h).data : null;
+  if (!data) return tex;
+  const cut = cutoff * 255;
+  const covers = (d, s) => {
+    let n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] * s > cut) n++;
+    return n / (d.length / 4);
+  };
+  const cov0 = covers(data, 1);
+  // el nivel 0 tal cual y los de abajo en números con coma (sin redondeos en la cadena)
+  const levels = [new ImageData(new Uint8ClampedArray(data), w, h)];
+  let f = Float32Array.from(data);
+  while (w > 1 || h > 1) {
+    const nw = Math.max(1, w >> 1);
+    const nh = Math.max(1, h >> 1);
+    const g = new Float32Array(nw * nh * 4);
+    for (let y = 0; y < nh; y++) {
+      for (let x = 0; x < nw; x++) {
+        let r = 0;
+        let gg = 0;
+        let b = 0;
+        let a = 0;
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dx = 0; dx < 2; dx++) {
+            const sx = Math.min(w - 1, x * 2 + dx);
+            const sy = Math.min(h - 1, y * 2 + dy);
+            const i = (sy * w + sx) * 4;
+            const al = f[i + 3];
+            r += f[i] * al;
+            gg += f[i + 1] * al;
+            b += f[i + 2] * al;
+            a += al;
+          }
+        }
+        const o = (y * nw + x) * 4;
+        g[o] = a > 0 ? r / a : 0;
+        g[o + 1] = a > 0 ? gg / a : 0;
+        g[o + 2] = a > 0 ? b / a : 0;
+        g[o + 3] = a / 4;
+      }
+    }
+    // cuánto hay que subirle el alfa para tapar lo mismo que el nivel 0
+    let lo = 1;
+    let hi = 6;
+    if (cov0 > 0) {
+      for (let it = 0; it < 12; it++) {
+        const m = (lo + hi) / 2;
+        if (covers(g, m) < cov0) lo = m;
+        else hi = m;
+      }
+    }
+    const s = (lo + hi) / 2;
+    const out = new Uint8ClampedArray(nw * nh * 4);
+    for (let i = 0; i < g.length; i += 4) {
+      out[i] = g[i];
+      out[i + 1] = g[i + 1];
+      out[i + 2] = g[i + 2];
+      out[i + 3] = Math.min(255, g[i + 3] * s);
+    }
+    levels.push(new ImageData(out, nw, nh));
+    f = g;
+    w = nw;
+    h = nh;
+  }
+  tex.mipmaps = levels;
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.userData.coverage = cutoff;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// Altura de una baldosa para el relieve (fx/Surfaces): junta de `joint` px
+// hundida y canto redondeado de `bevel` px. lx/ly: posición dentro de la baldosa.
+function tileH(lx, ly, t, joint, bevel) {
+  if (lx < joint || ly < joint) return 0.15;
+  return 0.5 + 0.5 * Math.min(1, Math.min(lx - joint, t - lx, ly - joint, t - ly) / bevel);
+}
+
 // Grietas finas: caminatas aleatorias oscuras.
 function cracks(ctx, w, h, count, seed, color = 'rgba(30,24,18,0.55)') {
   const r = rng(seed);
@@ -76,24 +168,54 @@ function cracks(ctx, w, h, count, seed, color = 'rgba(30,24,18,0.55)') {
 }
 
 // Revoque con zócalo pintado abajo (1 m de 3,6). u: 2 m, v: altura completa.
-function plaster({ base, band, seed, soot = 0 }) {
+// Donde se cayó el revoque asoma lo de abajo (`under`: ladrillo si `bricks`).
+function plaster({ base, band, seed, soot = 0, under = 0x9a5a40, bricks = true }) {
   const W = 512;
   const H = 512;
   const b = hex(base);
   const bd = band == null ? null : hex(band);
+  const ub = hex(under);
   const bandTop = H * (1 - 1 / 3.6);
+  // altura en px de textura (256 por metro): el revoque tiene 2 cm (5 px)
+  const Hh = new Float32Array(W * H);
   const c = paint(W, H, (x, y) => {
     const n = N.fbm(x / 64 + seed, y / 64, 5, 8);
     const s = N.fbm(x / 22 + 40 + seed, y / 22, 3, 512 / 22);
+    const grain = N.noise(x / 2 + seed * 17, y / 2, 256);
     let col = shade(b, 0.84 + n * 0.24);
     // manchas de humedad
     const damp = N.fbm(x / 110 + seed * 3, y / 90 + 7, 3, 512 / 110);
     if (damp > 0.6) col = mix(col, shade(b, 0.72), Math.min(1, (damp - 0.6) * 3));
+    // la llana deja ondas suaves y la arena un granito
+    let h = 5 + (n - 0.5) * 1.2 + (grain - 0.5) * 0.5;
     if (bd && y > bandTop) {
       const peel = N.fbm(x / 30 + 90 + seed, y / 30, 4, 512 / 30);
       col = peel > 0.66 ? shade(b, 0.7 + s * 0.2) : shade(bd, 0.75 + n * 0.35);
+      if (peel <= 0.66) h += 0.15;
       if (Math.abs(y - bandTop) < 2) col = shade(col, 0.6);
     }
+    // revoque caído (más cerca del piso, donde sube la humedad)
+    const ch = N.fbm(x / 128 + seed * 5, y / 80 + seed * 3.7, 5, 4) + 0.12 * Math.max(0, (y / H - 0.6) / 0.4);
+    if (ch > 0.77) {
+      let uc;
+      let uh;
+      if (bricks) {
+        const row = Math.floor(y / 10);
+        const lx = (x + (row % 2) * 32) % 64;
+        const t = ((((row * 73856093) ^ (Math.floor((x + (row % 2) * 32) / 64) * 19349663)) >>> 0) % 1000) / 1000;
+        const mortar = lx < 2 || y % 10 < 2;
+        uc = mortar ? shade([150, 138, 120], 0.6 + n * 0.3) : shade(ub, 0.75 + t * 0.4 + (grain - 0.5) * 0.15);
+        uh = (mortar ? 0.3 : 1.3) + (grain - 0.5) * 0.4;
+      } else {
+        uc = shade(ub, 0.75 + n * 0.3 + (grain - 0.5) * 0.2);
+        uh = 0.8 + (n - 0.5) * 1.5 + (grain - 0.5) * 0.6;
+      }
+      // canto quebrado: un poco más claro (el revoque de adentro no está sucio)
+      const e = Math.min(1, (ch - 0.77) / 0.01);
+      col = e < 1 ? mix(shade(b, 1.04), uc, e) : uc;
+      h += (uh - h) * e;
+    }
+    Hh[y * W + x] = h;
     // mugre cerca del piso y hollín arriba
     const fromBottom = (H - y) / H;
     if (fromBottom < 0.12) col = shade(col, 0.55 + fromBottom * 3.7);
@@ -101,6 +223,8 @@ function plaster({ base, band, seed, soot = 0 }) {
     return col;
   });
   cracks(c.getContext('2d'), W, H, 14, seed * 7 + 3);
+  // relieve (fx/Surfaces): la altura de arriba, y del color solo las grietas
+  c.relief = { H: Hh, detail: 0.3, blur: 3, depth: 0.022, ao: 1.4, aoBlur: 5 };
   return c;
 }
 
@@ -116,7 +240,10 @@ function bricks({ seed, soot = 0, tint = 0xa0472c }) {
   for (let i = 0; i < rows * cols * 2; i++) tints.push(0.7 + r() * 0.45);
   const base = hex(tint);
   const mortar = [150, 138, 120];
-  return paint(W, H, (x, y) => {
+  // altura en px de textura (256 por metro), para fx/Surfaces
+  const Hh = new Float32Array(W * H);
+  const hash = (a, b) => ((((a * 73856093) ^ (b * 19349663)) >>> 0) % 10007) / 10007;
+  const cv = paint(W, H, (x, y) => {
     const row = Math.floor(y / rh);
     const off = row % 2 ? bw / 2 : 0;
     const cx = (x + off) % W;
@@ -124,13 +251,37 @@ function bricks({ seed, soot = 0, tint = 0xa0472c }) {
     const lx = cx - col * bw;
     const ly = y - row * rh;
     const n = N.fbm(x / 20 + seed, y / 20, 4, W / 20);
+    // cada ladrillo quedó un poco más afuera o más adentro, y torcido; a alguno
+    // se le rompió una esquina y cada tanto falta uno
+    const u1 = hash(row, col + 7 * seed);
+    const u2 = hash(row + 91, col);
+    const gone = hash(col + 13, row + 5 * seed) < 0.022;
     let c;
-    if (lx < 3 || ly < 3) c = shade(mortar, 0.7 + n * 0.4);
-    else {
+    let h;
+    if (lx < 3 || ly < 3) {
+      c = shade(mortar, 0.7 + n * 0.4);
+      h = -1.4 + n;
+    } else if (gone) {
+      c = shade(mortar, 0.3 + n * 0.25);
+      h = -4.5 + n;
+    } else {
       const t = tints[(row * cols + col) % tints.length];
       c = shade(base, t * (0.8 + n * 0.35));
-      if (N.noise(x / 3, y / 3) > 0.83) c = shade(c, 0.7);
+      h = 1.2 + (u1 - 0.5) * 1.6 + (lx / bw - 0.5) * (u2 - 0.5) * 2.4;
+      // canto gastado, más comido donde el ruido lo dice
+      const e = Math.min(lx - 3, bw - lx, ly - 3, rh - ly);
+      const wear = 2 + n * 4;
+      if (e < wear) h -= (1 - e / wear) ** 2 * (1.5 + n * 1.5);
+      if (e < 6 && u2 > 0.55 && N.noise(x / 6 + seed * 3, y / 6, 256) > 0.68) {
+        h -= 1.6;
+        c = shade(c, 1.15);
+      }
+      if (N.noise(x / 3, y / 3) > 0.83) {
+        c = shade(c, 0.7);
+        h -= 0.6;
+      }
     }
+    Hh[y * W + x] = h;
     const fromBottom = (H - y) / H;
     if (fromBottom < 0.1) c = shade(c, 0.6 + fromBottom * 4);
     if (soot) {
@@ -139,16 +290,22 @@ function bricks({ seed, soot = 0, tint = 0xa0472c }) {
     }
     return c;
   });
+  // relieve (fx/Surfaces): el ladrillo sobresale del mortero, con el canto gastado
+  cv.relief = { H: Hh, detail: 0.15, depth: 0.026, ao: 1.3, aoBlur: 4 };
+  return cv;
 }
 
-function planks({ seed, base = 0x6b4a2e, width = 64, dark = 1 }) {
+// weather: cuánto se levantó la veta con la intemperie (en px de altura)
+function planks({ seed, base = 0x6b4a2e, width = 64, dark = 1, weather = 0.6 }) {
   const W = 512;
   const H = 512;
   const r = rng(seed);
   const n = W / width;
   const pl = [];
-  for (let i = 0; i < n; i++) pl.push({ t: 0.7 + r() * 0.5, joint: r() * H, off: r() * 100 });
+  for (let i = 0; i < n; i++) pl.push({ t: 0.7 + r() * 0.5, joint: r() * H, off: r() * 100, cup: (r() - 0.5) * 1.6 });
   const b = hex(base);
+  // altura en px de textura (256 por metro), para fx/Surfaces
+  const Hh = new Float32Array(W * H);
   const c = paint(W, H, (x, y) => {
     const i = Math.floor(x / width);
     const p = pl[i];
@@ -156,14 +313,33 @@ function planks({ seed, base = 0x6b4a2e, width = 64, dark = 1 }) {
     const grain = N.fbm((x + p.off) / 6, y / 90 + p.off, 4, W / 6);
     const knot = N.noise(x / 14 + p.off, y / 14);
     let col = shade(b, p.t * (0.72 + grain * 0.5) * dark);
-    if (knot > 0.86) col = shade(col, 0.65);
-    if (lx < 2 || lx > width - 2) col = shade(col, 0.35);
+    // cada tabla un poco más afuera o adentro y combada; la veta levantada
+    const u = (lx / width - 0.5) * 2;
+    let h = 1 + (p.t - 0.95) * 1.2 + u * u * p.cup + (grain - 0.5) * 2 * weather;
+    if (knot > 0.86) {
+      col = shade(col, 0.65);
+      h += 0.4;
+    }
+    const e = Math.min(lx, width - lx);
+    if (e < 2) {
+      col = shade(col, 0.35);
+      h = -2.5;
+    } else if (e < 4) h -= (4 - e) * 0.4;
     const jy = Math.abs(y - p.joint);
-    if (jy < 1.5) col = shade(col, 0.35);
+    if (jy < 1.5) {
+      col = shade(col, 0.35);
+      h = Math.min(h, -1.5);
+    }
     // clavos
-    if ((Math.abs(lx - 8) < 1.6 || Math.abs(lx - width + 8) < 1.6) && Math.abs(jy - 6) < 1.6) col = [40, 38, 36];
+    if ((Math.abs(lx - 8) < 1.6 || Math.abs(lx - width + 8) < 1.6) && Math.abs(jy - 6) < 1.6) {
+      col = [40, 38, 36];
+      h -= 0.8;
+    }
+    Hh[y * W + x] = h;
     return col;
   });
+  // relieve (fx/Surfaces): la rendija entre tablas, la junta de punta y la veta
+  c.relief = { H: Hh, detail: 0.2, depth: 0.012, ao: 1.3, aoBlur: 3 };
   return c;
 }
 
@@ -192,6 +368,7 @@ function dirt({ seed, base = 0x8c3a1f, dark = 1 }) {
     ctx.ellipse(x - s * 0.3, y - s * 0.3, s * 0.4, s * 0.3, 0, 0, Math.PI * 2);
     ctx.fill();
   }
+  c.relief = { detail: 0.5 };
   return c;
 }
 
@@ -208,6 +385,7 @@ function concrete({ seed, base = 0x77736b }) {
     return col;
   });
   cracks(c.getContext('2d'), 512, 512, 10, seed + 5, 'rgba(20,20,20,0.5)');
+  c.relief = { detail: 0.4, h: (x, y) => (x % 256 < 2 || y % 256 < 2 ? 0.3 : 0.7) };
   return c;
 }
 
@@ -261,6 +439,17 @@ function calcareo({ seed }) {
     }
   }
   wear(ctx, S, S, seed, 0.35);
+  // relieve: solo la junta; el dibujo es pigmento, no se levanta
+  c.relief = {
+    detail: 0.08,
+    h: (x, y) => {
+      const lx = x % t;
+      const ly = y % t;
+      const e = Math.min(lx, t - lx, ly, t - ly);
+      return e < 1.2 ? 0.3 : 0.5 + 0.5 * Math.min(1, (e - 1.2) / 2);
+    },
+    rough: (x, y) => (Math.min(x % t, t - (x % t), y % t, t - (y % t)) < 1.2 ? 0.9 : 0.5),
+  };
   return c;
 }
 
@@ -270,7 +459,7 @@ function terracotta({ seed }) {
   const r = rng(seed);
   const tones = [];
   for (let i = 0; i < 64; i++) tones.push(0.75 + r() * 0.35);
-  return paint(S, S, (x, y) => {
+  const c = paint(S, S, (x, y) => {
     const i = Math.floor(x / t);
     const j = Math.floor(y / t);
     const lx = x - i * t;
@@ -279,6 +468,18 @@ function terracotta({ seed }) {
     if (lx < 3 || ly < 3) return shade([120, 110, 95], 0.6 + n * 0.3);
     return shade([150, 70, 44], tones[j * 8 + i] * (0.75 + n * 0.4));
   });
+  c.relief = {
+    detail: 0.15,
+    depth: 0.006,
+    h: (x, y) => {
+      const lx = x % t;
+      const ly = y % t;
+      if (lx < 3 || ly < 3) return 0.1;
+      return 0.5 + 0.5 * Math.min(1, Math.min(lx - 3, t - lx, ly - 3, t - ly) / 4);
+    },
+    rough: (x, y) => (x % t < 3 || y % t < 3 ? 0.95 : 0.62),
+  };
+  return c;
 }
 
 // Desgaste y suciedad general sobre un canvas ya pintado.
@@ -299,7 +500,7 @@ function wear(ctx, w, h, seed, amount) {
 }
 
 function corrugated({ seed }) {
-  return paint(256, 256, (x, y) => {
+  const c = paint(256, 256, (x, y) => {
     const wave = Math.sin((x / 256) * Math.PI * 16);
     const n = N.fbm(x / 30 + seed, y / 30, 4, 256 / 30);
     let col = shade([128, 130, 128], 0.75 + wave * 0.18 + n * 0.25);
@@ -307,11 +508,13 @@ function corrugated({ seed }) {
     if (rust > 0.55) col = mix(col, [120, 58, 26], Math.min(1, (rust - 0.55) * 3));
     return col;
   });
+  c.relief = { detail: 0.2, scale: 2.5, h: (x) => 0.5 + 0.5 * Math.sin((x / 256) * Math.PI * 16) };
+  return c;
 }
 
 function metal({ seed, base = 0x5d6164 }) {
   const b = hex(base);
-  return paint(256, 256, (x, y) => {
+  const c = paint(256, 256, (x, y) => {
     const n = N.fbm(x / 24 + seed, y / 24, 4, 256 / 24);
     const brushed = N.noise(x / 60, y * 2) * 0.1;
     let col = shade(b, 0.75 + n * 0.3 + brushed);
@@ -320,6 +523,15 @@ function metal({ seed, base = 0x5d6164 }) {
     if (x % 128 < 2 || y % 128 < 2) col = shade(col, 0.5);
     return col;
   });
+  // relieve: la unión entre chapas
+  c.relief = {
+    detail: 0.25,
+    h: (x, y) => {
+      const e = Math.min(x % 128, 128 - (x % 128), y % 128, 128 - (y % 128));
+      return e < 2 ? 0.2 : 0.55 + 0.45 * Math.min(1, (e - 2) / 3);
+    },
+  };
+  return c;
 }
 
 function burlap({ seed }) {
@@ -781,20 +993,15 @@ export function perkLabel(perk) {
     ctx.fill();
     ctx.restore();
   }
-  // emblema circular
+  // emblema: el medallón del perk (el mismo del HUD, ui/perkIcons) con un aro
+  // del color del paquete
   ctx.fillStyle = L.accent;
   ctx.beginPath();
-  ctx.arc(W / 2, H * 0.47, 96, 0, Math.PI * 2);
+  ctx.arc(W / 2, H * 0.47, 108, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = L.bg;
-  ctx.beginPath();
-  ctx.arc(W / 2, H * 0.47, 80, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = L.text;
-  ctx.font = 'bold 110px Georgia, serif';
+  drawPerkIcon(ctx, perk, W / 2, H * 0.47, 98);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(perk.glyph, W / 2, H * 0.475);
   // marca
   ctx.fillStyle = L.brandColor || L.text;
   ctx.font = `italic bold ${L.brandSize || 92}px Georgia, serif`;
@@ -983,10 +1190,10 @@ export function buildTextures() {
   t('plasterOffice', plaster({ base: 0xb9a07a, band: 0x4a3322, seed: 4 }));
   t('brick', bricks({ seed: 5 }));
   t('brickSoot', bricks({ seed: 6, soot: 0.85, tint: 0x8a3c26 }));
-  t('concreteWall', plaster({ base: 0x8a877e, band: 0x5b5d52, seed: 7 }));
+  t('concreteWall', plaster({ base: 0x8a877e, band: 0x5b5d52, seed: 7, under: 0x5e5a52, bricks: false }));
   t('planks', planks({ seed: 8 }));
   t('planksDark', planks({ seed: 9, base: 0x4a3322, width: 80, dark: 0.8 }));
-  t('parquet', planks({ seed: 10, base: 0x7a4a2a, width: 42 }));
+  t('parquet', planks({ seed: 10, base: 0x7a4a2a, width: 42, weather: 0.2 }));
   t('dirt', dirt({ seed: 11 }));
   t('dirtDark', dirt({ seed: 12, base: 0x5e2e1c, dark: 0.75 }));
   t('concrete', concrete({ seed: 13 }));
@@ -1014,5 +1221,263 @@ export function buildTextures() {
   t('gourd', gourd());
   t('woodCarved', woodCarved());
   t('ground', dirt({ seed: 21, base: 0x6a3420, dark: 0.7 }));
+  return T;
+}
+
+// ---------------- la granja ----------------
+// Pasto seco de fin de verano, con matas y tierra que asoma.
+function grass({ seed }) {
+  const r = rng(seed);
+  const c = paint(512, 512, (x, y) => {
+    const n = N.fbm(x / 40 + seed, y / 40, 5, 512 / 40);
+    const m = N.fbm(x / 7 + 30, y / 7, 3, 512 / 7);
+    let col = mix([62, 72, 34], [118, 104, 52], N.fbm(x / 120 + 9, y / 120, 3, 512 / 120));
+    col = shade(col, 0.7 + n * 0.45 + (m - 0.5) * 0.25);
+    const bare = N.fbm(x / 70 + 300, y / 70, 3, 512 / 70);
+    if (bare > 0.64) col = mix(col, [96, 66, 40], Math.min(0.8, (bare - 0.64) * 3));
+    return col;
+  });
+  const ctx = c.getContext('2d');
+  for (let i = 0; i < 2400; i++) {
+    const x = r() * 512;
+    const y = r() * 512;
+    const l = 3 + r() * 7;
+    const a = -Math.PI / 2 + (r() - 0.5) * 1.2;
+    ctx.strokeStyle = `rgba(${90 + r() * 90},${100 + r() * 70},${40 + r() * 30},0.55)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l);
+    ctx.stroke();
+  }
+  c.relief = { detail: 0.5 };
+  return c;
+}
+
+// Una planta de maíz (fondo transparente): caña, hojas caídas, la espiga
+// arriba y un choclo. Se usa en tarjetas cruzadas instanciadas.
+function cornCard() {
+  const W = 128;
+  const H = 256;
+  const c = canvas(W, H);
+  const ctx = c.getContext('2d');
+  const r = rng(77);
+  const stalk = (x0, lean, h, tone) => {
+    ctx.strokeStyle = `rgb(${120 * tone},${118 * tone},${56 * tone})`;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(x0, H);
+    ctx.quadraticCurveTo(x0 + lean * 0.4, H - h * 0.5, x0 + lean, H - h);
+    ctx.stroke();
+    // hojas: largas, que salen y se doblan hacia abajo
+    for (let i = 0; i < 7; i++) {
+      const k = 0.18 + i * 0.11;
+      const px = x0 + lean * k * k;
+      const py = H - h * k;
+      const side = i % 2 ? 1 : -1;
+      const len = 34 + r() * 26 - i * 2;
+      const g = 0.75 + r() * 0.35;
+      ctx.fillStyle = `rgb(${(96 + r() * 40) * g * tone},${(104 + r() * 30) * g * tone},${40 * g * tone})`;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.quadraticCurveTo(px + side * len * 0.6, py - 16, px + side * len, py + 10 + r() * 14);
+      ctx.quadraticCurveTo(px + side * len * 0.55, py - 6, px, py + 6);
+      ctx.fill();
+    }
+    // choclo con la barba
+    const cy = H - h * 0.55;
+    ctx.fillStyle = `rgb(${150 * tone},${140 * tone},${70 * tone})`;
+    ctx.beginPath();
+    ctx.ellipse(x0 + lean * 0.3 + 6, cy, 5, 15, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgb(${130 * tone},${70 * tone},${40 * tone})`;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x0 + lean * 0.3 + 8, cy - 14);
+      ctx.lineTo(x0 + lean * 0.3 + 10 + i * 2, cy - 22 - r() * 6);
+      ctx.stroke();
+    }
+    // espiga
+    ctx.strokeStyle = `rgb(${190 * tone},${160 * tone},${90 * tone})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x0 + lean, H - h);
+      ctx.lineTo(x0 + lean + (i - 2.5) * 5, H - h - 14 - r() * 10);
+      ctx.stroke();
+    }
+  };
+  stalk(52, -6, 236, 0.85);
+  stalk(78, 8, 220, 1);
+  return c;
+}
+
+// Las texturas de la granja se pintan recién cuando se arma ese mapa.
+export function farmTextures(T) {
+  // (el penal también arma su pasto: se mira el adobe, que es solo de la granja)
+  if (T.adobe) return T;
+  T.grass ||= toTexture(grass({ seed: 41 }));
+  T.adobe = toTexture(plaster({ base: 0xb49a76, band: 0x7a4428, seed: 42, under: 0x7a5a3c, bricks: false }));
+  T.barn = toTexture(planks({ seed: 43, base: 0x8e3424, width: 56, dark: 0.9, weather: 1.2 }));
+  T.fence = toTexture(planks({ seed: 44, base: 0x6e6252, width: 64, dark: 0.85, weather: 1.2 }));
+  T.corn = toTexture(cornCard(), { repeat: false });
+  return T;
+}
+
+// ---------------- el penal ----------------
+// Sillería de piedra gris: bloques desparejos con juntas hundidas y verdín abajo.
+function stoneBlocks({ seed, base = 0x8a857a }) {
+  const W = 512;
+  const H = 512;
+  const rows = 8;
+  const rh = H / rows;
+  const r = rng(seed);
+  const rowsOff = [];
+  const widths = [];
+  // cada hilada suma justo W (así la textura se repite sin costura)
+  for (let j = 0; j < rows; j++) {
+    rowsOff.push(r() * W);
+    const ws = [];
+    let x = 0;
+    while (x < W) {
+      const w = 70 + r() * 70;
+      ws.push({ x0: x, x1: x + w, t: 0.75 + r() * 0.4 });
+      x += w;
+    }
+    const k = W / x;
+    for (const q of ws) {
+      q.x0 *= k;
+      q.x1 *= k;
+    }
+    widths.push(ws);
+  }
+  const b = hex(base);
+  // altura en px de textura (256 por metro), para fx/Surfaces
+  const Hh = new Float32Array(W * H);
+  const c = paint(W, H, (x, y) => {
+    const j = Math.floor(y / rh);
+    const ly = y - j * rh;
+    const xx = (x + rowsOff[j]) % W;
+    const blk = widths[j].find((q) => xx >= q.x0 && xx < q.x1) || widths[j][0];
+    const lx = xx - blk.x0;
+    const n = N.fbm(x / 26 + seed, y / 26, 4, W / 26);
+    const f = N.noise(x / 3, y / 3);
+    let col = shade(b, blk.t * (0.72 + n * 0.45 + (f - 0.5) * 0.15));
+    // cara de piedra labrada a maza: ondulada, con el canto roto a golpes
+    const edge = Math.min(lx, blk.x1 - blk.x0 - lx, ly, rh - ly);
+    let h = 2 + (blk.t - 0.95) * 3 + (n - 0.5) * 3 + (f - 0.5) * 0.6;
+    const wear = 3 + n * 6;
+    if (edge < 3) {
+      col = shade([70, 66, 60], 0.7 + n * 0.3);
+      h = -3 + n;
+    } else {
+      if (edge < wear) h -= (1 - (edge - 3) / (wear - 3)) ** 2 * 2.5;
+      if (edge < 12 && N.noise(x / 8 + seed * 5, y / 8, 64) > 0.66) {
+        h -= 2;
+        col = shade(col, 1.12);
+      } else if (edge < 6) col = shade(col, 0.78);
+    }
+    Hh[y * W + x] = h;
+    // verdín y humedad cerca del piso
+    const fromBottom = (H - y) / H;
+    const moss = N.fbm(x / 40 + 300, y / 40, 3, W / 40);
+    if (fromBottom < 0.25 && moss > 0.5) col = mix(col, [58, 70, 44], Math.min(0.6, (0.25 - fromBottom) * 3 * (moss - 0.4)));
+    return col;
+  });
+  // relieve (fx/Surfaces): la altura de arriba y un poco del grano del color
+  c.relief = { H: Hh, detail: 0.2, depth: 0.03, ao: 1.3, aoBlur: 5 };
+  return c;
+}
+
+// Pared de pabellón: revoque pintado, verde institucional abajo y crema arriba,
+// descascarado, con rayas de presos contando días.
+function cellWall({ seed }) {
+  const c = plaster({ base: 0xc8c2a8, band: 0x4a6a58, seed, soot: 0.25 });
+  const ctx = c.getContext('2d');
+  const r = rng(seed + 9);
+  ctx.strokeStyle = 'rgba(40,34,30,0.55)';
+  ctx.lineWidth = 1.4;
+  for (let g = 0; g < 5; g++) {
+    const x0 = 30 + r() * 440;
+    const y0 = 220 + r() * 120;
+    for (let k = 0; k < 5; k++) {
+      ctx.beginPath();
+      ctx.moveTo(x0 + k * 6, y0);
+      ctx.lineTo(x0 + k * 6 + (r() - 0.5) * 2, y0 + 18);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(x0 - 3, y0 + 14);
+    ctx.lineTo(x0 + 28, y0 + 3);
+    ctx.stroke();
+  }
+  return c;
+}
+
+// Baldosas en damero, blancas y negras, gastadas por los pasos.
+function damero({ seed }) {
+  const S = 512;
+  const t = S / 8;
+  const c = paint(S, S, (x, y) => {
+    const i = Math.floor(x / t);
+    const j = Math.floor(y / t);
+    const lx = x - i * t;
+    const ly = y - j * t;
+    const n = N.fbm(x / 30 + seed, y / 30, 4, S / 30);
+    if (lx < 2 || ly < 2) return shade([90, 86, 80], 0.6 + n * 0.3);
+    const white = (i + j) % 2 === 0;
+    const col = white ? [206, 200, 186] : [34, 32, 30];
+    return shade(col, 0.72 + n * 0.4 + (N.noise(x / 2, y / 2) - 0.5) * 0.1);
+  });
+  // relieve: solo la junta (lo blanco y lo negro están al mismo nivel)
+  // encerado y gastado: brilla la baldosa, no la junta
+  c.relief = { detail: 0.03, h: (x, y) => tileH(x % t, y % t, t, 2, 2), rough: (x, y) => (x % t < 2 || y % t < 2 ? 0.9 : 0.32) };
+  return c;
+}
+
+// Azulejos blancos chicos (duchas, enfermería), con juntas oscuras y óxido.
+function azulejo({ seed }) {
+  const S = 512;
+  const t = S / 16;
+  const c = paint(S, S, (x, y) => {
+    const lx = x % t;
+    const ly = y % t;
+    const n = N.fbm(x / 36 + seed, y / 36, 4, S / 36);
+    if (lx < 2 || ly < 2) return shade([96, 92, 84], 0.6 + n * 0.4);
+    let col = shade([214, 216, 206], 0.82 + n * 0.22);
+    const rust = N.fbm(x / 60 + 70, y / 25, 3, S / 60);
+    if (rust > 0.62) col = mix(col, [120, 70, 40], Math.min(0.55, (rust - 0.62) * 2.5));
+    return col;
+  });
+  // relieve: el azulejo esmaltado tiene el canto redondeado
+  c.relief = { detail: 0.05, h: (x, y) => tileH(x % t, y % t, t, 2, 3), rough: (x, y) => (x % t < 2 || y % t < 2 ? 0.9 : 0.16) };
+  return c;
+}
+
+// Roca de la barranca: gris con vetas y liquen.
+function rock({ seed }) {
+  const c = paint(512, 512, (x, y) => {
+    const n = N.fbm(x / 50 + seed, y / 50, 5, 512 / 50);
+    const v = N.fbm(x / 8 + 20, y / 30, 3, 512 / 8);
+    let col = shade([112, 104, 94], 0.6 + n * 0.55 + (v - 0.5) * 0.2);
+    const l = N.fbm(x / 20 + 90, y / 20, 3, 512 / 20);
+    if (l > 0.66) col = mix(col, [110, 118, 70], (l - 0.66) * 2);
+    return col;
+  });
+  c.relief = { detail: 0.8, blur: 5 };
+  return c;
+}
+
+// Las texturas del penal se pintan recién cuando se arma ese mapa.
+export function penalTextures(T) {
+  if (T.stoneWall) return T;
+  T.stoneWall = toTexture(stoneBlocks({ seed: 61 }));
+  T.cellWall = toTexture(cellWall({ seed: 62 }));
+  T.whitewash = toTexture(plaster({ base: 0xd8d2c2, band: 0x8a3a2a, seed: 63, under: 0x6e6860, bricks: false }));
+  T.damero = toTexture(damero({ seed: 64 }));
+  T.azulejo = toTexture(azulejo({ seed: 65 }));
+  T.rock = toTexture(rock({ seed: 66 }));
+  T.grass = T.grass || toTexture(grass({ seed: 67 }));
   return T;
 }

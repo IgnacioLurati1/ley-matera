@@ -1,25 +1,13 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { WALL_H } from '../config/map';
+import { WALL_H, CRITTERS } from '../config/map';
 
 // Bichos de ambiente: cuervos posados en los techos del patio que salen
 // volando cuando hay tiros cerca, y ratas que cruzan el acopio pegadas a la
 // pared. Son puro decorado: cada compu los maneja por su cuenta.
 
-// Bandadas: dónde se posan (en el borde de arriba de las paredes, del lado del
-// patio, para que se vean desde abajo) y hacia dónde miran (al patio).
-const FLOCKS = [
-  { perch: [[6.2, 32.1], [7.1, 32.08], [8.4, 32.12], [9.2, 32.1], [15.3, 32.1]], yaw: Math.PI },
-  { perch: [[21.5, 17.9], [22.6, 17.92], [24.1, 17.88], [26.8, 17.9], [27.7, 17.9]], yaw: 0 },
-  { perch: [[31.1, 19.4], [31.1, 20.3], [31.12, 28.6], [31.08, 29.5], [31.1, 30.4]], yaw: -Math.PI / 2 },
-];
-// Recorridos de las ratas en el acopio: de una cueva a otra, pegadas a la pared.
-const RAT_RUNS = [
-  [[4.35, 5.2], [4.35, 15.4]],
-  [[6.2, 15.65], [14.8, 15.65]],
-  [[29.65, 7.6], [29.65, 15.3]],
-  [[23.5, 4.35], [28.3, 4.35]],
-];
+// Dónde se posan las bandadas y por dónde corren las ratas lo dice cada mapa
+// (CRITTERS en config/maps/*).
 
 const tmpM = new THREE.Matrix4();
 const tmpM2 = new THREE.Matrix4();
@@ -54,13 +42,15 @@ export default class Critters {
     // ala: el borde de adentro queda en el origen para que aletee desde el hombro
     const wing = new THREE.BoxGeometry(0.2, 0.008, 0.11).translate(0.1, 0, -0.01);
     this.crows = [];
-    FLOCKS.forEach((f, fi) => {
+    CRITTERS.flocks.forEach((f, fi) => {
+      // se posan arriba de las paredes (o del alambrado, si el mapa lo dice)
+      const y = (f.y ?? WALL_H) + 0.05;
       for (const [x, z] of f.perch) {
         this.crows.push({
           flock: fi,
-          home: new THREE.Vector3(x, WALL_H + 0.05, z),
+          home: new THREE.Vector3(x, y, z),
           homeYaw: f.yaw + (Math.random() - 0.5) * 1.4,
-          pos: new THREE.Vector3(x, WALL_H + 0.05, z),
+          pos: new THREE.Vector3(x, y, z),
           vel: new THREE.Vector3(),
           yaw: 0,
           state: 'perch',
@@ -80,7 +70,7 @@ export default class Critters {
       this.root.add(im);
     }
     for (const c of this.crows) c.yaw = c.homeYaw;
-    this.flockAway = FLOCKS.map(() => 0);
+    this.flockAway = CRITTERS.flocks.map(() => 0);
   }
 
   // Un ruido fuerte (tiro, explosión): los cuervos cercanos salen volando.
@@ -127,6 +117,7 @@ export default class Critters {
     for (const c of this.crows) {
       c.t += dt;
       let flap = 0;
+      let fold = false;
       let pitch = 0;
       let bob = 0;
       if (c.state === 'perch') {
@@ -134,11 +125,11 @@ export default class Critters {
         const peck = Math.max(0, Math.sin(c.t * 0.9 + c.phase) - 0.92) * 8;
         pitch = peck * 0.5;
         bob = -peck * 0.01;
-        flap = -1.2;
+        fold = true;
       } else if (c.state === 'fly') {
         if (c.delay > 0) {
           c.delay -= dt;
-          flap = -1.2;
+          fold = true;
         } else {
           c.vel.y += (1.2 - c.vel.y) * Math.min(1, dt * 0.6);
           c.pos.addScaledVector(c.vel, dt);
@@ -164,8 +155,14 @@ export default class Critters {
       this.crowBody.setMatrixAt(k, tmpM);
       this.crowBeak.setMatrixAt(k, tmpM);
       for (const s of [-1, 1]) {
-        tmpM2.makeRotationZ(s < 0 ? Math.PI - flap : flap);
-        tmpM2.setPosition(s * 0.04, 0.03, 0);
+        if (fold) {
+          // posado: las alas plegadas sobre el lomo, apuntando a la cola
+          tmpM2.makeRotationFromEuler(tmpE.set(s * 0.5, Math.PI / 2, -0.12, 'YXZ'));
+          tmpM2.setPosition(s * 0.045, 0.035, 0.05);
+        } else {
+          tmpM2.makeRotationZ(s < 0 ? Math.PI - flap : flap);
+          tmpM2.setPosition(s * 0.04, 0.03, 0);
+        }
         // el ala izquierda es la derecha girada media vuelta
         tmpW.multiplyMatrices(tmpM, tmpM2);
         this.crowWing.setMatrixAt(k * 2 + (s < 0 ? 0 : 1), tmpW);
@@ -195,7 +192,7 @@ export default class Critters {
       new THREE.SphereGeometry(0.012, 5, 4).translate(-0.02, 0.06, 0.07),
       new THREE.CylinderGeometry(0.004, 0.007, 0.16, 5).rotateX(Math.PI / 2 - 0.15).translate(0, 0.025, -0.15),
     ]);
-    this.rats = RAT_RUNS.map((run) => ({
+    this.rats = CRITTERS.rats.map((run) => ({
       a: new THREE.Vector3(run[0][0], 0, run[0][1]),
       b: new THREE.Vector3(run[1][0], 0, run[1][1]),
       k: 0,

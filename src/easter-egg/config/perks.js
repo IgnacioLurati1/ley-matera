@@ -115,6 +115,96 @@ export const PERKS = {
       stroke: 'rgba(255,255,255,0.9)',
     },
   },
+  // Solo en la torre (Revelaciones Materas): la PhD Flopper.
+  phd: {
+    name: 'PhD Flopper',
+    cost: 2000,
+    color: '#8a3ad8',
+    glyph: '✹',
+    desc: 'Las explosiones y las caídas no te hacen nada. Si caés de un piso, revienta todo alrededor.',
+    label: {
+      brand: 'Flopa Hermanos',
+      tagline: 'SE TIRA DE CABEZA · DESDE 1961',
+      bg: '#3a1a5e',
+      band: '#f2c230',
+      bandText: '#3a1a5e',
+      accent: '#ff5ad0',
+      leaf: 'rgba(255,90,208,0.16)',
+      text: '#fbeaff',
+      brandColor: '#f2c230',
+      brandSize: 60,
+      stroke: 'rgba(40,10,60,0.9)',
+    },
+  },
+};
+
+// Solo en el castillo (Der Mateendrache): el Aliento Dragónico (weapons/dragonBreath.js).
+// La yerba: Baldo, la uruguaya famosa por lo fuerte.
+PERKS.dragon = {
+  name: 'Aliento Dragónico',
+  cost: 4000,
+  color: '#e0521a',
+  glyph: '♨',
+  desc: 'Si te pegan dos golpes seguidos, largás una llamarada que quema a todos los de alrededor (se enfría 10 s).',
+  label: {
+    brand: 'Baldragón',
+    tagline: 'PURA FUERZA · SE TOMA CON RESPETO',
+    bg: '#7a1208',
+    band: '#f3c233',
+    bandText: '#5a0c05',
+    accent: '#ff7a1a',
+    leaf: 'rgba(255,140,40,0.16)',
+    text: '#ffe9c8',
+    brandColor: '#ffb020',
+    brandSize: 76,
+    stroke: 'rgba(40,5,0,0.9)',
+  },
+};
+
+// Solo en Mate no Numa (los esteros): el Acuanauta (entities/swim.js). La
+// yerba: Playadito, la de Colonia Liebig, en Corrientes, a un paso del Iberá.
+PERKS.aqua = {
+  name: 'Acuanauta',
+  cost: 2000,
+  color: '#2a8fd8',
+  glyph: '≈',
+  desc: 'Nadás mucho más rápido, aguantás el aire más del doble y el agua casi no te frena.',
+  label: {
+    brand: 'Nadadito',
+    tagline: 'LA QUE FLOTA · DESDE 1877',
+    bg: '#f3efe2',
+    band: '#1d5fae',
+    bandText: '#fdf8ea',
+    accent: '#d3262b',
+    leaf: 'rgba(29,95,174,0.14)',
+    text: '#1d5fae',
+    brandColor: '#1d5fae',
+    brandSize: 70,
+    stroke: 'rgba(255,255,255,0.9)',
+  },
+};
+
+// Solo en Mate of the Dead (el penal): Electric Cherry (weapons/electricCherry.js).
+// La yerba: Piporé, la de Misiones, con una chispa ("Chisporé") y gusto a cereza.
+PERKS.cherry = {
+  name: 'Electric Cherry',
+  cost: 2000,
+  color: '#3a6fe8',
+  glyph: 'ϟ',
+  desc: 'Al recargar largás una descarga que electrocuta a los muertos de alrededor: cuanto más vacío el cargador, más fuerte.',
+  label: {
+    brand: 'Chisporé',
+    tagline: 'CON GUSTO A CEREZA · PATEA COMO LA 220',
+    bg: '#1b2a6b',
+    band: '#d8233a',
+    bandText: '#fff3f5',
+    accent: '#56c8ff',
+    leaf: 'rgba(86,200,255,0.16)',
+    text: '#eef6ff',
+    brandColor: '#ffd84a',
+    brandSize: 88,
+    stroke: 'rgba(10,15,50,0.9)',
+  },
 };
 
 export const PERK_ORDER = ['jugg', 'revive', 'speed', 'doubletap', 'mule', 'deadshot'];

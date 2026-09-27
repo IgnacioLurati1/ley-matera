@@ -1,12 +1,17 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { weaponStats, ELEM_INFO } from '../config/weapons';
+import { mk3Skin } from './mk3Skin';
 
 // Modelos 3D de los mates-arma, armados con geometría procedural.
 // Se construyen parados (eje y) con la bombilla saliendo hacia arriba y luego
 // se inclinan para que la bombilla (el cañón) apunte hacia adelante (-z).
 
 let MATS = null;
+// El color de las mangas de la mano (el estero: Gil va de colorado). null vuelve al de siempre.
+export function setSleeveColor(hex) {
+  MATS?.sleeve.color.set(hex ?? 0x5a5a44);
+}
 // Pose del mate en la mano (ajustable).
 export const VM_POSE = { pitch: 0.15, roll: -0.12, yaw: 0.45, scale: 1, bombTilt: 1.45 };
 function mats(T) {
@@ -15,8 +20,21 @@ function mats(T) {
   MATS = {
     gourd: std({ map: T.gourd, roughness: 0.75 }),
     gourdDark: std({ map: T.gourd, color: 0x6a4a30, roughness: 0.7 }),
+    // calabaza curada clara (el mate izquierdo del Mark III)
+    gourdPale: std({ map: T.gourd, color: 0xf2dcb4, roughness: 0.55 }),
+    cellSpent: std({ color: 0x2c3a2a, roughness: 0.5, emissive: 0x0c1a0c }),
+    // el rayo incrustado del Mark III (sin pasarse de blanco)
+    boltGreen: new THREE.MeshBasicMaterial({ color: 0x2cf060, toneMapped: false }),
+    boltGold: new THREE.MeshBasicMaterial({ color: 0xffb020, toneMapped: false }),
     // la calabaza de la Salamanca: verdosa, con un brillo apagado de adentro
     gourdLuz: std({ map: T.gourd, color: 0x7a9a6a, roughness: 0.55, emissive: 0x143a10, emissiveIntensity: 0.9 }),
+    // las cruces talladas del Mate de la Luz Mala (Weapons.animateLuz las hace latir)
+    luzCross: new THREE.MeshBasicMaterial({ color: new THREE.Color(0x6aff4a).multiplyScalar(0.6), toneMapped: false }),
+    // el Mate de la Luz Mala Eterna (mejorado): la calabaza quemada en la
+    // Salamanca, casi negra, y sus venas de fuego fatuo (laten con animateLuz)
+    gourdEterna: std({ map: T.gourd, color: 0x20241e, roughness: 0.4, emissive: 0x031c10, emissiveIntensity: 1 }),
+    luzVein: new THREE.MeshBasicMaterial({ color: new THREE.Color(0x4affc8).multiplyScalar(0.7), toneMapped: false }),
+    ironOld: std({ color: 0x34302a, metalness: 0.85, roughness: 0.55 }),
     wood: std({ map: T.woodCarved, roughness: 0.65 }),
     woodDark: std({ map: T.woodCarved, color: 0x7a5238, roughness: 0.6 }),
     plastic: std({ color: 0xe8589a, roughness: 0.35 }),
@@ -34,6 +52,12 @@ function mats(T) {
     // las guampas son un tubo abierto: se ven de los dos lados al mirar adentro
     horn: std({ color: 0xd9c49a, roughness: 0.45, side: THREE.DoubleSide }),
     hornDark: std({ color: 0x3a2a1c, roughness: 0.45 }),
+    hornBlack: std({ map: T.gourd, color: 0x4a3a2a, roughness: 0.3, side: THREE.DoubleSide }),
+    bone: std({ color: 0xc9b894, roughness: 0.6 }),
+    blade: std({ color: 0xc8ccd0, metalness: 1, roughness: 0.25 }),
+    bladeDark: std({ color: 0x1a1a20, metalness: 0.8, roughness: 0.35 }),
+    glowDeath: new THREE.MeshBasicMaterial({ color: new THREE.Color(0x7affb0).multiplyScalar(2.4), toneMapped: false }),
+    glowPurple: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xb05aff).multiplyScalar(2), toneMapped: false }),
     red: std({ color: 0xa81c1c, metalness: 0.6, roughness: 0.35 }),
     dark: std({ color: 0x2a2a2e, metalness: 0.7, roughness: 0.4 }),
     yerba: std({ map: T.yerba, roughness: 1 }),
@@ -52,6 +76,8 @@ function mats(T) {
     termo: std({ color: 0xa81c1c, roughness: 0.3, metalness: 0.3 }),
     water: new THREE.MeshBasicMaterial({ color: 0xcfe8ff, transparent: true, opacity: 0.55 }),
     steel: std({ color: 0xd0d4d8, metalness: 1, roughness: 0.25 }),
+    whet: std({ color: 0x7c8084, roughness: 0.9 }),
+    whetWet: std({ color: 0x4e5256, roughness: 0.35 }),
   };
   // Camuflaje del Pack-a-Pava: fluorescente y animado.
   MATS.camo = new THREE.MeshStandardMaterial({ map: T.camo, emissiveMap: T.camo, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.3, metalness: 0.3 });
@@ -118,7 +144,9 @@ function bombilla({ len = 0.24, thick = 1, mat, tilt = VM_POSE.bombTilt, count =
     const tube = cyl(r, r, len, mat || M.silver, 8);
     tube.position.y = len / 2;
     b.add(tube);
-    const filter = new THREE.Mesh(new THREE.SphereGeometry(r * 3, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat || M.silver);
+    // el filtro queda enterrado en la yerba: con las bombillas gruesas no crece
+    // más que la boca (si no, al inspeccionar asoma media esfera por arriba)
+    const filter = new THREE.Mesh(new THREE.SphereGeometry(Math.min(r * 3, 0.017), 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat || M.silver);
     filter.rotation.x = Math.PI;
     b.add(filter);
     // pico: tramo corto doblado
@@ -361,8 +389,113 @@ function hornGeo(r0, r1, len, curve = 0.5, seg = 20, rs = 14) {
   return { geo: g, top: path.getPointAt(1), r1 };
 }
 
+// El Mate de la Luz Mala Eterna (el mejorado): no sale con el camuflaje del
+// Pack-a-Pava sino quemado en la Salamanca. La calabaza casi negra con venas
+// de fuego fatuo que suben desde abajo, un zuncho de hierro viejo remachado y
+// otro de vértebras, una calaverita adelante con los ojos prendidos, la yerba
+// verde agua y tres fuegos fatuos que le dan vueltas (Weapons.animateLuz).
+function luzEterna(mate, M, T, anim, addBody, addVirola, rAt) {
+  addBody('calabaza', M.gourdEterna);
+  addVirola(M.ironOld, 0.016);
+  const low = tor(rAt(0.022) + 0.0006, 0.0016, M.ironOld, 6, 32);
+  low.rotation.x = Math.PI / 2;
+  low.position.y = 0.022;
+  mate.add(low);
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    const r = rAt(0.022) + 0.0019;
+    const rivet = sph(0.0011, M.ironOld, 6, 4);
+    rivet.position.set(Math.cos(a) * r, 0.022, Math.sin(a) * r);
+    mate.add(rivet);
+  }
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const r = rAt(0.079) + 0.0013;
+    const v = box(0.0034, 0.0044, 0.0024, M.bone);
+    v.position.set(Math.cos(a) * r, 0.079, Math.sin(a) * r);
+    v.rotation.set(0, Math.PI / 2 - a, i % 2 ? 0.12 : -0.12);
+    mate.add(v);
+  }
+  // adelante (del lado que se ve), la calaverita
+  const front = Math.PI / 2 + 1;
+  const skull = new THREE.Group();
+  skull.scale.setScalar(1.35);
+  const head = sph(0.0068, M.bone, 12, 10);
+  head.scale.set(1, 0.92, 0.8);
+  skull.add(head);
+  const jaw = box(0.0076, 0.0034, 0.0046, M.bone);
+  jaw.position.set(0, -0.0058, 0.0006);
+  skull.add(jaw);
+  for (const s of [-1, 1]) {
+    const eye = sph(0.0018, M.glowDeath, 8, 6);
+    eye.position.set(s * 0.0025, 0.0004, 0.0047);
+    skull.add(eye);
+  }
+  const rs = rAt(0.047) + 0.0044;
+  skull.position.set(Math.cos(front) * rs, 0.047, Math.sin(front) * rs);
+  skull.rotation.y = Math.PI / 2 - front;
+  mate.add(skull);
+  // las venas: suben torcidas desde abajo, con una ramita (no pasan por la calavera)
+  const at = (a, y, out = 0.0005) => {
+    const r = rAt(y) + out;
+    return new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r);
+  };
+  for (let i = 0; i < 6; i++) {
+    let a = (i / 6) * Math.PI * 2 + 0.55;
+    if (Math.abs(Math.atan2(Math.sin(a - front), Math.cos(a - front))) < 0.45) a += 0.5;
+    let prev = at(a, 0.006);
+    let branch = null;
+    for (let k = 1; k <= 9; k++) {
+      const y = 0.006 + k * 0.0068;
+      a += Math.sin(k * 1.9 + i * 2.3) * 0.16;
+      const p = at(a, y);
+      mate.add(limb(prev, p, k < 6 ? 0.0008 : 0.0006, M.luzVein));
+      if (k === 4) branch = { a, p };
+      prev = p;
+    }
+    if (branch) {
+      let b = branch.a;
+      let bp = branch.p;
+      for (let k = 1; k <= 3; k++) {
+        b += (i % 2 ? 0.17 : -0.17);
+        const p = at(b, branch.p.y + k * 0.0055);
+        mate.add(limb(bp, p, 0.0005, M.luzVein));
+        bp = p;
+      }
+    }
+  }
+  // los fuegos fatuos que la rondan
+  anim.fatuos = [];
+  for (const [i, y] of [0.03, 0.056, 0.074].entries()) {
+    const f = new THREE.Group();
+    f.add(sph(0.0024, M.glowDeath, 8, 6));
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.dot, color: 0x4affc8, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.7 }));
+    halo.scale.setScalar(0.02);
+    f.add(halo);
+    const a0 = (i / 3) * Math.PI * 2 + 1;
+    const r = rAt(y) + 0.016;
+    f.position.set(Math.cos(a0) * r, y, Math.sin(a0) * r);
+    mate.add(f);
+    anim.fatuos.push({ o: f, a0, y, r });
+  }
+  mate.userData.glowYerba = M.glowDeath;
+}
+
 // Arma el modelo. Devuelve { root, muzzle, anim: { spin: [], glow: [] } }.
-export function buildMate(id, upgraded, T) {
+// hand: 'L' para el de la mano izquierda de los que van de a dos (el Mark III
+// tiene un mate distinto en cada mano).
+// Mates que arman otros archivos (los cuatro elementales del castillo, en
+// weapons/elementalModels.js): se anotan acá con registerMate.
+const EXTRA = {};
+export function registerMate(id, build) {
+  EXTRA[id] = build;
+}
+
+export function buildMate(id, upgraded, T, hand = 'R') {
+  if (EXTRA[id]) return EXTRA[id](upgraded, T, hand);
+  if (id === 'hoz') return buildHoz(upgraded, T);
+  if (id === 'bombillon') return buildBombillon(T);
+  if (id === 'gut' || id === 'gutacida') return buildGut(upgraded, id === 'gutacida', T);
   const M = mats(T);
   const mate = new THREE.Group();
   const anim = { spin: [], glow: [], wobble: null };
@@ -373,12 +506,17 @@ export function buildMate(id, upgraded, T) {
   let body = null;
   const st = weaponStats(id, upgraded);
   const camoMat = st.elem ? M[`camo_${st.elem}`] : M.camo;
-  const camo = (m) => (upgraded ? camoMat : m);
+  // (la Luz Mala mejorada no lleva el camuflaje: tiene su propia cara)
+  const camo = (m) => (upgraded && id !== 'luzmala' ? camoMat : m);
 
   // radio del cuerpo a cada altura (para que los dedos lo abracen)
   let rAt = (y) => profileRadius(PROFILES.calabaza, y);
   const addBody = (profile, mat) => {
     body = lathe(PROFILES[profile], camo(mat));
+    // la pared de adentro (del borde hasta abajo de la yerba): sin ella, al mirar
+    // la boca se ve a través del costado de atrás y parece que falta medio mate
+    const rim = topOf(PROFILES[profile]);
+    body.add(lathe([[rim.r, rim.y], [rim.r - 0.0025, rim.y], [rim.r - 0.0025, rim.y - 0.03]], body.material));
     mate.add(body);
     top = topOf(PROFILES[profile]);
     rAt = (y) => profileRadius(PROFILES[profile], y);
@@ -409,7 +547,7 @@ export function buildMate(id, upgraded, T) {
     return mouth;
   };
   const addVirola = (mat = M.silver, h = 0.012) => {
-    const v = lathe([[top.r - 0.001, top.y - h], [top.r + 0.003, top.y - h], [top.r + 0.004, top.y - h / 2], [top.r + 0.003, top.y + 0.002], [top.r - 0.001, top.y + 0.002]], mat, 24);
+    const v = lathe([[top.r - 0.001, top.y - h], [top.r + 0.003, top.y - h], [top.r + 0.004, top.y - h / 2], [top.r + 0.003, top.y + 0.002], [top.r - 0.001, top.y + 0.002], [top.r - 0.001, top.y - h]], mat, 24);
     mate.add(v);
     return v;
   };
@@ -420,10 +558,87 @@ export function buildMate(id, upgraded, T) {
       addVirola(M.silver, 0.01);
       bomb = { len: 0.19 };
       break;
+    case 'caballero': {
+      // el premio del super easter egg (core/eggs.js): el porongo en blanco
+      // perla con filigrana de oro granulada, el sol de las ánimas en la panza
+      // y virola y bombilla de oro
+      const pearl = new THREE.MeshPhysicalMaterial({ color: 0xf6efe4, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.08, sheen: 0.6, sheenColor: new THREE.Color(0xfff0d0), iridescence: 0.35, iridescenceIOR: 1.4 });
+      addBody('porongo', pearl);
+      addVirola(M.gold, 0.012);
+      for (const y of [0.012, 0.046, 0.084]) {
+        const band = tor(rAt(y) + 0.0007, 0.0011, M.gold, 6, 36);
+        band.rotation.x = Math.PI / 2;
+        band.position.y = y;
+        mate.add(band);
+      }
+      // la filigrana: ocho hilos de granitos de oro, de faja a faja
+      const bead = new THREE.SphereGeometry(0.0011, 6, 4);
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        for (let k = 0; k < 6; k++) {
+          const y = 0.017 + k * 0.011;
+          if (Math.abs(y - 0.046) < 0.004) continue;
+          const aa = a + Math.sin(k * 1.1) * 0.12;
+          const r = rAt(y) + 0.0006;
+          const s = new THREE.Mesh(bead, M.gold);
+          s.position.set(Math.cos(aa) * r, y, Math.sin(aa) * r);
+          mate.add(s);
+        }
+      }
+      // el sol de las ánimas (de frente y de atrás): disco, rayos y el centro que brilla
+      for (const a of [Math.PI / 2 + 0.3, -Math.PI / 2 + 0.3]) {
+        const sun = new THREE.Group();
+        const disc = cyl(0.006, 0.006, 0.0012, M.gold, 20);
+        disc.rotation.x = Math.PI / 2;
+        sun.add(disc);
+        for (let k = 0; k < 12; k++) {
+          const ray = box(0.0012, k % 2 ? 0.0034 : 0.005, 0.0008, M.gold);
+          const t = (k / 12) * Math.PI * 2;
+          const d = 0.006 + (k % 2 ? 0.0017 : 0.0025);
+          ray.position.set(Math.sin(t) * d, Math.cos(t) * d, 0);
+          ray.rotation.z = -t;
+          sun.add(ray);
+        }
+        const core = sph(0.0027, M.glowGold, 10, 8);
+        core.position.z = 0.0008;
+        sun.add(core);
+        const r = rAt(0.062) + 0.0012;
+        sun.position.set(Math.cos(a) * r, 0.062, Math.sin(a) * r);
+        sun.rotation.y = Math.PI / 2 - a;
+        mate.add(sun);
+      }
+      bomb = { len: 0.19, mat: M.gold };
+      break;
+    }
     case 'luzmala': {
-      // calabaza oscura con virola de plata; la yerba brilla verde
+      if (upgraded) {
+        luzEterna(mate, M, T, anim, addBody, addVirola, (y) => rAt(y));
+        bomb = { len: 0.2, mat: M.ironOld };
+        break;
+      }
+      // la calabaza de la Salamanca: oscura, con dos zunchos de plata y una
+      // ronda de cruces talladas que brillan verde (laten cuando está cargada);
+      // la yerba brilla verde
       addBody('calabaza', M.gourdLuz);
       addVirola(M.silver, 0.014);
+      for (const y of [0.024, 0.078]) {
+        const band = tor(rAt(y) + 0.0006, 0.0013, M.silver, 6, 32);
+        band.rotation.x = Math.PI / 2;
+        band.position.y = y;
+        mate.add(band);
+      }
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + 0.3;
+        const r = rAt(0.05) + 0.0003;
+        const cross = new THREE.Group();
+        const v = box(0.0017, 0.013, 0.0012, M.luzCross);
+        const h = box(0.008, 0.0017, 0.0012, M.luzCross);
+        h.position.y = 0.0025;
+        cross.add(v, h);
+        cross.position.set(Math.cos(a) * r, 0.05, Math.sin(a) * r);
+        cross.rotation.y = Math.PI / 2 - a;
+        mate.add(cross);
+      }
       mate.userData.glowYerba = true;
       bomb = { len: 0.2 };
       break;
@@ -438,6 +653,67 @@ export function buildMate(id, upgraded, T) {
       faja.position.y = top.y * 0.45;
       mate.add(faja);
       bomb = { len: 0.16 };
+      break;
+    }
+    case 'mk3': {
+      // Rayo Matero Mark III: un mate distinto en cada mano. El derecho es el
+      // del remolino (porongo oscuro con una espiral de oro y la cápsula
+      // ámbar); el izquierdo, el del rayo (calabaza clara con aletas de plata,
+      // un rayo incrustado y la cápsula verde).
+      const left = hand === 'L';
+      const trim = left ? M.silver : M.gold;
+      if (left) {
+        addBody('calabaza', M.gourdPale);
+        scaleBody(0.92, 0.95);
+      } else {
+        addBody('porongo', M.gourdDark);
+        scaleBody(0.86, 0.9);
+      }
+      // mejorado: cada mate con su piel (weapons/mk3Skin.js), no el camuflaje común
+      if (upgraded) {
+        const skin = mk3Skin()[left ? 'rayo' : 'remolino'];
+        body.traverse((o) => {
+          if (o.isMesh) o.material = skin;
+        });
+      }
+      // la ventanita de la cápsula, del lado que mira a la cara (+z)
+      const cy = top.y * (left ? 0.46 : 0.42);
+      const win = new THREE.Group();
+      win.position.set(0, cy, rAt(cy) - 0.003);
+      win.add(tor(0.0165, 0.0034, trim, 8, 24));
+      const hex = left ? (upgraded ? 0xffb000 : 0x18ff48) : upgraded ? 0xff2010 : 0xff7a00;
+      const coreMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex), toneMapped: false });
+      coreMat.userData.base = coreMat.color.clone();
+      const core = sph(0.0125, coreMat, 14, 10);
+      core.position.z = 0.002;
+      win.add(core);
+      mate.add(win);
+      mate.userData.mk3 = { win, core, coreMat, left };
+      if (left) {
+        // el rayo incrustado, del lado de adentro (el que se ve), entre la
+        // ventanita y la virola, con una faja de plata abajo
+        const pts = [[2.1, 0.084], [2.6, 0.07], [2.2, 0.062], [2.75, 0.042]].map(([a, y]) => new THREE.Vector3(Math.cos(a) * (rAt(y) + 0.0008), y, Math.sin(a) * (rAt(y) + 0.0008)));
+        for (let i = 0; i < pts.length - 1; i++) mate.add(limb(pts[i], pts[i + 1], 0.0026, upgraded ? M.boltGold : M.boltGreen));
+        const band = tor(rAt(0.024) + 0.0012, 0.003, trim, 6, 28);
+        band.rotation.x = Math.PI / 2;
+        band.position.y = 0.024;
+        mate.add(band);
+      } else {
+        // la espiral de oro del remolino: a la altura de la ventanita pasa por
+        // atrás (-z), y da una vuelta y media para no pisarla
+        const pts = [];
+        const h = top.y - 0.02;
+        for (let i = 0; i <= 90; i++) {
+          const y = 0.008 + (i / 90) * (h - 0.008);
+          const a = -Math.PI / 2 + ((y - cy) / h) * 1.5 * Math.PI * 2;
+          const r = rAt(y) + 0.0012;
+          pts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+        }
+        mate.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 120, 0.0028, 6), M.gold));
+      }
+      mate.userData.rings = trim;
+      addVirola(trim, 0.012);
+      bomb = { len: 0.19, thick: 2, mat: M.dark };
       break;
     }
     case 'madera': {
@@ -648,6 +924,82 @@ export function buildMate(id, upgraded, T) {
       bomb = { len: 0.21, thick: 2.4, mat: M.copper };
       break;
     }
+    case 'asta': {
+      // guampa de toro negro, curva, con dos anillos de plata
+      const len = 0.17;
+      const curve = 1.05;
+      const h = hornGeo(0.012, 0.046, len, curve);
+      body = new THREE.Mesh(h.geo, camo(M.hornBlack));
+      mate.add(body);
+      top = { r: h.r1, y: h.top.y };
+      hornR(h, 0.012, len);
+      // la punta del asta con un regatón de plata
+      const tipCap = new THREE.Mesh(new THREE.ConeGeometry(0.013, 0.03, 10), upgraded ? M.gold : M.silver);
+      tipCap.rotation.x = Math.PI;
+      tipCap.position.y = -0.01;
+      mate.add(tipCap);
+      hornMouth(h, curve, upgraded ? M.gold : M.silver, 0.022);
+      bomb = { len: 0.25, thick: 1.5, mat: upgraded ? M.gold : M.silver };
+      break;
+    }
+    case 'mate47': {
+      // calabaza de madera lustrada (como la culata), dos zunchos de acero y el
+      // cargador curvo asomando al costado
+      addBody('calabaza', M.wood);
+      for (const y of [0.022, 0.072]) {
+        const band = tor(rAt(y) + 0.0015, 0.0032, camo(M.steel), 6, 28);
+        band.rotation.x = Math.PI / 2;
+        band.position.y = y;
+        mate.add(band);
+      }
+      const mag = new THREE.Group();
+      // tramos pegados a lo largo de un arco (así la curva sale lisa)
+      for (let i = 0; i < 7; i++) {
+        const th = i * 0.11;
+        const seg = box(0.017, 0.013, 0.022, camo(M.dark));
+        seg.position.set(-0.13 * Math.sin(th), -0.13 * (1 - Math.cos(th)), 0);
+        seg.rotation.z = th;
+        mag.add(seg);
+      }
+      // del lado que queda a la vista
+      mag.position.set(-rAt(0.05) - 0.004, 0.05, 0.006);
+      mate.add(mag);
+      addVirola(M.silverDark, 0.014);
+      bomb = { len: 0.24, thick: 1.7, mat: M.steel };
+      break;
+    }
+    case 'campanario': {
+      // bronce de campana: boca ancha, dos fajas oscuras, el tambor de balas al
+      // costado, la manija de soga y el badajo colgando abajo
+      addBody('camionero', M.bronze);
+      scaleBody(1.05, 1.05);
+      for (const y of [0.02, 0.085]) {
+        const band = tor(rAt(y) + 0.0015, 0.004, camo(M.dark), 6, 28);
+        band.rotation.x = Math.PI / 2;
+        band.position.y = y;
+        mate.add(band);
+      }
+      const drum = new THREE.Group();
+      drum.add(cyl(0.034, 0.034, 0.03, camo(M.dark), 20));
+      for (const s of [-1, 1]) {
+        const face = cyl(0.029, 0.029, 0.004, M.bronze, 20);
+        face.position.y = s * 0.016;
+        drum.add(face);
+      }
+      drum.rotation.z = Math.PI / 2;
+      drum.position.set(-rAt(0.045) - 0.02, 0.045, 0);
+      mate.add(drum);
+      const loop = tor(0.022, 0.0035, M.leather, 6, 16, Math.PI);
+      loop.position.set(rAt(0.07) + 0.004, 0.07, 0);
+      loop.rotation.set(0, Math.PI / 2, Math.PI / 2);
+      mate.add(loop);
+      const clapper = sph(0.012, M.bronze);
+      clapper.position.y = -0.022;
+      mate.add(clapper);
+      addVirola(M.copper, 0.02);
+      bomb = { len: 0.26, thick: 2.2, mat: M.bronze };
+      break;
+    }
     case 'oro':
       addBody('calabaza', M.gold);
       addVirola(M.gold, 0.02);
@@ -660,7 +1012,7 @@ export function buildMate(id, upgraded, T) {
 
   if (id !== 'cocido' && !mate.userData.hornTop) {
     mate.userData.yerba = yerba(top.r, top.y, M);
-    if (mate.userData.glowYerba) mate.userData.yerba.material = M.glowGreen;
+    if (mate.userData.glowYerba) mate.userData.yerba.material = mate.userData.glowYerba.isMaterial ? mate.userData.glowYerba : M.glowGreen;
     mate.add(mate.userData.yerba);
   }
 
@@ -673,9 +1025,10 @@ export function buildMate(id, upgraded, T) {
     muzzle = b.tips[0];
     const straw = b.straws[0];
     if (mate.userData.rings) {
-      // los tres anillos del Rayo Matero rodean la bombilla
+      // los tres anillos del Rayo Matero rodean la bombilla (del color de la virola)
+      const ringMat = mate.userData.rings.isMaterial ? mate.userData.rings : M.silver;
       for (let i = 0; i < 3; i++) {
-        const ring = tor(0.02 - i * 0.003, 0.0032, M.silver, 6, 24);
+        const ring = tor(0.02 - i * 0.003, 0.0032, ringMat, 6, 24);
         ring.rotation.x = Math.PI / 2;
         ring.position.y = b.len * (0.45 + i * 0.16);
         straw.add(ring);
@@ -705,16 +1058,43 @@ export function buildMate(id, upgraded, T) {
       anim.glow.push(fil);
     }
     if (id === 'luzmala') {
-      // la lucecita espera en la punta de la bombilla
-      const orb = sph(0.016, M.glowGreen);
+      // la luz mala espera en la punta de la bombilla: un corazón con su halo y
+      // tres chispitas (cinco, mejorado) que le dan vueltas (Weapons.animateLuz)
+      const orb = new THREE.Group();
       orb.position.y = 0.03;
       muzzle.add(orb);
-      anim.glow.push(orb);
+      const core = sph(0.011, upgraded ? M.glowDeath : M.glowGreen);
+      orb.add(core);
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.dot, color: upgraded ? 0x4affc8 : 0x5cff3a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.8 }));
+      halo.scale.setScalar(0.075);
+      orb.add(halo);
+      const motes = [];
+      for (let i = 0; i < (upgraded ? 5 : 3); i++) {
+        const m = sph(0.0032, upgraded ? M.glowDeath : M.glowGreen, 6, 4);
+        orb.add(m);
+        motes.push(m);
+      }
+      anim.luz = { orb, core, halo, motes, fatuos: anim.fatuos || null };
     }
     if (id === 'tronador') {
       const bell = cyl(0.03, 0.008, 0.04, M.copper, 16);
       bell.position.y = 0.012;
       muzzle.add(bell);
+    }
+    if (id === 'campanario') {
+      // aletas para que no se recaliente la bombilla
+      for (let i = 0; i < 4; i++) {
+        const fin = tor(0.011, 0.003, M.bronze, 6, 16);
+        fin.rotation.x = Math.PI / 2;
+        fin.position.y = b.len * (0.5 + i * 0.08);
+        straw.add(fin);
+      }
+    }
+    if (id === 'mate47') {
+      // la mira de adelante
+      const sight = box(0.003, 0.014, 0.003, M.steel);
+      sight.position.set(0, b.len * 0.9, 0.012);
+      straw.add(sight);
     }
     if (anim.wobble) anim.wobble = b.group;
   } else {
@@ -732,14 +1112,330 @@ export function buildMate(id, upgraded, T) {
   mate.rotation.set(VM_POSE.pitch, 0, VM_POSE.roll);
   tilt.add(mate);
   tilt.rotation.y = VM_POSE.yaw;
-  tilt.scale.setScalar((id === 'camionero' || id === 'tronador' ? 0.95 : 1.1) * VM_POSE.scale);
+  tilt.scale.setScalar((id === 'camionero' || id === 'tronador' || id === 'campanario' ? 0.95 : 1.1) * VM_POSE.scale);
   // dónde queda la punta de la bombilla respecto del modelo (para apuntar)
   tilt.updateMatrixWorld(true);
   const tip = new THREE.Vector3();
   muzzle.getWorldPosition(tip);
-  return { root: tilt, muzzle, anim, upgraded, tip, mouth, mate, bombGroup: mate.userData.bombGroup || null, yerba: mate.userData.yerba || null };
+  return { root: tilt, muzzle, anim, upgraded, tip, mouth, mate, bombGroup: mate.userData.bombGroup || null, yerba: mate.userData.yerba || null, mk3: mate.userData.mk3 || null };
 }
 
+// La cápsula gastada del Mark III (salta en la recarga): vidrio con la carga
+// apagada adentro y las tapitas del color de la virola de ese mate.
+export function buildMk3Cell(T, left) {
+  const M = mats(T);
+  const g = new THREE.Group();
+  g.add(cyl(0.0105, 0.0105, 0.026, M.glass, 12));
+  g.add(cyl(0.007, 0.007, 0.022, M.cellSpent, 10));
+  for (const s of [-1, 1]) {
+    const cap = cyl(0.0115, 0.0115, 0.005, left ? M.silver : M.gold, 12);
+    cap.position.y = s * 0.0145;
+    g.add(cap);
+  }
+  return g;
+}
+
+
+// Hoja de hoz: una medialuna plana que se afina hasta la punta. Se arma en
+// el plano (z, y): arranca en el mango (origen), sube y se curva hacia adelante.
+function sickleGeo(R, width, arc, thick) {
+  const sh = new THREE.Shape();
+  const n = 40;
+  // borde de afuera y de adentro (el de adentro se va acercando hasta la punta)
+  const outer = [];
+  const inner = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const a = t * arc;
+    const w = width * (1 - t) ** 0.7;
+    outer.push([Math.cos(a) * R, Math.sin(a) * R]);
+    inner.push([Math.cos(a) * (R - w), Math.sin(a) * (R - w)]);
+  }
+  sh.moveTo(outer[0][0], outer[0][1]);
+  for (const [x, y] of outer) sh.lineTo(x, y);
+  for (let i = inner.length - 1; i >= 0; i--) sh.lineTo(inner[i][0], inner[i][1]);
+  const geo = new THREE.ExtrudeGeometry(sh, { depth: thick, bevelEnabled: true, bevelThickness: thick * 0.4, bevelSize: 0.002, bevelSegments: 1, curveSegments: 1 });
+  // todas las hojas comparten el centro (así el filo queda justo en el borde de adentro)
+  geo.translate(-R + 0.025, 0, -thick / 2);
+  return { geo, tip: new THREE.Vector3(Math.cos(arc) * R - R + 0.025, Math.sin(arc) * R, 0) };
+}
+
+// La Hoz: mango con virola y la hoja curva. La de la Muerte: hoja negra con
+// el filo verde que brilla, mango de hueso con tientos negros y runas violetas.
+function buildHoz(upgraded, T) {
+  const M = mats(T);
+  const g = new THREE.Group();
+  const death = !!upgraded;
+  const anim = { spin: [], glow: [], wobble: null };
+  const handle = cyl(0.015, 0.018, 0.22, death ? M.bone : M.wood, 10);
+  handle.position.y = -0.03;
+  g.add(handle);
+  for (const y of [-0.1, -0.05, 0, 0.05]) {
+    const wrap = tor(0.0175, 0.0032, death ? M.dark : M.leather, 6, 16);
+    wrap.rotation.x = Math.PI / 2;
+    wrap.position.y = y;
+    g.add(wrap);
+  }
+  if (death) {
+    const rune = tor(0.0182, 0.0022, M.glowPurple, 6, 16);
+    rune.rotation.x = Math.PI / 2;
+    rune.position.y = 0.025;
+    g.add(rune);
+  }
+  const ferrule = cyl(0.02, 0.019, 0.035, death ? M.bladeDark : M.bronze, 12);
+  ferrule.position.y = 0.09;
+  g.add(ferrule);
+  // la hoja (en el plano x-y del shape; se gira para que quede en (z, y))
+  const R = 0.15;
+  const arc = 3.3;
+  const s = sickleGeo(R, 0.0375, arc, 0.0048);
+  const blade = new THREE.Mesh(s.geo, death ? M.bladeDark : M.blade);
+  const holder = new THREE.Group();
+  holder.position.y = 0.1;
+  holder.rotation.y = Math.PI / 2;
+  holder.add(blade);
+  // el filo: el borde de adentro, fino y brillante (verde en la de la Muerte)
+  const edge = new THREE.Mesh(sickleGeo(R, 0.05, arc, 0.003).geo, death ? M.glowDeath : M.silver);
+  holder.add(edge);
+  g.add(holder);
+  const muzzle = new THREE.Object3D();
+  muzzle.position.copy(s.tip);
+  holder.add(muzzle);
+  // el filo (borde de adentro) a lo largo de la hoja: e = 0 junto a la virola, 1 en la punta
+  const edgeAt = (e, out) => {
+    const a = e * arc;
+    const r = R - 0.05 * (1 - e) ** 0.7;
+    return out.set(Math.cos(a) * r - R + 0.025, Math.sin(a) * r, 0);
+  };
+  // la estela va de la punta a la mitad de la hoja
+  const mid = new THREE.Object3D();
+  edgeAt(0.5, mid.position);
+  holder.add(mid);
+  if (death) {
+    const ember = sph(0.01, M.glowDeath);
+    ember.position.copy(s.tip);
+    holder.add(ember);
+    anim.glow.push(ember);
+  }
+  g.add(wrapHand(M, { radius: 0.018, y0: -0.12, side: Math.PI / 2, dir: 1, arm: new THREE.Vector3(0.2, -0.9, 0.4), scale: 0.95 }));
+  // en la mano: el mango casi derecho y la hoja arriba, curvada hacia el centro
+  const tilt = new THREE.Group();
+  g.rotation.set(-0.2, 0.9, -0.45);
+  g.position.set(-0.01, 0.03, 0);
+  tilt.add(g);
+  tilt.scale.setScalar(1.15);
+  tilt.updateMatrixWorld(true);
+  const tip = new THREE.Vector3();
+  muzzle.getWorldPosition(tip);
+  // wrist: girar g sobre su eje y (el del mango) es girar la muñeca
+  return { root: tilt, muzzle, anim, upgraded, tip, mouth: null, mate: g, bombGroup: null, yerba: null, hoz: { wrist: g, baseRot: g.rotation.clone(), blade: holder, mid, edgeAt, glow: death ? M.glowDeath : null } };
+}
+
+// Piedra de asentar en la mano izquierda (la recarga de la Hoz de la Muerte).
+// Parada sobre el eje y: se agarra abajo y afila con la punta (contact).
+export function buildWhetstone(T) {
+  const M = mats(T);
+  const g = new THREE.Group();
+  const stone = new THREE.Mesh(new THREE.CapsuleGeometry(0.014, 0.13, 4, 10), M.whet);
+  stone.scale.set(1, 1, 0.6);
+  stone.position.y = 0.065;
+  g.add(stone);
+  // la punta mojada (la parte que va contra el filo)
+  const wet = new THREE.Mesh(new THREE.CapsuleGeometry(0.0142, 0.045, 4, 10), M.whetWet);
+  wet.scale.set(1, 1, 0.61);
+  wet.position.y = 0.112;
+  g.add(wet);
+  g.add(wrapHand(M, { radius: 0.0145, y0: -0.035, side: Math.PI / 2, dir: -1, arm: new THREE.Vector3(-0.55, -0.75, 0.4), scale: 0.95 }));
+  const contact = new THREE.Object3D();
+  contact.position.y = 0.142;
+  g.add(contact);
+  return { root: g, contact };
+}
+
+// Máquina de Muerte: una bombilla gigante de seis caños que giran, con el
+// filtro de la bombilla hecho tambor y dos manijas.
+function buildBombillon(T) {
+  const M = mats(T);
+  const g = new THREE.Group();
+  const anim = { spin: [], glow: [], wobble: null };
+  const drum = new THREE.Group();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const b = cyl(0.009, 0.009, 0.42, M.silver, 8);
+    b.rotation.x = Math.PI / 2;
+    b.position.set(Math.cos(a) * 0.028, Math.sin(a) * 0.028, -0.2);
+    drum.add(b);
+  }
+  for (const z of [-0.08, -0.36]) {
+    const ring = tor(0.034, 0.006, M.gold, 6, 20);
+    ring.position.z = z;
+    drum.add(ring);
+  }
+  g.add(drum);
+  anim.spin.push(drum);
+  // el filtro de la bombilla, grande, atrás
+  const filter = cyl(0.07, 0.07, 0.1, M.silverDark, 20);
+  filter.rotation.x = Math.PI / 2;
+  filter.position.z = 0.05;
+  g.add(filter);
+  for (let i = 0; i < 8; i++) {
+    const slot = box(0.004, 0.08, 0.02, M.dark);
+    const a = (i / 8) * Math.PI * 2;
+    slot.position.set(Math.cos(a) * 0.071, Math.sin(a) * 0.071, 0.05);
+    slot.rotation.z = a;
+    g.add(slot);
+  }
+  const back = cyl(0.05, 0.07, 0.08, M.gold, 20);
+  back.rotation.x = -Math.PI / 2;
+  back.position.z = 0.14;
+  g.add(back);
+  const glow = sph(0.02, M.glowRed);
+  glow.position.set(0, 0.075, 0.05);
+  g.add(glow);
+  anim.glow.push(glow);
+  const grip = cyl(0.015, 0.015, 0.1, M.leather, 8);
+  grip.position.set(0, -0.08, 0.08);
+  g.add(grip);
+  const top = tor(0.05, 0.008, M.dark, 6, 14, Math.PI);
+  top.position.set(0, 0.07, -0.02);
+  top.rotation.y = Math.PI / 2;
+  g.add(top);
+  // la mano en la empuñadura (antes no tenía: al inspeccionarlo flotaba solo)
+  const hand = wrapHand(M, { radius: 0.015, y0: -0.13, side: Math.PI / 2, dir: 1, arm: new THREE.Vector3(0.2, -0.9, 0.4), scale: 0.95 });
+  hand.position.set(0, 0, 0.08);
+  g.add(hand);
+  const muzzle = new THREE.Object3D();
+  muzzle.position.set(0, 0, -0.43);
+  g.add(muzzle);
+  const tilt = new THREE.Group();
+  g.rotation.set(0.04, 0.06, 0);
+  g.position.set(-0.03, 0.02, 0.05);
+  tilt.add(g);
+  tilt.scale.setScalar(1.15);
+  tilt.updateMatrixWorld(true);
+  const tip = new THREE.Vector3();
+  muzzle.getWorldPosition(tip);
+  return { root: tilt, muzzle, anim, upgraded: false, tip, mouth: null, mate: g, bombGroup: null, yerba: null };
+}
+
+// Bombilla Gut (el penal): un trabuco con una calabaza de culata, un atado de
+// bombillas de alpaca de caño y boca de campana. Con el kit de ácido lleva un
+// frasco verde arriba con caños de cobre que bajan a las bombillas.
+function buildGut(upgraded, acid, T) {
+  const M = mats(T);
+  const g = new THREE.Group();
+  const anim = { spin: [], glow: [], wobble: null };
+  const accent = upgraded ? M.glowPurple : M.gold;
+  // la culata: una calabaza acostada
+  const stock = lathe([[0, 0], [0.04, 0.01], [0.062, 0.05], [0.066, 0.09], [0.055, 0.13], [0.034, 0.155], [0.02, 0.16]], upgraded ? M.gourdDark : M.gourd, 20);
+  stock.rotation.x = -Math.PI / 2;
+  stock.position.z = 0.2;
+  g.add(stock);
+  const ring = tor(0.024, 0.005, accent, 6, 18);
+  ring.position.z = 0.045;
+  g.add(ring);
+  // el caño: un atado de bombillas que se abren hacia la punta. Todo el caño
+  // cuelga de una bisagra adelante de la culata (se quiebra para recargar) y
+  // el atado gira sobre su eje (se lo hace girar como un tambor al inspeccionar).
+  const barrel = new THREE.Group();
+  barrel.position.set(0, -0.03, 0.04);
+  g.add(barrel);
+  // mismo origen que g: los hijos se ubican con las medidas de siempre
+  const front = new THREE.Group();
+  front.position.set(0, 0.03, -0.04);
+  barrel.add(front);
+  const bundle = new THREE.Group();
+  front.add(bundle);
+  const n = 7;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const b = cyl(0.0065, 0.0065, 0.34, i % 2 ? M.silver : M.silverDark, 8);
+    b.rotation.x = Math.PI / 2;
+    b.position.set(Math.cos(a) * 0.017, Math.sin(a) * 0.017, -0.13);
+    bundle.add(b);
+    // los filtros de las bombillas asoman atrás
+    const f = cyl(0.009, 0.009, 0.018, M.silverDark, 8);
+    f.rotation.x = Math.PI / 2;
+    f.position.set(Math.cos(a) * 0.017, Math.sin(a) * 0.017, 0.045);
+    bundle.add(f);
+  }
+  for (const z of [-0.06, -0.19]) {
+    const band = tor(0.027, 0.005, accent, 6, 20);
+    band.position.z = z;
+    front.add(band);
+  }
+  // boca de campana (abierta: se ve de los dos lados)
+  M.goldDS ||= Object.assign(M.gold.clone(), { side: THREE.DoubleSide });
+  const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.03, 0.07, 18, 1, true), M.goldDS);
+  bell.rotation.x = -Math.PI / 2;
+  bell.position.z = -0.325;
+  front.add(bell);
+  // la garganta: une el atado con la campana (sin ella quedaba un hueco y la boca parecía suelta)
+  const throat = cyl(0.026, 0.031, 0.022, M.gold, 18);
+  throat.rotation.x = Math.PI / 2;
+  throat.position.z = -0.285;
+  front.add(throat);
+  const lip = tor(0.052, 0.005, accent, 6, 22);
+  lip.position.z = -0.36;
+  front.add(lip);
+  // gatillo, guardamonte y la empuñadura de cuero
+  const guard = tor(0.02, 0.003, M.dark, 6, 14, Math.PI);
+  guard.position.set(0, -0.035, 0.08);
+  guard.rotation.set(0, Math.PI / 2, Math.PI);
+  g.add(guard);
+  const trig = box(0.004, 0.022, 0.006, M.dark);
+  trig.position.set(0, -0.03, 0.08);
+  g.add(trig);
+  const grip = cyl(0.016, 0.018, 0.11, M.leather, 8);
+  grip.position.set(0, -0.075, 0.12);
+  grip.rotation.x = 0.35;
+  g.add(grip);
+  // el martillo gira desde su base (se amartilla al cerrar)
+  const hammer = new THREE.Group();
+  hammer.position.set(0, 0.017, 0.066);
+  hammer.rotation.x = -0.4;
+  const hb = box(0.01, 0.03, 0.02, M.dark);
+  hb.position.set(0, 0.013, -0.006);
+  hammer.add(hb);
+  g.add(hammer);
+  let goo = null;
+  if (acid) {
+    // el frasco de ácido, con su burbujeo verde
+    const jar = cyl(0.028, 0.028, 0.08, M.glass, 14);
+    jar.position.set(0, 0.06, -0.02);
+    front.add(jar);
+    goo = cyl(0.023, 0.023, 0.065, M.glowGreen, 12);
+    goo.position.copy(jar.position);
+    front.add(goo);
+    anim.glow.push(goo);
+    const cap = cyl(0.03, 0.03, 0.012, M.copper, 12);
+    cap.position.set(0, 0.105, -0.02);
+    front.add(cap);
+    for (const s of [-1, 1]) {
+      const tube = cyl(0.004, 0.004, 0.16, M.copper, 6);
+      tube.rotation.x = Math.PI / 2 - 0.35;
+      tube.position.set(s * 0.02, 0.045, -0.11);
+      front.add(tube);
+    }
+  }
+  const muzzle = new THREE.Object3D();
+  muzzle.position.set(0, 0, -0.37);
+  front.add(muzzle);
+  // la boca de atrás del caño (por acá salen las bombillas usadas al recargar)
+  const breech = new THREE.Object3D();
+  breech.position.set(0, 0, 0.05);
+  front.add(breech);
+  const tilt = new THREE.Group();
+  g.rotation.set(0.04, 0.06, 0);
+  g.position.set(-0.03, 0.01, 0.06);
+  tilt.add(g);
+  tilt.scale.setScalar(1.2);
+  tilt.updateMatrixWorld(true);
+  const tip = new THREE.Vector3();
+  muzzle.getWorldPosition(tip);
+  const gut = { barrel, bundle, hammer, breech, goo };
+  return { root: tilt, muzzle, anim, upgraded, tip, mouth: null, mate: g, bombGroup: null, yerba: null, gut };
+}
 
 // Termo para la animación de recarga (cebar = recargar): cuerpo pintado,
 // hombro de acero, tapón con pico vertedor, manija y la mano izquierda.
@@ -784,6 +1480,14 @@ export function buildKnife(T, kind = 'plain') {
   blade.scale.set(1, 1, 0.25);
   blade.position.y = plata ? 0.18 : 0.13;
   g.add(blade);
+  // punta y mitad de la hoja: de ahí sale la estela del tajo
+  const tip = new THREE.Object3D();
+  tip.position.y = plata ? 0.32 : 0.22;
+  const mid = new THREE.Object3D();
+  mid.position.y = plata ? 0.12 : 0.09;
+  g.add(tip, mid);
+  g.userData.tip = tip;
+  g.userData.mid = mid;
   const guard = box(plata ? 0.07 : 0.05, 0.008, 0.012, plata ? M.gold : M.silver);
   guard.position.y = 0.028;
   g.add(guard);
@@ -817,15 +1521,27 @@ export function buildGrenade(T, kind = 'frag') {
   const M = mats(T);
   const g = new THREE.Group();
   if (kind === 'pava') {
-    const body = lathe([[0, 0], [0.05, 0], [0.058, 0.02], [0.055, 0.06], [0.03, 0.085], [0.012, 0.09]], M.aluminium);
+    // pava de aluminio: panza ancha, tapa con perilla, el pico que sale de
+    // abajo y sube, y la manija negra en arco de adelante hacia atrás
+    const body = lathe([[0, 0], [0.056, 0], [0.063, 0.008], [0.064, 0.03], [0.057, 0.058], [0.043, 0.077], [0.031, 0.084], [0, 0.084]], M.aluminium, 28);
     g.add(body);
-    const spout = cyl(0.006, 0.014, 0.08, M.aluminium, 8);
-    spout.position.set(0, 0.04, 0.065);
-    spout.rotation.x = 1;
-    g.add(spout);
-    const handleP = tor(0.04, 0.005, M.dark, 6, 14, Math.PI);
-    handleP.position.y = 0.09;
-    g.add(handleP);
+    const lid = lathe([[0, 0.083], [0.031, 0.083], [0.029, 0.089], [0.016, 0.095], [0, 0.096]], M.aluminium, 20);
+    g.add(lid);
+    const knob = sph(0.009, M.dark);
+    knob.position.y = 0.102;
+    g.add(knob);
+    const sp1 = cyl(0.009, 0.013, 0.05, M.aluminium, 10);
+    sp1.position.set(0, 0.03, 0.075);
+    sp1.rotation.x = 0.9;
+    g.add(sp1);
+    const sp2 = cyl(0.006, 0.009, 0.036, M.aluminium, 10);
+    sp2.position.set(0, 0.061, 0.102);
+    sp2.rotation.x = 0.45;
+    g.add(sp2);
+    const handle = tor(0.046, 0.007, M.dark, 6, 16, Math.PI);
+    handle.rotation.y = Math.PI / 2;
+    handle.position.y = 0.074;
+    g.add(handle);
     return g;
   }
   const pack = box(0.05, 0.08, 0.03, new THREE.MeshStandardMaterial({ color: 0xb3151d, roughness: 0.6 }));
@@ -844,8 +1560,11 @@ export function buildPerkMate(T, color) {
   const M = mats(T);
   const g = new THREE.Group();
   const body = lathe(PROFILES.calabaza, new THREE.MeshStandardMaterial({ color, roughness: 0.5, map: T.gourd }));
+  // la pared de adentro y la virola cerrada (la vieja no tenía cara de adentro
+  // y parecía una arandela flotando). Los de cada perk: weapons/perkMates.js
+  body.add(lathe([[0.031, 0.1], [0.0285, 0.1], [0.0285, 0.07]], body.material));
   g.add(body);
-  const v = lathe([[0.03, 0.09], [0.034, 0.09], [0.035, 0.1], [0.03, 0.102]], M.silver);
+  const v = lathe([[0.03, 0.09], [0.034, 0.09], [0.035, 0.096], [0.034, 0.102], [0.03, 0.102], [0.03, 0.09]], M.silver);
   g.add(v);
   g.add(yerba(0.031, 0.1, M));
   const b = bombilla({ len: 0.19, tilt: -0.78 }, M, 0.1);
@@ -890,3 +1609,6 @@ export function muzzleTexture() {
 export function getMats(T) {
   return mats(T);
 }
+
+// Las piezas para armar mates en otros archivos.
+export const VM = { mats, lathe, cyl, box, sph, tor, bombilla, cupHand, wrapHand, yerba, profileRadius, topOf, limb, PROFILES };

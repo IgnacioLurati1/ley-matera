@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { getMats } from '../weapons/viewmodels';
 import { mergeByMaterial } from './props';
+import { streamSong } from './SongEgg';
 
 // Secretos que no pide nadie:
-//  · Tres ositos materos escondidos. Con un tiro a cada uno, suena "La zamba
-//    del osito" (como la canción escondida del original).
+//  · Tres ositos materos escondidos. Con un tiro a cada uno, suena la canción
+//    del molino (public/assets/sotano/secreto-molino.mp3), como la escondida del original.
 //  · Una cuarta radio, debajo del escritorio del Patrón: el Capataz de joven
 //    cuenta cómo empezó todo.
 // En línea lo decide el anfitrión: los tiros de los invitados se le avisan.
@@ -127,10 +128,11 @@ export default class Secrets {
     if (this.songDone) return;
     this.songDone = true;
     g.net?.event('song');
-    const dur = g.audio.secretSong();
-    g.hud.subtitle('♪ La zamba del osito ♪', 4);
+    this.song = streamSong(g, '/assets/sotano/secreto-molino.mp3', () => {
+      this.song = null;
+    });
+    g.hud.subtitle('♪ ♪ ♪', 4);
     g.hud.achievement('Ositos materos', 'Encontraste los tres ositos');
-    return dur;
   }
 
   // ---------------- la cuarta radio ----------------
@@ -192,6 +194,8 @@ export default class Secrets {
   }
 
   dispose() {
+    this.song?.stop();
+    this.song = null;
     this.root.removeFromParent();
   }
 }

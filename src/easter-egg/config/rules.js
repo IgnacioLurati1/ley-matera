@@ -62,9 +62,11 @@ export const dogCount = (round, players = 1) => 6 + (players - 1) * 4 + Math.flo
 
 // Jefe: el Capataz aparece en las rondas múltiplo de 5.
 export const bossRound = (round) => round >= 5 && round % 5 === 0;
-export const bossHealth = (round) => Math.max(4000, zombieHealth(round) * 14);
-// En co-op los jefes aguantan más: +75% de vida por cada jugador extra.
-export const bossScale = (players = 1) => 1 + (players - 1) * 0.75;
+// (x1,5 desde el 2026-09-27: morían antes de enfurecerse)
+export const bossHealth = (round) => Math.max(6000, zombieHealth(round) * 21);
+// En co-op los jefes aguantan más: +100% de vida por cada jugador extra (con
+// +75% la pelea duraba menos que en solo: cada jugador suma todo su daño).
+export const bossScale = (players = 1) => players;
 
 // Power-ups: cada 2000 puntos ganados (x1,14 por vez) cae uno, máximo 4 por ronda,
 // y además un 2% por muerte. Se reparten en bolsa mezclada, como en BO1.
@@ -96,4 +98,7 @@ export const PLAYER = {
 
 export const ZOMBIE_DAMAGE = 50;
 export const BOSS_DAMAGE = 110;
+// Los potenciadores especiales (las armas de unos segundos) contra los jefes:
+// cada una pega su bossMult (config/weapons.js) y al Luisón, además, esto
+export const PUP_LUISON = 0.4;
 export const LOCK_COST = 2000;

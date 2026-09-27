@@ -101,7 +101,9 @@ export function solvePose(mats, x, z, yaw, scale, P) {
   _e.set(P.rootPitch, yaw, P.rootRoll, 'YXZ');
   _q.setFromEuler(_e);
   _p.set(x, P.rootY, z);
-  _s.set(scale, scale, scale);
+  // (derritiéndose, P.melt de 0 a 1: el cuerpo se aplasta y se desparrama)
+  const m = P.melt || 0;
+  _s.set(scale * (1 + m * 0.5), scale * (1 - m * 0.74), scale * (1 + m * 0.5));
   root.compose(_p, _q, _s);
 
   hip.multiplyMatrices(root, local(0, P.hipY, 0));

@@ -2,7 +2,12 @@ import * as THREE from 'three';
 import Avatars from './Avatars';
 import { GRENADE, maxTier } from '../config/weapons';
 import { POMBERO_ID } from '../entities/Pombero';
+import { CROW_ID } from '../entities/Crow';
+import { STAKE_ID } from '../entities/bossMoves';
 import { levelOf } from '../world/Attic';
+import { submerged } from '../entities/swim';
+import { dragonBreath } from '../weapons/dragonBreath';
+import { cherryShock } from '../weapons/electricCherry';
 
 // Sincronización de la partida. El anfitrión simula todo (zombies, rondas,
 // puertas, caja, clima) y manda 15 fotos por segundo con las posiciones; los
@@ -11,11 +16,18 @@ import { levelOf } from '../world/Attic';
 // decide el anfitrión.
 
 const SNAP_HZ = 20;
+// (los nuevos, siempre al final: el índice viaja en la foto)
+const BOSS_KINDS = ['capataz', 'mandinga', 'scarecrow', 'alcaide', 'gil', 'francisco', 'caballero', 'sargento', 'luison'];
+// los jefes del final (los que no son un jefe de ronda)
+const FINAL_KINDS = [1, 2, 4, 5];
 const MOVE_HZ = 20;
-const PLAYER_BYTES = 12;
-const ZOMBIE_BYTES = 10;
+// la altura va en 2 bytes (centímetros): la torre tiene más de 60 m
+const PLAYER_BYTES = 13;
+const ZOMBIE_BYTES = 12;
 
 const tmpV = new THREE.Vector3();
+// Altura en centímetros para 2 bytes (hasta ±327 m).
+const packY = (y) => Math.max(-32000, Math.min(32000, Math.round((y || 0) * 100)));
 
 export default class Session {
   constructor(game, net) {
@@ -35,6 +47,16 @@ export default class Session {
     this.avatars = new Avatars(game, this);
     // bajas, caídas y levantadas de cada uno (las lleva el anfitrión)
     this.tally = new Map();
+    // la plata de cada invitado (cada uno maneja la suya y la avisa) y la
+    // tabla de puntos que reparte el anfitrión (para el Tab)
+    this.score = new Map();
+    this.table = null;
+    this.scoreT = 0;
+    // lo que ganó cada invitado en toda la partida (para la tabla del final)
+    this.earned = new Map();
+    // cuánto tarda cada invitado en contestar (ms, lo mide el anfitrión)
+    this.pings = new Map();
+    this.pingT = 0;
     this.outT = 0;
     this.hookHandlers();
     if (this.guest) net.send({ t: 'name', name: net.name });
@@ -61,18 +83,50 @@ export default class Session {
   board() {
     const g = this.g;
     const mine = this.tally.get(this.id) || {};
-    const list = [{ id: this.id, name: this.nameOf(this.id), kills: g.stats.kills, heads: g.stats.headshots, knife: g.stats.knifeKills, downs: mine.downs || 0, revives: mine.revives || 0 }];
+    const list = [{ id: this.id, name: this.nameOf(this.id), points: g.points, earned: g.stats.earned, ping: 0, kills: g.stats.kills, heads: g.stats.headshots, knife: g.stats.knifeKills, downs: mine.downs || 0, revives: mine.revives || 0 }];
     for (const id of this.net.players.keys()) {
       if (id === this.id) continue;
       const t = this.tally.get(id) || {};
-      list.push({ id, name: this.nameOf(id), kills: t.kills || 0, heads: t.heads || 0, knife: t.knife || 0, downs: t.downs || 0, revives: t.revives || 0 });
+      list.push({ id, name: this.nameOf(id), points: this.score.get(id) || 0, earned: this.earned.get(id) || 0, ping: Math.round(this.pings.get(id) || 0), kills: t.kills || 0, heads: t.heads || 0, knife: t.knife || 0, downs: t.downs || 0, revives: t.revives || 0 });
     }
     return list.sort((a, b) => b.kills - a.kills);
+  }
+
+  // Filas de la tabla de puntos (Tab). El anfitrión usa sus números; el
+  // invitado, la última tabla que le mandó el anfitrión (y sus puntos al día).
+  scoreRows() {
+    const g = this.g;
+    const p = g.player;
+    const table = new Map((this.host ? this.board() : this.table || []).map((b) => [b.id, b]));
+    return [...this.net.players.keys()]
+      .map((id) => {
+        const b = table.get(id) || {};
+        const r = this.remote.get(id);
+        const me = id === this.id;
+        return {
+          id,
+          me,
+          name: this.nameOf(id),
+          points: me ? g.points : b.points | 0,
+          kills: b.kills | 0,
+          heads: b.heads | 0,
+          knife: b.knife | 0,
+          downs: b.downs | 0,
+          revives: b.revives | 0,
+          // el anfitrión no tiene ping (los demás se miden contra él)
+          ping: id === 0 ? null : b.ping | 0,
+          down: me ? p.downed : !!r?.downed,
+          dead: me ? !p.alive : !!r?.dead,
+        };
+      })
+      .sort((a, b) => b.points - a.points || b.kills - a.kills);
   }
 
   // Partida nueva armada por el anfitrión: cada invitado recibe el mundo de nuevo.
   restartAll() {
     this.tally.clear();
+    this.score.clear();
+    this.earned.clear();
     this.outT = 0;
     for (const id of this.net.peers.keys()) this.sendState(id, true);
   }
@@ -82,14 +136,17 @@ export default class Session {
   }
 
   // Jugador más cercano a un punto (para que los zombies repartan atención).
-  nearest(x, z, y = 0) {
+  // (al sumergido no lo buscan, salvo wet: los yacarés)
+  nearest(x, z, y = 0, wet = false) {
     const g = this.g;
     const lv = levelOf(y);
-    const far = (p) => (levelOf(p.pos.y) === lv ? 0 : 900);
-    let best = g.player.alive && !g.player.downed ? g.player : null;
+    // en la torre pesa la diferencia de altura (el de otro piso queda lejos)
+    const tower = !!g.world?.tower;
+    const far = (p) => (levelOf(p.pos.y) === lv ? 0 : 900) + (tower ? ((p.pos.y || 0) - y) ** 2 * 6 : 0);
+    let best = g.player.canBeHit() && (wet || !submerged(g.player)) ? g.player : null;
     let bd = best ? (best.pos.x - x) ** 2 + (best.pos.z - z) ** 2 + far(best) : Infinity;
     for (const r of this.remote.values()) {
-      if (r.dead || r.downed) continue;
+      if (r.dead || r.downed || r.ghost || (!wet && submerged(r))) continue;
       const d = (r.pos.x - x) ** 2 + (r.pos.z - z) ** 2 + far(r);
       if (d < bd) {
         bd = d;
@@ -141,44 +198,91 @@ export default class Session {
       this.teamT = 0.3;
       g.hud.setTeam([...this.remote.values()].map((r) => ({ name: r.name, health: r.health ?? 100, downed: r.downed, dead: r.dead })));
     }
+    // tabla de puntos (Tab): el invitado avisa su plata y el anfitrión reparte
+    // la tabla cuando cambia algo
+    this.scoreT -= dt;
+    if (this.scoreT <= 0) {
+      this.scoreT = 0.5;
+      if (this.guest) {
+        const key = `${g.points}|${g.stats.earned}`;
+        if (key !== this.sentPts) {
+          this.sentPts = key;
+          this.net.send({ t: 'score', p: g.points, e: g.stats.earned });
+        }
+        this.netWarn();
+      } else if (this.net.peers.size) {
+        const l = this.board();
+        const key = JSON.stringify(l);
+        if (key !== this.boardKey) {
+          this.boardKey = key;
+          this.net.broadcast({ t: 'board', l });
+        }
+      }
+    }
+    // ping: cada 2 s el anfitrión le pregunta a cada invitado (contesta 'pong')
+    if (this.host && this.net.peers.size) {
+      this.pingT -= dt;
+      if (this.pingT <= 0) {
+        this.pingT = 2;
+        this.net.broadcast({ t: 'ping', s: performance.now() });
+      }
+    }
+  }
+
+  // Invitado: aviso en pantalla si la conexión con el anfitrión anda mal
+  // (se dejaron de recibir fotos del mundo, o el ping es alto).
+  netWarn() {
+    const g = this.g;
+    let text = null;
+    if (g.state === 'playing' && !g.hostPaused) {
+      const gap = performance.now() - (this.snapAt || performance.now());
+      const ping = this.table?.find((b) => b.id === this.id)?.ping | 0;
+      if (gap > 1200) text = 'Se traba la conexión con el anfitrión…';
+      else if (ping > 250) text = `Conexión lenta · ${ping} ms`;
+    }
+    g.hud.setNet(text);
   }
 
   playerFlags(p) {
     const luz = p === this.g.player && this.g.weapons?.hasLuz?.();
-    return (p.crouching ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.downed ? 4 : 0) | (!p.alive ? 8 : 0) | (p.moving ? 16 : 0) | (luz ? 32 : 0);
+    return (p.crouching ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.downed ? 4 : 0) | (!p.alive ? 8 : 0) | (p.moving ? 16 : 0) | (luz ? 32 : 0) | (p.ghost ? 64 : 0) | (p.shield ? 128 : 0);
   }
 
   writePlayer(v, o, id, p) {
     v.setUint8(o, id);
     v.setInt16(o + 1, Math.round(p.pos.x * 50), true);
     v.setInt16(o + 3, Math.round(p.pos.z * 50), true);
-    v.setUint8(o + 5, Math.max(0, Math.min(255, Math.round((p.pos.y + 1) * 30))));
-    v.setInt16(o + 6, Math.round((p.yaw % (Math.PI * 2)) * 5000), true);
-    v.setInt8(o + 8, Math.max(-127, Math.min(127, Math.round(p.pitch * 80))));
-    v.setUint8(o + 9, this.playerFlags(p));
-    v.setUint8(o + 10, p.weaponIdx ?? 0);
-    v.setUint8(o + 11, Math.max(0, Math.min(100, Math.round((p.health / (p.maxHealth || 100)) * 100))));
+    v.setInt16(o + 5, packY(p.pos.y), true);
+    v.setInt16(o + 7, Math.round((p.yaw % (Math.PI * 2)) * 5000), true);
+    v.setInt8(o + 9, Math.max(-127, Math.min(127, Math.round(p.pitch * 80))));
+    v.setUint8(o + 10, this.playerFlags(p));
+    // (arriba, el agua: 0 seco, 1 vadea, 2 nada, 3 bucea; entities/swim.js)
+    v.setUint8(o + 11, ((p.weaponIdx ?? 0) & 15) | ((p.swim || 0) << 4));
+    v.setUint8(o + 12, Math.max(0, Math.min(100, Math.round((p.health / (p.maxHealth || 100)) * 100))));
     return o + PLAYER_BYTES;
   }
 
   readPlayer(v, o) {
     const id = v.getUint8(o);
-    const flags = v.getUint8(o + 9);
+    const flags = v.getUint8(o + 10);
     return {
       id,
       x: v.getInt16(o + 1, true) / 50,
       z: v.getInt16(o + 3, true) / 50,
-      y: v.getUint8(o + 5) / 30 - 1,
-      yaw: v.getInt16(o + 6, true) / 5000,
-      pitch: v.getInt8(o + 8) / 80,
+      y: v.getInt16(o + 5, true) / 100,
+      yaw: v.getInt16(o + 7, true) / 5000,
+      pitch: v.getInt8(o + 9) / 80,
       crouch: !!(flags & 1),
       sprint: !!(flags & 2),
       downed: !!(flags & 4),
       dead: !!(flags & 8),
       moving: !!(flags & 16),
       hasLuz: !!(flags & 32),
-      weapon: v.getUint8(o + 10),
-      health: v.getUint8(o + 11),
+      ghost: !!(flags & 64),
+      shield: !!(flags & 128),
+      weapon: v.getUint8(o + 11) & 15,
+      swim: (v.getUint8(o + 11) >> 4) & 3,
+      health: v.getUint8(o + 12),
       size: PLAYER_BYTES,
     };
   }
@@ -189,6 +293,7 @@ export default class Session {
     const list = g.zombies.pool.filter((z) => z.active);
     const boss = g.zombies.boss;
     const pomb = g.pombero?.snapshot();
+    const crow = g.crow?.snapshot();
     let o = 0;
     v.setUint8(o++, 1);
     v.setUint8(o++, 1 + this.remote.size);
@@ -196,6 +301,7 @@ export default class Session {
     o += 2;
     v.setUint8(o++, boss ? 1 : 0);
     v.setUint8(o++, pomb ? 1 : 0);
+    v.setUint8(o++, crow ? 1 : 0);
     // jugadores (el anfitrión y lo último que recibió de cada invitado)
     o = this.writePlayer(v, o, this.id, g.player);
     for (const r of this.remote.values()) {
@@ -204,12 +310,12 @@ export default class Session {
       v.setUint8(o, r.id);
       v.setInt16(o + 1, Math.round(n.x * 50), true);
       v.setInt16(o + 3, Math.round(n.z * 50), true);
-      v.setUint8(o + 5, Math.max(0, Math.min(255, Math.round((n.y + 1) * 30))));
-      v.setInt16(o + 6, Math.round(n.yaw * 5000), true);
-      v.setInt8(o + 8, Math.max(-127, Math.min(127, Math.round(n.pitch * 80))));
-      v.setUint8(o + 9, r.flags || 0);
-      v.setUint8(o + 10, r.weapon || 0);
-      v.setUint8(o + 11, r.health ?? 100);
+      v.setInt16(o + 5, packY(n.y), true);
+      v.setInt16(o + 7, Math.round(n.yaw * 5000), true);
+      v.setInt8(o + 9, Math.max(-127, Math.min(127, Math.round(n.pitch * 80))));
+      v.setUint8(o + 10, r.flags || 0);
+      v.setUint8(o + 11, ((r.weapon || 0) & 15) | ((r.swim || 0) << 4));
+      v.setUint8(o + 12, r.health ?? 100);
       o += PLAYER_BYTES;
     }
     for (const z of list) {
@@ -218,7 +324,8 @@ export default class Session {
       v.setInt16(o + 4, Math.round(z.pos.z * 50), true);
       v.setInt16(o + 6, Math.round(z.yaw * 5000), true);
       v.setUint8(o + 8, STATES.indexOf(z.state) + 1);
-      v.setUint8(o + 9, (z.crawler ? 1 : 0) | (z.dead ? 2 : 0) | (SPEEDS.indexOf(z.speedType) << 2) | (z.hidden & (1 << 2) ? 16 : 0) | (z.dog ? 32 : 0) | (z.level ? 64 : 0));
+      v.setUint8(o + 9, (z.crawler ? 1 : 0) | (z.dead ? 2 : 0) | (SPEEDS.indexOf(z.speedType) << 2) | (z.hidden & (1 << 2) ? 16 : 0) | (z.dog ? 32 : 0) | (z.level ? 64 : 0) | (z.horse ? 128 : 0));
+      v.setInt16(o + 10, packY(z.pos.y), true);
       o += ZOMBIE_BYTES;
     }
     if (boss) {
@@ -227,8 +334,10 @@ export default class Session {
       v.setInt16(o + 4, Math.round(boss.yaw * 5000), true);
       v.setUint8(o + 6, STATES.indexOf(boss.state) + 1);
       v.setUint8(o + 7, Math.max(0, Math.round((boss.hp / boss.maxHp) * 100)));
-      v.setUint8(o + 8, boss.mandinga ? 1 : 0);
+      // 0 Capataz, 1 Mandinga, 2 Espantapájaros, 3 Alcaide, 4 Gauchito Gil, 5 Francisco
+      v.setUint8(o + 8, Math.max(0, BOSS_KINDS.indexOf(boss.kind || (boss.mandinga ? 'mandinga' : 'capataz'))));
       v.setUint8(o + 9, boss.dead ? 1 : 0);
+      v.setInt16(o + 10, packY(boss.pos.y), true);
       o += ZOMBIE_BYTES;
     }
     if (pomb) {
@@ -237,6 +346,15 @@ export default class Session {
       v.setInt16(o + 4, Math.round(pomb.yaw * 5000), true);
       v.setUint8(o + 6, pomb.st);
       o += 8;
+    }
+    if (crow) {
+      v.setInt16(o, Math.round(crow.x * 50), true);
+      v.setInt16(o + 2, Math.round(crow.z * 50), true);
+      v.setInt16(o + 4, Math.round(crow.y * 50), true);
+      v.setInt16(o + 6, Math.round((crow.yaw % (Math.PI * 2)) * 5000), true);
+      v.setUint8(o + 8, crow.st);
+      v.setUint8(o + 9, Math.round(crow.hp * 200));
+      o += 10;
     }
     this.net.sendFast(this.buf.slice(0, o));
   }
@@ -260,15 +378,19 @@ export default class Session {
       return;
     }
     if (kind !== 1 || this.host) return;
+    // (para avisar si se traba la conexión)
+    this.snapAt = performance.now();
     const players = v.getUint8(1);
     const zcount = v.getUint16(2, true);
     const hasBoss = v.getUint8(4);
     const hasPomb = v.getUint8(5);
-    let o = 6;
+    const hasCrow = v.getUint8(6);
+    let o = 7;
     for (let i = 0; i < players; i++) {
       const p = this.readPlayer(v, o);
       o += PLAYER_BYTES;
-      if (p.id !== this.id) this.applyRemote(p.id, p);
+      // (una foto atrasada no revive al que ya se fue: los números no se reusan)
+      if (p.id !== this.id && !this.gone?.has(p.id)) this.applyRemote(p.id, p);
     }
     const seen = new Set();
     for (let i = 0; i < zcount; i++) {
@@ -278,9 +400,10 @@ export default class Session {
       const yaw = v.getInt16(o + 6, true) / 5000;
       const st = STATES[v.getUint8(o + 8) - 1] || 'chase';
       const f = v.getUint8(o + 9);
+      const y = v.getInt16(o + 10, true) / 100;
       o += ZOMBIE_BYTES;
       seen.add(id);
-      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', noHead: !!(f & 16), dog: !!(f & 32), level: !!(f & 64) });
+      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', noHead: !!(f & 16), dog: !!(f & 32), level: !!(f & 64), horse: !!(f & 128), y });
     }
     this.g.zombies.pruneRemote(seen);
     if (hasBoss) {
@@ -290,14 +413,20 @@ export default class Session {
         yaw: v.getInt16(o + 4, true) / 5000,
         state: STATES[v.getUint8(o + 6) - 1] || 'chase',
         hp: v.getUint8(o + 7) / 100,
-        mandinga: !!v.getUint8(o + 8),
+        mandinga: FINAL_KINDS.includes(v.getUint8(o + 8)),
+        kind: BOSS_KINDS[v.getUint8(o + 8)] || 'capataz',
         dead: !!v.getUint8(o + 9),
+        y: v.getInt16(o + 10, true) / 100,
       };
       this.g.zombies.applyRemoteBoss(b);
       o += ZOMBIE_BYTES;
     } else this.g.zombies.applyRemoteBoss(null);
     this.g.pombero?.applyRemote(
       hasPomb ? { x: v.getInt16(o, true) / 50, z: v.getInt16(o + 2, true) / 50, yaw: v.getInt16(o + 4, true) / 5000, st: v.getUint8(o + 6) } : null,
+    );
+    if (hasPomb) o += 8;
+    this.g.crow?.applyRemote(
+      hasCrow ? { x: v.getInt16(o, true) / 50, z: v.getInt16(o + 2, true) / 50, y: v.getInt16(o + 4, true) / 50, yaw: v.getInt16(o + 6, true) / 5000, st: v.getUint8(o + 8), hp: v.getUint8(o + 9) / 200 } : null,
     );
   }
 
@@ -317,7 +446,9 @@ export default class Session {
     r.buf.push({ t: now, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch });
     if (r.buf.length > 16) r.buf.shift();
     r.net = p;
-    r.flags = (p.crouch ? 1 : 0) | (p.sprint ? 2 : 0) | (p.downed ? 4 : 0) | (p.dead ? 8 : 0) | (p.moving ? 16 : 0) | (p.hasLuz ? 32 : 0);
+    r.flags = (p.crouch ? 1 : 0) | (p.sprint ? 2 : 0) | (p.downed ? 4 : 0) | (p.dead ? 8 : 0) | (p.moving ? 16 : 0) | (p.hasLuz ? 32 : 0) | (p.ghost ? 64 : 0) | (p.shield ? 128 : 0);
+    r.ghost = p.ghost;
+    r.shield = p.shield;
     r.hasLuz = p.hasLuz;
     r.downed = p.downed;
     r.dead = p.dead;
@@ -325,6 +456,7 @@ export default class Session {
     r.crouch = p.crouch;
     r.health = p.health;
     r.weapon = p.weapon;
+    r.swim = p.swim || 0;
     r.name = this.nameOf(id);
   }
 
@@ -382,9 +514,27 @@ export default class Session {
     net.on('snapshot', (data, from) => this.onSnapshot(data, from));
     net.on('join', ({ id }) => this.onJoin(id));
     net.on('leave', ({ id }) => {
+      const r = this.remote.get(id);
       this.remote.delete(id);
       this.avatars.remove(id);
-      g.hud.subtitle('Un jugador se fue de la partida.', 3);
+      g.hud.subtitle(`${r?.name || 'Un jugador'} se fue de la partida.`, 3);
+      // cargando: si faltaba ese, se arranca sin él
+      g.arrival?.renderPlayers();
+      g.arrival?.checkAll();
+    });
+    // a los invitados el 'leave' no les llega (lo dispara la conexión, que es
+    // del anfitrión): el que ya no está en la lista de jugadores se fue
+    net.on('players', (list) => {
+      if (this.host) return;
+      const ids = new Set(list.map((p) => p.id));
+      for (const [id, r] of [...this.remote]) {
+        if (ids.has(id)) continue;
+        this.gone ||= new Set();
+        this.gone.add(id);
+        this.remote.delete(id);
+        this.avatars.remove(id);
+        g.hud.subtitle(`${r.name || 'Un jugador'} se fue de la partida.`, 3);
+      }
     });
     net.on('hostgone', () => {
       if (net.closed || this.lost) return;
@@ -392,10 +542,46 @@ export default class Session {
       g.onHostGone();
     });
     net.on('pts', (m) => g.addPoints(m.v, null, true));
+    // la tabla de puntos: la plata de un invitado, y la tabla que reparte el anfitrión
+    net.on('score', (m, from) => {
+      if (!this.host) return;
+      this.score.set(from, Math.max(0, m.p | 0));
+      if (m.e != null) this.earned.set(from, Math.max(0, m.e | 0));
+    });
+    net.on('board', (m) => {
+      if (!this.host && Array.isArray(m.l)) this.table = m.l.slice(0, 8);
+    });
+    // ping: el invitado contesta enseguida y el anfitrión mide la vuelta
+    net.on('ping', (m) => {
+      if (!this.host) net.send({ t: 'pong', s: m.s });
+    });
+    net.on('pong', (m, from) => {
+      if (!this.host) return;
+      const rtt = performance.now() - m.s;
+      if (!(rtt >= 0 && rtt < 10000)) return;
+      const prev = this.pings.get(from);
+      this.pings.set(from, prev == null ? rtt : prev * 0.6 + rtt * 0.4);
+    });
+    // los últimos zombies de la ronda (los marca el anfitrión: entities/LastZombies)
+    net.on('lastz', (m) => {
+      if (!this.host) g.lastZ?.setRemote(m.ids);
+    });
+    // un invitado terminó de cargar el mapa (pantalla de carga)
+    net.on('loaded', (m, from) => {
+      if (this.host) g.arrival?.onLoaded(from);
+    });
     // plata que te convida un compañero (el anfitrión la pasa si no es para él)
     // un invitado agarró su Mate de Oro
     net.on('oro', (m, from) => {
-      if (this.host) g.ee.gotOro(from);
+      if (this.host) g.ee.gotOro?.(from);
+    });
+    // la granja: un invitado cortó una planta de yerba con la hoz
+    net.on('harvest', (m, from) => {
+      if (this.host) g.ee.harvest?.(m.i, from);
+    });
+    // el ritual del Pack-a-Pava terminó: tu hoz sale convertida
+    net.on('hozup', () => {
+      g.ee.receiveHoz?.();
     });
     net.on('gift', (m, from) => {
       const n = Math.max(0, Math.min(5000, m.n | 0));
@@ -418,7 +604,25 @@ export default class Session {
     net.on('eeshot', (m) => {
       if (this.host) g.ee.dropCalabaza(new THREE.Vector3(m.x, 0, m.z));
     });
+    // un invitado hizo algo del paso previo del Pack-a-Pava (bajó una pavita)
+    net.on('papq', (m, from) => {
+      if (this.host) g.papq?.onGuest(m, from);
+    });
     net.on('hurt', (m) => g.player.damage(m.a, tmpV.set(m.x, 1, m.z)));
+    // el penal: un invitado dejó (o se llevó) su bombilla en el encierro o en la silla
+    net.on('pee', (m, from) => {
+      if (this.host) g.ee.onGuest?.(m, from);
+    });
+    // gaucho life: un invitado le pegó con el rayo a algo del mapa
+    net.on('vidahit', (m) => {
+      if (this.host) g.vida?.remoteHit(m.i);
+    });
+    // lo que manda un invitado para que lo vean todos (el anfitrión lo reparte)
+    net.on('share', (m, from) => {
+      if (!this.host) return;
+      this.applyEvent(m);
+      net.broadcast({ ...m, t: 'ev' }, from);
+    });
     net.on('shot', (m) => this.remoteShot(m));
     net.on('hit', (m, from) => this.applyRemoteHit(m, from));
     net.on('use', (m, from) => this.applyRemoteUse(m, from));
@@ -443,8 +647,7 @@ export default class Session {
       if (i < 0) return;
       const type = g.powerups.items[i].type;
       g.powerups.remove(i);
-      g.powerups.apply(type, m.id);
-      this.pts.set(from, (this.pts.get(from) || 0) + 0);
+      g.powerups.apply(type, m.id, from);
     });
     net.on('revive', (m, from) => {
       this.credit(from, 'revives');
@@ -474,6 +677,8 @@ export default class Session {
   onJoin(id) {
     this.g.hud.subtitle(`${this.nameOf(id)} se unió a la partida.`, 4);
     this.sendState(id, false);
+    // el que llega recibe la tabla de puntos aunque no haya cambiado nada
+    this.boardKey = null;
   }
 
   // Estado completo del mundo para el que entra (o para todos, si se arrancó otra).
@@ -494,10 +699,20 @@ export default class Session {
       weather: g.weather.name,
       arena: g.arena.active,
       ee: g.ee.fullState(),
+      papq: g.papq?.fullState(),
       shield: g.activities.shieldBuilt,
       parts: Object.values(g.activities.parts || {}).filter((p) => p.taken).map((p) => p.def.id),
       lmparts: Object.values(g.curandero?.parts || {}).filter((p) => p.taken).map((p) => p.def.id),
-      start: [g.player.pos.x, g.player.pos.z],
+      // (con la altura: en los mapas con pisos, la torre, se aparece en el mismo piso)
+      start: [g.player.pos.x, g.player.pos.z, g.player.pos.y],
+      // los potenciadores que ya están tirados
+      pups: g.powerups.items.map((it) => ({ id: it.id, type: it.type, x: +it.pos.x.toFixed(2), y: +it.pos.y.toFixed(2), z: +it.pos.z.toFixed(2) })),
+      map: g.mapId,
+      mode: g.mode,
+      // las tablas que le quedan a cada ventana
+      boards: (g.barriers.windows || []).map((_, i) => g.barriers.count(i)),
+      // el penal: qué máquinas ya tienen la corriente del gaucho life
+      shock: g.vida ? [...g.interact.perkMachines.filter((m) => m.powered).map((m) => m.perk), ...(g.interact.pap?.powered ? ['pap'] : [])] : [],
     });
   }
 
@@ -508,7 +723,10 @@ export default class Session {
     // primero se arma la partida (si hace falta) y después se le aplica el mundo
     if (m.restart || (m.playing && g.state !== 'playing' && g.state !== 'paused')) {
       g.menus.show(null);
-      g.startAsGuest();
+      g.startAsGuest(m.map, m.mode);
+    } else if (m.map && (m.map !== g.mapId || (m.mode && m.mode !== g.mode)) && g.state === 'title') {
+      // todavía en la sala: se arma el mapa del anfitrión para que esté listo
+      g.setMap(m.map, { save: false, mode: m.mode });
     }
     if (m.power && !g.world.power) g.turnOnPower();
     m.doors.forEach((open, i) => {
@@ -522,9 +740,16 @@ export default class Session {
     if (m.shield) g.activities.shieldBuilt = true;
     for (const id of m.parts || []) g.activities.takePart(id, true);
     for (const id of m.lmparts || []) g.curandero?.takePart(id, true);
+    if (m.boards) g.barriers.applyAll(m.boards);
     if (m.ee) g.ee.applyRemote(m.ee);
+    if (m.papq) g.papq?.applyRemote(m.papq, true);
+    for (const id of m.shock || []) {
+      const mch = id === 'pap' ? g.interact.pap : g.interact.perkMachines.find((x) => x.perk === id);
+      if (mch) g.interact.powerMachine(mch, true);
+    }
     // aparecer cerca del anfitrión (en una partida nueva, cada uno en su lugar)
-    if (!m.restart) g.player.pos.set(m.start[0], 0, m.start[1]);
+    if (!m.restart) g.player.pos.set(m.start[0], g.world.floorAt(m.start[0], m.start[1], (m.start[2] ?? 0) + 0.5), m.start[1]);
+    for (const pu of m.pups || []) if (!g.powerups.items.some((x) => x.id === pu.id)) g.powerups.applyRemote(pu);
     if (m.paused) g.hostPause(true);
   }
 
@@ -563,7 +788,10 @@ export default class Session {
       arm: info.arm,
       burn: info.burn ? 1 : 0,
       el: info.elem || undefined,
+      zp: info.zap ? 1 : undefined,
       dc: info.decap ? 1 : 0,
+      // (un potenciador especial: el anfitrión le baja el daño a los jefes)
+      pu: info.pup || undefined,
     });
   }
 
@@ -578,7 +806,9 @@ export default class Session {
       arm: m.arm,
       burn: !!m.burn,
       elem: m.el,
+      zap: !!m.zp,
       decap: !!m.dc,
+      pup: m.pu,
       point: new THREE.Vector3(m.x, m.y, m.w),
       dir: new THREE.Vector3(m.dx, 0, m.dz),
       noPoints: true,
@@ -593,6 +823,8 @@ export default class Session {
   findZombie(id) {
     const pb = this.g.pombero?.z;
     if (id === POMBERO_ID) return pb?.active ? pb : null;
+    if (id === CROW_ID) return this.g.crow?.z.active ? this.g.crow.z : null;
+    if (id === STAKE_ID) return this.g.zombies.moves?.bound ? this.g.zombies.moves.stakeZ : null;
     for (const z of this.g.zombies.pool) if (z.active && (z.id & 0xffff) === id) return z;
     if (this.g.zombies.boss && (this.g.zombies.boss.id & 0xffff) === id) return this.g.zombies.boss;
     return null;
@@ -616,7 +848,9 @@ export default class Session {
       const pap = g.interact.pap;
       const tier = (m.up | 0) + 1;
       if (!m.w || pap.state !== 'idle' || tier > maxTier(m.w)) return reply(false);
-      g.interact.startPapFor(m.w, from, tier);
+      const res = g.interact.startPapFor(m.w, from, tier);
+      // la hoz entra al ritual: vuelve cuando termina (llega con 'hozup')
+      if (res === 'ritual') return reply(true, { ritual: 1 });
       return reply(true, { w: m.w, up: tier });
     }
     if (kind === 'box') {
@@ -641,7 +875,8 @@ export default class Session {
     if (kind === 'perk') {
       // si el invitado ya lo tiene lo frena su propia compu; acá solo importa la máquina
       const mach = it.machine;
-      if (mach.gone || (!g.world.power && mach.perk !== 'revive')) return reply(false);
+      const on = g.interact.shockPower ? mach.powered : g.world.power || mach.perk === 'revive';
+      if (mach.gone || !on) return reply(false);
       g.audio.perkJingle(mach.perk, it.pos);
       return reply(true, { perk: mach.perk });
     }
@@ -652,7 +887,7 @@ export default class Session {
       return reply(true, { gift });
     }
     if (kind === 'lmbench') {
-      // el Mate del Chiquitijuein: uno solo a la vez (lo decide el anfitrión)
+      // el Mate de la Luz Mala: uno solo a la vez (lo decide el anfitrión)
       const ok = g.curandero.claimFor(from);
       return reply(ok, ok ? { w: 'luzmala' } : {});
     }
@@ -672,7 +907,10 @@ export default class Session {
       return reply(!!res, { shield: true, built: res });
     }
     // el resto (puertas, luz, trampas, radios, barreras, easter egg) es del mapa
+    // (useFrom: quién lo pidió, para lo del easter egg que es de cada uno)
+    this.useFrom = from;
     const ok = it.use();
+    this.useFrom = null;
     return reply(ok !== false);
   }
 
@@ -690,6 +928,7 @@ export default class Session {
     }
     if (cost > 0) g.spend(cost);
     else g.audio.purchase();
+    if (m.ritual) g.ee.papGiven?.();
     if (m.w) g.weapons.give(m.w, m.up || 0);
     if (m.nade) {
       g.weapons.grenades = GRENADE.max;
@@ -710,6 +949,12 @@ export default class Session {
     this.net.broadcast({ t: 'ev', e: name, ...data });
   }
 
+  // Algo de un jugador que tienen que ver todos (el invitado se lo pasa al anfitrión).
+  share(name, data = {}) {
+    if (this.host) this.event(name, data);
+    else this.net.send({ t: 'share', e: name, ...data });
+  }
+
   applyEvent(m) {
     const g = this.g;
     switch (m.e) {
@@ -721,6 +966,54 @@ export default class Session {
       case 'power':
         if (!g.world.power) g.turnOnPower();
         break;
+      case 'vida':
+        g.vida?.applyRemote(m);
+        break;
+      case 'pee':
+        g.ee.applyRemote?.(m);
+        break;
+      // el Farol de las Ánimas o el Admin Mate de otro jugador (se ve; los jefes, al anfitrión)
+      case 'pot':
+        g.weapons?.pot?.ghostMsg(m);
+        break;
+      // el tiro de un mate de la luz de otro jugador (solo se ve)
+      case 'elem':
+        g.weapons?.elem?.ghost(m);
+        break;
+      // la Piedra de Molino o el Mate Dragón de otro jugador (solo se ve)
+      case 'esp':
+        g.weapons?.esp?.ghost(m);
+        break;
+      // la Liquidificador: la bola de otro jugador (solo se ve), el agua que
+      // hace hervir y los muertos que se cocinan en el agua del anfitrión
+      case 'liq':
+        g.weapons?.liq?.ghost(m);
+        break;
+      // la Supernova de otro jugador (el Challenge de la torre): el rayo o el Big Bang (solo se ve)
+      case 'nova':
+        g.weapons?.nova?.ghost(m);
+        break;
+      // el Aliento Dragónico de otro jugador (solo se ve: el daño lo reporta él)
+      case 'drag':
+        if (m.id !== this.id && m.p) dragonBreath(g, new THREE.Vector3().fromArray(m.p), false);
+        break;
+      // la descarga de Electric Cherry de otro jugador (solo se ve: el daño lo reporta él)
+      case 'cherry':
+        if (m.id !== this.id && m.p) cherryShock(g, new THREE.Vector3().fromArray(m.p), Math.max(0, Math.min(1, +m.k || 0)), false);
+        break;
+      // el tajo o el rayo del Facón Relámpago de otro jugador (solo se ve)
+      case 'facon':
+        g.weapons?.facon?.ghost(m);
+        break;
+      case 'bolt':
+        g.vida?.bolt(tmpV.fromArray(m.a).clone(), new THREE.Vector3().fromArray(m.b));
+        break;
+      case 'shockm': {
+        const I = g.interact;
+        const mch = m.p === 'pap' ? I.pap : I.perkMachines.find((x) => x.perk === m.p);
+        if (mch) I.powerMachine(mch, true);
+        break;
+      }
       case 'round':
         g.rounds.applyRemote(m);
         break;
@@ -729,6 +1022,9 @@ export default class Session {
         break;
       case 'pap':
         g.interact.applyRemotePap(m);
+        break;
+      case 'papq':
+        g.papq?.applyRemote(m);
         break;
       case 'boards':
         g.barriers.applyRemote(m.w, m.n);
@@ -800,7 +1096,28 @@ export default class Session {
         g.activateZone(m.z);
         break;
       case 'start':
-        if (g.state !== 'playing') g.startAsGuest();
+        // pantalla de carga: se arma el mapa y se espera a los demás
+        if (g.state !== 'playing' && g.state !== 'arriving') g.arriveAsGuest(m.map, m.mode);
+        break;
+      case 'arrive':
+        g.arrival?.setReady(m.ids);
+        break;
+      case 'go':
+        g.arrival?.remoteGo();
+        break;
+      // la cinemática de entrada: un voto para saltearla o el fin (ui/Intro)
+      case 'intro':
+        g.intro?.applyRemote(m);
+        break;
+      case 'map':
+        if (g.state === 'title') g.setMap(m.id, { save: false, mode: m.mode });
+        break;
+      case 'feather':
+        g.crow?.spawnFeathers(new THREE.Vector3(m.x, m.y, m.z), m.v);
+        break;
+      // lo nuevo de los jefes (entities/bossMoves.js)
+      case 'bfx':
+        g.zombies.moves?.onNet(m);
         break;
       case 'over':
         g.gameOver(true, m);
@@ -832,9 +1149,10 @@ export default class Session {
 
   dispose() {
     this.avatars.dispose();
+    this.g.hud.setNet(null);
     this.net.close();
   }
 }
 
-export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn', 'whipWind', 'whip', 'chargeWind', 'charge', 'stunned', 'enrage', 'summon', 'stairs', 'fall'];
+export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn', 'whipWind', 'whip', 'chargeWind', 'charge', 'stunned', 'enrage', 'summon', 'stairs', 'fall', 'boat', 'boatHit', 'howl', 'melting', 'aim', 'shoot', 'burrow', 'emerge'];
 export const SPEEDS = ['walk', 'run', 'sprint'];

@@ -9,6 +9,11 @@ export function createSignal() {
   let channel = null;
   return {
     async open(code, onMessage) {
+      // un intento anterior que quedó abierto (la sala no contestó y se
+      // reintenta con el mismo código): Supabase devolvería ese mismo canal ya
+      // suscripto, y su subscribe no avisa nunca (quedaba "Conectando...")
+      if (channel) await supabase.removeChannel(channel);
+      for (const c of supabase.getChannels()) if (c.topic === `realtime:mdu-${code}`) await supabase.removeChannel(c);
       channel = supabase.channel(`mdu-${code}`, { config: { broadcast: { self: false } } });
       channel.on('broadcast', { event: 'sig' }, ({ payload }) => onMessage(payload));
       await new Promise((resolve, reject) => {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ZONES } from '../config/map';
+import { ZONES, zoneRects } from '../config/map';
 import { zombieHealth } from '../config/rules';
 
 // La Luz Mala: una luz verdosa que flota de noche y marca dónde hay algo
@@ -64,8 +64,12 @@ export default class LuzMala {
     root.add(glow);
     const core = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xeaffc0).multiplyScalar(2.5), toneMapped: false }));
     root.add(core);
+    // la luz va suelta en la escena y siempre prendida (en 0 cuando no está):
+    // si apareciera o desapareciera con la esfera cambiaría la cantidad de
+    // luces y se recompilarían todos los materiales (el tirón al aparecer)
     const light = new THREE.PointLight(0xb8ff70, 0, 9, 1.6);
-    root.add(light);
+    light.position.y = -50;
+    g.scene.add(light);
     root.visible = false;
     g.scene.add(root);
     this.glow = glow;
@@ -95,8 +99,10 @@ export default class LuzMala {
   // ---------------- aparición (solitario o anfitrión) ----------------
   onRound(round) {
     const g = this.g;
-    if (g.net?.guest || round < MIN_ROUND || this.state !== 'off') return;
-    if (Math.random() > CHANCE) return;
+    // en la torre no aparece (salta entre pisos apilados y se perdería en el agujero)
+    if (g.net?.guest || round < MIN_ROUND || this.state !== 'off' || g.world.tower) return;
+    // con un Mate de la Luz Mala sin cargar en juego sale casi siempre (para mejorarlo hay que pegarle)
+    if (Math.random() > (this.wanted() ? 0.85 : CHANCE)) return;
     g.later(8 + Math.random() * 14, () => this.spawn());
   }
 
@@ -111,15 +117,65 @@ export default class LuzMala {
     return true;
   }
 
+  // Piso debajo de la luz (en el penal hay pisos a distintas alturas).
+  floorY() {
+    return this.g.world.levels ? this.g.world.floorAt(this.pos.x, this.pos.z) : 0;
+  }
+
   begin(x, z) {
     const g = this.g;
     this.pos.set(x, 1.6, z);
+    this.pos.y = this.floorY() + 1.6;
     this.target.copy(this.pos);
     this.setState('idle');
     this.orb.visible = true;
     this.mound.visible = false;
-    g.hud.subtitle('Allá, entre las sombras... una luz verde. La Luz Mala marca dónde hay algo enterrado.', 4.5);
+    g.hud.subtitle(
+      this.unlit() ? '¡La Luz Mala! Dispárale con el Mate de la Luz Mala: se carga y el Pack-a-Pava lo mejora.' : 'Allá, entre las sombras... una luz verde. La Luz Mala marca dónde hay algo enterrado.',
+      4.5,
+    );
     g.audio.whoosh?.(this.pos);
+  }
+
+  // Mi Mate de la Luz Mala sin mejorar ni cargar (o null).
+  unlit() {
+    return this.g.weapons.slots.find((s) => s.id === 'luzmala' && !s.up && !s.lit) || null;
+  }
+
+  // ¿Alguien anda con un Mate de la Luz Mala sin mejorar? (de los otros no se sabe si está cargado)
+  wanted() {
+    const g = this.g;
+    if (this.unlit()) return true;
+    if (g.net) for (const r of g.net.remote.values()) if (r.hasLuz && !r.dead) return true;
+    return false;
+  }
+
+  // Una luz del Mate de la Luz Mala llegó a la Luz Mala: el mate del que tiró
+  // (en su compu) queda cargado y brilla; ella se espanta y salta a otro lado.
+  onWisp(p) {
+    const g = this.g;
+    if (this.state !== 'idle' && this.state !== 'hop') return false;
+    if (p.pos.distanceTo(this.orb.position) > 0.9) return false;
+    const at = this.orb.position;
+    g.fx.flash(at, 0xb8ff70, 40, 0.5, 14);
+    for (let i = 0; i < 40; i++) {
+      tmpV.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(2 + Math.random() * 4);
+      g.fx.add.spawn(at.x, at.y, at.z, tmpV.x, tmpV.y, tmpV.z, { color: [0.7, 1, 0.45], size: 0.16, size1: 0, life: 0.6 + Math.random() * 0.4, drag: 3 });
+    }
+    // un chorrito de luz que vuelve al mate
+    for (let i = 0; i < 14; i++) {
+      g.fx.add.spawn(at.x, at.y, at.z, (Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3, { color: [0.7, 1, 0.45], size: 0.12, size1: 0.04, life: 1.4, attract: g.camera.position });
+    }
+    g.audio.whoosh?.(at);
+    const s = p.st?.id === 'luzmala' ? g.weapons.slots.find((x) => x.id === 'luzmala' && !x.up) : null;
+    if (s && !s.lit) {
+      s.lit = true;
+      g.hud.subtitle('¡El Mate de la Luz Mala se cargó y brilla! Ahora sí: al Pack-a-Pava.', 4);
+      g.audio.powerupGrab?.();
+    }
+    // se escapa (en línea la mueve el anfitrión; el invitado solo ve el destello)
+    if (!g.net?.guest) this.flee();
+    return true;
   }
 
   // Un lugar caminable en una zona abierta, lejos de los jugadores.
@@ -128,9 +184,13 @@ export default class LuzMala {
     const players = this.players();
     for (let i = 0; i < 60; i++) {
       const zones = [...g.activeZones];
-      const zn = ZONES[zones[Math.floor(Math.random() * zones.length)]];
+      const key = zones[Math.floor(Math.random() * zones.length)];
+      const zn = ZONES[key];
       if (!zn) continue;
-      const [x0, z0, x1, z1] = zn.rect;
+      // cualquiera de los rectángulos de la zona (o el cuadrado del círculo)
+      const rects = zoneRects(key);
+      if (zn.circle) rects.push([zn.circle.x - zn.circle.r, zn.circle.z - zn.circle.r, zn.circle.x + zn.circle.r, zn.circle.z + zn.circle.r]);
+      const [x0, z0, x1, z1] = rects[Math.floor(Math.random() * rects.length)];
       const x = x0 + 1 + Math.random() * (x1 - x0 - 2);
       const z = z0 + 1 + Math.random() * (z1 - z0 - 2);
       if (g.nav.blocked(Math.floor(x), Math.floor(z))) continue;
@@ -183,18 +243,20 @@ export default class LuzMala {
         this.pos.x += (dx / d) * step;
         this.pos.z += (dz / d) * step;
       }
+      this.pos.y += (this.floorY() + 1.6 - this.pos.y) * Math.min(1, dt * 4);
     } else if (this.state === 'sink') {
-      this.pos.y = Math.max(0.1, 1.6 - this.t * 1.1);
+      this.pos.y = this.floorY() + Math.max(0.1, 1.6 - this.t * 1.1);
       if (this.t > 1.4) this.bury();
     } else if (this.state === 'buried') {
       this.moundGlow.material.opacity = 0.25 + Math.sin(g.time * 3) * 0.12;
-      if (Math.random() < 0.1) g.fx.sparkle(tmpV.set(this.pos.x, 0.3, this.pos.z), [0.6, 1, 0.4], 1, 0.4);
+      if (Math.random() < 0.1) g.fx.sparkle(tmpV.set(this.pos.x, this.floorY() + 0.3, this.pos.z), [0.6, 1, 0.4], 1, 0.4);
       return;
     }
     // la luz tiembla, sube y baja, y deja chispitas
     const flick = 0.8 + Math.sin(g.time * 17) * 0.1 + Math.sin(g.time * 5.3) * 0.1;
     const bob = this.state === 'sink' ? 0 : Math.sin(g.time * 1.7) * 0.18;
     this.orb.position.set(this.pos.x, this.pos.y + bob, this.pos.z);
+    this.light.position.copy(this.orb.position);
     this.glow.material.opacity = 0.75 * flick;
     this.glow.scale.setScalar(1.3 + flick * 0.5);
     this.light.intensity = 3.2 * flick;
@@ -226,10 +288,11 @@ export default class LuzMala {
     this.setState('buried');
     this.orb.visible = false;
     this.light.intensity = 0;
-    this.mound.position.set(this.pos.x, 0, this.pos.z);
+    const fy = this.floorY();
+    this.mound.position.set(this.pos.x, fy, this.pos.z);
     this.mound.visible = true;
-    this.item.pos.set(this.pos.x, 0.8, this.pos.z);
-    g.fx.dirt(tmpV.set(this.pos.x, 0.1, this.pos.z), 12);
+    this.item.pos.set(this.pos.x, fy + 0.8, this.pos.z);
+    g.fx.dirt(tmpV.set(this.pos.x, fy + 0.1, this.pos.z), 12);
     g.hud.subtitle('Se hundió en la tierra. Algo hay enterrado ahí.', 3.5);
   }
 
@@ -256,7 +319,7 @@ export default class LuzMala {
     const round = g.rounds?.round || 1;
     const res = { id: r.id, n: r.id === 'points' ? 1500 + round * 150 : r.id === 'curse' ? 500 : 0 };
     this.fade(false);
-    g.fx.dirt(tmpV.set(this.pos.x, 0.2, this.pos.z), 20);
+    g.fx.dirt(tmpV.set(this.pos.x, this.floorY() + 0.2, this.pos.z), 20);
     g.net?.event('luz', { a: 'dug' });
     if (r.id === 'curse') {
       // se levantan muertos alrededor del pozo
@@ -312,7 +375,7 @@ export default class LuzMala {
       this.setState('sink');
     } else if (m.a === 'gone') this.fade(true);
     else if (m.a === 'dug') {
-      this.g.fx.dirt(tmpV.set(this.pos.x, 0.2, this.pos.z), 20);
+      this.g.fx.dirt(tmpV.set(this.pos.x, this.floorY() + 0.2, this.pos.z), 20);
       this.fade(false);
     }
   }

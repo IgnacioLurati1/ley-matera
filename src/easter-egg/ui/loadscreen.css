@@ -1,0 +1,233 @@
+/* Pantalla de carga al entrar a un mapa (ui/LoadScreen.js). */
+.mdu-arrive {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  background: #000;
+  overflow: hidden;
+  animation: mdu-arrive-in 0.35s ease-out both;
+}
+.mdu-arrive.is-quick { animation-duration: 0.2s; }
+@keyframes mdu-arrive-in {
+  from { opacity: 0; }
+}
+/* la misma foto, gigante y velada, de fondo */
+.mdu-arrive__bg {
+  position: absolute;
+  inset: -40px;
+  background: radial-gradient(ellipse at 30% 40%, #3a1712, #000 70%) center / cover;
+  filter: blur(18px) saturate(0.7) brightness(0.35);
+  transform: scale(1.08);
+  animation: mdu-arrive-drift 24s ease-in-out infinite alternate;
+}
+@keyframes mdu-arrive-drift {
+  to { transform: scale(1.16) translate(-18px, 10px); }
+}
+.mdu-arrive__grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(28px, 5vw, 80px);
+  padding: clamp(24px, 6vh, 72px) clamp(24px, 6vw, 96px) 0;
+  min-height: 0;
+}
+
+/* ---- la postal ---- */
+.mdu-postal {
+  position: relative;
+  margin: 0;
+  justify-self: end;
+  width: min(100%, 62vh * 1.5, 760px);
+  padding: 14px 14px 0;
+  background: #efe4c8;
+  background-image: linear-gradient(135deg, rgba(120, 80, 30, 0.08), transparent 40%, rgba(120, 80, 30, 0.12));
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.7), 0 2px 0 rgba(255, 255, 255, 0.3) inset;
+  transform: rotate(-2.2deg);
+  animation: mdu-postal-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s both;
+}
+.is-quick .mdu-postal { animation-duration: 0.45s; animation-delay: 0s; }
+@keyframes mdu-postal-in {
+  from { transform: rotate(-7deg) translateY(40px); opacity: 0; }
+}
+.mdu-postal__img {
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(160deg, #4d2a1c, #120806) center / cover;
+  filter: sepia(0.35) contrast(1.08) saturate(0.9);
+  box-shadow: 0 0 0 1px rgba(60, 30, 10, 0.35);
+}
+.mdu-postal figcaption {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 4px 14px;
+  color: #3a2616;
+}
+.mdu-postal figcaption span {
+  font-size: 15px;
+  font-style: italic;
+  opacity: 0.8;
+}
+.mdu-postal figcaption b {
+  font-family: 'Creepster', 'Special Elite', serif;
+  font-weight: normal;
+  font-size: clamp(22px, 2.6vw, 34px);
+  color: #8e140f;
+  letter-spacing: 0.02em;
+}
+/* estampilla */
+.mdu-postal__stamp {
+  position: absolute;
+  top: -18px;
+  right: -16px;
+  width: 78px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  background: #b3120f;
+  color: #efe4c8;
+  text-align: center;
+  transform: rotate(6deg);
+  /* borde blanco con el picado de la estampilla */
+  outline: 2px dashed #efe4c8;
+  outline-offset: -7px;
+  box-shadow: 0 0 0 4px #efe4c8, 0 4px 8px rgba(0, 0, 0, 0.45);
+}
+.mdu-postal__stamp span { font-size: 10px; line-height: 1.1; padding: 0 8px; }
+.mdu-postal__stamp b { font-family: 'Creepster', serif; font-weight: normal; font-size: 34px; line-height: 1; }
+/* matasellos */
+.mdu-postal__mark {
+  position: absolute;
+  top: 18px;
+  right: 58px;
+  width: 92px;
+  height: 92px;
+  border: 2px solid rgba(40, 20, 60, 0.55);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  transform: rotate(-14deg);
+  color: rgba(40, 20, 60, 0.6);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+.mdu-postal__mark::before,
+.mdu-postal__mark::after {
+  content: '';
+  position: absolute;
+  left: -46px;
+  width: 50px;
+  height: 0;
+  border-top: 2px solid rgba(40, 20, 60, 0.5);
+}
+.mdu-postal__mark::before { top: 36px; }
+.mdu-postal__mark::after { top: 48px; }
+
+/* ---- nombre, consejo y jugadores ---- */
+.mdu-arrive__info {
+  max-width: 460px;
+  text-shadow: var(--shadow);
+  animation: mdu-arrive-in 0.6s ease-out 0.35s both;
+}
+.mdu-arrive__map {
+  margin: 0;
+  font-family: 'Creepster', 'Special Elite', serif;
+  font-weight: normal;
+  font-size: clamp(40px, 5.4vw, 76px);
+  line-height: 0.95;
+  color: var(--red-hi);
+}
+.mdu-arrive__sub {
+  margin: 12px 0 0;
+  font-size: 18px;
+  line-height: 1.4;
+}
+.mdu-arrive__tip {
+  margin: 28px 0 0;
+  padding-left: 14px;
+  border-left: 2px solid var(--red);
+  font-size: 16px;
+  line-height: 1.5;
+  color: #d8ccb0;
+}
+.mdu-arrive__players {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 17px;
+}
+.mdu-arrive__players li {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.45);
+  border-left: 3px solid #5a2a22;
+}
+.mdu-arrive__players li span { color: #9d9180; }
+.mdu-arrive__players li.is-ready { border-left-color: var(--gold); }
+.mdu-arrive__players li.is-ready span { color: var(--gold); }
+.mdu-arrive__players li.is-me b::after { content: ' (vos)'; font-weight: normal; opacity: 0.7; }
+
+/* ---- barra ---- */
+.mdu-arrive__foot {
+  position: relative;
+  padding: 18px clamp(24px, 6vw, 96px) clamp(22px, 5vh, 48px);
+}
+.mdu-arrive__status {
+  margin: 0 0 10px;
+  font-size: 15px;
+  min-height: 1.3em;
+  color: #cfc3a6;
+  text-shadow: var(--shadow);
+}
+.mdu-arrive__bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.mdu-arrive__bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--red-hi);
+  box-shadow: 0 0 10px rgba(255, 59, 42, 0.6);
+  transition: width 0.3s ease-out;
+}
+
+/* ---- negro: todos listos, y el fundido al arrancar ---- */
+.mdu-arrive__black {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease-in;
+}
+.mdu-arrive.is-black .mdu-arrive__black { opacity: 1; }
+.mdu-arrive.is-open { pointer-events: none; background: transparent; animation: none; }
+.mdu-arrive.is-open > :not(.mdu-arrive__black) { display: none; }
+.mdu-arrive.is-revealing .mdu-arrive__black {
+  opacity: 0;
+  transition: opacity var(--reveal, 1.8s) ease-out;
+}
+
+@media (max-width: 820px) {
+  .mdu-arrive__grid { grid-template-columns: 1fr; align-content: center; gap: 24px; }
+  .mdu-postal { justify-self: center; width: min(100%, 520px); }
+  .mdu-arrive__info { justify-self: center; text-align: center; }
+  .mdu-arrive__tip { border-left: 0; padding-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mdu-arrive,
+  .mdu-arrive__bg,
+  .mdu-postal,
+  .mdu-arrive__info { animation: none; }
+}

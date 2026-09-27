@@ -206,6 +206,9 @@ export default class Net {
       const list = msg.list.map((p) => ({ id: p.id | 0, name: cleanName(p.name, `Jugador ${(p.id | 0) + 1}`) }));
       this.players = new Map(list.map((p) => [p.id, p]));
       this.onPlayers?.(list);
+      // la partida también se entera (así saca al que se fue: el invitado no
+      // tiene conexión con los otros invitados, solo con el anfitrión)
+      this.handlers.get('players')?.(list);
       return;
     }
     // el invitado se presenta (en el modo manual el anfitrión no sabe cómo se llama)

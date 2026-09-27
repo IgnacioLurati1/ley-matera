@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Mate der Untoten · Guía de los easter eggs</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 18mm 15mm; }
+  :root {
+    --ink: #221c16;
+    --soft: #5a5046;
+    --line: #d8cdbd;
+    --paper: #ffffff;
+    --acc: #8a2a1a;
+    --tint: #f6eee2;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body { font: 10pt/1.45 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  h1, h2, h3, .serif { font-family: Georgia, 'Times New Roman', serif; }
+  h2 { font-size: 13pt; margin: 11px 0 5px; color: var(--acc); border-bottom: 1.5px solid var(--acc); padding-bottom: 2px; break-after: avoid; }
+  h3 { font-size: 11pt; margin: 10px 0 4px; break-after: avoid; }
+  p { margin: 4px 0 6px; }
+  ul, ol { margin: 4px 0 8px; padding-left: 18px; }
+  li { margin: 2px 0; }
+  ol.steps > li { margin: 5px 0; padding-left: 2px; }
+  ol.steps > li::marker { font-weight: 700; color: var(--acc); }
+  b, strong { color: #000; }
+  .muted { color: var(--soft); }
+  table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; font-size: 9.3pt; break-inside: avoid; }
+  th, td { text-align: left; vertical-align: top; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+  th { background: var(--tint); font-weight: 600; }
+  td:first-child { white-space: nowrap; }
+  .box { background: var(--tint); border-left: 4px solid var(--acc); padding: 7px 10px; margin: 8px 0; break-inside: avoid; }
+  .box h3 { margin-top: 0; color: var(--acc); }
+  .tip { border: 1px dashed var(--acc); padding: 6px 10px; margin: 8px 0; break-inside: avoid; font-size: 9.4pt; }
+  .tip::before { content: 'Consejo · '; font-weight: 700; color: var(--acc); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  table.perks td:nth-child(2) { white-space: nowrap; }
+  table.keys td:nth-child(3) { white-space: nowrap; padding-left: 12px; }
+  .kbd { display: inline-block; border: 1px solid #b9ab96; border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; font: 600 8.5pt 'Segoe UI', sans-serif; background: #fff; }
+
+  /* portada */
+  .cover { height: 261mm; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; break-after: page; background: radial-gradient(ellipse at 50% 40%, #3a2a1c 0%, #16110c 70%); color: #f3e6cf; margin: 0; padding: 20mm; border-radius: 4px; }
+  .cover .kicker { letter-spacing: 0.3em; text-transform: uppercase; font-size: 9pt; color: #c9a86a; }
+  .cover h1 { font-size: 34pt; margin: 10px 0 4px; color: #f7e9c8; }
+  .cover .sub { font-size: 14pt; font-family: Georgia, serif; color: #e0c48a; margin-bottom: 26px; }
+  .cover .maps { font-family: Georgia, serif; font-size: 11pt; line-height: 1.9; color: #e9dcc4; }
+  .cover .maps span { color: #c9a86a; }
+  .cover .warn { margin-top: 30px; font-size: 9pt; color: #bfae92; max-width: 120mm; }
+
+  /* capítulos */
+  .chapter { break-before: page; }
+  .band { margin: 0 0 10px; padding: 12px 14px 10px; color: #fff; background: var(--acc); border-radius: 3px; }
+  .band .n { font-size: 8.5pt; letter-spacing: 0.25em; text-transform: uppercase; opacity: 0.85; }
+  .band h1 { font-size: 22pt; margin: 2px 0 0; color: #fff; }
+  .band .egg { font-family: Georgia, serif; font-size: 11.5pt; opacity: 0.95; }
+  .lead { font-size: 10pt; color: var(--soft); font-style: italic; margin: 0 0 6px; }
+
+  .molino   { --acc: #8a3a1c; --tint: #f7ece2; }
+  .granja   { --acc: #9a6a12; --tint: #faf1dc; }
+  .penal    { --acc: #4d4a44; --tint: #efece6; }
+  .torre    { --acc: #6a3a8a; --tint: #f3ecf8; }
+  .castillo { --acc: #235a82; --tint: #e8f1f8; }
+  .esteros  { --acc: #2f5a2a; --tint: #eaf2e4; }
+  .general  { --acc: #6a4a22; --tint: #f6eee2; }
+  /* (lo general entra en una sola página) */
+  .general li, .general td { font-size: 9.3pt; line-height: 1.38; }
+  .general h2 { margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="kicker">El juego escondido de Ley Matera</div>
+  <h1>Mate der Untoten</h1>
+  <div class="sub">Guía de los easter eggs</div>
+  <div class="maps">
+    <span>I</span> · El Molino<br>
+    <span>II</span> · La Tapera<br>
+    <span>III</span> · Mate of the Dead<br>
+    <span>IV</span> · Mate no Numa<br>
+    <span>V</span> · Revelaciones Materas<br>
+    <span>VI</span> · Der Mateendrache
+  </div>
+  <div class="warn">Esta guía da solamente los pasos: qué hacer y dónde. La historia, los jefes, las armas y los finales los descubrís jugando.</div>
+</section>
+
+<!-- ============================ GENERAL ============================ -->
+<section class="general">
+  <div class="band"><div class="n">Antes de empezar</div><h1>Lo que sirve en todos los mapas</h1></div>
+
+  <h2>Controles que más vas a usar</h2>
+  <table class="keys">
+    <tr><td><span class="kbd">F</span></td><td>Usar, comprar, abrir. <b>Mantener F</b>: reconstruir, levantar a un compañero, girar manivelas, soplar, jurar.</td><td><span class="kbd">Tab</span></td><td>Tabla de puntos y piezas que llevás.</td></tr>
+    <tr><td><span class="kbd">R</span></td><td>Cebar (recargar).</td><td><span class="kbd">X</span></td><td>Gaucho life (solo en el penal).</td></tr>
+    <tr><td><span class="kbd">V</span> <span class="kbd">G</span> <span class="kbd">T</span></td><td>Facón · granada · táctica.</td><td><span class="kbd">M</span></td><td>Cortar la canción secreta.</td></tr>
+  </table>
+
+  <h2>Perks (paquetes de yerba)</h2>
+  <table class="perks">
+    <tr><th>Paquete</th><th>Perk</th><th>Precio</th><th>Qué hace</th></tr>
+    <tr><td>Rosamorte</td><td>Quick Revive</td><td>1500</td><td>Si caés, te levantás solo (3 veces).</td></tr>
+    <tr><td>Taragüerno</td><td>Juggernog</td><td>2500</td><td>Aguantás el doble de golpes.</td></tr>
+    <tr><td>Rapidito</td><td>Speed Cola</td><td>3000</td><td>Cebás el doble de rápido.</td></tr>
+    <tr><td>Doble Cruz</td><td>Double Tap</td><td>2000</td><td>Disparás más rápido.</td></tr>
+    <tr><td>Mulanda</td><td>Mule Kick</td><td>4000</td><td>Llevás un tercer mate.</td></tr>
+    <tr><td>Nadarias</td><td>Deadshot Daiquiri</td><td>1500</td><td>No hace absolutamente nada.</td></tr>
+    <tr><td>Flopa Hermanos</td><td>PhD Flopper</td><td>2000</td><td>Torre y castillo. Sin daño por explosiones ni caídas; si caés de un piso, revienta todo alrededor.</td></tr>
+    <tr><td>Baldragón</td><td>Aliento Dragónico</td><td>4000</td><td>Castillo. Si te pegan dos veces seguidas, largás una llamarada (se enfría 10 s).</td></tr>
+    <tr><td>Nadadito</td><td>Acuanauta</td><td>2000</td><td>Estero. Nadás más rápido y aguantás el doble el aire.</td></tr>
+    <tr><td>Chisporé</td><td>Electric Cherry</td><td>2000</td><td>Penal. Al cebar electrocutás a los muertos de alrededor.</td></tr>
+  </table>
+
+  <h2>Pack-a-Pava, caja y escudo</h2>
+  <ul>
+    <li><b>Pack-a-Pava:</b> la primera mejora cuesta <b>5000</b> y la segunda <b>2500</b>. Antes de usarla, cada mapa pide un paso corto para prepararla (está en cada capítulo).</li>
+    <li><b>Caja misteriosa:</b> 950.</li>
+    <li><b>Facón de la pared:</b> 3000.</li>
+    <li><b>Escudo:</b> en todos los mapas hay tres piezas escondidas y una mesa donde se arma. Las piezas son del equipo: con que uno las junte alcanza.</li>
+  </ul>
+
+  <h2>Reglas de los easter eggs</h2>
+  <ul>
+    <li><b>Encierros:</b> muchos pasos cierran una zona con una cortina de fuego y largan muertos adentro. Tienen que estar <b>todos los jugadores adentro</b>; si falta alguien, no arranca.</li>
+    <li><b>Almas:</b> cuando un paso pide almas, cuentan los muertos que caen cerca del lugar (o adentro del círculo). Con más jugadores se piden más.</li>
+    <li><b>En cooperativo</b> cualquiera puede hacer cada paso; los avisos y los premios les llegan a todos.</li>
+    <li><b>Jefe de ronda:</b> en las rondas múltiplo de 5 viene el jefe de ronda del mapa. <b>Ronda especial:</b> cada 6 rondas, si no toca jefe.</li>
+    <li><b>Cómo pelean los jefes:</b> marcan en el piso lo que van a hacer: salite de la marca. Si embisten contra una pared quedan atontados y les entra más daño. En cooperativo van por el que más les pega.</li>
+  </ul>
+</section>
+
+<!-- ============================ MOLINO ============================ -->
+<section class="chapter molino">
+  <div class="band"><div class="n">Capítulo I</div><h1>El Molino</h1></div>
+  <p class="lead">Un molino yerbatero tomado por los muertos.</p>
+
+  <h2>Lo básico</h2>
+  <table>
+    <tr><th>Qué</th><th>Dónde</th></tr>
+    <tr><td>Arranque</td><td>El Galpón.</td></tr>
+    <tr><td>La luz</td><td>La Sala de Máquinas.</td></tr>
+    <tr><td>Pack-a-Pava</td><td>El Acopio. <b>Paso previo:</b> la máquina no tiene presión. Tres pavitas silban escondidas en lo alto de las paredes (el Galpón, el Patio del Secadero y el Acopio): bajalas a tiros.</td></tr>
+    <tr><td>Caja</td><td>Patio del Secadero, Almacén de Ramos Generales, Barbacuá, Capilla, Acopio.</td></tr>
+    <tr><td>Perks</td><td>Rosamorte en el Almacén · Taragüerno en el Barbacuá · Rapidito en la Oficina del Patrón · Doble Cruz y Nadarias en la Sala de Máquinas · Mulanda en la Capilla.</td></tr>
+    <tr><td>Escudo</td><td>Tapa de olla de hierro (Galpón), Cuero crudo de vaca (Almacén), Tientos y hebillas (Acopio). Se arma en el Patio del Secadero.</td></tr>
+    <tr><td>Trampas</td><td>La Trampa del Trapiche (Sala de Máquinas, necesita la luz) y la Llamarada (Patio del Secadero).</td></tr>
+  </table>
+
+  <div class="box">
+    <h3>El arma especial</h3>
+    <p><b>Es obligatoria para el easter egg</b> (el cementerio solo junta almas con ella). Tiene tres piezas, cada una con su prueba; las piezas son del equipo:</p>
+    <ul>
+      <li><b>Una calabaza:</b> vacía, en un rincón de la Capilla. Se llena con almas de muertos que caen cerca (10, más 3 por cada jugador extra).</li>
+      <li><b>Una bombilla:</b> la tiene un peón muerto, pálido y muy duro. Desde la ronda 4 sale de la tierra una vez por ronda, un rato después de que arranca. La suelta al caer.</li>
+      <li><b>Yerba:</b> en el Acopio. Al agarrarla se cierra el Acopio (encierro, todos adentro) y hay que aguantar 45 segundos.</li>
+    </ul>
+    <p>Con las tres, <b>cada jugador arma la suya</b> en la mesa del curandero, arriba en el altillo (sobre la Oficina). Si te morís, la volvés a armar.</p>
+    <p><b>Mejorarla:</b> el Pack-a-Pava no la acepta tal cual. Cuando aparezca la luz verde que anda suelta por el molino, <b>dispárale con el arma especial</b> hasta que brille. Recién ahí la acepta.</p>
+  </div>
+
+  <h2>El easter egg, paso a paso</h2>
+  <ol class="steps">
+    <li><b>Prender la luz</b> (Sala de Máquinas). En la Capilla aparece el Abuelo: hablale.</li>
+    <li><b>La calabaza del Abuelo:</b> está arriba de todo en el Almacén. Bajala de un tiro.</li>
+    <li><b>La bombilla:</b> está en el balde del aljibe del patio. <b>Mantené F</b> en el aljibe para subir el balde hasta arriba (si soltás, vuelve a bajar).</li>
+    <li><b>Secar la yerba en el Barbacuá:</b> cargalo y arranca un encierro (todos adentro) hasta juntar las almas. La yerba se seca, pero el fuego se desboca y la tapa: <b>apagalo de un soplido con el arma de la caja que sopla</b> (mientras el barbacuá está caliente sale mucho más seguido).</li>
+    <li><b>Moler la yerba:</b> en la Sala de Máquinas hay una palanca por jugador. Cada uno baja la suya y <b>todas tienen que estar abajo a la vez</b> (hay 2,5 segundos de margen).</li>
+    <li><b>Calentar el agua</b> en el fogón de la Oficina del Patrón. Sube despacio y trae encierro. Sacala <b>entre 75 y 85 °C</b>: más fría no sirve, más caliente quema la yerba.</li>
+    <li><b>Cebarle el mate al Abuelo.</b> Cada uno agarra su premio en la mano del Abuelo (tiene que ir cada uno a buscarlo).</li>
+    <li><b>El sombrero:</b> cuando cae el jefe de ronda se le vuela el sombrero. Llévenlo a su tumba en el Cementerio de los Peones. De cada tumba sale un peón (encierro) y <b>sus almas solo cuentan si los liquidan con el arma especial</b>.</li>
+    <li><b>La pelea final:</b> cuando el cementerio se calma, los lleva a la Salamanca. Al ganarla se completa el easter egg.</li>
+  </ol>
+
+  <h3>La pelea final</h3>
+  <ul>
+    <li>Al 75, 50 y 25 % de la vida <b>se cubre de fuego</b> y llama peones: liquídenlos para bajarle el escudo.</li>
+    <li>Tira bolas de fuego (una para cada uno) y marca <b>círculos</b> en el piso que revientan: salí de ellos.</li>
+    <li>Desde el 80 % marca una <b>franja de lado a lado</b> que al rato se prende como un muro de fuego; con poca vida, dos en cruz. Quedate de un lado.</li>
+    <li>Las <b>cuatro estalagmitas</b> del medio frenan las bolas de fuego, y si embiste contra una queda atontado. Cada tanto cae munición.</li>
+  </ul>
+
+  <h2>Jefes y rondas especiales</h2>
+  <ul><li><b>El jefe de ronda</b> cada 5 rondas: golpe al piso, latigazo y embestida; a veces va a <b>clausurar una máquina</b> (un perk o la caja). A la mitad de la vida se enfurece y llama peones.</li></ul>
+
+  <h2>Secretos</h2>
+  <ul>
+    <li><b>Canción secreta:</b> tres ositos materos escondidos por el molino. Un tiro a cada uno y suena la canción del molino.</li>
+    <li><b>La cuarta radio:</b> debajo del escritorio del Patrón.</li>
+    <li><b>La luz verde</b> que anda suelta marca dónde hay algo enterrado: seguila (atraviesa paredes, hay que darle la vuelta) y cavá donde se hunde.</li>
+  </ul>
+  <div class="tip">Armen el arma especial antes de llegar al cementerio: sin ella, las almas de las tumbas no cuentan.</div>
+</section>
+
+<!-- ============================ GRANJA ============================ -->
+<section class="chapter granja">
+  <div class="band"><div class="n">Capítulo II</div><h1>La Tapera</h1></div>
+  <p class="lead">Una chacra perdida entre los maizales, al atardecer.</p>
+
+  <h2>Lo básico</h2>
+  <table>
+    <tr><th>Qué</th><th>Dónde</th></tr>
+    <tr><td>Arranque</td><td>El Patio de la Tapera.</td></tr>
+    <tr><td>La luz</td><td>El grupo electrógeno de El Galpón.</td></tr>
+    <tr><td>Pack-a-Pava</td><td>El Establo. <b>Paso previo:</b> la Colorada, una gallina, se robó la tapa de la pava y anda suelta en una zona al azar (nunca la del arranque). Corre pero se cansa: agarrala y ponele la tapa a la máquina.</td></tr>
+    <tr><td>Caja</td><td>El Patio, La Cocina del Rancho, El Galpón, El Corral, Los Silos.</td></tr>
+    <tr><td>Perks</td><td>Rosamorte en el Patio · Taragüerno en el Establo · Rapidito en el Galpón · Doble Cruz en el Corral · Nadarias en el Dormitorio · Mulanda en El Pajar (arriba del establo).</td></tr>
+    <tr><td>Escudo (de paja)</td><td>Atado de paja (El Pajar), Arpillera de bolsa (Los Silos), Rollo de alambre (El Dormitorio). Se arma en el Patio.</td></tr>
+    <tr><td>Trampas</td><td>El Boyero Eléctrico (El Corral, necesita la luz) y la Quema de Rastrojo.</td></tr>
+  </table>
+
+  <div class="box">
+    <h3>El arma especial</h3>
+    <p>Sale del easter egg (paso 3): tres pedazos (hoja, mango y virola), cada uno con su ritual; se arma en la morsa del Galpón y <b>cada jugador se lleva la suya</b>.</p>
+    <p><b>Mejorarla:</b> la primera vez es parte del easter egg. Primero <b>la hoja tiene que tomar sangre</b> (muertos liquidados con ella) y después se templa en <b>la forja</b>, el Pack-a-Pava del Establo. Después, <b>cualquiera mejora la suya gratis</b> en la máquina.</p>
+  </div>
+
+  <h2>El easter egg, paso a paso</h2>
+  <ol class="steps">
+    <li><b>Prender el grupo electrógeno</b> del Galpón.</li>
+    <li><b>Los tres pedazos del arma especial</b>, cada uno en un altar con su ritual de encierro (salen muertos alrededor). Cada ritual tiene su vuelta:
+      <ul>
+        <li><b>La hoja</b>, en La Huerta: <b>el ritual de las velas</b> (10 almas). Hay cuatro velas alrededor del círculo y los muertos las apagan: <b>mantené F</b> al lado para volver a prenderlas. Si se apagan las cuatro, se pierde la mitad de las almas.</li>
+        <li><b>El mango</b>, en Los Silos: <b>el ritual de la luz</b> (12 almas). El círculo se muda entre tres lugares cada 15 segundos; 3 segundos antes, un anillo pálido y un rayo del cielo marcan adónde va. Hay que liquidar adentro del círculo.</li>
+        <li><b>La virola</b>, arriba en El Pajar: <b>las almas sueltas</b> (12 almas). Cada muerto que cae deja su alma flotando 6 segundos: pasá por encima para juntarla.</li>
+      </ul>
+      Con más jugadores se piden más almas.</li>
+    <li><b>Armarla</b> en la morsa del Galpón. Cada uno se lleva la suya.</li>
+    <li><b>La hoja toma sangre:</b> liquidar <b>15 muertos con ella</b> (5 más por jugador extra; cuentan los de todos). La hoja se va poniendo roja y en pantalla va la cuenta. Hasta que no termina, el Pack-a-Pava no la acepta.</li>
+    <li><b>La forja:</b> ponerla en el Pack-a-Pava del Establo. Tarda 45 segundos y <b>solo avanza si hay alguien parado en el círculo</b>; los muertos que caen adentro la apuran. Al 30% llega <b>el jefe de ronda</b> volando, se posa en la cumbrera del techo del establo y tira de la chapa: <b>la forja retrocede</b>. Bájenlo a tiros desde afuera (desde Los Silos o el Patio).</li>
+    <li><b>Cosechar</b> con el arma mejorada las cinco plantas que brillan en Los Tablones.</li>
+    <li><b>Sapecar la yerba en El Barbacuá</b> (arriba de los tablones): tenderla arriba, prender el fuego en la boca de abajo y aguantar arriba unos 45 segundos, dándola vuelta y apagando las llamaradas, mientras los muertos suben por la escalera.</li>
+    <li><b>Moler</b> en La Atahona (mantener F) y <b>empaquetar</b> en el Galpón.</li>
+    <li><b>El Prado:</b> se abre el maizal. Ofrecé la yerba en el altar del claro: arranca la pelea final. Al ganarla se completa el easter egg.</li>
+  </ol>
+
+  <h3>La pelea final</h3>
+  <ul>
+    <li>Al 75, 50 y 25 % se cubre y llama muertos del maizal: liquídenlos para bajarle el escudo. Tira cosas prendidas fuego y marca círculos en el piso.</li>
+    <li>Cada tanto <b>se mete bajo tierra</b> (no le entra nada) y un cuervo da vueltas arriba de uno de ustedes: <b>sale de abajo donde estaba parado ese</b>. Cuando el círculo violeta deja de seguirte, movete.</li>
+    <li>Los <b>cuatro fardos</b> del claro frenan lo que tira, y si embiste contra uno queda atontado.</li>
+  </ul>
+
+  <h2>La defensa del yerbal</h2>
+  <p>Cada 10 rondas (10, 20, 30…) una horda ataca junto con el jefe de ronda. Y siempre toca una durante el easter egg: <b>si llegan a la cosecha antes de la ronda 10, la defensa empieza ahí mismo</b> (y la de la ronda 10 ya no viene). Van contra las plantas de Los Tablones que necesita el easter egg: <b>si se pierde una, tarda 5 rondas en volver a crecer</b>. Las ventanas del campo pierden las tablas.</p>
+  <p>Las <b>torres de mate</b> gigantes disparan solas pero se quedan sin agua: <b>mantené F</b> al lado para cebarlas. Desde la ronda 20, con las plantas ya cosechadas, igual hay defensa: cada parcela salvada da puntos y un power-up.</p>
+
+  <h2>Jefes y rondas especiales</h2>
+  <ul><li><b>El jefe de ronda</b> cada 5 rondas: ataca desde el aire y se tira en picada. Si esquivás la picada queda un rato en el piso y ahí le entra más.</li></ul>
+
+  <h2>Secretos</h2>
+  <ul><li><b>Canción secreta:</b> tres escarapelas clavadas en las paredes: en la Cocina del Rancho (pared del dormitorio), en el Galpón (pared del corral) y en La Atahona (pared de la cocina). Agarrá las tres.</li></ul>
+  <div class="tip">Apenas sale el arma mejorada, prepárense: la defensa llega enseguida. Corten las plantas mientras la horda viene, que cada una cortada ya no se puede perder.</div>
+</section>
+
+<!-- ============================ PENAL ============================ -->
+<section class="chapter penal">
+  <div class="band"><div class="n">Capítulo III</div><h1>Mate of the Dead</h1></div>
+  <p class="lead">Un penal en una isla, en medio del río.</p>
+
+  <h2>Lo básico</h2>
+  <table>
+    <tr><th>Qué</th><th>Dónde</th></tr>
+    <tr><td>Arranque</td><td>El Pabellón B, <b>en gaucho life</b>.</td></tr>
+    <tr><td>La luz</td><td>Las Duchas.</td></tr>
+    <tr><td>Pack-a-Pava</td><td>La Ermita de San La Muerte, en el Islote de las Ánimas (se llega en bote desde El Muelle). <b>Paso previo:</b> la máquina está encadenada. Un guardia muerto anda entre los zombies con un manojo de llaves (se lo oye tintinear): matalo, levantá las llaves y abrí los candados.</td></tr>
+    <tr><td>Caja</td><td>El Pabellón B, El Comedor, Los Yerbales de la Leva, Los Calabozos, La Enfermería, El Secadero.</td></tr>
+    <tr><td>Perks</td><td>Taragüerno en la Cocina · Rapidito en las Duchas · Doble Cruz en el Secadero · Nadarias en la Enfermería · Mulanda en el Patio de Recreo · Chisporé en la Capilla del Penal. <span class="muted">(No hay Rosamorte: acá está el gaucho life.)</span></td></tr>
+    <tr><td>Escudo</td><td>Barrote suelto (Las Duchas, arriba), Grillete (Los Calabozos), Chapa de catre (El Muelle). Se arma en El Comedor.</td></tr>
+    <tr><td>Trampas</td><td>La Picana del Pabellón y las Duchas Hirvientes (necesitan la luz), y el Barbacuá del Secadero.</td></tr>
+  </table>
+
+  <div class="box">
+    <h3>Gaucho life</h3>
+    <p>Con <span class="kbd">X</span> entrás al gaucho life: los muertos no te alcanzan y disparás electricidad que prende perks, abre puertas y activa cosas del easter egg. <b>Mantené F</b> para volver. Tiene cargas: 3 solo, 1 en cooperativo, y recuperás una cada 5 rondas. En cooperativo, cuando caés entrás al gaucho life y podés levantarte solo, pero <b>caer ahí te saca todos los perks</b> (entrar a mano con X, no).</p>
+  </div>
+
+  <div class="box">
+    <h3>El arma especial</h3>
+    <p>Sale de la caja (solo en este mapa). <b>Hay una gratis:</b> desde el gaucho life se ven tres calaveras (en El Secadero, colgada entre la yerba; en la horca del Patio de Recreo; arriba de la cruz de la Capilla). Con el cuerpo no se ven, pero el cuchillo que te da Anacleto las rompe igual: acordate dónde están y tiráselo. Rotas las tres, aparece una en el escritorio de la Oficina del Alcaide (una sola, para el primero que la agarre).</p>
+    <p><b>El kit de ácido la convierte</b> (hace falta para el easter egg). Tres piezas: Frasco de ácido (La Enfermería), Manguera de goma (Las Duchas) y Válvula de bronce (La Cocina del Penal). Se arma en la mesa de la Enfermería y hay que aguantar el encierro de Los Calabozos (14 almas). Después se puede mejorar en el Pack-a-Pava.</p>
+    <p class="muted">El cuchillo de Anacleto también se mejora: tiralo en el Pack-a-Pava y aguantá el encierro de la ermita.</p>
+  </div>
+
+  <h2>El easter egg, paso a paso</h2>
+  <p>En tres celdas hay tres gauchos presos. Cada uno te dice cómo se consigue su llave, y recién cuando sale uno te habla el siguiente.</p>
+  <ol class="steps">
+    <li><b>Anacleto</b> (El Pabellón B): su llave la tienen los tres perros del penal, en el Patio de Recreo, Los Yerbales y El Muelle. Tienen hambre de almas: liquidá 5 muertos cerca de cada uno. Cuando comen los tres, el último devuelve la llave. Al salir, Anacleto te da su cuchillo.</li>
+    <li><b>Cirilo</b> (Los Calabozos): hablá con <b>Nicanor</b>, en la celda abierta del fondo de Los Calabozos. Solo se lo ve desde el <b>gaucho life</b>: acercate de alma y miralo. La llave la lleva el jefe de ronda en el cinturón y se suelta con ácido: armá el arma especial con el kit de ácido (ver arriba) y pegale un frasco al jefe de ronda (antes de hablar con Nicanor, no pasa nada).</li>
+    <li><b>Benito</b> (La Enfermería): poné el arma especial con ácido en la silla eléctrica de la Oficina del Alcaide y dale corriente desde el gaucho life. La llave sale de la chispa.</li>
+    <li><b>La yerba dorada:</b> al abrir la tercera celda baja la yerba dorada en el Patio de Recreo: agarrala.</li>
+    <li><b>El agua embrujada:</b> Benito pide agua del río. En el siguiente cruce del bote, la damajuana se llena en medio del río. En el islote, dejala en el Pack-a-Pava de la ermita y aguantá el encierro. Llevale el agua a Benito: te da la <b>bombilla suprema</b> y se abre el camino al cerro.</li>
+    <li><b>El mate dorado:</b> está en la caja fuerte de la Oficina del Alcaide. Se abre electrificándola desde el gaucho life.</li>
+    <li><b>El espinillo:</b> en El Cerro del Espinillo poné las tres cosas (la yerba dorada, la bombilla suprema y el mate dorado): arranca la pelea final, de dos fases. Al ganarla se completa el easter egg.</li>
+  </ol>
+
+  <h3>La pelea final</h3>
+  <ul>
+    <li>Al 80, 55 y 30 % se cubre y llama presos: liquídenlos para bajarle el escudo. Tira bolas de fuego y marca círculos; a la mitad de la vida todo va más rápido.</li>
+    <li>Desde el 80 % <b>encadena a uno a una estaca</b> que le queda a la espalda: el círculo colorado te sigue; si no salís antes de que se clave, quedás clavado en el lugar. <b>Solo:</b> date vuelta y rompé la estaca a tiros. <b>En cooperativo</b> el encadenado no puede tirar: la rompe un compañero. A los 8 segundos se suelta sola.</li>
+    <li>Las <b>tres capillitas</b> del cerro frenan los proyectiles bajos (por arriba pasan), y si embiste contra una queda atontado.</li>
+  </ul>
+
+  <h2>Jefes</h2>
+  <ul><li><b>El jefe de ronda</b> no viene fijo cada 5 rondas: tiene su propio calendario. Tira una <b>cadena larga</b> que te engancha y te trae al lado suyo; también clausura máquinas. No hay ronda especial.</li></ul>
+
+  <h2>Secretos</h2>
+  <ul><li><b>Canción secreta:</b> tres guitarras: arriba de la mesa larga del Comedor, tirada en un rincón del Patio de Recreo y en El Muelle, al lado de la baranda. Rasgueá las tres.</li>
+    <li><b>Lo que ve el alma:</b> en el gaucho life aparecen los rastros de los presos muertos: lo que escribieron en las paredes, sus manos, la ronda de pisadas del patio y los que siguen sentados donde estaban.</li></ul>
+  <div class="tip">Guarden cargas de gaucho life: la silla eléctrica y la caja fuerte las piden (y las calaveras se buscan de alma).</div>
+</section>
+
+<!-- ============================ ESTEROS ============================ -->
+<section class="chapter esteros">
+  <div class="band"><div class="n">Capítulo IV</div><h1>Mate no Numa</h1></div>
+  <p class="lead">Los Esteros del Iberá, de noche.</p>
+
+  <div class="box">
+    <h3>Quién es quién</h3>
+    <p>Acá <b>uno de los jugadores es Gil</b> (de colorado); si jugás solo, sos vos. En cooperativo, el anfitrión sortea quién es Gil al empezar. Algunos pasos los puede hacer solamente Gil (están marcados).</p>
+  </div>
+
+  <h2>Lo básico</h2>
+  <table>
+    <tr><th>Qué</th><th>Dónde</th></tr>
+    <tr><td>Arranque</td><td>La Isleta del Fogón.</td></tr>
+    <tr><td>La luz</td><td>La caldera de la locomóvil de El Obraje.</td></tr>
+    <tr><td>Pack-a-Pava</td><td>El Embalsado. <b>Paso previo:</b> un yacaré viejo y enorme duerme enroscado en la máquina. Buscale tres pescados en las redes de La Pesquería y tiráselos de a uno (mantener F). Con el tercero bosteza y se va al agua.</td></tr>
+    <tr><td>Caja</td><td>La Isleta del Fogón, El Obraje, La Pesquería, La Reducción, El Algarrobo de los Colgados, La Casona del Coronel.</td></tr>
+    <tr><td>Perks</td><td>Rosamorte en la Isleta · Rapidito en La Barraca · Doble Cruz en el Rancho del Pescador · Taragüerno en La Casona · Mulanda en la Iglesia de la Reducción · Nadarias en el Algarrobo · <b>Nadadito</b> (Acuanauta) en la Laguna del Irupé.</td></tr>
+    <tr><td>Escudo (cuero de yacaré)</td><td>Cuero de yacaré (La Pesquería), Correas de tiento (El Obraje), Tabla de lapacho (La Reducción). Se arma en la mesa del fogón de la Isleta.</td></tr>
+  </table>
+
+  <div class="box">
+    <h3>El arma especial</h3>
+    <p><b>No sale de la caja:</b> sale del easter egg (paso 3). Cuando termina el ritual de la iglesia, <b>cada uno agarra la suya en el altar</b>. Se mejora en el Pack-a-Pava.</p>
+  </div>
+
+  <h2>El easter egg, paso a paso</h2>
+  <ol class="steps">
+    <li><b>La voz:</b> desde la ronda 2, a Gil lo llama una voz desde el Algarrobo de los Colgados (pasando El Obraje, hacia el oeste). Vayan.</li>
+    <li><b>El saber:</b> tres cosas al hueco del algarrobo.
+      <ul>
+        <li><b>El códice de los padres:</b> en la cripta inundada de la Reducción. La reja de la cripta está cerrada: su llave brilla en el fondo de la Laguna del Irupé (hay que bucear). Abrí la reja en la iglesia y buceá en la cripta.</li>
+        <li><b>Los papeles del coronel:</b> en la caja fuerte del despacho, arriba en la Casona del Coronel. La llave la tiene <b>el jefe de ronda</b>: cuando cae, la suelta.</li>
+        <li><b>Las plumas de los urutaú:</b> tres urutaú camuflados que parecen ramas secas. Se los oye llorar; un tiro los espanta y sueltan una pluma.</li>
+      </ul></li>
+    <li><b>El arma especial:</b>
+      <ul>
+        <li>En lo más hondo de la Laguna del Irupé brilla una pava: buceá a buscarla.</li>
+        <li><b>Las brasas:</b> ponela sobre la locomóvil de El Obraje (con la luz prendida).</li>
+        <li><b>El agua de luna:</b> llenala donde la luna pega en el agua, al lado de la pasarela de la laguna.</li>
+        <li><b>El altar:</b> la pava en el altar de la iglesia de la Reducción, <b>todos adentro</b>. La iglesia se cierra y hay que aguantar 60 segundos. Después, cada uno agarra la suya.</li>
+      </ul></li>
+    <li><b>Hervir la creciente:</b> en la ronda siguiente sube el agua. Tírenle al agua con el arma especial: cada muerto cocinado ahí es un alma.</li>
+    <li><b>La luz de los ahogados:</b> flota en medio de la Laguna del Irupé. <b>Solo Gil puede tocarla</b> y llevarla al hueco del algarrobo; los demás lo cubren. Si Gil cae, la luz queda donde cayó y solo él puede levantarla.</li>
+    <li><b>La pelea final</b>, al lado del algarrobo. Se mete en el pajonal: <b>fijate dónde se mueve el pasto</b>.</li>
+    <li><b>El final:</b> <b>Gil tiene que decidir</b> (30 segundos, con <span class="kbd">1</span> o <span class="kbd">2</span>). Cada opción lleva a un final distinto.</li>
+  </ol>
+
+  <h2>Jefes y rondas especiales</h2>
+  <ul>
+    <li><b>El jefe de ronda</b> cada 5 rondas (lleva la llave de la caja fuerte). De lejos <b>apunta</b> (se ve la mira roja) y tira adonde quedó apuntando: movete de costado.</li>
+    <li><b>La creciente</b> cada 10 rondas (y cuando la pide el easter egg): el agua sube y vienen yacarés entre los muertos. Ese día no viene el jefe de ronda.</li>
+  </ul>
+
+  <h2>Secretos</h2>
+  <ul><li><b>Canción secreta:</b> tres verduleras (acordeones): arriba de la mesa de los hacheros en La Barraca, en un rincón del Rancho del Pescador y en la alfombra de la sala de La Casona, entre los sillones. Abrí el fuelle de las tres.</li></ul>
+  <div class="tip">Tomen la Nadadito (Acuanauta) antes de bucear: la llave de la reja, la pava y la cripta están bajo el agua. Y en la creciente, sumergirse salva: <b>abajo del agua los muertos y los jefes no te buscan</b> (los yacarés te rodean pero no muerden hasta que salís a respirar). Ojo con el aire.</div>
+</section>
+
+<!-- ============================ TORRE ============================ -->
+<section class="chapter torre">
+  <div class="band"><div class="n">Capítulo V</div><h1>Revelaciones Materas</h1></div>
+  <p class="lead">Una torre de quince pisos en el ojo de un remolino. Te guía Martín Fierro.</p>
+
+  <h2>Lo básico</h2>
+  <table>
+    <tr><th>Qué</th><th>Dónde</th></tr>
+    <tr><td>Arranque</td><td>Piso 1, El Zaguán del Remolino (Martín Fierro espera junto al fogón).</td></tr>
+    <tr><td>La luz</td><td>Piso 5, La Plaza de las Ánimas.</td></tr>
+    <tr><td>Pack-a-Pava</td><td>Piso 10, El Patio del Sello. <b>Paso previo:</b> le falta la garrafa, que cuelga de una roldana afuera de la arcada del piso 10. Subila girando la manivela (mantener F); cada cuarto de vuelta queda trabada.</td></tr>
+    <tr><td>Caja</td><td>Pisos 3, 7, 11 y 14.</td></tr>
+    <tr><td>Perks (uno por piso)</td><td>Rosamorte (1) · Rapidito (3) · Taragüerno (5) · Doble Cruz (7) · Flopa Hermanos/PhD (10) · Mulanda (12) · Nadarias (13).</td></tr>
+    <tr><td>Escudo</td><td>Tapa de pava (piso 6), Cuero de potro (piso 8), Correa de rebenque (piso 11). Se arma en el piso 1.</td></tr>
+  </table>
+
+  <div class="box">
+    <h3>El arma especial</h3>
+    <p>Se compra en la <b>pared de la cima (piso 15) por 12.000</b>, o sale de la caja. Se mejora en el Pack-a-Pava.</p>
+  </div>
+
+  <h2>El easter egg, paso a paso</h2>
+  <p class="muted">En este mapa el cartel del objetivo sigue en pantalla, una luz marca adónde ir y Fierro repite la pista si pasa mucho tiempo.</p>
+  <ol class="steps">
+    <li><b>Hablá con Martín Fierro</b>, junto al fogón del piso 1.</li>
+    <li><b>Las tres piezas del cañón</b> de la Vuelta de Obligado:
+      <ul>
+        <li><b>El caño:</b> tirado en el secadero, piso 3.</li>
+        <li><b>La rueda:</b> cuelga de tres cadenas arriba del agujero del piso 8. Rompé los tres candados a tiros y cae hasta la plaza del piso 5.</li>
+        <li><b>La mecha:</b> sellada bajo el patio del piso 10. El sello solo se rompe si alguien <b>le cae encima desde un piso de arriba con la PhD Flopper</b> (está en el mismo piso 10).</li>
+      </ul></li>
+    <li><b>Armar el cañón</b> en la cima, piso 15.</li>
+    <li><b>El encierro:</b> las rejas rodean el cañón; liquidá muertos adentro hasta llenarlo de almas.</li>
+    <li><b>El alma pesada:</b> sale un jefe en la cima. Bajalo y el cañón queda cargado.</li>
+    <li><b>Prendé la mecha:</b> cañonazo al ojo de la tormenta. Baja una escalera de oro… trabada.</li>
+    <li><b>Pagá la escalera divina</b> en la pared dorada de la cima: <b>40.000 jugando solo</b> y 20.000 más por cada jugador (60.000 de a dos, 80.000 de a tres, 100.000 de a cuatro). Pueden poner entre todos, cada uno lo que tenga.</li>
+    <li><b>Subí la escalera</b> todos juntos: lleva a la pelea final. Al ganarla se completa el easter egg.</li>
+  </ol>
+
+  <h3>La pelea final</h3>
+  <ul>
+    <li>Rompé las <b>calabazas doradas</b>: le dan fuerza mientras flota intocable.</li>
+    <li>Bajale la vida. <b>No pises la orilla</b>: el mate cocido quema.</li>
+    <li>Liberá a tiros las <b>ánimas</b> y saltá el rayo de la bombilla cuando pase.</li>
+    <li>Terminalo: <b>saltá las ondas</b> cuando golpea el piso.</li>
+  </ul>
+
+  <h2>Jefes y rondas especiales</h2>
+  <ul><li>En las rondas múltiplo de 5, uno o dos jefes de ronda.</li></ul>
+
+  <h2>Secretos</h2>
+  <ul><li><b>Canción secreta:</b> tres amplificadores: piso 2, arriba de la mesa larga; piso 8, contra la pared este mirando al hueco; piso 13, al lado del altar. Subiles el volumen a los tres.</li></ul>
+  <div class="tip">Junten plata antes de prender la mecha: la escalera cuesta 40.000 solo y 20.000 más por cada jugador, y se paga entre todos.</div>
+</section>
+
+<!-- ============================ CASTILLO ============================ -->
+<section class="chapter castillo">
+  <div class="band"><div class="n">Capítulo VI</div><h1>Der Mateendrache</h1></div>
+  <p class="lead">Un castillo gaucho en la cordillera nevada. Martín Fierro espera junto al fogón del Gran Salón.</p>
+
+  <h2>Lo básico</h2>
+  <table>
+    <tr><th>Qué</th><th>Dónde</th></tr>
+    <tr><td>Arranque</td><td>El Patio de Armas.</td></tr>
+    <tr><td>La luz</td><td>El fogón del Gran Salón.</td></tr>
+    <tr><td>Pack-a-Pava</td><td>Las Termas del Inca, del otro lado del barranco. <b>Paso previo</b> (a mitad de partida):
+      <ol>
+        <li>Con la luz prendida, rompé a tiros las tres grampas de hielo del puente levadizo (dos donde las cadenas entran a la pared del portón y una sobre el tambor del torno).</li>
+        <li>Girá el torno (mantener F): cada vuelta baja el puente, cada cuarto queda trabado y, si nadie gira, se resbala. Con un muerto encima no gira.</li>
+        <li>En las termas, rompé los tres tapones de hielo de las pozas. Háganlo rápido: si tardan, el frío tapa de nuevo los rotos.</li>
+        <li>Quedate en las termas unos 40 segundos mientras el agua caliente derrite la poza de la pava. Salen muertos de la nieve.</li>
+      </ol></td></tr>
+    <tr><td>Caja</td><td>Patio de Armas, Gran Salón, Palenque, Bodega, Sala del Trono, Termas del Inca.</td></tr>
+    <tr><td>Perks</td><td>Rosamorte en el Patio de Armas · Rapidito en la Caballeriza · Doble Cruz y Baldragón en la Herrería · Taragüerno en la Bodega · Nadarias en la Biblioteca · Mulanda en la Capilla de los Caballeros · Flopa Hermanos en la Sala del Trono.</td></tr>
+    <tr><td>Escudo (rodela)</td><td>Tabla de algarrobo (El Palenque), Umbo de bronce (La Bodega), Correas de cuero (La Caballeriza). Se arma en La Herrería.</td></tr>
+    <tr><td>Trampas</td><td>Las Brasas de la Liza (El Palenque) y el Aceite Hirviendo (La Barbacana, necesita la luz).</td></tr>
+  </table>
+
+  <div class="box">
+    <h3>Las armas especiales: cuatro, una por elemento</h3>
+    <p>Cada una se gana con su vuelta (ver abajo) y queda flotando en su altar. <b>Cualquiera la agarra, pero una sola por vez:</b> para llevarte otra, dejá antes la tuya en su altar. Si el que la tiene se muere, se va o la cambia en la caja, vuelve sola a su altar.</p>
+    <table>
+      <tr><th>Elemento</th><th>Altar</th></tr>
+      <tr><td>Fuego</td><td>La Herrería</td></tr>
+      <tr><td>Viento</td><td>El Mirador del Viento</td></tr>
+      <tr><td>Rayo</td><td>El Campanario</td></tr>
+      <tr><td>Hielo</td><td>La Gruta del Glaciar</td></tr>
+    </table>
+    <p><b>Mejorarlas (el temple, no el Pack-a-Pava):</b> con el arma en su altar, <b>soplá el erke</b> (mantener F). Arranca un encierro de 75 segundos donde solo el que sopló no puede salir. Si aguanta, el arma sale templada y suma el <b>tiro cargado</b> (mantené el clic).</p>
+  </div>
+
+  <h2>Las cuatro vueltas</h2>
+  <div class="two">
+    <div>
+      <h3>Fuego</h3>
+      <ol>
+        <li>Tres atados de yesca de cardón (el Patio, la Caballeriza y el Palenque).</li>
+        <li>Tirá la yesca al fuego de la Herrería y dale al fuelle (mantener F): sale la Salamandra.</li>
+        <li>Salta a un brasero: dale almas cerca hasta que se mueva. Son tres braseros, cada uno más lejos.</li>
+        <li>En el yunque, forjá el arma con el cuchillo <b>justo cuando brilla blanco</b> (cinco golpes buenos).</li>
+      </ol>
+      <h3>Viento</h3>
+      <ol>
+        <li>Cuatro veletas con cóndor en los techos (Biblioteca, Capilla, Caballeriza, Cocina). Cada tiro las gira un cuarto: <b>todas mirando al oeste</b>, a la cordillera.</li>
+        <li>Sopla el viento y tres plumas de cóndor andan sueltas (el Adarve, la Cumbre, el Palenque): agarralas pasándoles al lado.</li>
+        <li>Dejalas en el altar del Mirador del Viento.</li>
+      </ol>
+    </div>
+    <div>
+      <h3>Rayo</h3>
+      <ol>
+        <li>Rezá en el altar de la Capilla: tres campanas de luz muestran un orden de cuatro toques.</li>
+        <li>En el Campanario, tocá las campanas a tiros en ese orden. Si errás, te cae un rayo y se empieza de nuevo.</li>
+        <li>La campana grande suelta una calabaza: llevala a las marcas de la tormenta (afuera, de a una) y quedate adentro hasta que caiga el rayo. Son tres.</li>
+        <li>Dejá la calabaza llena en el altar del Campanario.</li>
+      </ol>
+      <h3>Hielo</h3>
+      <ol>
+        <li>En la Cumbre, rompé el bloque de hielo frente a una de las tumbas (facón, explosiones o el arma de fuego).</li>
+        <li>Llevá el corazón azul bajando hasta la Gruta del Glaciar. Se derrite cerca del fuego y se vuelve a congelar afuera, en la nieve. Si se derrite entero, vuelve a la Cumbre.</li>
+        <li>Con el corazón en el altar, cinco agujas de hielo se prenden en un orden: tirales en ese orden (tres vueltas: de 3, de 4 y de 5).</li>
+      </ol>
+    </div>
+  </div>
+
+  <h2>El easter egg, paso a paso</h2>
+  <ol class="steps">
+    <li><b>Las cuatro armas especiales</b> (las vueltas de arriba).</li>
+    <li>Con los cuatro, hay una escena en el Gran Salón.</li>
+    <li><b>El temple:</b> las cuatro templadas en sus altares.</li>
+    <li><b>La cueva:</b> derretí la pared de hielo de la gruta con un tiro cargado de fuego. Adentro:
+      <ul>
+        <li>Prendé el fogón con fuego.</li>
+        <li>Mantené el agua <b>entre 78 y 82 °C</b> un rato (el fogón calienta solo; el hielo la baja).</li>
+        <li>Con un tiro cargado de viento, levantá la pava y cebá el mate gigante.</li>
+        <li>Con un tiro cargado de rayo, despertá lo que duerme ahí.</li>
+      </ul></li>
+    <li><b>Las cadenas:</b> cuatro, cada una sellada con un elemento. Se rompen con tiros cargados: con el del mismo elemento, de un tiro; con los otros, de a tres.</li>
+    <li><b>La vanguardia:</b> cuatro jefes entran por el patio, uno detrás del otro. Un escudo los cubre de frente: péguenles por la espalda o háganlos chocar contra la pared. Cada uno trae lo suyo:
+      <ul>
+        <li>Uno deja el pasto ardiendo por donde pisa: no lo sigan de cerca.</li>
+        <li>Otro entumece al que se le acerca: péguenle de lejos.</li>
+        <li>Otro marca círculos blancos que revientan: afuera.</li>
+        <li>Y otro larga una manga que persigue a uno y le tapa la vista: corré.</li>
+      </ul></li>
+    <li><b>El juramento:</b> en la Cumbre, cada uno jura (mantener F). Cuando juraron todos, arranca la pelea final.</li>
+    <li><b>La pelea final</b>:
+      <ul>
+        <li>Rompé las gemas que brillan de a una, cada una con el arma de su elemento.</li>
+        <li>Casi no le entran las balas: el cuerno del medio (mantener F, se recarga en 16 s) lo deja expuesto un rato, y ahí le entra el daño de verdad. Usen el cuerno cada vez que esté listo. Si se multiplica, el verdadero es el que deja brasas donde pisa.</li>
+        <li>Párense en los cuatro altares para prenderlos.</li>
+        <li>Al final, denle con todo.</li>
+      </ul></li>
+  </ol>
+
+  <h2>Jefes y rondas especiales</h2>
+  <ul><li><b>El jefe de ronda</b> cada 5 rondas: un escudo lo cubre de frente; péguenle por la espalda, con explosivos o cuando quede atontado contra una pared.</li></ul>
+  <h2>Secretos</h2>
+  <ul><li><b>Canción secreta:</b> tres anchos de espadas: en la punta de la mesa del banquete del Gran Salón, arriba del barril del rincón de la Cocina y arriba del barril de la Bodega, al lado de los toneles.</li></ul>
+  <div class="tip">Pidan pistas a Fierro en el Gran Salón: cada vez que le hablás te dice qué falta de las vueltas que están en marcha.</div>
+</section>
+
+</body>
+</html>

@@ -5,7 +5,7 @@ import { mesh, boxGeo, cylGeo } from './props';
 // El Altillo del Patrón: un piso arriba de la Oficina (zona H), con una
 // escalera empinada pegada a la pared este. Es chico, con una sola bajada, y
 // cuando hay alguien arriba los muertos también se tiran por las claraboyas.
-// Ahí está la mesa del curandero, donde se arma el Mate del Chiquitijuein.
+// Ahí está la mesa del curandero, donde se arma el Mate de la Luz Mala.
 //
 // El resto del mapa es plano: acá están las cuentas de alturas que usan el
 // jugador, los zombies y los disparos para saber en qué piso está cada uno.
@@ -29,12 +29,20 @@ export const ATTIC_SUB = 'Lo que el patrón no quería que se viera';
 // a partir de esta altura se está arriba
 export const UP_Y = 2;
 
-export const inStair = (x, z) => x >= STAIR.x0 && x < STAIR.x1 && z >= STAIR.z0 && z < STAIR.z1;
-export const inAtticRect = (x, z) => x >= ATTIC.x0 && x < ATTIC.x1 && z >= ATTIC.z0 && z < ATTIC.z1;
+// Los otros mapas no tienen altillo (lo prende o apaga Game al armar el mundo).
+let ON = true;
+export function setAttic(on) {
+  ON = !!on;
+}
+export const atticOn = () => ON;
+
+export const inStair = (x, z) => ON && x >= STAIR.x0 && x < STAIR.x1 && z >= STAIR.z0 && z < STAIR.z1;
+export const inAtticRect = (x, z) => ON && x >= ATTIC.x0 && x < ATTIC.x1 && z >= ATTIC.z0 && z < ATTIC.z1;
 export const inAttic = (x, z) => inAtticRect(x, z) && !inStair(x, z);
 export const stairY = (z) => Math.min(1, Math.max(0, (z - STAIR.z0) / (STAIR.z1 - STAIR.z0))) * ATTIC.y;
 // 0 abajo, 1 en el altillo
-export const levelOf = (y) => ((y || 0) > UP_Y ? 1 : 0);
+// (sin altillo, todos están en el mismo "piso": el penal usa alturas de verdad)
+export const levelOf = (y) => (ON && (y || 0) > UP_Y ? 1 : 0);
 
 // Altura del piso bajo (x, z) para algo que está a la altura y.
 export function floorAt(x, z, y = 0) {
@@ -82,9 +90,9 @@ export function buildAttic(world) {
     gb.flat('wallTop', lx, lz, hx, hz, top + 0.001, true);
   }
   // zócalo del altillo
-  gb.box('trim', x0, y, z0, x1, y + 0.12, z0 + 0.04);
-  gb.box('trim', x0, y, z1 - 0.04, STAIR.x0, y + 0.12, z1);
-  gb.box('trim', x0, y, z0, x0 + 0.04, y + 0.12, z1);
+  gb.box('trim', x0, y + 0.004, z0, x1, y + 0.12, z0 + 0.04);
+  gb.box('trim', x0, y + 0.004, z1 - 0.04, STAIR.x0, y + 0.12, z1);
+  gb.box('trim', x0, y + 0.004, z0, x0 + 0.04, y + 0.12, z1);
 
   // la escalera: escalones, zancas y la baranda del lado abierto
   const steps = 12;
@@ -93,8 +101,8 @@ export function buildAttic(world) {
     const za = STAIR.z0 + i * d;
     const h = stairY(za + d);
     gb.box('planks', STAIR.x0 + 0.05, h - 0.06, za, STAIR.x1 - 0.05, h, za + d + 0.02);
-    // contrahuella
-    gb.box('woodDark', STAIR.x0 + 0.05, Math.max(0, h - 0.3), za, STAIR.x1 - 0.05, h - 0.06, za + 0.03);
+    // cerrada abajo hasta el piso (tablas), así no se ve ni se mete nada debajo
+    gb.box('planksDark', STAIR.x0 + 0.05, 0, za, STAIR.x1, h - 0.06, za + d);
   }
   gb.box('beam', STAIR.x0 - 0.02, 0, STAIR.z0, STAIR.x0 + 0.08, 0.35, STAIR.z1);
   for (let i = 0; i <= 5; i++) {
@@ -150,8 +158,10 @@ export function buildAttic(world) {
   trunk.position.set(43, y, 44.9);
   P.add(trunk);
   world.addBox([42.4, y, 44.55, 43.6, y + 0.6, 45.3], { kind: 'prop' });
+  // (un poco levantadas: con la base justo en el piso se veían desde la
+  // oficina, pegadas al cielorraso)
   for (const [sx, sz, r] of [[42.6, 34, 0.2], [43.4, 33.7, -0.3], [47, 33.6, 0.1]]) {
-    const sack = mesh(boxGeo(0.7, 0.8, 0.45), M.sackYerba, sx, y + 0.4, sz, 0, r, 0);
+    const sack = mesh(boxGeo(0.7, 0.8, 0.45), M.sackYerba, sx, y + 0.42, sz, 0, r, 0);
     P.add(sack);
   }
   world.addBox([42, y, 33, 44, y + 0.8, 34.3], { kind: 'prop' });
@@ -159,8 +169,10 @@ export function buildAttic(world) {
   chair.add(mesh(boxGeo(0.5, 0.05, 0.5), M.woodDark || M.wood, 0, 0.45, 0));
   chair.add(mesh(boxGeo(0.5, 0.6, 0.05), M.woodDark || M.wood, 0, 0.75, -0.23, -0.2, 0, 0));
   for (const [a, b] of [[-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]]) chair.add(mesh(cylGeo(0.025, 0.025, 0.45, 6), M.wood, a, 0.22, b));
-  chair.position.set(49.5, y, 38);
-  chair.rotation.set(0, 0.7, 1.35);
+  // tirada de costado, apoyada en el piso (inclinada atravesaba el cielorraso
+  // de la oficina)
+  chair.position.set(49.5, y + 0.26, 38);
+  chair.rotation.set(0, 0.7, Math.PI / 2);
   P.add(chair);
 
   // colisiones: paredes del altillo, baranda y lo de abajo de la escalera
@@ -189,6 +201,7 @@ export function buildAttic(world) {
 
 // Celdas de la escalera: abajo no se puede caminar por ahí (es la rampa).
 export function blockStairCells(world) {
+  if (!ON) return;
   for (let z = STAIR.z0; z < STAIR.z1; z++) for (let x = STAIR.x0; x < STAIR.x1; x++) world.navBlock[world.idx(x, z)] = 1;
 }
 

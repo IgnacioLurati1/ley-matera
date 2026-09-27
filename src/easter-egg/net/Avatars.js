@@ -1,13 +1,22 @@
 import * as THREE from 'three';
 import { makePose, solvePose, PART_COUNT } from '../entities/skeleton';
+import { swimPose } from '../entities/zombieGaits';
+import { shieldModel } from '../world/shieldModels';
 
 // Los otros jugadores: un gaucho con sombrero, cara con bigote, poncho de
 // color que se bambolea al moverse y su mate en la mano, animado con el mismo
 // esqueleto que los zombies. Arriba lleva el nombre.
 
 const PONCHOS = [0xa8231c, 0x1e5aa8, 0x1f7a3a, 0xc9a02a, 0x6a2a8a];
+// la silueta de cada compañero a través de las paredes (el color de su poncho, más vivo)
+const XRAY = [0xff5a48, 0x5aa8ff, 0x5ae07a, 0xffd24a, 0xc070ff];
+// lo que tarda en desangrarse un caído (Player: bleed)
+const BLEED = 30;
 const tmpRot = new THREE.Matrix4();
 const tmpEul = new THREE.Euler();
+const tmpP = new THREE.Vector3();
+const tmpD = new THREE.Vector3();
+const SHIELD_TILT = new THREE.Matrix4().makeRotationX(0.12).multiply(new THREE.Matrix4().makeRotationY(Math.PI));
 
 export default class Avatars {
   constructor(game, session) {
@@ -132,6 +141,21 @@ export default class Avatars {
     tag.renderOrder = 10;
     tag.visible = !r.noTag;
     group.add(tag);
+    // compañeros de partida: la misma malla de un solo color, dibujada solo
+    // donde algo la tapa (así se los ve a través de las paredes, como en el original)
+    let xray = null;
+    const xparts = [];
+    if (this.team) {
+      xray = new THREE.MeshBasicMaterial({ color: XRAY[r.id % XRAY.length], transparent: true, opacity: 0, depthWrite: false, depthFunc: THREE.GreaterDepth, fog: false });
+      for (const m of [...parts, hat.children[0], crown, cape]) {
+        const x = new THREE.Mesh(m.geometry, xray);
+        x.matrixAutoUpdate = false;
+        x.renderOrder = 9;
+        x.visible = false;
+        m.add(x);
+        xparts.push(x);
+      }
+    }
     this.root.add(group);
     const fake = {
       P: makePose(),
@@ -143,7 +167,116 @@ export default class Avatars {
       slot: r.id,
       scale: 1,
     };
-    this.list.set(r.id, { r, group, parts, hand, tag, fake, M, extras, poncho: ponchoAt, sway: new THREE.Vector2(), lastYaw: r.yaw, mats: Array.from({ length: PART_COUNT }, () => new THREE.Matrix4()), name: r.name });
+    this.list.set(r.id, { r, group, parts, hand, tag, fake, M, extras, poncho: ponchoAt, sway: new THREE.Vector2(), lastYaw: r.yaw, mats: Array.from({ length: PART_COUNT }, () => new THREE.Matrix4()), name: r.name, xray, xparts, xk: 0 });
+  }
+
+  // El escudo armado colgado en la espalda (del torso, mirando para atrás,
+  // con la parte de abajo un poco separada por el poncho). Se arma la primera
+  // vez que hace falta; si se rompe, se esconde.
+  backShield(a, on) {
+    a.shieldOn = on;
+    if (on && !a.shield) {
+      const s = shieldModel(this.g.world.M, this.g.mapId);
+      s.traverse((o) => {
+        o.castShadow = false;
+      });
+      s.matrixAutoUpdate = false;
+      a.group.add(s);
+      const off = new THREE.Matrix4().makeTranslation(0, -0.02, -0.2 - s.userData.back * 0.9).multiply(SHIELD_TILT).multiply(new THREE.Matrix4().makeScale(0.9, 0.9, 0.9));
+      a.extras.push({ obj: s, part: 1, off });
+      s.matrix.multiplyMatrices(a.mats[1], off);
+      a.shield = s;
+    }
+    if (a.shield) a.shield.visible = on;
+  }
+
+  // El color del poncho de un compañero (el estero: cada jugador es un
+  // personaje; Gil va de colorado).
+  restyle(id, hex) {
+    const a = this.list.get(id);
+    if (a) a.M.poncho.color.set(hex).multiplyScalar(1.7);
+  }
+
+  // Los muñecos de los compañeros de la partida (no los de las cinemáticas,
+  // los gauchos del mapa ni el cuerpo del final, que usan esta misma clase).
+  get team() {
+    return !!this.s && this.s.avatars === this;
+  }
+
+  // La silueta aparece de a poco cuando algo tapa al compañero (se mira
+  // unas veces por segundo si hay pared entre la cámara y su pecho).
+  updateXray(a, dt) {
+    const g = this.g;
+    const r = a.r;
+    a.losT = (a.losT || 0) - dt;
+    if (a.losT <= 0) {
+      a.losT = 0.12;
+      const cam = g.camera.position;
+      tmpP.set(r.pos.x, (r.pos.y || 0) + (r.downed ? 0.35 : 1.1), r.pos.z);
+      tmpD.subVectors(tmpP, cam);
+      const len = tmpD.length();
+      a.hidden = len > 0.5 && g.world.raycast(cam, tmpD.divideScalar(len), len - 0.3) !== Infinity;
+    }
+    a.xk += ((a.hidden ? 1 : 0) - a.xk) * Math.min(1, dt * 8);
+    const on = a.xk > 0.02;
+    if (on !== !!a.xOn) {
+      a.xOn = on;
+      for (const x of a.xparts) x.visible = on;
+    }
+    a.xray.opacity = 0.55 * a.xk;
+  }
+
+  // Los compañeros caídos: dónde va el ícono de reanimar en la pantalla
+  // (arriba del cuerpo; si queda fuera de vista, en el borde, apuntando).
+  revives() {
+    const g = this.g;
+    const cam = g.camera;
+    const W = innerWidth;
+    const H = innerHeight;
+    // margen: que entren el ícono, el nombre y los metros
+    const M = 60;
+    const out = [];
+    cam.updateMatrixWorld();
+    for (const a of this.list.values()) {
+      const r = a.r;
+      if (!r.downed || r.dead) {
+        a.downAt = null;
+        a.near = false;
+        continue;
+      }
+      a.downAt ??= g.time;
+      // de cerca no hace falta (ya lo dice el cartel de "Mantené [F]") y lo tapaba;
+      // (un poco de margen para que no parpadee justo en el borde)
+      const dist = g.player.pos.distanceTo(r.pos);
+      a.near = dist < (a.near ? 3.4 : 3);
+      if (a.near) continue;
+      tmpP.set(r.pos.x, (r.pos.y || 0) + 1.3, r.pos.z);
+      tmpD.copy(tmpP).applyMatrix4(cam.matrixWorldInverse);
+      const front = tmpD.z < -0.05;
+      let x = 0;
+      let y = 0;
+      let edge = !front;
+      if (front) {
+        tmpP.project(cam);
+        x = (tmpP.x * 0.5 + 0.5) * W;
+        y = (-tmpP.y * 0.5 + 0.5) * H;
+        edge = x < M || x > W - M || y < M || y > H - M;
+      }
+      let ang = 0;
+      if (edge) {
+        // hacia dónde está, desde el centro de la pantalla (si está atrás, abajo)
+        let dx = front ? x - W / 2 : tmpD.x;
+        let dy = front ? y - H / 2 : 0;
+        if (Math.abs(dx) + Math.abs(dy) < 1e-4) dy = 1;
+        const s = Math.min((W / 2 - M) / Math.max(1e-6, Math.abs(dx)), (H / 2 - M) / Math.max(1e-6, Math.abs(dy)));
+        x = W / 2 + dx * s;
+        // (sin bajar a las esquinas de abajo: ahí están los puntos y las perks)
+        y = Math.min(H / 2 + dy * s, H * 0.58);
+        ang = Math.atan2(dy, dx);
+      }
+      out.push({ id: r.id, name: r.name || '', x, y, edge, ang, dist, k: Math.min(1, (g.time - a.downAt) / BLEED) });
+    }
+    return out;
   }
 
   remove(id) {
@@ -153,6 +286,7 @@ export default class Avatars {
     a.tag.material.map.dispose();
     a.tag.material.dispose();
     for (const m of Object.values(a.M)) m.dispose();
+    a.xray?.dispose();
     this.list.delete(id);
   }
 
@@ -184,8 +318,23 @@ export default class Avatars {
       if (r.downed || r.dead || r.corpse) {
         g.zombies.poseCrawl(a.fake, dt * (r.corpse || r.dead ? 0 : 0.6));
         P.rootPitch = 1.3;
-        P.rootY = 0.02;
+        P.rootY = (g.world.levels ? r.pos.y || 0 : 0) + 0.02;
+        P.rootFwd = 0;
+      } else if (r.swim >= 2) {
+        // nadando (entities/swim.js): en la superficie pataleando con el mate
+        // en alto para que no se moje; buceando, acostado dando brazadas
+        const F = a.fake;
+        F.baseY = 0;
+        F.scale = 1;
+        F.wetY = r.pos.y + (r.swim === 3 ? 1.2 : 1.32);
+        swimPose(F, P, g.time, r.swim);
+        if (r.swim === 2) {
+          P.shRp = -1.9;
+          P.shRr = 0.2;
+          P.elR = -1.2;
+        }
       } else {
+        P.rootFwd = 0;
         P.rootPitch = 0;
         P.rootY = Math.max(0, r.pos.y);
         a.fake.speedType = r.speed > 5 ? 'run' : 'walk';
@@ -200,7 +349,10 @@ export default class Avatars {
         P.shLp = -0.25 + (r.moving ? Math.sin(a.fake.phase) * 0.35 : 0);
         P.elL = -0.35;
       }
-      solvePose(a.mats, r.pos.x, r.pos.z, r.yaw + Math.PI, 1, P);
+      // (las cinemáticas pueden poner su pose: levantar el mate, arrodillarse)
+      r.poseFn?.(P);
+      const fw = P.rootFwd || 0;
+      solvePose(a.mats, r.pos.x + Math.sin(r.yaw + Math.PI) * fw, r.pos.z + Math.cos(r.yaw + Math.PI) * fw, r.yaw + Math.PI, 1, P);
       for (const m of a.parts) {
         m.matrix.copy(a.mats[m.part]);
         m.matrixWorldNeedsUpdate = true;
@@ -222,15 +374,37 @@ export default class Avatars {
         if (e.obj === a.poncho) e.obj.matrix.multiply(tmpRot.makeRotationFromEuler(tmpEul.set(a.sway.x, 0, a.sway.y)));
         e.obj.matrixWorldNeedsUpdate = true;
       }
-      a.hand.visible = !r.downed && !r.dead && !r.corpse;
+      a.hand.visible = !r.downed && !r.dead && !r.corpse && !r.ghost;
+      // (el alma de gaucho life no lo lleva)
+      const shield = !!r.shield && !r.ghost;
+      if (shield !== !!a.shieldOn) this.backShield(a, shield);
+      // en gaucho life el compañero se ve como un alma azul
+      if (!!r.ghost !== !!a.ghost) {
+        a.ghost = !!r.ghost;
+        for (const m of Object.values(a.M)) {
+          m.transparent = a.ghost;
+          m.opacity = a.ghost ? 0.42 : 1;
+          m.depthWrite = !a.ghost;
+          if (m.emissive) m.emissive.set(a.ghost ? 0x2a70c8 : 0x000000);
+          m.needsUpdate = true;
+        }
+      }
       a.tag.position.set(r.pos.x, r.pos.y + (r.downed ? 0.9 : 2.05), r.pos.z);
       const d = a.tag.position.distanceTo(g.camera.position);
       a.tag.material.opacity = d > 34 ? 0 : 0.95;
+      // de cerca se achica (a 2 m tapaba media pantalla); de 8 m para allá, el de siempre
+      const k = Math.min(1, Math.max(0.3, d / 8));
+      a.tag.scale.set(1.2 * k, 0.3 * k, 1);
       a.tag.material.color.setRGB(1, r.downed ? 0.4 : 1, r.downed ? 0.4 : 1);
+      if (a.xray) this.updateXray(a, dt);
+      // caído: el nombre ya va con el ícono de reanimar
+      if (this.team) a.tag.visible = !r.downed;
     }
+    if (this.team) g.hud.setRevives(this.revives());
   }
 
   dispose() {
+    if (this.team) this.g.hud.setRevives([]);
     for (const id of [...this.list.keys()]) this.remove(id);
     this.root.removeFromParent();
   }

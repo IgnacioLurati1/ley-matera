@@ -1,0 +1,195 @@
+/* El Challenge de la torre: el selector de modo (ui/MapSelect.js) y el panel
+   de la partida (entities/TowerChallenge.js). Aparte de style.css para no
+   pisar lo de las otras sesiones. */
+
+.mdu-mapsel__modes { display: grid; grid-template-columns: auto 1fr 1fr; align-items: stretch; gap: 6px; margin: -6px 0 min(18px, 2vh); }
+.mdu-mapsel__modes[hidden] { display: none; }
+.mdu-mapsel__modes-k { align-self: center; padding: 0 6px 0 2px; font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; opacity: 0.6; }
+.mdu-mode {
+  appearance: none;
+  position: relative;
+  display: grid;
+  gap: 3px;
+  padding: 8px 12px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
+}
+.mdu-mode b { font-family: 'Cinzel', 'Special Elite', serif; font-size: 17px; font-weight: 700; letter-spacing: 0.04em; }
+.mdu-mode small { font-size: 11.5px; line-height: 1.3; opacity: 0.62; }
+.mdu-mode em { position: absolute; top: 7px; right: 9px; font-style: normal; font-size: 11px; color: var(--gold); opacity: 0.8; }
+.mdu-mode:hover,
+.mdu-mode:focus-visible { outline: none; background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.22); }
+.mdu-mode[aria-pressed='true'] { border-color: #ffd27a; background: linear-gradient(90deg, rgba(255, 210, 122, 0.2), rgba(255, 255, 255, 0.02)); }
+.mdu-mode[aria-pressed='true'] b { color: #ffd27a; }
+.mdu-mode--reto[aria-pressed='true'] {
+  border-color: #ff4f9a;
+  background: linear-gradient(90deg, rgba(255, 79, 154, 0.24), rgba(110, 60, 255, 0.1) 70%, rgba(255, 255, 255, 0.02));
+  box-shadow: 0 0 22px -6px #ff4f9a, inset 0 0 0 1px rgba(154, 122, 255, 0.35);
+}
+.mdu-mode--reto[aria-pressed='true'] b {
+  background: linear-gradient(90deg, #ff4f9a, #ffd27a 55%, #33e8ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.mdu-mode[disabled] { cursor: default; }
+.mdu-mapsel__hero.is-challenge .mdu-mapsel__name {
+  background: linear-gradient(90deg, #ff4f9a, #ffd27a 45%, #9a7aff 75%, #33e8ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0 18px rgba(255, 79, 154, 0.45)) drop-shadow(0 4px 0 rgba(0, 0, 0, 0.85));
+}
+@media (max-width: 520px) {
+  .mdu-mapsel__modes { grid-template-columns: 1fr 1fr; }
+  .mdu-mapsel__modes-k { grid-column: 1 / -1; }
+}
+
+/* el panel de la partida (arriba, como el de las Revelaciones) */
+.mdu-obj--reto header span {
+  background: linear-gradient(90deg, #ff4f9a, #ffd27a 60%, #33e8ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+.mdu-obj__tag { font-style: normal; font-size: 11px; opacity: 0.7; }
+.mdu-obj--reto.is-event { border-color: rgba(255, 79, 154, 0.6); box-shadow: 0 0 24px -8px #ff4f9a; }
+.mdu-obj--reto.is-event p { color: #ffb0d2; }
+.mdu-obj--reto.is-event.is-good { border-color: rgba(255, 214, 110, 0.7); box-shadow: 0 0 24px -8px #ffd66e; }
+.mdu-obj--reto.is-event.is-good p { color: #ffe7a8; }
+
+/* el cartelón de cada evento: entra de golpe y se va (entities/challengeEvents.js) */
+.mdu-reto-banner {
+  position: absolute;
+  left: 50%;
+  top: 24%;
+  z-index: 7;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  /* (sin meterse en el panel de arriba a la derecha) */
+  width: clamp(360px, calc(100vw - 680px), 980px);
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  --c: #ff4f9a;
+}
+.mdu-reto-banner.is-mal { --c: #ff3d6e; --c2: #ffb23a; }
+.mdu-reto-banner.is-raro { --c: #7ab8ff; --c2: #d8c8ff; }
+.mdu-reto-banner.is-bien { --c: #ffd24a; --c2: #7aff9a; }
+.mdu-reto-banner.is-on { animation: mdu-reto-slam 3.8s cubic-bezier(0.2, 1.3, 0.4, 1) forwards; }
+.mdu-reto-banner em {
+  font-style: normal;
+  font-size: 13px;
+  letter-spacing: 0.5em;
+  text-transform: uppercase;
+  color: var(--c2);
+  text-shadow: 0 0 12px var(--c), 0 2px 0 #000;
+}
+.mdu-reto-banner b {
+  font-family: 'Cinzel', 'Special Elite', serif;
+  font-size: clamp(26px, 4.2vw, 64px);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #fff 0%, var(--c2) 45%, var(--c) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 20px var(--c)) drop-shadow(0 4px 0 rgba(0, 0, 0, 0.9));
+}
+.mdu-reto-banner i { font-style: normal; font-size: 28px; color: var(--c2); text-shadow: 0 0 10px var(--c); }
+.mdu-reto-banner small {
+  max-width: 760px;
+  margin-top: 6px;
+  font-size: clamp(13px, 1.5vw, 17px);
+  line-height: 1.35;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.9), 0 2px 0 #000;
+}
+@keyframes mdu-reto-slam {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(2.4) rotate(-5deg); }
+  10% { opacity: 1; transform: translate(-50%, -50%) scale(0.92) rotate(1.5deg); }
+  15% { transform: translate(-50%, -50%) scale(1.06) rotate(-0.6deg); }
+  20% { transform: translate(-50%, -50%) scale(1) rotate(0); }
+  82% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -62%) scale(0.96); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mdu-reto-banner.is-on { animation-name: mdu-reto-fade; }
+  @keyframes mdu-reto-fade { 0%, 100% { opacity: 0; transform: translate(-50%, -50%); } 10%, 82% { opacity: 1; transform: translate(-50%, -50%); } }
+}
+
+/* el color del evento en los bordes de la pantalla (el apagón: negro de verdad) */
+.mdu-reto-tint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.4s;
+  box-shadow: inset 0 0 170px 40px var(--tint, transparent);
+}
+.mdu-reto-tint.is-on { opacity: 1; }
+.mdu-reto-tint.is-dark { box-shadow: inset 0 0 260px 120px var(--tint, transparent); }
+
+/* el Cielo de los Mates (entities/challengeHeaven.js) */
+.mdu-cielo .mdu-fcine__text {
+  width: max-content;
+  max-width: min(900px, 86vw);
+  padding: 8px 28px;
+  color: #fff8e0;
+  font-family: 'Cinzel', Georgia, serif;
+  /* (sobre el cielo casi blanco: una franja oscura atrás para que se lea) */
+  background: linear-gradient(90deg, rgba(40, 22, 4, 0), rgba(40, 22, 4, 0.55) 14%, rgba(40, 22, 4, 0.55) 86%, rgba(40, 22, 4, 0));
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.75), 0 2px 0 rgba(40, 20, 0, 0.95);
+}
+.mdu-cielo__title {
+  position: absolute;
+  left: 50%;
+  top: 26%;
+  margin: 0;
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: clamp(34px, 6vw, 84px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  background: linear-gradient(180deg, #fffbe8 0%, #ffd66a 55%, #e0902a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 24px rgba(255, 210, 120, 0.9)) drop-shadow(0 3px 0 rgba(80, 40, 0, 0.8));
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.9);
+  transition: opacity 0.9s, transform 2.4s ease-out;
+}
+.mdu-cielo__title.is-on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.mdu-cielo__tonc {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  font-family: Impact, 'Arial Black', sans-serif;
+  font-size: clamp(48px, 9vw, 120px);
+  color: #ffe23a;
+  -webkit-text-stroke: 4px #3a1a00;
+  text-shadow: 0 6px 0 #3a1a00;
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(-12deg) scale(0.4);
+  transition: opacity 0.15s, transform 0.25s cubic-bezier(0.2, 1.8, 0.4, 1);
+}
+.mdu-cielo__tonc.is-on { opacity: 1; transform: translate(-50%, -50%) rotate(-12deg) scale(1); }
+.mdu-cielo__white {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 45%, #fffef6, #fff4d8 55%, #ffe6b0);
+}

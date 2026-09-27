@@ -116,6 +116,12 @@ export function renderVoice(segs, P, rand = Math.random) {
       // subarmónico: un pulso fuerte y uno débil (voz rasposa, "de ultratumba")
       if (P.sub && period % 2) cycleAmp *= 1 - P.sub;
       if (P.fry && rand() < P.fry) cycleAmp *= 0.3 + rand() * 0.5;
+      // la voz que se quiebra al cerrar una frase: pulsos flojos, desparejos y más graves
+      const cr = done ? 0 : s.creak || 0;
+      if (cr > 0) {
+        cycleF0 *= 1 - cr * 0.3 * rand();
+        if (rand() < cr) cycleAmp *= 0.25 + rand() * 0.5;
+      }
     }
     phase += cycleF0 * T;
     const oq = P.oq ?? 0.6;
@@ -133,8 +139,10 @@ export function renderVoice(segs, P, rand = Math.random) {
       rough = gauss(rand);
     }
     const growl = 1 + (P.growl ?? 0) * rough;
-    const breath = (rand() * 2 - 1) * (P.breath ?? 0.08) * (0.35 + 0.65 * flow);
-    let x = (tilt * 18 * growl + breath) * voicedS;
+    // (con aire: al final de la frase la voz se apaga soplando)
+    const by = done ? 0 : s.breathy || 0;
+    const breath = (rand() * 2 - 1) * (P.breath ?? 0.08) * (0.35 + 0.65 * flow) * (1 + by * 3);
+    let x = (tilt * 18 * growl * (1 - by * 0.4) + breath) * voicedS;
 
     // ---- tracto vocal ----
     for (let i = 0; i < 4; i++) {
@@ -254,57 +262,169 @@ export function zombieSound(kind, r = Math.random) {
 }
 
 // ---------------- murmullos con forma de habla ----------------
+// Cada personaje con su voz: altura (f0), velocidad, cuánto sube y baja la
+// melodía (range), el largo del tracto (shift: más chico = más grande el que
+// habla), aire, temblor, aspereza y la nasalidad (bwMul).
 export const SPEAKERS = {
-  abuelo: { f0: 108, rate: 0.82, jitter: 0.03, shimmer: 0.09, breath: 0.22, vib: { rate: 5.5, depth: 0.035 }, tilt: 0.45, shift: 0.96, oq: 0.65, level: 0.8 },
-  anunciador: { f0: 58, rate: 0.72, jitter: 0.012, shimmer: 0.05, breath: 0.08, sub: 0.5, growl: 0.2, roughRate: 30, tilt: 0.4, shift: 0.8, drive: 1.8, oq: 0.6, level: 0.9 },
+  // el Abuelo: viejo, lento y temblón
+  abuelo: { f0: 112, rate: 0.8, range: 1.1, jitter: 0.04, shimmer: 0.12, breath: 0.26, vib: { rate: 5.8, depth: 0.045 }, tilt: 0.48, shift: 0.97, oq: 0.66, level: 0.8 },
+  anunciador: { f0: 58, rate: 0.72, range: 0.6, jitter: 0.012, shimmer: 0.05, breath: 0.08, sub: 0.5, growl: 0.2, roughRate: 30, tilt: 0.4, shift: 0.8, drive: 1.8, oq: 0.6, level: 0.9 },
   // el Capataz de joven, antes del pacto: voz más clara y sin gruñido
-  capatazJoven: { f0: 118, rate: 1.02, jitter: 0.018, shimmer: 0.06, breath: 0.1, tilt: 0.32, shift: 0.97, oq: 0.55, level: 0.8 },
-  capataz: { f0: 88, rate: 1.0, jitter: 0.03, shimmer: 0.1, breath: 0.12, growl: 0.45, roughRate: 45, sub: 0.25, tilt: 0.35, shift: 0.88, drive: 2.2, oq: 0.55, level: 0.9 },
-  radio: { f0: 122, rate: 1.05, jitter: 0.015, shimmer: 0.05, breath: 0.1, tilt: 0.3, shift: 1.0, oq: 0.55, level: 0.8 },
-  taza: { f0: 190, rate: 1.1, jitter: 0.02, shimmer: 0.08, breath: 0.12, tilt: 0.3, shift: 1.15, oq: 0.5, level: 0.8 },
+  capatazJoven: { f0: 124, rate: 1.04, range: 1.2, jitter: 0.018, shimmer: 0.06, breath: 0.1, tilt: 0.32, shift: 0.99, oq: 0.55, level: 0.8 },
+  capataz: { f0: 82, rate: 0.98, range: 0.8, jitter: 0.03, shimmer: 0.1, breath: 0.12, growl: 0.5, roughRate: 45, sub: 0.28, tilt: 0.36, shift: 0.86, drive: 2.3, oq: 0.55, level: 0.9 },
+  radio: { f0: 128, rate: 1.1, range: 1.3, jitter: 0.015, shimmer: 0.05, breath: 0.1, tilt: 0.3, shift: 1.02, oq: 0.55, level: 0.8 },
+  taza: { f0: 205, rate: 1.15, range: 1.5, jitter: 0.02, shimmer: 0.08, breath: 0.12, tilt: 0.28, shift: 1.2, oq: 0.5, level: 0.8 },
+  // la Voz de Arriba: muy grave, lenta, pareja (casi sin melodía) y como en coro
+  entidad: { f0: 64, rate: 0.74, range: 0.45, jitter: 0.006, shimmer: 0.03, breath: 0.28, sub: 0.45, vib: { rate: 2.8, depth: 0.015 }, tilt: 0.52, shift: 0.8, oq: 0.72, level: 0.85 },
+  // el espantapájaros: seco y rasposo, como paja que cruje
+  espantapajaros: { f0: 118, rate: 0.9, range: 1.4, jitter: 0.06, shimmer: 0.16, breath: 0.4, growl: 0.35, roughRate: 70, tilt: 0.28, shift: 1.08, drive: 1.8, oq: 0.48, level: 0.85 },
+  // el Alcaide: porteño, rápido, agudo y nasal (la melodía sube y baja mucho)
+  alcaide: { f0: 134, rate: 1.22, range: 1.6, jitter: 0.018, shimmer: 0.06, breath: 0.06, growl: 0.1, roughRate: 40, tilt: 0.2, shift: 1.07, bwMul: 1.5, drive: 1.3, oq: 0.45, level: 0.9 },
+  // el Gauchito Gil: grave, firme y con algo de santo
+  gil: { f0: 76, rate: 0.8, range: 0.9, jitter: 0.015, shimmer: 0.06, breath: 0.18, sub: 0.32, vib: { rate: 4, depth: 0.02 }, growl: 0.2, roughRate: 35, tilt: 0.44, shift: 0.87, drive: 1.3, oq: 0.64, level: 0.9 },
+  // los presos: Anacleto (viejo y ronco), Cirilo (joven y ligero), Benito (medio loco: la voz le baila)
+  anacleto: { f0: 94, rate: 0.8, range: 1, jitter: 0.045, shimmer: 0.13, breath: 0.34, growl: 0.36, roughRate: 30, tilt: 0.5, shift: 0.93, oq: 0.64, level: 0.8 },
+  cirilo: { f0: 156, rate: 1.1, range: 1.5, jitter: 0.02, shimmer: 0.06, breath: 0.12, tilt: 0.3, shift: 1.06, oq: 0.52, level: 0.8 },
+  benito: { f0: 104, rate: 1, range: 1.9, jitter: 0.05, shimmer: 0.1, breath: 0.26, vib: { rate: 7.5, depth: 0.06 }, sub: 0.1, tilt: 0.42, shift: 0.98, oq: 0.6, level: 0.8 },
+  // Nicanor, el compañero de celda de Cirilo (muerto hace cien años, solo le
+  // habla al alma): casi un susurro, lento, con un vaivén lento de fantasma
+  nicanor: { f0: 138, rate: 0.74, range: 0.85, jitter: 0.03, shimmer: 0.1, breath: 0.58, vib: { rate: 2.2, depth: 0.05 }, tilt: 0.6, shift: 1.04, bwMul: 1.3, oq: 0.8, level: 0.85 },
+  // la torre: Martín Fierro (la misma voz del Abuelo, más firme) y Francisco (la Voz, ya hombre)
+  fierro: { f0: 102, rate: 0.84, range: 1, jitter: 0.025, shimmer: 0.08, breath: 0.2, vib: { rate: 5, depth: 0.03 }, tilt: 0.42, shift: 0.94, oq: 0.64, level: 0.85 },
+  francisco: { f0: 90, rate: 0.9, range: 0.75, jitter: 0.015, shimmer: 0.06, breath: 0.18, sub: 0.22, vib: { rate: 3.6, depth: 0.018 }, tilt: 0.4, shift: 0.9, oq: 0.6, level: 0.9 },
+  // los cuatro caballeros del castillo, fantasmas de antes: cada uno con su elemento
+  // Fuego: caliente y rasposo (crepita), el más apurado de los cuatro
+  caballeroFuego: { f0: 98, rate: 1.1, range: 1.4, jitter: 0.04, shimmer: 0.14, breath: 0.18, growl: 0.7, roughRate: 64, fry: 0.16, tilt: 0.24, shift: 0.97, drive: 2.6, oq: 0.5, level: 0.9 },
+  // Viento: alto, liviano y soplado (mucho aire), con un vaivén lento como una ráfaga
+  caballeroViento: { f0: 165, rate: 0.94, range: 1.3, jitter: 0.015, shimmer: 0.06, breath: 0.45, vib: { rate: 3, depth: 0.03 }, tilt: 0.55, shift: 1.1, oq: 0.75, level: 0.8 },
+  // Rayo: nítido y brillante, con un temblor rápido como electricidad
+  caballeroRayo: { f0: 118, rate: 1.12, range: 1.6, jitter: 0.01, shimmer: 0.04, breath: 0.05, vib: { rate: 9, depth: 0.035 }, tilt: 0.12, shift: 1.05, bwMul: 0.75, drive: 1.6, oq: 0.42, level: 0.85 },
+  // Hielo: grave, muy lento y casi sin melodía; resonancias finitas como de vidrio
+  // el Sargento de la partida (el estero): ahogado, ladra órdenes con la voz
+  // mojada (apagada, con un gorgoteo rápido) y más apurado que el viejo Anacleto
+  sargento: { f0: 116, rate: 1.12, range: 1.35, jitter: 0.035, shimmer: 0.12, breath: 0.2, vib: { rate: 11, depth: 0.06 }, growl: 0.3, roughRate: 22, tilt: 0.46, shift: 0.95, bwMul: 2, drive: 1.5, oq: 0.58, level: 0.9 },
+  caballeroHielo: { f0: 72, rate: 0.66, range: 0.3, jitter: 0.004, shimmer: 0.02, breath: 0.2, tilt: 0.22, shift: 1.02, bwMul: 0.55, oq: 0.5, level: 0.85 },
 };
 
 const VOWELS_RE = /[aeiouáéíóúü]/;
 const STRIP = { á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ü: 'u' };
 
-// Consonantes: tipo y color del ruido.
-function consonant(c, next) {
+// De la palabra escrita a "letras de sonido" del castellano rioplatense: la u
+// muda de gue/gui/que/qui (llegué no es "llegüe") y la ü que sí suena, la h
+// muda, ll e y como "sh", c y g suaves delante de e/i, z como s, v como b y la
+// rr (o la r del principio) vibrante. Letras propias: G = g dura, S = sh,
+// C = ch, R = rr.
+export function phon(word) {
+  return word
+    .replace(/ch/g, 'C')
+    .replace(/h/g, '')
+    .replace(/ll/g, 'S')
+    .replace(/rr/g, 'R')
+    .replace(/^r/, 'R')
+    .replace(/gü/g, 'Gw')
+    .replace(/gu([eéií])/g, 'G$1')
+    .replace(/g([eéií])/g, 'j$1')
+    .replace(/g/g, 'G')
+    .replace(/qu([eéií])/g, 'k$1')
+    .replace(/q/g, 'k')
+    .replace(/c([eéií])/g, 's$1')
+    .replace(/c/g, 'k')
+    .replace(/z/g, 's')
+    .replace(/v/g, 'b')
+    .replace(/x/g, 'ks')
+    .replace(/y$/, 'i')
+    .replace(/y/g, 'S')
+    .replace(/ü/g, 'u');
+}
+
+// La vocal que lleva el acento y las que son semivocales (la i/u de un
+// diptongo, más cortas). Las sílabas se cuentan por núcleos: dos vocales
+// seguidas son una sola sílaba si una es i/u sin tilde. `orig` es la palabra
+// escrita (la regla de las graves mira cómo termina: vocal, n o s).
+function stressOf(orig, L) {
+  const nuclei = [];
+  let prev = -2;
+  for (let i = 0; i < L.length; i++) {
+    const c = L[i];
+    if (!VOWELS_RE.test(c)) continue;
+    const last = nuclei[nuclei.length - 1];
+    if (last && prev === i - 1 && ('iu'.includes(c) || 'iu'.includes(L[i - 1]))) last.push(i);
+    else nuclei.push([i]);
+    prev = i;
+  }
+  if (!nuclei.length) return { at: -1, glides: new Set() };
+  let n = nuclei.findIndex((v) => v.some((i) => 'áéíóú'.includes(L[i])));
+  if (n < 0) n = /[aeiouáéíóúns]$/.test(orig) ? Math.max(0, nuclei.length - 2) : nuclei.length - 1;
+  const nu = nuclei[n];
+  const at = nu.find((i) => 'áéíóú'.includes(L[i])) ?? nu.find((i) => 'aeo'.includes(L[i])) ?? nu[nu.length - 1];
+  const glides = new Set();
+  for (const v of nuclei) if (v.length > 1) for (const i of v) if (i !== at && 'iu'.includes(L[i])) glides.add(i);
+  return { at, glides };
+}
+
+// Adónde van los formantes en cada consonante (el "lugar" donde se cierra la
+// boca): así las vocales se deslizan hacia la consonante y salen de ella, y
+// una b no suena igual que una d o una g.
+const LOCUS = {
+  lab: [280, 900, 2300, 3300],
+  alv: [300, 1700, 2600, 3400],
+  pal: [280, 2150, 2900, 3500],
+  vel: [300, 1500, 2200, 3300],
+};
+
+// Consonantes: tipo, lugar (at) y color del ruido. prev: la letra de antes
+// (entre vocales la b, la d y la g son suaves, casi sin cerrar la boca);
+// last: si es la última letra de la palabra (la d del final casi no suena).
+function consonant(c, next, prev, last) {
+  const soft = !!prev && (VOWELS_RE.test(prev) || prev === 'r');
   switch (c) {
     case 's':
+      // la s antes de consonante se aspira ("ehtá", como en el Río de la Plata)
+      return next && !VOWELS_RE.test(next) ? { k: 'fric', at: 'alv', f: 1400, bw: 2600, amp: 0.3, dur: 0.06 } : { k: 'fric', at: 'alv', f: 5200, bw: 2400, amp: 0.55, dur: 0.075 };
     case 'z':
-      return { k: 'fric', f: 5200, bw: 2400, amp: 0.55, dur: 0.075 };
+      return { k: 'fric', at: 'alv', f: 5200, bw: 2400, amp: 0.55, dur: 0.075 };
+    case 'S':
+      return { k: 'fric', at: 'pal', f: 3100, bw: 2200, amp: 0.5, dur: 0.08 };
+    case 'C':
+      return { k: 'affr', at: 'pal', f: 3400, bw: 2400, amp: 0.45, dur: 0.07 };
     case 'c':
-      return 'ei'.includes(next) ? { k: 'fric', f: 5200, bw: 2400, amp: 0.55, dur: 0.075 } : { k: 'stop', f: 2000, dur: 0.05 };
+      return 'ei'.includes(next) ? { k: 'fric', at: 'alv', f: 5200, bw: 2400, amp: 0.55, dur: 0.075 } : { k: 'stop', at: 'vel', f: 2000, dur: 0.05 };
     case 'f':
-      return { k: 'fric', f: 4200, bw: 3500, amp: 0.25, dur: 0.07 };
+      return { k: 'fric', at: 'lab', f: 4200, bw: 3500, amp: 0.25, dur: 0.07 };
     case 'j':
     case 'x':
-      return { k: 'fric', f: 1700, bw: 1600, amp: 0.45, dur: 0.07 };
+      return { k: 'fric', at: 'vel', f: 1700, bw: 1600, amp: 0.45, dur: 0.07 };
+    case 'G':
     case 'g':
-      return 'ei'.includes(next) ? { k: 'fric', f: 1700, bw: 1600, amp: 0.45, dur: 0.07 } : { k: 'stop', f: 1800, voiced: true, dur: 0.04 };
+      if (c === 'g' && 'ei'.includes(next)) return { k: 'fric', at: 'vel', f: 1700, bw: 1600, amp: 0.45, dur: 0.07 };
+      return soft ? { k: 'approx', at: 'vel', amp: 0.5, dur: 0.045 } : { k: 'stop', at: 'vel', f: 1800, voiced: true, dur: 0.04 };
     case 'h':
       return null;
     case 'p':
-      return { k: 'stop', f: 900, dur: 0.055 };
+      return { k: 'stop', at: 'lab', f: 900, dur: 0.055 };
     case 't':
-      return { k: 'stop', f: 3600, dur: 0.05 };
+      return { k: 'stop', at: 'alv', f: 3600, dur: 0.05 };
     case 'k':
     case 'q':
-      return { k: 'stop', f: 2000, dur: 0.055 };
+      return { k: 'stop', at: 'vel', f: 2000, dur: 0.055 };
     case 'b':
     case 'v':
-      return { k: 'stop', f: 800, voiced: true, dur: 0.04 };
+      return soft ? { k: 'approx', at: 'lab', amp: 0.55, dur: 0.045 } : { k: 'stop', at: 'lab', f: 800, voiced: true, dur: 0.04 };
     case 'd':
-      return { k: 'stop', f: 3000, voiced: true, dur: 0.035 };
+      if (last) return soft ? { k: 'approx', at: 'alv', amp: 0.35, dur: 0.03 } : null;
+      return soft ? { k: 'approx', at: 'alv', amp: 0.6, dur: 0.04 } : { k: 'stop', at: 'alv', f: 3000, voiced: true, dur: 0.035 };
     case 'm':
-      return { k: 'nasal', v: [260, 1100, 2400, 3300], dur: 0.06 };
+      return { k: 'nasal', v: [260, 1000, 2300, 3300], dur: 0.06 };
     case 'n':
-    case 'ñ':
       return { k: 'nasal', v: [260, 1500, 2500, 3300], dur: 0.055 };
+    case 'ñ':
+      return { k: 'nasal', v: [260, 2000, 2800, 3400], dur: 0.065 };
     case 'l':
-      return { k: 'liquid', v: [360, 1200, 2600, 3400], dur: 0.05 };
+      return { k: 'liquid', v: [360, 1500, 2700, 3400], dur: 0.05 };
     case 'r':
-      return { k: 'tap', dur: 0.03 };
+      return { k: 'tap', dur: 0.028 };
+    case 'R':
+      return { k: 'trill', dur: 0.075 };
     case 'y':
       return { k: 'liquid', v: [320, 2000, 2700, 3500], dur: 0.05 };
     case 'w':
@@ -315,58 +435,92 @@ function consonant(c, next) {
 }
 
 // Convierte un texto en segmentos con ritmo y entonación de castellano rioplatense.
+// Las palabras de una frase van encadenadas (sin silencios entre una y otra);
+// la frase se estira al final y cierra con la voz que se apaga (un poco de
+// carraspera y de aire) y, después de un punto, a veces se toma aire.
 export function speechSegments(text, S, r = Math.random) {
   const segs = [];
   const clean = text.toLowerCase().replace(/[¡¿"«»()]/g, '');
   const phrases = clean.split(/([,.;:!?…]+)/);
-  const rate = S.rate ?? 1;
   const base = S.f0;
+  // cuánto se mueve la melodía (acentos, caída de la frase, exclamaciones)
+  const R = S.range ?? 1;
+  // cuánto se le quiebra la voz al cerrar una frase (los graves, más)
+  const creakK = S.creak ?? (base < 100 ? 0.45 : 0.3);
+  let prevPunct = '';
   for (let p = 0; p < phrases.length; p += 2) {
     const body = phrases[p].trim();
     const punct = phrases[p + 1] || '';
     if (!body) continue;
     const words = body.split(/\s+/);
-    const vowelsTotal = (body.match(/[aeiouáéíóúü]/g) || []).length || 1;
+    // cada frase a su velocidad (las cortas, más rápido)
+    const rate = (S.rate ?? 1) * (0.93 + r() * 0.14) * (words.length <= 3 ? 1.06 : 1);
+    const sounds = words.map((w) => [...phon(w)]);
+    const vowelsTotal = sounds.reduce((n, L) => n + L.filter((c) => VOWELS_RE.test(c)).length, 0) || 1;
     let vi = 0;
     const question = punct.includes('?');
     const excl = punct.includes('!');
+    const stop = /[.!?…]/.test(punct);
+    const ends = !!punct;
+    // después de un punto, a veces se oye cómo toma aire
+    if (/[.!?…]/.test(prevPunct) && r() < 0.35) segs.push({ dur: (0.14 + r() * 0.08) / rate, f0: [base, base], v: 'a', amp: [0.3, 0.35], voiced: 0, noise: { f: 1600, bw: 2600, amp: 0.07 }, soft: 0.04 });
+    prevPunct = punct;
     words.forEach((word, wi) => {
-      const letters = [...word];
-      const wv = letters.filter((c) => VOWELS_RE.test(c)).length;
-      const accented = letters.findIndex((c) => 'áéíóú'.includes(c));
-      // sílaba tónica: la que tiene tilde, o la penúltima (la última si termina en consonante que no es n/s)
-      let stressV = accented >= 0 ? letters.slice(0, accented).filter((c) => VOWELS_RE.test(c)).length : Math.max(0, wv - (/[aeiouns]$/.test(word) ? 2 : 1));
-      if (wv === 1) stressV = 0;
-      let wvi = 0;
+      const letters = sounds[wi];
+      const { at, glides } = stressOf(word, letters);
+      const lastWord = wi === words.length - 1;
       for (let i = 0; i < letters.length; i++) {
         const c = letters[i];
         const next = letters[i + 1] || '';
         if (VOWELS_RE.test(c)) {
           const v = STRIP[c] || c;
           const prog = vi / vowelsTotal;
-          const stressed = wvi === stressV;
-          let f = base * (1.08 - prog * 0.22) * (stressed ? 1.14 : 1) * (excl ? 1.12 : 1);
-          if (question && prog > 0.7) f *= 1 + (prog - 0.7) * 1.2;
+          const stressed = i === at;
+          const glide = glides.has(i);
+          const lastV = vi === vowelsTotal - 1;
+          let f = base * (1 + (0.08 - prog * 0.22) * R) * (stressed ? 1 + 0.14 * R : 1) * (excl ? 1 + 0.12 * R : 1);
+          if (question && prog > 0.7) f *= 1 + (prog - 0.7) * 1.2 * R;
           f *= 1 + (r() - 0.5) * 0.05;
-          const dur = ((stressed ? 0.105 : 0.068) + r() * 0.015) / rate;
-          const glideTo = f * (stressed ? 0.94 : 0.98);
-          segs.push({ dur, f0: [f, glideTo], v, amp: [0.85, stressed ? 1 : 0.8] });
+          let dur = (glide ? 0.042 : (stressed ? 0.105 : 0.068) + r() * 0.015) / rate;
+          // se frena hacia el final de la frase y la última palabra se estira
+          dur *= 1 + prog * 0.12;
+          if (lastWord && !glide) dur *= stressed ? 1.45 : lastV ? 1.35 : 1.1;
+          const glideTo = f * (stressed ? 1 - 0.06 * R : 0.98);
+          if (lastV && ends && !glide) {
+            // la última vocal: se apaga, y al cerrar la frase se quiebra un poco
+            const k = stop && !question && !excl ? creakK : creakK * 0.3;
+            segs.push({ dur: dur * 0.6, f0: [f, f + (glideTo - f) * 0.6], v, amp: [0.85, 0.75] });
+            segs.push({ dur: dur * 0.4, f0: [f + (glideTo - f) * 0.6, glideTo * (stop && !question ? 0.94 : 1)], v, amp: [0.75, 0.3], creak: k, breathy: stop ? 0.5 : 0.2 });
+            // el aire que sale al terminar
+            if (stop) segs.push({ dur: 0.07 / rate, f0: [glideTo * 0.9, glideTo * 0.85], v, amp: [0.3, 0], voiced: 0.15, breathy: 1, noise: { f: 1300, bw: 2200, amp: 0.05 }, soft: 0.01 });
+          } else segs.push({ dur, f0: [f, glideTo], v, amp: glide ? [0.6, 0.7] : [0.85, stressed ? 1 : 0.8] });
           vi++;
-          wvi++;
           continue;
         }
-        const k = consonant(c, next);
+        const k = consonant(c, next, letters[i - 1] || (wi > 0 ? sounds[wi - 1][sounds[wi - 1].length - 1] : ''), i === letters.length - 1);
         if (!k) continue;
         const prevF = segs.length ? segs[segs.length - 1].f0[1] : base;
         const d = (k.dur * 0.72) / rate;
-        if (k.k === 'fric') segs.push({ dur: d, f0: [prevF, prevF], v: 'y', amp: [0.5, 0.5], voiced: 0, noise: { f: k.f, bw: k.bw, amp: k.amp * 0.3 } });
-        else if (k.k === 'stop') {
-          segs.push({ dur: d * 0.7, f0: [prevF, prevF], v: 'y', amp: [k.voiced ? 0.15 : 0, k.voiced ? 0.15 : 0], voiced: k.voiced ? 1 : 0, soft: 0.003 });
-          segs.push({ dur: 0.012, f0: [prevF, prevF], v: 'y', amp: [0.5, 0.5], voiced: k.voiced ? 0.6 : 0, noise: { f: k.f, bw: 2500, amp: 0.22 }, soft: 0.001 });
+        const L = k.at ? LOCUS[k.at] : 'y';
+        if (k.k === 'fric') segs.push({ dur: d, f0: [prevF, prevF], v: L, amp: [0.5, 0.5], voiced: 0, noise: { f: k.f, bw: k.bw, amp: k.amp * 0.3 } });
+        else if (k.k === 'stop' || k.k === 'affr') {
+          segs.push({ dur: d * 0.7, f0: [prevF, prevF], v: L, amp: [k.voiced ? 0.15 : 0, k.voiced ? 0.15 : 0], voiced: k.voiced ? 1 : 0, soft: 0.003 });
+          segs.push({ dur: 0.012, f0: [prevF, prevF], v: L, amp: [0.5, 0.5], voiced: k.voiced ? 0.6 : 0, noise: { f: k.k === 'affr' ? 3600 : k.f, bw: 2500, amp: 0.22 }, soft: 0.001 });
+          // la ch: después del golpe, un "sh" cortito
+          if (k.k === 'affr') segs.push({ dur: d * 0.6, f0: [prevF, prevF], v: L, amp: [0.5, 0.4], voiced: 0, noise: { f: k.f, bw: k.bw, amp: k.amp * 0.3 } });
+        } else if (k.k === 'approx') {
+          // b, d, g suaves: la boca casi no se cierra, la voz no se corta
+          segs.push({ dur: d, f0: [prevF, prevF * 0.99], v: [Math.max(L[0], 340), L[1], L[2], L[3]], amp: [k.amp, k.amp], soft: 0.008 });
         } else if (k.k === 'nasal' || k.k === 'liquid') segs.push({ dur: d, f0: [prevF, prevF * 0.99], v: k.v, amp: [k.k === 'nasal' ? 0.45 : 0.65, k.k === 'nasal' ? 0.45 : 0.65] });
-        else if (k.k === 'tap') segs.push({ dur: d, f0: [prevF, prevF], v: 'y', amp: [0.25, 0.25], soft: 0.002 });
+        else if (k.k === 'tap') segs.push({ dur: d, f0: [prevF, prevF], v: LOCUS.alv, amp: [0.3, 0.3], soft: 0.002 });
+        else if (k.k === 'trill') {
+          // la rr: tres golpecitos de lengua
+          for (let j = 0; j < 3; j++) {
+            segs.push({ dur: d * 0.18, f0: [prevF, prevF], v: LOCUS.alv, amp: [0.2, 0.2], soft: 0.001 });
+            segs.push({ dur: d * 0.15, f0: [prevF, prevF], v: [420, 1600, 2500, 3400], amp: [0.55, 0.55], soft: 0.001 });
+          }
+        }
       }
-      if (wi < words.length - 1) segs.push({ dur: (0.012 + r() * 0.025) / rate, f0: [base, base], v: 'y', amp: [0, 0], voiced: 0 });
     });
     // pausa según la puntuación
     const pause = punct.includes('…') || punct.includes('...') ? 0.4 : /[.!?]/.test(punct) ? 0.28 : punct ? 0.15 : 0.08;
@@ -375,8 +529,17 @@ export function speechSegments(text, S, r = Math.random) {
   return segs;
 }
 
-export function speech(text, speaker = 'abuelo', r = Math.random) {
+// Lo que dice un personaje, listo para renderizar (segmentos y perfil): el
+// audio lo renderiza en un worker para no trabar el juego.
+export function speechPlan(text, speaker = 'abuelo', r = Math.random) {
   const S = SPEAKERS[speaker] || SPEAKERS.abuelo;
-  const segs = speechSegments(text, S, r);
-  return { data: renderVoice(segs, { ...S, glide: 0.022 }, r), rate: RATE };
+  return { segs: speechSegments(text, S, r), P: { ...S, glide: 0.022 } };
+}
+
+// Cuánto dura lo que renderVoice arma con esos segmentos (la misma cuenta).
+export const voiceLength = (segs, P) => segs.reduce((s, x) => s + x.dur, 0) + (P.tail ?? 0.08);
+
+export function speech(text, speaker = 'abuelo', r = Math.random) {
+  const { segs, P } = speechPlan(text, speaker, r);
+  return { data: renderVoice(segs, P, r), rate: RATE };
 }

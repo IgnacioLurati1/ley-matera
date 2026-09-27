@@ -37,6 +37,9 @@ class ParticlePool {
     this.grav = new Float32Array(max);
     this.drag = new Float32Array(max);
     this.bounce = new Uint8Array(max);
+    // piso de cada partícula (en el penal no todo cae al nivel 0)
+    this.floor = new Float32Array(max);
+    this.floorAt = null;
     this.attract = new Array(max).fill(null);
     const g = new THREE.BufferGeometry();
     this.aPos = new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage);
@@ -90,6 +93,7 @@ class ParticlePool {
     this.grav[i] = gravity;
     this.drag[i] = drag;
     this.bounce[i] = bounce;
+    this.floor[i] = this.floorAt ? this.floorAt(x, z, y) : 0;
     this.attract[i] = attract;
   }
 
@@ -104,7 +108,7 @@ class ParticlePool {
     c3(this.pos);
     c3(this.vel);
     c3(this.col);
-    for (const a of [this.size, this.alpha, this.life, this.maxLife, this.s0, this.s1, this.a0, this.grav, this.drag, this.bounce]) a[i] = a[last];
+    for (const a of [this.size, this.alpha, this.life, this.maxLife, this.s0, this.s1, this.a0, this.grav, this.drag, this.bounce, this.floor]) a[i] = a[last];
     this.attract[i] = this.attract[last];
   }
 
@@ -140,8 +144,8 @@ class ParticlePool {
       this.pos[j] += this.vel[j] * dt;
       this.pos[j + 1] += this.vel[j + 1] * dt;
       this.pos[j + 2] += this.vel[j + 2] * dt;
-      if (this.pos[j + 1] < 0.02) {
-        this.pos[j + 1] = 0.02;
+      if (this.pos[j + 1] < this.floor[i] + 0.02) {
+        this.pos[j + 1] = this.floor[i] + 0.02;
         if (this.bounce[i]) this.vel[j + 1] *= -0.3;
         else this.vel[j + 1] = 0;
         this.vel[j] *= 0.6;
@@ -160,6 +164,9 @@ const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
 const tmpM = new THREE.Matrix4();
 const tmpC = new THREE.Color();
+const tmpR = new THREE.Vector3();
+const DOWN = new THREE.Vector3(0, -1, 0);
+const decalRay = new THREE.Raycaster();
 
 export default class Effects {
   constructor(game) {
@@ -168,6 +175,11 @@ export default class Effects {
     this.scene = game.scene;
     this.add = new ParticlePool(4000, T.dot, true);
     this.alpha = new ParticlePool(3000, T.dot, false);
+    if (game.world?.levels) {
+      const fa = (x, z, y) => Math.min(y, game.world.floorAt(x, z, y));
+      this.add.floorAt = fa;
+      this.alpha.floorAt = fa;
+    }
     this.scene.add(this.add.points, this.alpha.points);
 
     // haces: un plano instanciado estirado entre dos puntos y girado a cámara
@@ -299,6 +311,8 @@ export default class Effects {
 
   // Impacto contra pared/piso: polvo + chispitas + agujero.
   impact(hit) {
+    // abajo del agua no hay polvo (el salpicón lo hace fx/Water)
+    if (this.g.water?.under(hit.point)) return;
     const n = hit.normal;
     this.dust(hit.point, n, [0.2, 0.17, 0.14], 2);
     if (Math.random() < 0.5) this.sparks(hit.point, 0.4, n);
@@ -378,7 +392,10 @@ export default class Effects {
     }
     this.sparks(p, 3, { x: 0, y: 1, z: 0 });
     this.flash(p, 0xff9040, 60 * Math.min(2, radius / 3), 0.35, 16);
-    this.decal(2, { x: p.x, y: 0.02, z: p.z }, { x: 0, y: 1, z: 0 }, radius * 0.9);
+    const fy = this.g.world?.levels ? this.g.world.floorAt(p.x, p.z, p.y) : 0;
+    // en el agua: salpicón y sin quemadura en el fondo
+    const wet = this.g.water?.blast(p, radius);
+    if (!wet && (!this.g.world?.levels || p.y - fy < radius)) this.decal(2, { x: p.x, y: fy + 0.02, z: p.z }, { x: 0, y: 1, z: 0 }, radius * 0.9);
     this.addShake(0.4 * Math.min(2, radius / 3));
   }
 
@@ -437,7 +454,7 @@ export default class Effects {
 
   dirt(p, n = 16) {
     for (let i = 0; i < n; i++) {
-      this.alpha.spawn(p.x + (Math.random() - 0.5) * 0.8, 0.05, p.z + (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 2, 1.5 + Math.random() * 3, (Math.random() - 0.5) * 2, {
+      this.alpha.spawn(p.x + (Math.random() - 0.5) * 0.8, (p.y || 0) + 0.05, p.z + (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 2, 1.5 + Math.random() * 3, (Math.random() - 0.5) * 2, {
         color: [0.3, 0.14, 0.08],
         size: 0.06 + Math.random() * 0.08,
         life: 0.8 + Math.random() * 0.5,
@@ -445,13 +462,14 @@ export default class Effects {
         bounce: 1,
       });
     }
-    this.dust({ x: p.x, y: 0.1, z: p.z }, { x: 0, y: 1, z: 0 }, [0.35, 0.18, 0.1], 6);
+    this.dust({ x: p.x, y: (p.y || 0) + 0.1, z: p.z }, { x: 0, y: 1, z: 0 }, [0.35, 0.18, 0.1], 6);
   }
 
-  soul(from, to) {
+  // (color: el de las almas de ese frasco; cada mapa tiene el suyo)
+  soul(from, to, color = [1, 0.6, 0.25]) {
     for (let i = 0; i < 6; i++) {
       this.add.spawn(from.x, from.y + 1.2, from.z, (Math.random() - 0.5) * 3, 3 + Math.random() * 2, (Math.random() - 0.5) * 3, {
-        color: [1, 0.6, 0.25],
+        color,
         size: 0.18,
         size1: 0.08,
         life: 4,
@@ -523,7 +541,14 @@ export default class Effects {
   decal(kind, p, n, size) {
     const D = this.decals[kind];
     const m = D.mesh;
-    tmpV.set(p.x + n.x * 0.005, p.y + n.y * 0.005, p.z + n.z * 0.005);
+    // en el piso, arriba de lo que tape el piso de la grilla (las tablas de un
+    // muelle, una tarima): si no, de cerca el calco queda abajo y se ve de lejos nomás
+    let py = p.y;
+    if (n.y > 0.7) {
+      const top = this.floorTop(p);
+      if (top !== null && top > py) py = top;
+    }
+    tmpV.set(p.x + n.x * 0.005, py + n.y * 0.005, p.z + n.z * 0.005);
     tmpA.set(n.x, n.y, n.z);
     const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), tmpA);
     q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.random() * Math.PI * 2));
@@ -535,10 +560,61 @@ export default class Effects {
     m.instanceMatrix.needsUpdate = true;
   }
 
+  // Lo que puede quedar arriba del piso de la grilla (las tablas de un muelle,
+  // una tarima): las mallas quietas y no tan grandes de la escena, con su caja.
+  // Se arma la primera vez que hace falta y se rehace cada tanto y al cambiar
+  // de mapa. (Las muy grandes, como el piso entero, son el piso de la grilla.)
+  lowFlats() {
+    const now = this.g.time || 0;
+    if (this.flats && this.flatsW === this.g.world && now - this.flatsT < 30 && now >= this.flatsT) return this.flats;
+    this.flatsT = now;
+    this.flatsW = this.g.world;
+    this.tops = new Map();
+    const L = (this.flats = []);
+    const root = this.g.scene;
+    if (!root) return L;
+    root.traverse((o) => {
+      if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || !o.visible || o.material?.transparent || !o.geometry) return;
+      const geo = o.geometry;
+      const tris = (geo.index ? geo.index.count : geo.attributes.position?.count || 0) / 3;
+      if (tris > 20000) return;
+      L.push({ o, b: new THREE.Box3().setFromObject(o) });
+    });
+    return L;
+  }
+
+  // La altura de lo que tapa el piso en (x, z), entre p.y y 25 cm arriba (null
+  // si nada). Se guarda por pedacito de 25 cm (los props juntados por material
+  // tienen miles de triángulos: el rayo cuesta, pero una vez por lugar).
+  floorTop(p) {
+    const L = this.lowFlats();
+    const key = `${Math.floor(p.x * 4)},${Math.floor(p.z * 4)},${Math.round(p.y * 10)}`;
+    if (this.tops.has(key)) return this.tops.get(key);
+    // (cada rayo nuevo cuesta 5-7 ms en la torre: una explosión que mataba a 10
+    // trababa el cuadro. Pocos por cuadro; los demás, en el piso de la grilla)
+    if (!(this.topBudget > 0)) return null;
+    this.topBudget--;
+    let top = null;
+    for (const { o, b } of L) {
+      if (p.x < b.min.x || p.x > b.max.x || p.z < b.min.z || p.z > b.max.z || b.max.y < p.y - 0.02 || b.min.y > p.y + 0.25) continue;
+      decalRay.set(tmpR.set(p.x, Math.min(b.max.y, p.y + 0.25) + 0.01, p.z), DOWN);
+      decalRay.far = 0.3;
+      for (const h of decalRay.intersectObject(o, false)) {
+        if (h.point.y < p.y - 0.02) break;
+        if (top === null || h.point.y > top) top = h.point.y;
+        break;
+      }
+    }
+    if (this.tops.size > 4000) this.tops.clear();
+    this.tops.set(key, top);
+    return top;
+  }
+
   gib(p, vel) {
     const G = this.gibs[this.gibNext];
     this.gibNext = (this.gibNext + 1) % this.gibs.length;
     G.mesh.position.copy(p);
+    G.floor = this.g.world?.levels ? Math.min(p.y, this.g.world.floorAt(p.x, p.z, p.y)) : 0;
     G.vel.copy(vel);
     G.spin.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
     G.life = 6;
@@ -563,6 +639,7 @@ export default class Effects {
   }
 
   update(dt, camera) {
+    this.topBudget = 1;
     this.add.update(dt);
     this.alpha.update(dt);
     // haces
@@ -607,8 +684,8 @@ export default class Effects {
       G.life -= dt;
       G.vel.y -= 9.8 * dt;
       G.mesh.position.addScaledVector(G.vel, dt);
-      if (G.mesh.position.y < 0.1) {
-        G.mesh.position.y = 0.1;
+      if (G.mesh.position.y < (G.floor || 0) + 0.1) {
+        G.mesh.position.y = (G.floor || 0) + 0.1;
         G.vel.y *= -0.35;
         G.vel.x *= 0.7;
         G.vel.z *= 0.7;
@@ -620,5 +697,7 @@ export default class Effects {
       if (G.life <= 0) G.mesh.visible = false;
     }
     this.shake = Math.max(0, this.shake - dt * 2.2);
+    // la descarga de Electric Cherry (fx/cherryFx.js, solo donde está el perk)
+    this.cherry?.update(dt, camera);
   }
 }

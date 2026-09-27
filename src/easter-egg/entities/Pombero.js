@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import Navigation from '../world/Navigation';
 import { RISERS } from '../config/map';
 import { POINTS, zombieHealth } from '../config/rules';
+import { reachableSpot } from './reach';
 
 // El Pombero: duende del monte, petiso y peludo, con un sombrero de paja
 // enorme y un silbido que se oye antes de verlo. Muy de vez en cuando, cuando
@@ -49,57 +51,168 @@ export default class Pombero {
   }
 
   // ---------------- modelo ----------------
+  // Petiso, panzón y todo peludo (mechones por todos lados), la cabezota con
+  // narigón, orejas en punta, cejas tupidas, sonrisa de pícaro y barba larga;
+  // manos grandes de dedos largos, los pies al revés (así no se le siguen las
+  // huellas) y el sombrero de paja enorme y roto.
   build() {
     const T = this.g.textures;
-    const fur = new THREE.MeshStandardMaterial({ color: 0x4e3521, map: T.burlap || null, roughness: 1 });
-    const skin = new THREE.MeshStandardMaterial({ color: 0x6e4a30, map: T.skin || null, roughness: 0.9 });
-    const beard = new THREE.MeshStandardMaterial({ color: 0x2a1c12, map: T.burlap || null, roughness: 1 });
+    const fur = new THREE.MeshStandardMaterial({ color: 0x5a3c24, map: T.burlap || null, roughness: 1 });
+    const furDark = new THREE.MeshStandardMaterial({ color: 0x3a2616, map: T.burlap || null, roughness: 1 });
+    const skin = new THREE.MeshStandardMaterial({ color: 0x8a5e3c, map: T.skin || null, roughness: 0.8 });
+    const beard = new THREE.MeshStandardMaterial({ color: 0x2e2014, map: T.burlap || null, roughness: 1 });
     const straw = new THREE.MeshStandardMaterial({ color: 0xd9b56a, map: T.burlap || null, roughness: 0.95, side: THREE.DoubleSide });
     const band = new THREE.MeshStandardMaterial({ color: 0x7a2418, roughness: 0.8 });
+    const teeth = new THREE.MeshStandardMaterial({ color: 0xd8ccaa, roughness: 0.5 });
+    const nails = new THREE.MeshStandardMaterial({ color: 0x2a1c10, roughness: 0.4 });
+    const mouthM = new THREE.MeshBasicMaterial({ color: 0x140806 });
     const eyes = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc040).multiplyScalar(2.2), toneMapped: false });
     const root = new THREE.Group();
     const body = new THREE.Group();
     root.add(body);
-    const add = (parent, geo, mat, x, y, z) => {
+    const add = (parent, geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
       const m = new THREE.Mesh(geo, mat);
       m.position.set(x, y, z);
+      m.rotation.set(rx, ry, rz);
       m.castShadow = true;
       parent.add(m);
       return m;
     };
-    // piernas cortas y chuecas (cuelgan de la cadera)
+    let seed = 7;
+    const rnd = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    // mechones: conos cortos que salen de una superficie (todos en una malla)
+    const tufts = (n, pick, len, wid) => {
+      const geos = [];
+      const up = new THREE.Vector3(0, 1, 0);
+      const q = new THREE.Quaternion();
+      for (let k = 0; k < n; k++) {
+        const { p, dir } = pick(k);
+        const l = len * (0.7 + rnd() * 0.6);
+        const gg = new THREE.ConeGeometry(wid * (0.7 + rnd() * 0.5), l, 4);
+        gg.translate(0, l / 2, 0);
+        // caen un poco (el pelo pesa)
+        const d = dir.clone().add(new THREE.Vector3(0, -0.95, 0)).normalize();
+        q.setFromUnitVectors(up, d);
+        gg.applyQuaternion(q);
+        gg.translate(p.x, p.y, p.z);
+        geos.push(gg);
+      }
+      return mergeGeometries(geos);
+    };
+    const onEllipsoid = (c, r) => () => {
+      const a = rnd() * Math.PI * 2;
+      const y = rnd() * 1.6 - 0.8;
+      const s = Math.sqrt(1 - y * y);
+      const dir = new THREE.Vector3(Math.cos(a) * s, y, Math.sin(a) * s);
+      return { p: new THREE.Vector3(c.x + dir.x * r.x, c.y + dir.y * r.y, c.z + dir.z * r.z), dir };
+    };
+    // piernas cortas y chuecas (cuelgan de la cadera) con los pies al revés
     const leg = (x) => {
       const hip = new THREE.Group();
       hip.position.set(x, 0.4, 0);
-      add(hip, new THREE.CapsuleGeometry(0.07, 0.24, 3, 8), fur, 0, -0.2, 0);
-      add(hip, new THREE.SphereGeometry(0.08, 8, 6).scale(1, 0.6, 1.5), skin, 0, -0.39, 0.05);
+      add(hip, new THREE.CapsuleGeometry(0.075, 0.2, 3, 8), fur, 0, -0.18, 0);
+      hip.add(new THREE.Mesh(tufts(16, onEllipsoid(new THREE.Vector3(0, -0.14, 0), new THREE.Vector3(0.08, 0.14, 0.08)), 0.08, 0.025), furDark));
+      // el pie: el talón adelante y los dedos atrás
+      add(hip, new THREE.SphereGeometry(0.075, 10, 8).scale(1, 0.55, 1.7), skin, 0, -0.37, -0.04);
+      for (let k = 0; k < 4; k++) {
+        const tx = (k - 1.5) * 0.034;
+        add(hip, new THREE.SphereGeometry(0.022, 6, 5).scale(1, 0.8, 1.4), skin, tx, -0.385, -0.15 - Math.abs(k - 1.5) * -0.008);
+        add(hip, new THREE.ConeGeometry(0.01, 0.03, 4), nails, tx, -0.39, -0.18, -Math.PI / 2, 0, 0);
+      }
       body.add(hip);
       return hip;
     };
     this.legL = leg(0.1);
     this.legR = leg(-0.1);
-    // panza peluda
-    add(body, new THREE.SphereGeometry(0.25, 14, 10).scale(1, 1.15, 0.9), fur, 0, 0.64, 0);
-    // cabezota con narigón, barba y ojos que brillan
+    // panza peluda, con la panza pelada adelante
+    add(body, new THREE.SphereGeometry(0.25, 16, 12).scale(1, 1.15, 0.9), fur, 0, 0.64, 0);
+    add(body, new THREE.SphereGeometry(0.16, 12, 10).scale(1, 1.1, 0.7), skin, 0, 0.6, 0.12);
+    body.add(new THREE.Mesh(tufts(70, (k) => {
+      const f = onEllipsoid(new THREE.Vector3(0, 0.66, -0.01), new THREE.Vector3(0.25, 0.29, 0.225))();
+      // adelante, en la panza, pelo corto
+      if (f.dir.z > 0.55 && Math.abs(f.dir.x) < 0.5) f.p.z -= 0.02;
+      return f;
+    }, 0.11, 0.035), fur));
+    // cabezota
     const head = new THREE.Group();
     head.position.set(0, 0.98, 0.02);
     body.add(head);
-    add(head, new THREE.SphereGeometry(0.17, 14, 10), skin, 0, 0, 0);
-    add(head, new THREE.SphereGeometry(0.055, 8, 6).scale(1, 1, 1.4), skin, 0, -0.01, 0.17);
-    add(head, new THREE.ConeGeometry(0.16, 0.34, 10).rotateX(Math.PI), beard, 0, -0.2, 0.06);
-    add(head, new THREE.SphereGeometry(0.036, 6, 5), eyes, 0.065, 0.04, 0.145);
-    add(head, new THREE.SphereGeometry(0.036, 6, 5), eyes, -0.065, 0.04, 0.145);
-    // el sombrero de paja, grandote
-    add(head, new THREE.CylinderGeometry(0.46, 0.5, 0.025, 22), straw, 0, 0.12, 0);
-    add(head, new THREE.CylinderGeometry(0.15, 0.19, 0.2, 16), straw, 0, 0.23, 0);
-    add(head, new THREE.CylinderGeometry(0.192, 0.192, 0.04, 16), band, 0, 0.16, 0);
+    add(head, new THREE.SphereGeometry(0.17, 18, 14).scale(1, 0.95, 0.95), skin, 0, 0, 0);
+    // narigón colgante y los cachetes
+    add(head, new THREE.SphereGeometry(0.058, 10, 8).scale(1, 1.1, 1.3), skin, 0, -0.03, 0.17);
+    for (const s of [-1, 1]) {
+      add(head, new THREE.SphereGeometry(0.06, 10, 8), skin, s * 0.08, -0.05, 0.1);
+      // orejas en punta, grandes
+      add(head, new THREE.ConeGeometry(0.05, 0.2, 6).scale(1, 1, 0.4), skin, s * 0.19, 0.04, -0.02, 0, 0, -s * 1.15);
+      // ojos chicos y brillantes, hundidos bajo las cejas
+      add(head, new THREE.SphereGeometry(0.03, 8, 6).scale(1.2, 0.8, 0.6), mouthM, s * 0.062, 0.045, 0.138);
+      add(head, new THREE.SphereGeometry(0.022, 8, 6), eyes, s * 0.062, 0.045, 0.148);
+      // cejas tupidas, levantadas de pícaro
+      add(head, new THREE.ConeGeometry(0.03, 0.11, 5).scale(1, 1, 0.5), beard, s * 0.065, 0.09, 0.14, 0, 0, s * (Math.PI / 2 - 0.35));
+    }
+    // la sonrisa torcida con dientes
+    add(head, new THREE.TorusGeometry(0.07, 0.012, 6, 16, Math.PI * 0.8), mouthM, 0, -0.06, 0.135, 0, 0, Math.PI * 1.1 + 0.15);
+    for (let k = 0; k < 4; k++) add(head, new THREE.BoxGeometry(0.016, 0.02, 0.01), teeth, -0.03 + k * 0.022, -0.1 + Math.abs(k - 1.5) * 0.009, 0.14);
+    // barba larga en mechones
+    const bg = [];
+    for (let k = 0; k < 11; k++) {
+      const a = -1.2 + (k / 10) * 2.4;
+      const l = 0.26 + rnd() * 0.14 - Math.abs(a) * 0.06;
+      const gg = new THREE.ConeGeometry(0.035, l, 5).rotateX(Math.PI);
+      gg.rotateZ((rnd() - 0.5) * 0.3 - a * 0.12);
+      gg.translate(Math.sin(a) * 0.13, -0.08 - l / 2, Math.cos(a) * 0.12);
+      bg.push(gg);
+    }
+    head.add(new THREE.Mesh(mergeGeometries(bg), beard));
+    // pelo que asoma abajo del sombrero
+    head.add(new THREE.Mesh(tufts(26, () => {
+      const a = Math.PI * 0.3 + rnd() * Math.PI * 1.4;
+      const dir = new THREE.Vector3(Math.sin(a), -0.2, Math.cos(a));
+      return { p: new THREE.Vector3(Math.sin(a) * 0.16, 0.06, Math.cos(a) * 0.16), dir };
+    }, 0.12, 0.03), beard));
+    // el sombrero de paja, grandote y con el ala comida
+    const hat = new THREE.Group();
+    hat.position.set(0, 0.11, 0);
+    hat.rotation.set(-0.06, 0, 0.1);
+    const brimGeo = new THREE.CylinderGeometry(0.47, 0.5, 0.025, 30, 1);
+    const bp = brimGeo.attributes.position;
+    for (let k = 0; k < bp.count; k++) {
+      const x = bp.getX(k);
+      const z = bp.getZ(k);
+      const r = Math.hypot(x, z);
+      if (r < 0.4) continue;
+      const a = Math.atan2(z, x);
+      const f = 1 - (Math.sin(a * 7) * 0.5 + 0.5) * 0.06 - (Math.sin(a * 19 + 1) > 0.7 ? 0.08 : 0);
+      bp.setXYZ(k, x * f, bp.getY(k) - (r - 0.4) * 0.12, z * f);
+    }
+    brimGeo.computeVertexNormals();
+    add(hat, brimGeo, straw, 0, 0, 0);
+    add(hat, new THREE.CylinderGeometry(0.14, 0.19, 0.2, 16), straw, 0, 0.11, 0);
+    add(hat, new THREE.CylinderGeometry(0.192, 0.192, 0.04, 16), band, 0, 0.04, 0);
+    hat.add(new THREE.Mesh(tufts(18, () => {
+      const a = rnd() * Math.PI * 2;
+      const dir = new THREE.Vector3(Math.cos(a), 0.35, Math.sin(a));
+      return { p: new THREE.Vector3(Math.cos(a) * 0.44, 0, Math.sin(a) * 0.44), dir };
+    }, 0.08, 0.012), straw));
+    head.add(hat);
+    this.hat = hat;
     this.head = head;
-    // brazos largos que llegan casi al piso (cuelgan del hombro)
+    // brazos largos que llegan casi al piso (cuelgan del hombro), con manazas
     const arm = (x) => {
       const sh = new THREE.Group();
       sh.position.set(x, 0.8, 0);
       add(sh, new THREE.CapsuleGeometry(0.05, 0.42, 3, 8), fur, 0, -0.25, 0);
-      add(sh, new THREE.SphereGeometry(0.065, 8, 6), skin, 0, -0.52, 0);
+      sh.add(new THREE.Mesh(tufts(22, onEllipsoid(new THREE.Vector3(0, -0.22, 0), new THREE.Vector3(0.055, 0.22, 0.055)), 0.09, 0.022), furDark));
+      add(sh, new THREE.SphereGeometry(0.06, 10, 8).scale(1, 1.1, 0.8), skin, 0, -0.52, 0);
+      for (let k = 0; k < 4; k++) {
+        const fx = (k - 1.5) * 0.026;
+        add(sh, new THREE.CapsuleGeometry(0.013, 0.07, 2, 6), skin, fx, -0.6, 0.02, 0.35, 0, 0);
+        add(sh, new THREE.ConeGeometry(0.009, 0.03, 4), nails, fx, -0.65, 0.045, 0.35 + Math.PI, 0, 0);
+      }
+      add(sh, new THREE.CapsuleGeometry(0.014, 0.05, 2, 6), skin, Math.sign(-x) * 0.05, -0.54, 0.04, 0.4, 0, Math.sign(-x) * 0.6);
       body.add(sh);
       return sh;
     };
@@ -118,7 +231,7 @@ export default class Pombero {
   onDrop(item) {
     const g = this.g;
     // arriba en el altillo no lo va a buscar
-    if (g.net?.guest || this.z.active || g.time < this.next || (g.rounds?.round || 0) < 2 || item.pos.y > 1) return;
+    if (g.net?.guest || this.z.active || g.time < this.next || (g.rounds?.round || 0) < 2 || item.pos.y > 1 || g.world.tower) return;
     if (Math.random() > CHANCE) return;
     this.next = g.time + COOLDOWN;
     g.later(1.5 + Math.random() * 2, () => this.spawn(item));
@@ -137,7 +250,7 @@ export default class Pombero {
     const s = spots[Math.floor(Math.random() * spots.length)];
     const z = this.z;
     const n = g.rounds?.players || 1;
-    z.pos.set(s.x, 0, s.z);
+    z.pos.set(s.x, g.world.floorAt(s.x, s.z), s.z);
     z.yaw = Math.atan2(item.pos.x - s.x, item.pos.z - s.z);
     z.hp = z.maxHp = Math.max(300, zombieHealth(g.rounds.round) * 1.2) * (1 + (n - 1) * 0.5);
     z.active = true;
@@ -154,7 +267,7 @@ export default class Pombero {
     const g = this.g;
     g.fx.dirt(this.z.pos, 10);
     g.fx.yerbaPuff?.(this.z.pos);
-    g.audio.pombero?.(tmpV.set(this.z.pos.x, 1.2, this.z.pos.z));
+    g.audio.pombero?.(tmpV.set(this.z.pos.x, this.z.pos.y + 1.2, this.z.pos.z));
   }
 
   players() {
@@ -167,26 +280,30 @@ export default class Pombero {
   setState(s) {
     this.state = s;
     this.t = 0;
+    this.chkT = 0;
+    this.chkX = this.z.pos.x;
+    this.chkZ = this.z.pos.z;
+    this.stuckN = 0;
+    this.winT = 0;
+    this.winX = this.z.pos.x;
+    this.winZ = this.z.pos.z;
+    this.sideT = 0;
   }
 
-  // El pozo para escaparse: el más lejos de todos los jugadores.
-  pickEscape() {
+  // Los pozos para escaparse, del mejor al peor: lejos de todos los jugadores
+  // y no tan lejos de él.
+  escapes() {
     const g = this.g;
     const players = this.players();
-    let best = null;
-    let bestD = -Infinity;
+    const list = [];
     for (const r of RISERS) {
       if (!g.activeZones.has(r.zone)) continue;
       const near = players.reduce((m, p) => Math.min(m, Math.hypot(p.pos.x - r.pos[0], p.pos.z - r.pos[1])), Infinity);
       const here = Math.hypot(this.z.pos.x - r.pos[0], this.z.pos.z - r.pos[1]);
       if (here < 5) continue;
-      const score = Math.min(near, 40) - here * 0.2;
-      if (score > bestD) {
-        bestD = score;
-        best = { x: r.pos[0], z: r.pos[1] };
-      }
+      list.push({ x: r.pos[0], z: r.pos[1], score: Math.min(near, 40) - here * 0.2 });
     }
-    return best || { x: this.z.pos.x, z: this.z.pos.z };
+    return list.sort((a, b) => b.score - a.score);
   }
 
   // ---------------- cada cuadro ----------------
@@ -199,6 +316,30 @@ export default class Pombero {
       this.follow(dt);
       this.animate(dt);
       return;
+    }
+    // trabado (contra una esquina, una baranda o el agua) tres segundos: se mete
+    // en la tierra; si llevaba algo, lo suelta ahí (antes quedaba corriendo
+    // contra la pared, a veces hacia un lado donde no había nada)
+    if (this.state === 'toItem' || this.state === 'flee') {
+      this.chkT += dt;
+      if (this.chkT > 1.5) {
+        const m = Math.hypot(z.pos.x - this.chkX, z.pos.z - this.chkZ);
+        this.stuckN = m < 0.6 ? this.stuckN + 1 : 0;
+        this.chkT = 0;
+        this.chkX = z.pos.x;
+        this.chkZ = z.pos.z;
+        if (this.stuckN >= 2) {
+          if (this.carry) {
+            const at = reachableSpot(g, z.pos) || z.pos;
+            const type = this.carry.type;
+            this.dropCarry();
+            g.powerups.drop(at, true, type);
+          }
+          this.vanish();
+          this.animate(dt);
+          return;
+        }
+      }
     }
     if (this.state === 'appear') {
       if (this.t > 0.8) this.setState('toItem');
@@ -214,7 +355,8 @@ export default class Pombero {
       }
     } else if (this.state === 'flee') {
       this.move(dt, this.escape.x, this.escape.z, this.carry ? CARRY : RUN * 1.1);
-      if (Math.hypot(this.escape.x - z.pos.x, this.escape.z - z.pos.z) < 0.9 || this.t > 45) this.vanish();
+      // con las manos vacías no tiene a qué ir: corre un poquito y se mete en la tierra
+      if (Math.hypot(this.escape.x - z.pos.x, this.escape.z - z.pos.z) < 0.9 || this.t > (this.carry ? 45 : 2.5)) this.vanish();
     } else if (this.state === 'dead') {
       if (this.t > 3) this.hide();
     }
@@ -229,18 +371,56 @@ export default class Pombero {
     const dist = Math.hypot(dx, dz) || 1;
     let mx = dx / dist;
     let mz = dz / dist;
-    const clear = dist < 2 || g.world.clear(tmpV.set(z.pos.x, 0.8, z.pos.z), new THREE.Vector3(tx, 0.8, tz));
+    // (va siempre por el campo de flujo: la línea de vista pasaba por arriba de
+    // barandas, tranqueras y agua, y se quedaba trabado contra ellas)
+    const clear = dist < 2;
     if (!clear && this.nav.direction(z.pos.x, z.pos.z, dirOut)) {
       mx = dirOut.x;
       mz = dirOut.z;
     }
+    // trabado contra la punta de una baranda (el campo de flujo corta la
+    // esquina): esquiva de costado un ratito, como los muertos
+    if (this.sideT > 0) {
+      this.sideT -= dt;
+      const s = this.side;
+      const ax = mx * 0.3 - mz * s;
+      const az = mz * 0.3 + mx * s;
+      const n = Math.hypot(ax, az) || 1;
+      mx = ax / n;
+      mz = az / n;
+    }
+    const px0 = z.pos.x;
+    const pz0 = z.pos.z;
     let d = Math.atan2(mx, mz) - z.yaw;
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;
     z.yaw += Math.max(-10 * dt, Math.min(10 * dt, d));
     z.pos.x += mx * speed * dt;
     z.pos.z += mz * speed * dt;
-    g.world.collide(z.pos, 0.28, 0.1, 1.2);
+    // (sube escalones de hasta medio metro: en el estero va por el fondo del
+    // agua y el borde de tierra de una pasarela le quedaba de pared; las
+    // barandas empiezan más arriba y lo siguen frenando)
+    g.world.collide(z.pos, 0.28, z.pos.y + 0.45, z.pos.y + 1.2);
+    // (cada 0.4 s mira cuánto avanzó de verdad: contra la punta de la baranda
+    // tiembla entre dos celdas, se mueve cada cuadro pero no llega a ningún lado)
+    this.winT = (this.winT || 0) + dt;
+    let stuck = false;
+    if (this.winT >= 0.4) {
+      stuck = Math.hypot(z.pos.x - (this.winX ?? px0), z.pos.z - (this.winZ ?? pz0)) < speed * this.winT * 0.25;
+      this.winT = 0;
+      this.winX = z.pos.x;
+      this.winZ = z.pos.z;
+    }
+    if (stuck && !(this.sideT > 0)) {
+      const w = g.world;
+      const y0 = z.pos.y + 0.45;
+      const lf = w.circleFree ? w.circleFree(z.pos.x - mz * 0.7, z.pos.z + mx * 0.7, 0.28, y0, z.pos.y + 1.2) : true;
+      const rf = w.circleFree ? w.circleFree(z.pos.x + mz * 0.7, z.pos.z - mx * 0.7, 0.28, y0, z.pos.y + 1.2) : true;
+      this.side = lf && !rf ? 1 : rf && !lf ? -1 : this.side ? -this.side : Math.random() < 0.5 ? 1 : -1;
+      this.sideT = 0.5 + Math.random() * 0.3;
+    }
+    // en el penal sube y baja escaleras como cualquiera
+    if (g.world.levels) z.pos.y = g.world.floorAt(z.pos.x, z.pos.z);
     this.speed = speed;
   }
 
@@ -262,9 +442,18 @@ export default class Pombero {
     this.flee();
   }
 
+  // Se escapa al mejor pozo al que se pueda llegar caminando (si ninguno, ahí mismo).
   flee() {
-    this.escape = this.pickEscape();
-    this.nav.update(this.escape.x, this.escape.z, true);
+    const z = this.z;
+    this.escape = null;
+    for (const e of this.escapes().slice(0, 5)) {
+      this.nav.update(e.x, e.z, true);
+      if (Number.isFinite(this.nav.distAt(z.pos.x, z.pos.z))) {
+        this.escape = e;
+        break;
+      }
+    }
+    if (!this.escape) this.escape = { x: z.pos.x, z: z.pos.z };
     this.setState('flee');
   }
 
@@ -300,8 +489,8 @@ export default class Pombero {
     const z = this.z;
     if (!z.active || z.dead || this.state === 'appear') return null;
     const s = this.rig.scale.x;
-    const head = sphereHit(o, d, z.pos.x, 1.02 * s, z.pos.z, 0.24 * s, maxT);
-    const body = sphereHit(o, d, z.pos.x, 0.58 * s, z.pos.z, 0.32 * s, maxT);
+    const head = sphereHit(o, d, z.pos.x, z.pos.y + 1.02 * s, z.pos.z, 0.24 * s, maxT);
+    const body = sphereHit(o, d, z.pos.x, z.pos.y + 0.58 * s, z.pos.z, 0.32 * s, maxT);
     if (head === null && body === null) return null;
     if (body === null || (head !== null && head < body)) return { z, t: head, zone: 'head' };
     return { z, t: body, zone: 'torso' };
@@ -366,7 +555,7 @@ export default class Pombero {
     const r = this.rig;
     r.visible = z.active;
     if (!z.active) return;
-    r.position.set(z.pos.x, 0, z.pos.z);
+    r.position.set(z.pos.x, z.pos.y, z.pos.z);
     r.rotation.y = z.yaw;
     const st = this.state;
     // saliendo del pozo: crece desde abajo
@@ -381,8 +570,9 @@ export default class Pombero {
       this.legL.rotation.x = this.legR.rotation.x = 0.4 * k;
       return;
     }
-    this.body.rotation.x = 0;
     const moving = st === 'toItem' || st === 'flee';
+    // corre agachado, como quien se lleva algo
+    this.body.rotation.x = moving ? 0.22 : 0;
     this.phase += dt * (moving ? 13 : 3);
     const sw = moving ? Math.sin(this.phase) : 0;
     this.legL.rotation.x = sw * 0.8;
@@ -401,6 +591,9 @@ export default class Pombero {
       this.armL.rotation.z = this.armR.rotation.z = 0;
     }
     this.head.rotation.y = Math.sin(this.phase * 0.5) * 0.3;
+    this.head.rotation.x = moving ? -0.18 : 0;
+    // el sombrerazo se bambolea
+    this.hat.rotation.z = 0.1 + Math.sin(this.phase) * (moving ? 0.1 : 0.03);
   }
 
   // ---------------- en línea ----------------
@@ -420,7 +613,7 @@ export default class Pombero {
     const st = STATES[s.st - 1] || 'toItem';
     if (!z.active) {
       z.active = true;
-      z.pos.set(s.x, 0, s.z);
+      z.pos.set(s.x, this.g.world.floorAt(s.x, s.z), s.z);
       z.yaw = s.yaw;
       this.setState(st);
       if (st === 'appear') this.appearFx();
@@ -437,6 +630,7 @@ export default class Pombero {
     const k = Math.min(1, dt * 12);
     z.pos.x += (s.x - z.pos.x) * k;
     z.pos.z += (s.z - z.pos.z) * k;
+    if (this.g.world.levels) z.pos.y = this.g.world.floorAt(z.pos.x, z.pos.z);
     let d = s.yaw - z.yaw;
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;

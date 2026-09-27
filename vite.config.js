@@ -104,5 +104,7 @@ export default defineConfig({
   base: process.env.BASE_PATH || '/',
   define: { __SITE_URL__: JSON.stringify(SITE_URL) },
   plugins: [react(), seo()],
-  server: { port: 5180, strictPort: true, host: true },
+  // Sin recarga automática: con varias sesiones tocando archivos, la página se
+  // recargaba sola en medio de la partida. Para ver un cambio, recargar a mano.
+  server: { port: 5180, strictPort: true, host: true, hmr: false },
 });

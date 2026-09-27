@@ -23,7 +23,7 @@ import SeasonsAdmin from './pages/admin/SeasonsAdmin';
 import OrderReader from './pages/admin/OrderReader';
 import DataAdmin from './pages/admin/DataAdmin';
 import AnnouncementAdmin from './pages/admin/AnnouncementAdmin';
-import Sotano, { EGG_PATH } from './pages/Sotano';
+import Sotano, { EGG_PATH, EGG_ORIGINAL } from './pages/Sotano';
 
 function SiteLayout() {
   // En el panel el botón de redes no sirve y tapa los botones de las listas.
@@ -42,11 +42,12 @@ function SiteLayout() {
 
 export default function App() {
   // El juego oculto va en su propia página, pelada: sin la tienda de fondo.
-  if (useLocation().pathname === EGG_PATH)
+  const path = useLocation().pathname;
+  if (path === EGG_PATH || path === EGG_ORIGINAL)
     return (
       <>
         <PageMeta />
-        <Sotano />
+        <Sotano original={path === EGG_ORIGINAL} />
       </>
     );
   return (

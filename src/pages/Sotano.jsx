@@ -6,6 +6,8 @@ import { openEasterEgg } from '../lib/easterEgg';
 // marca en la pestaña, así recargar sigue funcionando); escribiendo la
 // dirección a mano se vuelve al inicio.
 export const EGG_PATH = '/sotano';
+// la primera versión del juego (el botón "¿Querés probar el original?")
+export const EGG_ORIGINAL = '/sotano-original';
 const FLAG = 'lm-sotano';
 
 export function allowSotano() {
@@ -30,7 +32,7 @@ function allowed(state) {
 let session = null;
 let mounted = 0;
 
-export default function Sotano() {
+export default function Sotano({ original = false }) {
   const navigate = useNavigate();
   const { state, key } = useLocation();
   const ok = allowed(state);
@@ -40,12 +42,15 @@ export default function Sotano() {
     mounted++;
     // al salir del juego se vuelve a la página de donde vino
     const leave = () => {
-      if (state?.from && key !== 'default') navigate(-1);
+      // del original se vuelve al juego nuevo (recarga entera: estilos aparte)
+      if (original) window.location.assign(`${import.meta.env.BASE_URL}sotano`);
+      else if (state?.from && key !== 'default') navigate(-1);
       else navigate(state?.from || '/', { replace: true });
     };
     if (!session) {
       const s = { done: false, silent: false, leave };
       s.game = openEasterEgg({
+        original,
         onExit: () => {
           if (s.done) return;
           s.done = true;
@@ -66,7 +71,7 @@ export default function Sotano() {
         if (!s.done) Promise.resolve(s.game).then((r) => r?.close?.());
       }, 0);
     };
-  }, [ok, state, key, navigate]);
+  }, [ok, state, key, navigate, original]);
 
   if (!ok) return <Navigate to="/" replace />;
   return <div style={{ position: 'fixed', inset: 0, background: '#000' }} />;

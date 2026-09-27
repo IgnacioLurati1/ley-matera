@@ -1,4 +1,6 @@
 import Net, { MAX_PLAYERS } from '../net/Net';
+import { MAP_LIST, MAP_MODES } from '../config/map';
+import { mapChip } from './MapSelect';
 
 // Pantalla para jugar de a varios. Con "código de sala" (si el sitio trae
 // dónde encontrarse) alcanza con pasarle 5 letras a los amigos. Si no hay
@@ -17,15 +19,15 @@ export default class Lobby {
     this.menus = menus;
     this.el = h(`<div class="mdu-menu mdu-menu--solid" data-screen="online"><div class="mdu-panel mdu-lobby">
       <h2 class="mdu-h2">Jugar con amigos</h2>
-      <p class="mdu-tag">Hasta ${MAX_PLAYERS} materos en la misma partida. Uno hace de anfitrión: su compu maneja el molino.</p>
-      <label class="mdu-field">Tu nombre <input type="text" maxlength="12" data-name></label>
+      <p class="mdu-tag">Hasta ${MAX_PLAYERS} materos en la misma partida. Uno hace de anfitrión: su compu maneja el mapa.</p>
+      <label class="mdu-field">Tu nombre <input type="text" maxlength="12" autocomplete="off" spellcheck="false" data-name></label>
       <div class="mdu-list" data-menu>
         <button class="mdu-btn" data-act="create">Crear sala</button>
         <button class="mdu-btn" data-act="join">Unirme a una sala</button>
         <button class="mdu-btn" data-act="back">Volver</button>
       </div>
       <div class="mdu-lobby__join" data-join hidden>
-        <label class="mdu-field">Código de la sala <input type="text" maxlength="8" data-code></label>
+        <label class="mdu-field">Código de la sala <input type="text" maxlength="8" autocomplete="off" spellcheck="false" data-code></label>
         <div class="mdu-list">
           <button class="mdu-btn" data-act="enter">Entrar</button>
           <button class="mdu-btn" data-act="cancel">Cancelar</button>
@@ -33,6 +35,8 @@ export default class Lobby {
       </div>
       <div class="mdu-lobby__room" data-room hidden>
         <p class="mdu-lobby__code">Código: <b data-codeout></b></p>
+        <p class="mdu-lobby__map" data-mapout></p>
+        <div data-mappick hidden>${mapChip()}</div>
         <ul class="mdu-lobby__players" data-players></ul>
         <div class="mdu-list">
           <button class="mdu-btn" data-act="start" hidden>Empezar la partida</button>
@@ -51,7 +55,8 @@ export default class Lobby {
     root.appendChild(this.el);
     this.el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-act]');
-      if (b) this.act(b.dataset.act);
+      if (b?.dataset.act === 'maps') this.menus.act('maps');
+      else if (b) this.act(b.dataset.act);
     });
     this.nameInput = this.el.querySelector('[data-name]');
     this.nameInput.value = localStorage.getItem('lm-zombies-name') || `Matero ${Math.floor(Math.random() * 90 + 10)}`;
@@ -74,6 +79,18 @@ export default class Lobby {
       const el = this.el.querySelector(`[data-${k}]`);
       if (el) el.hidden = k !== which;
     }
+  }
+
+  // En la sala: el anfitrión elige el mapa; los invitados ven cuál es.
+  syncMap() {
+    const g = this.g;
+    const m = MAP_LIST.find((x) => x.id === g.mapId);
+    const out = this.el.querySelector('[data-mapout]');
+    const md = g.modeNow !== 'story' ? MAP_MODES[g.mapId]?.find((x) => x.id === g.modeNow)?.name : '';
+    if (out) out.textContent = m ? `Mapa: ${m.name}${md ? ` · ${md}` : ''}` : '';
+    const pick = this.el.querySelector('[data-mappick]');
+    if (pick) pick.hidden = !g.net?.host;
+    for (const b of this.el.querySelectorAll('[data-map]')) b.setAttribute('aria-pressed', String(b.dataset.map === g.mapId));
   }
 
   status(text) {
@@ -101,6 +118,7 @@ export default class Lobby {
         this.el.querySelector('[data-codeout]').textContent = code;
         this.el.querySelector('[data-act="start"]').hidden = false;
         this.renderPlayers([...this.net.players.values()]);
+        this.syncMap();
         if (!g.signal) {
           this.section('manual');
           this.el.querySelector('[data-manual-help]').textContent = '1) Copiá tu código y mandáselo al que se une. 2) Pegá acá abajo el código que te devuelve.';
@@ -130,6 +148,7 @@ export default class Lobby {
         g.attachNet(this.net);
         this.section('room');
         this.el.querySelector('[data-codeout]').textContent = code;
+        this.syncMap();
         this.status('Listo. Esperando que el anfitrión arranque...');
         return;
       }

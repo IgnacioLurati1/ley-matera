@@ -5,7 +5,9 @@
 
 let opening = null;
 
-export function openEasterEgg({ onExit } = {}) {
+// original: la primera versión del juego (src/easter-egg-original), con sus
+// salas en línea aparte (el código de sala lleva una "o" adelante en el canal).
+export function openEasterEgg({ onExit, original = false } = {}) {
   if (opening) return opening;
   const veil = document.createElement('div');
   veil.textContent = 'Cargando…';
@@ -15,9 +17,20 @@ export function openEasterEgg({ onExit } = {}) {
   // el punto de encuentro para las salas viaja aparte, así el juego sigue
   // siendo portable a cualquier sitio (sin Supabase funciona igual, con
   // códigos largos de copiar y pegar)
-  opening = Promise.all([import('../easter-egg/index.js'), import('./netSignal.js')])
-    .then(([m, s]) => m.launch({ signal: s.createSignal(), onExit }))
+  opening = Promise.all([original ? import('../easter-egg-original/index.js') : import('../easter-egg/index.js'), import('./netSignal.js')])
+    .then(([m, s]) => {
+      // el juego ya muestra su propia pantalla de carga con la barra: el
+      // velo solo tapa la descarga del código
+      veil.remove();
+      let signal = s.createSignal();
+      if (signal && original) {
+        const inner = signal;
+        signal = { open: (code, on) => inner.open(`o${code}`, on), send: (msg) => inner.send(msg), close: () => inner.close() };
+      }
+      return m.launch({ signal, onExit });
+    })
     .catch(() => {
+      document.body.appendChild(veil);
       veil.textContent = 'No se pudo cargar. Probá de nuevo.';
       return new Promise((r) => setTimeout(r, 1800));
     })

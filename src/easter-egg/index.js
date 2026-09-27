@@ -1,11 +1,14 @@
 import './ui/style.css';
+import './ui/hudThemes.css';
 import Game from './Game';
 
 // Punto de entrada del juego oculto. Es independiente de React: monta todo en
 // un contenedor propio encima de la página y lo desarma al salir, así se puede
 // reutilizar en cualquier otro sitio con `launch()`.
 
-const FONTS = 'https://fonts.googleapis.com/css2?family=Creepster&family=Special+Elite&display=swap';
+// Creepster y Special Elite para todo; Rye (La Tapera), Stardos Stencil (el
+// penal) y Cinzel (la torre) para el HUD de cada mapa.
+const FONTS = 'https://fonts.googleapis.com/css2?family=Creepster&family=Special+Elite&family=Rye&family=Stardos+Stencil:wght@400;700&family=Cinzel:wght@500;700;900&family=UnifrakturMaguntia&family=Kaushan+Script&display=swap';
 let running = null;
 
 export async function launch({ onExit, signal } = {}) {

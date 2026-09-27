@@ -47,6 +47,8 @@ export function createPeer() {
     close() {
       if (peer.closed) return;
       peer.closed = true;
+      clearTimeout(peer.dropT);
+      window.removeEventListener('pagehide', bye);
       try {
         pc.close();
       } catch {
@@ -56,8 +58,17 @@ export function createPeer() {
     },
   };
   pc.addEventListener('connectionstatechange', () => {
-    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) peer.close();
+    const s = pc.connectionState;
+    clearTimeout(peer.dropT);
+    if (s === 'failed' || s === 'closed') peer.close();
+    // 'disconnected' suele ser un corte de segundos (el wifi que va y viene) y
+    // se recupera solo: se espera un poco antes de dar al otro por ido
+    else if (s === 'disconnected') peer.dropT = setTimeout(() => pc.connectionState !== 'connected' && peer.close(), 10000);
   });
+  // al cerrar la pestaña se corta la conexión de una: así el otro se entera
+  // enseguida (si no, recién cuando deja de contestar)
+  const bye = () => peer.close();
+  window.addEventListener('pagehide', bye);
   return peer;
 }
 

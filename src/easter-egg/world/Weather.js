@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { MAP_W, MAP_H, WALL_H, ZONES } from '../config/map';
+import { MAP_W, MAP_H, WALL_H, ZONES, SKY } from '../config/map';
 import { bossRound } from '../config/rules';
+import { ceilAt } from './Levels';
 
 // Clima: despejado, llovizna, tormenta con relámpagos, niebla, viento y la
 // luna roja de las rondas del Capataz. Todo cambia de a poco (unos 12 s).
@@ -18,24 +19,20 @@ const STATES = {
   dogs: { rain: 0, storm: 1, fog: 0.07, fogColor: 0x262a33, wind: 0.35, cloud: 1, mist: 0.9, blood: 0 },
 };
 
-const ANNOUNCE = {
-  drizzle: 'Empieza a lloviznar...',
-  storm: 'Se viene una tormenta de las feas.',
-  fog: 'Una niebla espesa baja del monte.',
-  wind: 'Se levanta viento norte.',
-  blood: 'La luna se pone roja...',
-};
-
 const DROPS = 4200;
+const tmpDusk = new THREE.Color(0x7a4e46);
 const BOX = new THREE.Vector3(34, 18, 34);
 
 export default class Weather {
   constructor(game) {
     this.g = game;
     this.name = 'clear';
-    this.cur = { ...STATES.clear };
-    this.target = STATES.clear;
-    this.fogColor = new THREE.Color(STATES.clear.fogColor);
+    // cada mapa puede cambiar el color de sus climas (SKY.states: la noche de luna del estero)
+    this.S = { ...STATES };
+    for (const [k, v] of Object.entries(SKY.states || {})) this.S[k] = { ...STATES[k], ...v };
+    this.cur = { ...this.S.clear };
+    this.target = this.S.clear;
+    this.fogColor = new THREE.Color(this.S.clear.fogColor);
     this.timer = 90;
     this.flash = 0;
     this.nextBolt = 10;
@@ -47,15 +44,48 @@ export default class Weather {
     this.wetMats = [game.world.M.dirt, game.world.M.dirtDark, game.world.M.ground].filter(Boolean).map((m) => ({ m, r: m.roughness, c: m.color.clone() }));
   }
 
-  // Máscara del mapa: 1 donde está a cielo abierto.
+  // Máscara del mapa: R = 1 donde está a cielo abierto; G = hasta dónde llega
+  // el techo de esa celda (sobre roofMax). En los mapas con alturas (el penal,
+  // el castillo) cada techo tiene la suya: con una sola, abajo de los techos
+  // altos llovía adentro.
   buildMask() {
     const w = this.g.world;
     const data = new Uint8Array(MAP_W * MAP_H * 4);
+    const roofs = new Float32Array(MAP_W * MAP_H);
+    let top = WALL_H + 0.05;
+    const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
     for (let z = 0; z < MAP_H; z++) {
       for (let x = 0; x < MAP_W; x++) {
-        const i = (z * MAP_W + x) * 4;
-        const open = !w.isIndoorCell(x, z);
-        data[i] = data[i + 1] = data[i + 2] = open ? 255 : 0;
+        const j = z * MAP_W + x;
+        if (!w.isIndoorCell(x, z)) continue;
+        let r = WALL_H + 0.05;
+        if (w.levels) {
+          let c = ceilAt(w, x, z);
+          // (una pared: hasta el techo más alto de al lado)
+          if (!Number.isFinite(c)) {
+            c = -Infinity;
+            let fy = 0;
+            for (const [dx, dz] of N4) {
+              const n = ceilAt(w, x + dx, z + dz);
+              if (Number.isFinite(n)) c = Math.max(c, n);
+              if (w.inside(x + dx, z + dz)) fy = Math.max(fy, w.fy?.[w.idx(x + dx, z + dz)] || 0);
+            }
+            if (!Number.isFinite(c)) c = fy + WALL_H;
+          }
+          r = c + 0.1;
+        }
+        roofs[j] = r;
+        top = Math.max(top, r);
+      }
+    }
+    this.roofMax = top + 0.5;
+    for (let z = 0; z < MAP_H; z++) {
+      for (let x = 0; x < MAP_W; x++) {
+        const j = z * MAP_W + x;
+        const i = j * 4;
+        const open = !roofs[j];
+        data[i] = data[i + 2] = open ? 255 : 0;
+        data[i + 1] = open ? 0 : Math.min(255, Math.ceil((roofs[j] / this.roofMax) * 255));
         data[i + 3] = 255;
       }
     }
@@ -90,7 +120,7 @@ export default class Weather {
       uFlash: { value: 0 },
       uMask: { value: this.buildMask() },
       uMap: { value: new THREE.Vector2(MAP_W, MAP_H) },
-      uRoof: { value: WALL_H + 0.05 },
+      uRoof: { value: this.roofMax },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.rainU,
@@ -108,8 +138,8 @@ export default class Weather {
           vec3 origin = uCam - uBox * 0.5;
           p = origin + mod(p - origin, uBox);
           p -= normalize(vel) * side * (0.35 + fract(o.z * 13.1) * 0.25);
-          float open = texture2D(uMask, p.xz / uMap).r;
-          float vis = (open > 0.5 || p.y > uRoof) ? 1.0 : 0.0;
+          vec4 mk = texture2D(uMask, p.xz / uMap);
+          float vis = (mk.r > 0.5 || p.y > mk.g * uRoof) ? 1.0 : 0.0;
           vis *= step(fract(o.y * 91.7 + o.x * 13.3), uAmount);
           float d = distance(p, uCam);
           vA = vis * (1.0 - side * 0.85) * smoothstep(uBox.x * 0.5, 3.0, d);
@@ -172,8 +202,22 @@ export default class Weather {
     this.snd = null;
   }
 
-  thunder(delay, close) {
+  // storm: el de la tormenta (alterna los dos medios y el intenso; el lejano
+  // llega sin agudos). Si no, el del rayo de los carpinchos: corto y suave.
+  thunder(delay, close, storm = false) {
     const a = this.g.audio;
+    let id = 'trueno-carpincho';
+    if (storm) {
+      // los tres en orden mezclado; al rearmar, sin repetir el último
+      if (!this.thunderBag?.length) {
+        const bag = ['trueno-medio-1', 'trueno-medio-2', 'trueno-intenso'].sort(() => Math.random() - 0.5);
+        if (bag[0] === this.lastThunder) bag.push(bag.shift());
+        this.thunderBag = bag;
+      }
+      id = this.lastThunder = this.thunderBag.shift();
+    }
+    const k = (storm ? (close ? 1.5 : 1.3) : 2) * (this.indoor ? 0.7 : 1);
+    if (a.playThunder?.(id, { gain: k, bus: a.music, when: delay, muffle: storm && !close ? 1800 : 0 })) return;
     const t = a.now + delay;
     const o = a.out({ gain: (close ? 1.3 : 0.75) * (this.indoor ? 0.7 : 1), reverb: 0.9, bus: a.music });
     if (close) a.noise(o, { t, dur: 0.35, type: 'highpass', freq: 900, gain: 0.8, attack: 0.002 });
@@ -183,13 +227,13 @@ export default class Weather {
   }
 
   // ---------------- lógica ----------------
-  set(name, announce = true) {
-    if (!STATES[name] || name === this.name) return;
+  // (sin cartel: el clima se ve y se oye; _announce queda por los que lo llaman)
+  set(name, _announce = true) {
+    if (!this.S[name] || name === this.name) return;
     this.name = name;
     this.g.net?.event('weather', { n: name });
-    this.target = STATES[name];
+    this.target = this.S[name];
     this.timer = 110 + Math.random() * 120;
-    if (announce && ANNOUNCE[name]) this.g.hud?.subtitle(ANNOUNCE[name], 3.5, name === 'blood' ? 'boss' : '');
     if (name === 'storm') this.nextBolt = 3 + Math.random() * 4;
   }
 
@@ -198,10 +242,6 @@ export default class Weather {
     const k = Math.min(1, Math.floor(round / 5) / 4);
     if (k <= this.dusk) return;
     this.dusk = k;
-    const lines = { 0.25: 'El cielo se tiñe de colorado...', 0.5: 'El cielo está cada vez más rojo.', 0.75: 'La luna empieza a sangrar.', 1: 'Luna roja. Esta noche ya no termina.' };
-    const text = lines[k];
-    // en las rondas del Capataz ya avisa la luna roja: esa se dice unos segundos después
-    if (text) this.g.later(k === 1 ? 1 : 6, () => this.g.hud?.subtitle(text, 3.5, 'boss'));
   }
 
   onRound(round) {
@@ -214,7 +254,8 @@ export default class Weather {
       return;
     }
     if (round < 3 || this.timer > 0) return;
-    const pool = [['clear', 3], ['drizzle', 3], ['storm', 2.5], ['fog', 2], ['wind', 1.5]].filter(([n]) => n !== this.name);
+    // (SKY.weathers: los climas del mapa; en el estero no llueve)
+    const pool = (SKY.weathers || [['clear', 3], ['drizzle', 3], ['storm', 2.5], ['fog', 2], ['wind', 1.5]]).filter(([n]) => n !== this.name);
     let r = Math.random() * pool.reduce((s, [, w]) => s + w, 0);
     for (const [n, w] of pool) {
       r -= w;
@@ -237,18 +278,23 @@ export default class Weather {
     this.timer -= dt;
     const cam = g.camera;
     const zone = g.world.zoneAt(g.player?.pos.x ?? cam.position.x, g.player?.pos.z ?? cam.position.z);
-    this.indoor = !!zone && !ZONES[zone].outdoor;
+    // (al precalentar otro mapa la zona puede no ser de este)
+    this.indoor = !!zone && !!ZONES[zone] && !ZONES[zone].outdoor;
 
-    // niebla y cielo
+    // niebla y cielo (al atardecer, bruma anaranjada y más liviana)
     const fog = g.scene.fog;
-    fog.density = c.fog;
-    fog.color.copy(this.fogColor);
+    const day = g.world.dayCur || 0;
+    fog.density = c.fog * (1 - day * 0.35);
+    fog.color.copy(this.fogColor).lerp(tmpDusk, day * 0.85);
     const sky = g.world.sky?.material.uniforms;
+    // opción "menos destellos": los relámpagos alumbran mucho menos
+    const calm = g.settings?.calmFx ? 0.3 : 1;
     if (sky) {
       sky.uCloud.value = c.cloud;
-      sky.uFlash.value = this.flash;
+      sky.uFlash.value = this.flash * calm;
       sky.uBlood.value = red;
-      sky.uFogAmt.value = Math.min(1, (c.fog - 0.034) * 14);
+      // (con menos niebla que la de siempre no tiene que alejarse del color de la niebla)
+      sky.uFogAmt.value = Math.max(0, Math.min(1, (c.fog - 0.034) * 14));
       sky.uFogColor.value.copy(this.fogColor);
     }
     g.world.setMoon?.(c.cloud, Math.max(c.blood, this.duskCur));
@@ -272,14 +318,14 @@ export default class Weather {
       }
       this.pulses = this.pulses.filter((p) => !p.done);
     }
-    g.world.setFlash?.(this.flash, c.blood);
+    g.world.setFlash?.(this.flash * calm, c.blood);
 
     // lluvia
     const u = this.rainU;
     u.uTime.value = g.time;
     u.uCam.value.copy(cam.position);
     u.uAmount.value = c.rain;
-    u.uFlash.value = this.flash;
+    u.uFlash.value = this.flash * calm;
     this.windDir.rotateAround(new THREE.Vector2(), Math.sin(g.time * 0.05) * dt * 0.02);
     u.uWind.value.copy(this.windDir).multiplyScalar(c.wind);
     this.rain.visible = c.rain > 0.02;
@@ -312,7 +358,7 @@ export default class Weather {
     // dos o tres destellos seguidos, como un relámpago de verdad
     this.pulses = [{ t: 0, k: close ? 1 : 0.6 }, { t: 0.12 + Math.random() * 0.1, k: close ? 0.7 : 0.4 }];
     if (Math.random() < 0.5) this.pulses.push({ t: 0.35 + Math.random() * 0.2, k: 0.5 });
-    this.thunder(close ? 0.15 + Math.random() * 0.3 : 1.2 + Math.random() * 2.2, close);
+    this.thunder(close ? 0.15 + Math.random() * 0.3 : 1.2 + Math.random() * 2.2, close, true);
   }
 
   splashes(dt, amount) {
