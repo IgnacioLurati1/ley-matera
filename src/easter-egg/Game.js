@@ -59,6 +59,7 @@ import Hud from './ui/Hud';
 import { scoreboard } from './ui/Scoreboard';
 import Menus from './ui/Menus';
 import Arrival, { prewarmMaps, compile as rewarmShaders } from './ui/Arrival';
+import TitleIntro from './ui/TitleIntro';
 import { setBinds, remapTable } from './core/controls';
 import { START_POINTS, ZOMBIE_DAMAGE } from './config/rules';
 import { START_ZONE, ZONES, FEATURES, FIRES, TITLE_CAM, TEXT, MAPS, useMap, modeOf } from './config/map';
@@ -267,6 +268,9 @@ export default class Game {
     this.arrival = new Arrival(this);
     await prewarmMaps(this, step, 0.42, 0.99);
     await step(1, 'Listo.');
+    // la entrada del menú principal (ui/TitleIntro): tapa de negro antes del título
+    this.titleIntro = new TitleIntro(this);
+    await this.titleIntro.cover();
     this.menus.hideLoading();
     this.menus.setTitleInfo({ best: this.best, gpu: this.gpu });
     this.menus.show('title');
@@ -276,6 +280,7 @@ export default class Game {
     this.fpsT = 0;
     this.loop = this.loop.bind(this);
     this.raf = requestAnimationFrame(this.loop);
+    this.titleIntro.play();
     // los atajos de prueba (Alt+…: puntos, modo dios, saltar al final, el
     // premio del super easter egg…) solo en desarrollo: en el sitio publicado no
     const dev = !!import.meta.env.DEV;
@@ -1369,6 +1374,8 @@ export default class Game {
     const C = TITLE_CAM;
     c.position.set(C.at[0] + Math.sin(t) * C.amp[0], C.at[1] + Math.sin(t * 1.7) * 0.1, C.at[2] + Math.cos(t) * C.amp[1]);
     c.lookAt(C.look[0] + Math.sin(t * 0.7) * C.lookAmp, C.look[1], C.look[2]);
+    // la entrada del menú: mira al cielo y baja de a poco
+    this.titleIntro?.cam(c);
     this.world.update(dt, this.time);
     this.weather.update(dt);
     this.fx.update(dt, c);

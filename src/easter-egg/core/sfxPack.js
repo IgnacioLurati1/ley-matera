@@ -58,6 +58,13 @@ const SPECIALS = {
 // cuántas rondas por tramo: suena una vez en cada tramo (dos cada 30 rondas,
 // sin excepción; antes era un 8 % por ronda y con mala suerte se amontonaba)
 const SPECIAL_EVERY = 15;
+// El sapucay del estero: un grito de muy lejos (bajo, sin agudos, con mucho
+// eco y un rebote más apagado sobre el agua). Raro: una vez cada dos partidas
+// de 30 rondas (en cada tramo de 30, la mitad de las veces, en una ronda al
+// azar). Va por el mismo aviso que el especial (lo decide el anfitrión):
+// code + los segundos de más dentro de la ronda (delay), así no cae siempre
+// al arrancar y suena igual para todos.
+const SAPUCAY = { id: 'sapucay', map: 'esteros', every: 30, odds: 0.5, gain: 0.24, lp: 2300, hp: 180, code: 100, delay: [5, 26] };
 
 // Cuánto dura la canción de cada mapa al empezar la ronda (audio.roundStart):
 // la llegada de la ronda especial suena unos segundos después, y recién ahí
@@ -102,7 +109,9 @@ export default class SfxPack {
     this.map = MAP_ID;
     const sp = FEATURES?.special;
     const kinds = sp === 'mixed' ? ['capybara', 'horse'] : sp ? [sp] : [];
-    this.load(Object.keys(GROUPS).filter((k) => kinds.includes(k.split('.')[0])), this.specialIds().map((s) => s.id));
+    const extra = this.specialIds().map((s) => s.id);
+    if (MAP_ID === SAPUCAY.map) extra.push(SAPUCAY.id);
+    this.load(Object.keys(GROUPS).filter((k) => kinds.includes(k.split('.')[0])), extra);
   }
 
   specialIds() {
@@ -229,7 +238,10 @@ export default class SfxPack {
     const L = this.specialIds();
     if (!L.length) return 0;
     // partida nueva (la ronda volvió para atrás): tramos de cero
-    if (round < (this.specRound || 0)) this.specBlock = null;
+    if (round < (this.specRound || 0)) {
+      this.specBlock = null;
+      this.sapBlock = null;
+    }
     this.specRound = round;
     const block = Math.floor((round - 1) / SPECIAL_EVERY);
     if (this.specBlock !== block) {
@@ -237,19 +249,48 @@ export default class SfxPack {
       this.specAt = block * SPECIAL_EVERY + 2 + Math.floor(Math.random() * (SPECIAL_EVERY - 3));
       this.specDone = false;
     }
-    if (this.specDone || round < this.specAt) return 0;
+    // (si le tocan los dos en la misma ronda, el sapucay pasa a la siguiente)
+    if (this.specDone || round < this.specAt) return this.rollSapucay(round);
     this.specDone = true;
     return 1 + Math.floor(Math.random() * L.length);
+  }
+
+  // El sapucay (solo en el estero): SAPUCAY.code + los segundos de más, o 0.
+  rollSapucay(round) {
+    const S = SAPUCAY;
+    if (MAP_ID !== S.map) return 0;
+    const block = Math.floor((round - 1) / S.every);
+    if (this.sapBlock !== block) {
+      this.sapBlock = block;
+      this.sapAt = Math.random() < S.odds ? block * S.every + 3 + Math.floor(Math.random() * (S.every - 5)) : Infinity;
+    }
+    if (round < this.sapAt) return 0;
+    this.sapAt = Infinity;
+    return S.code + Math.round(rnd(S.delay[0], S.delay[1]));
   }
 
   // Suena el especial k (de rollSpecial) a los `when` segundos.
   special(k, when = 0) {
     this.sync();
+    if (k >= SAPUCAY.code) return this.sapucay(when + k - SAPUCAY.code);
     const S = this.specialIds()[k - 1];
     const buf = S && this.buf[S.id];
     if (!buf) return false;
     const a = this.a;
     a.playBuffer(buf, { gain: S.gain, reverb: 0.8, when: a.now + when, filter: [{ type: 'lowpass', freq: S.lp }] });
+    return true;
+  }
+
+  // El sapucay a los `when` segundos: de lejos (sin posición: igual para
+  // todos), todo al eco, y el rebote sobre el estero más bajo y más apagado.
+  sapucay(when = 0) {
+    const S = SAPUCAY;
+    const buf = this.buf[S.id];
+    if (!buf) return false;
+    const a = this.a;
+    const t = a.now + when;
+    a.playBuffer(buf, { gain: S.gain, reverb: 1, when: t, filter: [{ type: 'lowpass', freq: S.lp }, { type: 'highpass', freq: S.hp }] });
+    a.playBuffer(buf, { gain: S.gain * 0.35, reverb: 1, when: t + 0.42, filter: [{ type: 'lowpass', freq: 1300 }, { type: 'highpass', freq: 220 }] });
     return true;
   }
 }
