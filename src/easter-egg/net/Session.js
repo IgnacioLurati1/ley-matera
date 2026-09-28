@@ -890,7 +890,8 @@ export default class Session {
       const box = sale ? g.interact.saleBoxes[it.saleIndex] : g.interact.box;
       if (!box || (sale && !box.group.visible)) return reply(false);
       if (box.state === 'closed') {
-        g.interact.openBox(box);
+        // (lo que sale se sortea sin los mates que ya tiene el invitado)
+        g.interact.openBox(box, Array.isArray(m.have) ? { w: m.have, tac: m.tac } : null);
         box.taker = from;
         return reply(true, { open: true });
       }

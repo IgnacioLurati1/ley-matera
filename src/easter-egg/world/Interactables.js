@@ -1108,7 +1108,8 @@ export default class Interactables {
     return e.remote === undefined || (e.remote === this.g.net?.id && !!this.g.net?.guest);
   }
 
-  openBox(box = this.box) {
+  // have: los mates del invitado que la abrió ({ w: ids, tac }); si no, los de esta compu
+  openBox(box = this.box, have = null) {
     const g = this.g;
     box.state = 'spinning';
     box.t = 0;
@@ -1118,7 +1119,11 @@ export default class Interactables {
     // la taza de café aparece a partir del 4to uso (no en fire sale)
     const coffeeChance = box.uses >= 4 && box.sale == null && !g.powerups.active.firesale ? 0.18 + (box.uses - 4) * 0.03 : 0;
     box.coffee = Math.random() < coffeeChance;
-    const pool = BOX_POOL.filter((w) => inBox(w) && !g.weapons.has(w.id) && !(w.id === 'pava' && g.weapons.tactical?.id === 'pava') && !(w.id === 'gut' && g.weapons.has('gutacida')));
+    // (no ofrece lo que ya tiene el que la abrió: antes, con un invitado, se
+    // salteaban los mates del anfitrión y al invitado le salía uno que ya tenía)
+    const owns = have ? (id) => have.w.includes(id) : (id) => g.weapons.has(id);
+    const tac = have ? have.tac : g.weapons.tactical?.id;
+    const pool = BOX_POOL.filter((w) => inBox(w) && !owns(w.id) && !(w.id === 'pava' && tac === 'pava') && !(w.id === 'gut' && owns('gutacida')));
     // el easter egg puede pedir más de algún mate (el Tronador para el barbacuá)
     const weight = (w) => boxWeight(w, MAP_ID) * (g.ee?.boxBoost?.(w.id) || 1);
     let total = pool.reduce((s, w) => s + weight(w), 0);
@@ -1500,7 +1505,8 @@ export default class Interactables {
           g.hud.flashPoints();
           return;
         }
-        g.net.requestUse(best.index, best.kind === 'pap' ? { w: g.weapons.slot?.id, up: tierOf(g.weapons.slot?.up) } : {});
+        const box = best.kind === 'box' || best.kind === 'salebox';
+        g.net.requestUse(best.index, best.kind === 'pap' ? { w: g.weapons.slot?.id, up: tierOf(g.weapons.slot?.up) } : box ? { have: g.weapons.slots.map((s) => s.id), tac: g.weapons.tactical?.id || null } : {});
         return;
       }
       if (typeof pr === 'object' && pr?.noCost && cost === 0) {
