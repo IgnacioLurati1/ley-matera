@@ -220,18 +220,19 @@ export const START_ZONE = 'A';
 export const PLAYER_START = { x: 42.5, z: 44.5, yaw: 0 };
 
 // kind 'gate': las tranqueras de palo que cierran las sendas del pajonal.
+// (2026-09-27: 250 más baratas, mínimo 750 — la caja ya no arranca siempre al lado)
 export const DOORS = [
   { id: 1, zones: ['A', 'B'], cells: [[39, 18], [40, 18]], cost: 750, kind: 'gate' },
-  { id: 2, zones: ['A', 'C'], cells: [[61, 40], [61, 41]], cost: 1000, kind: 'gate' },
+  { id: 2, zones: ['A', 'C'], cells: [[61, 40], [61, 41]], cost: 750, kind: 'gate' },
   { id: 3, zones: ['A', 'D'], cells: [[37, 58], [38, 58]], cost: 750, kind: 'gate' },
-  { id: 4, zones: ['A', 'E'], cells: [[19, 38], [19, 39]], cost: 1000, kind: 'gate' },
-  { id: 5, zones: ['B', 'G'], cells: [[29, 12], [29, 13]], cost: 1250, kind: 'gate' },
-  { id: 6, zones: ['B', 'P'], cells: [[55, 12], [55, 13]], cost: 1250, kind: 'gate' },
-  { id: 7, zones: ['H', 'C'], cells: [[77, 26], [78, 26]], cost: 1250, kind: 'gate' },
-  { id: 8, zones: ['D2', 'F'], cells: [[26, 71], [26, 72]], cost: 1250, kind: 'gate' },
+  { id: 4, zones: ['A', 'E'], cells: [[19, 38], [19, 39]], cost: 750, kind: 'gate' },
+  { id: 5, zones: ['B', 'G'], cells: [[29, 12], [29, 13]], cost: 1000, kind: 'gate' },
+  { id: 6, zones: ['B', 'P'], cells: [[55, 12], [55, 13]], cost: 1000, kind: 'gate' },
+  { id: 7, zones: ['H', 'C'], cells: [[77, 26], [78, 26]], cost: 1000, kind: 'gate' },
+  { id: 8, zones: ['D2', 'F'], cells: [[26, 71], [26, 72]], cost: 1000, kind: 'gate' },
   // las casas
   { id: 9, zones: ['B', 'B2'], cells: [[43, 11], [44, 11]], cost: 750, kind: 'door' },
-  { id: 10, zones: ['H', 'H2'], cells: [[70, 13], [71, 13]], cost: 1000, kind: 'door' },
+  { id: 10, zones: ['H', 'H2'], cells: [[70, 13], [71, 13]], cost: 750, kind: 'door' },
   { id: 11, zones: ['H3', 'H4'], cells: [[70, 5], [71, 5]], cost: 750, kind: 'door' },
   { id: 12, zones: ['C', 'C2'], cells: [[64, 32], [64, 33]], cost: 750, kind: 'door' },
   { id: 13, zones: ['E', 'E2'], cells: [[14, 38], [14, 39]], cost: 750, kind: 'door' },
@@ -464,7 +465,9 @@ export const FIRES = [
   { pos: [38.5, 0.75, 40.5], spread: 0.35, sound: [38.5, 1, 40.5] },
 ];
 export const TITLE_CAM = { at: [42, 6, 60], amp: [2, 0.4], look: [42, 1, 44], lookAmp: 3 };
-export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: 'yacare', boss: 'sargento', egg: 'pacto', esteros: true, levels: true };
+// (bossFrom: el Sargento recién en la 8 y después cada 5 — nunca cae en una
+// creciente, que son las múltiplo de 10; pedido del usuario 2026-09-27)
+export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: 'yacare', boss: 'sargento', bossFrom: 8, egg: 'pacto', esteros: true, levels: true };
 export const TEXT = {
   soul: (many) => `El estero se quedó con ${many ? 'sus almas' : 'tu alma'}.`,
   won: (team, r) => `${team ? 'Terminaron' : 'Terminaste'} lo que pedía la voz en la ronda ${r}.`,

@@ -1716,6 +1716,26 @@
 .mdu-custom .mdu-field select { min-width: 0; width: 100%; font-size: 14px; }
 [data-custom-note]:empty { display: none; }
 .mdu-custom__head { margin: 14px 0 8px; opacity: 0.85; letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; }
+/* Opciones → Sonido: también en columnas (volumen, tipos, salida, voces) */
+.mdu-panel:has(.mdu-pane--sound:not([hidden])) {
+  --side: clamp(20px, 4vw, 64px);
+  margin-left: var(--side);
+  max-width: 980px;
+  width: calc(100% - 2 * var(--side));
+}
+/* (de a dos: en cuatro columnas los desplegables se cortaban) */
+.mdu-pane--sound .mdu-custom__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 40px; }
+@media (max-width: 700px) {
+  .mdu-pane--sound .mdu-custom__cols { grid-template-columns: minmax(0, 1fr); }
+}
+.mdu-pane--sound .mdu-field {
+  grid-template-columns: minmax(0, 150px) minmax(0, 1fr) 44px;
+  gap: 8px;
+  font-size: 15px;
+  margin-bottom: 9px;
+}
+.mdu-pane--sound .mdu-field select { min-width: 0; width: 100%; font-size: 14px; }
+.mdu-sound__reset { margin-top: 10px; }
 
 /* pantallas bajas (1080 con la escala de Windows al 125 %, notebooks): el
    título y los botones más juntos, para que el menú entre sin barra (al

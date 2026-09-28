@@ -374,10 +374,12 @@ export const WEAPONS = {
     recoil: 0.1,
     special: true,
     wonder: true,
-    cone: { angle: 0.32, targets: 6 },
+    // (2026-09-27: más ancho y el doble de muertos por tiro: contra una horda
+    // congelaba a unos pocos y el resto seguía)
+    cone: { angle: 0.4, targets: 12 },
     box: 2,
     only: ['granja', 'torre'],
-    pap: { name: 'Tereré del Polo Sur', mag: 9, reserve: 27, range: 17, cone: { angle: 0.45, targets: 10 } },
+    pap: { name: 'Tereré del Polo Sur', mag: 9, reserve: 27, range: 17, cone: { angle: 0.52, targets: 20 } },
   },
   tronador: {
     name: 'Mate Tronador',
@@ -994,6 +996,19 @@ export const WEAPONS = {
 export const BOX_POOL = Object.entries(WEAPONS)
   .filter(([id, w]) => w.box || (w.wall && id !== 'porongo'))
   .map(([id, w]) => ({ id, weight: w.box || 7, only: w.only ? [].concat(w.only) : null }));
+
+// La caja del molino, La Tapera y el penal salía demasiado buena (muchos mates
+// fuertes): ahí los fuertes de caja pesan la mitad y los de pared un poco más
+// (de ~28-36% a ~14-20% de fuertes; los de pared, de ~32% a ~45%; los wonder
+// casi igual). Pedido del usuario 2026-09-27.
+const BOX_TUNED = ['molino', 'granja', 'penal'];
+const BOX_STRONG = ['imperial', 'camionero', 'torpedo', 'asta', 'mate47', 'gut'];
+export function boxWeight(w, map) {
+  if (!BOX_TUNED.includes(map)) return w.weight;
+  if (BOX_STRONG.includes(w.id)) return w.weight * 0.5;
+  if (WEAPONS[w.id].wall && !WEAPONS[w.id].box) return w.weight * 1.3;
+  return w.weight;
+}
 
 export const KNIFE = { damage: 150, range: 1.8, time: 0.55, lunge: 3 };
 // Facón de Plata (el Bowie del original): de un tajo hasta la ronda 10, después pega x6.

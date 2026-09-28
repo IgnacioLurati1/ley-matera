@@ -323,7 +323,8 @@ export default class Powerups {
       if (Math.random() < 0.2) g.fx.sparkle(it.mesh.position, [0.4, 1, 0.5], 1, 0.6);
       const dx = g.player.pos.x - it.mesh.position.x;
       const dz = g.player.pos.z - it.mesh.position.z;
-      if (dx * dx + dz * dz < 1.44 && g.player.alive && Math.abs(g.player.pos.y - it.pos.y) < 1.5) {
+      // (en una cinemática no se agarra nada: se agarra cuando vuelve el control)
+      if (dx * dx + dz * dz < 1.44 && g.player.alive && Math.abs(g.player.pos.y - it.pos.y) < 1.5 && !g.intro?.active && !g.ee?.scene) {
         if (g.net?.guest) {
           // el anfitrión confirma: el efecto es para todos
           g.net.net.send({ t: 'pupget', id: it.id });

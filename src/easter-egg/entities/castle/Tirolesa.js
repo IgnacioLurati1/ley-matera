@@ -5,6 +5,8 @@ import { mesh, boxGeo, cylGeo } from '../../world/props';
 // termas del Inca, por encima del barranco. Un atajo de ida al Pack-a-Pava:
 // se engancha con F y baja colgado del cable, cada vez más rápido. Cada uno
 // viaja por su cuenta (el movimiento es del jugador: player.ride).
+// Recién anda con el Pack-a-Pava abierto (PapQuest.done): antes era un atajo
+// que se salteaba el puente levadizo (2026-09-27, pedido del usuario).
 
 const FROM = [37.2, 68.2];
 const TO = [41.8, 84.2];
@@ -67,7 +69,7 @@ export default class Tirolesa {
       local: true,
       pos: new THREE.Vector3(FROM[0], ya + 1.2, FROM[1]),
       radius: 1.8,
-      prompt: () => (this.riding ? null : { text: 'tirarse por la tirolesa a las termas', noCost: true }),
+      prompt: () => (this.riding ? null : this.open() ? { text: 'tirarse por la tirolesa a las termas', noCost: true } : { text: 'la tirolesa está trabada: abrí el Pack-a-Pava primero', noCost: true, info: true }),
       cost: () => 0,
       use: () => this.start(),
     });
@@ -76,7 +78,7 @@ export default class Tirolesa {
   start() {
     const g = this.g;
     const p = g.player;
-    if (this.riding || !p.alive || p.downed || p.ride) return false;
+    if (this.riding || !this.open() || !p.alive || p.downed || p.ride) return false;
     const r = (this.riding = { t: 0 });
     const tmp = new THREE.Vector3();
     this.zip(0);
@@ -93,6 +95,10 @@ export default class Tirolesa {
       if (r.t >= 1) this.end();
     };
     return true;
+  }
+
+  open() {
+    return !this.g.papq || this.g.papq.done;
   }
 
   end() {

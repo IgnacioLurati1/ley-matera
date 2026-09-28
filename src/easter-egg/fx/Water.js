@@ -493,7 +493,9 @@ export default class Water {
     mesh.onBeforeRender = (renderer, scene, camera, geo, material) => {
       // (fx/Epic la dibuja con otro material para el G-buffer; el espejo, sin ella)
       if (material !== m || camera === this.mirror || this.busy) return;
-      this.frame(renderer, scene, camera);
+      // (ya pasó antes del mundo, prerender: acá queda el cielo del reflejo barato)
+      if (this.pre === camera) this.skyNested(renderer, scene, camera);
+      else this.frame(renderer, scene, camera);
     };
     this.mesh = mesh;
   }
@@ -928,7 +930,7 @@ export default class Water {
     this.mesh.updateMatrixWorld();
     this.simulate(renderer, dt, tmpC);
     this.skyT -= dt;
-    if (this.skyT <= 0) {
+    if (this.skyT <= 0 && this.pre !== camera) {
       this.skyT = 0.25;
       this.skyCube(renderer, scene, tmpC);
     }
@@ -946,6 +948,31 @@ export default class Water {
       u.uPlanar.value = 1;
     } else u.uPlanar.value = 0;
     renderer.setRenderTarget(cur);
+    this.busy = false;
+  }
+
+  // Lo de frame() antes del mundo (PostFX.render, con las matrices del cuadro
+  // ya puestas). Anidado adentro del dibujo del mundo, three arma otras luces
+  // para el espejo y cada material del mapa volvía a buscar su programa en el
+  // mundo y en el espejo: ~1 ms por cuadro en el estero. El cielo del reflejo
+  // barato sigue anidado (skyNested): ve solo la capa del cielo, sin luces, y
+  // afuera le cambiaría las luces al mundo.
+  prerender(renderer, scene, camera) {
+    let o = this.mesh;
+    while (o.parent) {
+      if (!o.visible) return;
+      o = o.parent;
+    }
+    if (o !== scene || !this.mesh.layers.test(camera.layers)) return;
+    this.pre = camera;
+    this.frame(renderer, scene, camera);
+  }
+
+  skyNested(renderer, scene, camera) {
+    if (this.skyT > 0) return;
+    this.skyT = 0.25;
+    this.busy = true;
+    this.skyCube(renderer, scene, tmpC.setFromMatrixPosition(camera.matrixWorld));
     this.busy = false;
   }
 
@@ -1237,8 +1264,12 @@ export default class Water {
       o.visible = false;
       off.push(o);
     }
+    // (las sombras las hace el mundo: antes de él, un needsUpdate pendiente
+    // se gastaba acá)
     const auto = renderer.shadowMap.autoUpdate;
+    const need = renderer.shadowMap.needsUpdate;
     renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = false;
     // (las matrices ya se pusieron al día en este cuadro)
     const mwa = scene.matrixWorldAutoUpdate;
     scene.matrixWorldAutoUpdate = false;
@@ -1248,6 +1279,7 @@ export default class Water {
     renderer.render(scene, mc);
     scene.matrixWorldAutoUpdate = mwa;
     renderer.shadowMap.autoUpdate = auto;
+    renderer.shadowMap.needsUpdate = need;
     for (const o of off) o.visible = true;
     this.mesh.visible = true;
   }

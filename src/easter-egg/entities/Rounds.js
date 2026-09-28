@@ -89,7 +89,7 @@ export default class Rounds {
     this.health = zombieHealth(this.round);
     this.delay = spawnDelay(this.round);
     this.spawnT = this.round === 1 ? 1 : 2.5;
-    this.bossPending = FEATURES.boss === 'alcaide' ? this.alcaideRound() : bossRound(this.round);
+    this.bossPending = FEATURES.boss === 'alcaide' ? this.alcaideRound() : bossRound(this.round, FEATURES.bossFrom);
     // el penal no tiene ronda especial (como Mob of the Dead); la torre los mezcla en cada ronda
     // (el estero no tiene ronda de manada: los yacarés vienen con la creciente)
     const yac = FEATURES.special === 'yacare';

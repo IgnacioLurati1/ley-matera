@@ -379,4 +379,6 @@ export const TEXT = {
   loading: 'Sembrando el maizal…',
 };
 // Cielo: arranca al atardecer y se hace de noche con el easter egg.
-export const SKY = { daylight: 1, sun: [-0.86, 0.1, -0.5] };
+// (la ronda de los caballos: noche de luna roja, sin tormenta; FarmEgg.update
+// baja la luz del día mientras dura, pedido del usuario 2026-09-27)
+export const SKY = { daylight: 1, sun: [-0.86, 0.1, -0.5], states: { dogs: { storm: 0, blood: 1, fog: 0.06, fogColor: 0x2e0d0b, cloud: 0.3, mist: 0.6 } } };

@@ -24,8 +24,9 @@ import { animateMeme } from '../weapons/memeMate';
 //    que lo deja arriba de todo. Cuanto más sube, más cara (tope en la cima).
 //    (Caerse de muy arriba mata: es parte del Challenge, lo pidió el usuario.)
 //  · Muertos más rápidos y más bravos de entrada, más por ronda y más a la vez
-//    (Rounds llama a tuneRound; Zombies, a tuneZombie), especiales desde la
-//    ronda 2 y minijefes cada dos rondas (de a dos desde la 8).
+//    (Rounds llama a tuneRound; Zombies, a tuneZombie; las primeras 5 rondas
+//    corren como en el juego normal), especiales desde la ronda 5 y
+//    minijefes cada dos rondas desde la 5 (de a dos desde la 11).
 //  · Los eventos del remolino (entities/challengeEvents.js): casi todas las
 //    rondas desde la 3, la mayoría malos y locos, alguno bueno.
 //    A veces (20%) te escupe en la casita escondida (entities/challengeHouse.js)
@@ -885,9 +886,10 @@ export default class TowerChallenge {
     R.toSpawn = R.total;
     R.delay = Math.max(0.06, R.delay * 0.55);
     R.capBonus = 6 + (players - 1) * 2;
-    R.specials = n >= 2 ? Math.floor((1 + n / 3) * (1 + (players - 1) * 0.5)) : 0;
-    R.bossPending = n >= 2 && (n % 2 === 0 || n >= 11);
-    R.bothFrom = 8;
+    // (2026-09-27: especiales y minijefes recién desde la 5, pedido del usuario)
+    R.specials = n >= 5 ? Math.floor((1 + n / 3) * (1 + (players - 1) * 0.5)) : 0;
+    R.bossPending = n >= 5 && (n % 2 === 1 || n >= 11);
+    R.bothFrom = 11;
     this.ev.tuneRound(R);
     // con los guardianes del cielo en pie, ni el jefe de la ronda ni la noche de minijefes
     if (this.guard) {

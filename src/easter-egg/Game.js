@@ -112,7 +112,12 @@ export function gfxFrom(tier) {
 }
 // Calidad automática: si en partida anda por debajo de esto, baja un escalón.
 const MIN_FPS = 40;
-const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.75, sfx: 0.9, shake: 1, quality: 'high', qualityMode: 'auto', invertY: false, voiceMode: 'murmur', showFps: false, fpsCap: '0', map: 'molino', v: 6, voice: 0.9, subSize: 1, adsSens: 1, adsMode: 'hold', crouchMode: 'hold', sprintMode: 'hold', calmFx: false, upscale: 'off', sharp: 0.8, fsrPct: 0.77 };
+// Opciones → Sonido, lo que no es volumen general (core/audio.js setMix): el
+// volumen de cada tipo de efecto, la salida, el rango dinámico, el eco, el
+// rendimiento, los oídos tapados y el silencio con la ventana atrás.
+const SOUND_MIX = { volWeapons: 1, volZombies: 1, volWorld: 1, volPlayer: 1, volUi: 1, audioOut: 'phones', dynRange: 'normal', reverb: 1, audioPerf: 'auto', muffleLow: true, muffleWater: true, muteBg: false };
+const SOUND_KEYS = ['master', 'music', 'sfx', 'voice', 'voiceMode', ...Object.keys(SOUND_MIX)];
+const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.75, sfx: 0.9, shake: 1, quality: 'high', qualityMode: 'auto', invertY: false, voiceMode: 'murmur', showFps: false, fpsCap: '0', map: 'molino', v: 6, voice: 0.9, subSize: 1, adsSens: 1, adsMode: 'hold', crouchMode: 'hold', sprintMode: 'hold', calmFx: false, upscale: 'off', sharp: 0.8, fsrPct: 0.77, ...SOUND_MIX };
 
 // Entrada vacía: el jugador sigue con su física pero no toca nada (menú abierto en línea).
 const IDLE_INPUT = { mouse: { dx: 0, dy: 0 }, sensitivity: 1, invertY: false, key: () => false, hit: () => false };
@@ -223,6 +228,7 @@ export default class Game {
     // la música de las escenas (entradas, jefes, cinemáticas, muerte)
     this.music = new Music(this);
     this.audio.setVolumes(this.settings);
+    this.audio.setMix(this.settings);
     this.audio.voiceMode = this.settings.voiceMode;
     // las voces del navegador pueden llegar después: se actualizan las opciones
     this.audio.onVoices = () => this.menus?.syncOptions();
@@ -825,6 +831,8 @@ export default class Game {
     }
     // (el Challenge de la torre arranca con más plata)
     this.points = this.ee?.startPoints ?? START_POINTS;
+    // la caja arranca en un lugar al azar cerca del comienzo (la del invitado la manda el anfitrión)
+    if (!this.net?.guest) this.interact.newRun();
     this.hud.reset();
     this.hud.setPoints(this.points);
     this.weapons.updateHud();
@@ -1230,6 +1238,7 @@ export default class Game {
     if (k === 'subSize') this.hud.setSubScale(v);
     if (['master', 'music', 'sfx', 'voice'].includes(k)) this.audio.setVolumes(this.settings);
     if (k === 'voiceMode') this.audio.voiceMode = v;
+    if (k in SOUND_MIX) this.audio.setMix(this.settings);
     if (k === 'fov') this.resize();
     if (k === 'quality' || k === 'gfx') {
       this.applyQuality();
@@ -1244,6 +1253,11 @@ export default class Game {
       setBinds(v);
       this.input.setRemap(remapTable());
     }
+  }
+
+  // Opciones → Sonido → Restablecer: todo lo del sonido como viene.
+  resetSound() {
+    for (const k of SOUND_KEYS) this.setSetting(k, DEFAULTS[k]);
   }
 
   // La calidad de un sistema: la de la calidad elegida o, en Personalizada, la
@@ -1319,6 +1333,14 @@ export default class Game {
       this.capNext = Math.max((this.capNext || 0) + 1000 / cap, now);
     }
     this.watchPerf(now - this.last);
+    // cuánto tarda un cuadro (suavizado): en una compu que no da abasto el
+    // audio afloja antes (core/audio.js budget), si no se cortaba el sonido
+    // con varios sonando a la vez
+    const raw = Math.min(200, Math.max(0, now - this.last));
+    this.frameMs = (this.frameMs ?? 16) * 0.96 + raw * 0.04;
+    // (en las opciones se puede dejar siempre completo o siempre liviano)
+    const perf = this.settings.audioPerf;
+    if (this.audio) this.audio.budget = perf === 'full' ? 1 : perf === 'light' ? 0.4 : this.frameMs < 24 ? 1 : this.frameMs < 36 ? 0.65 : 0.4;
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     if (this.settings.showFps) {
@@ -1356,6 +1378,10 @@ export default class Game {
   update(dt) {
     this.time += dt;
     if (this.state === 'playing') this.stats.time += dt;
+    // A.cat: de qué tipo es lo que suena en cada parte (el volumen de armas,
+    // zombies, ambiente... de las opciones; core/audio.js CAT_OF)
+    const A = this.audio || {};
+    A.cat = null;
     // temporizadores del juego (respetan la pausa)
     for (let i = this.timers.length - 1; i >= 0; i--) {
       if (this.time >= this.timers[i].t) {
@@ -1374,10 +1400,12 @@ export default class Game {
       this.audio.setCine(scene);
     }
     const active = this.state === 'playing' && !this.menuOpen && !scene;
+    A.cat = 'player';
     if (active) this.player.update(dt, input);
     else if (this.state === 'playing') this.player.update(dt, IDLE_INPUT);
     else if (this.endCam) this.updateEnd(dt);
     else this.player.updateCamera(this.camera);
+    A.cat = null;
     // arriba en el altillo: los de abajo van hacia la escalera
     if (levelOf(this.player.pos.y) === 1) this.nav.update(STAIR_BOTTOM.x, STAIR_BOTTOM.z);
     else this.nav.update(this.player.pos.x, this.player.pos.z, false, this.player.pos.y);
@@ -1392,28 +1420,40 @@ export default class Game {
     }
     // en gaucho life no hay mates ni se toca nada: solo la electricidad
     const ghost = !!this.vida?.active;
+    A.cat = 'weapons';
     if (active && !ghost) this.weapons.update(dt, input);
+    A.cat = 'ui';
     if (active && !ghost) this.interact.update(dt, input);
+    else if (this.state === 'playing') this.interact.tick(dt);
+    A.cat = null;
     this.vida?.update(dt, active ? input : IDLE_INPUT);
     this.barriers.update(dt);
     if (!scene) this.rounds.update(dt);
+    A.cat = 'zombies';
     if (!scene || this.net?.guest) this.zombies.update(dt, this.time);
     else this.zombies.render();
+    A.cat = null;
     if (this.intro?.active) this.intro.update(dt);
     else if (scene) this.ee.sceneCam(dt);
     this.arena.update(dt);
+    A.cat = 'ui';
     this.powerups.update(dt);
+    A.cat = 'zombies';
     this.lastZ?.update(dt);
     this.pombero.update(dt);
     this.crow?.update(dt);
+    A.cat = null;
     this.luz.update(dt);
     this.curandero?.update(dt);
     this.activities.update(dt);
     this.net?.update(dt);
+    A.cat = 'world';
     this.decor?.update(dt);
     this.critters.update(dt);
+    A.cat = null;
     this.ee.update(dt);
     this.papq?.update(dt);
+    A.cat = 'world';
     this.world.update(dt, this.time);
     this.ambience.update(dt);
     this.weather.update(dt);
@@ -1421,6 +1461,7 @@ export default class Game {
     this.water?.update(dt);
     // los ruidos de la noche del mapa (fx/Night.js)
     this.world.night?.update(dt);
+    A.cat = null;
     this.fx.update(dt, this.camera);
     this.hud.update(dt);
     // la tabla de puntos, mientras se mantiene Tab

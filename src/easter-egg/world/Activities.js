@@ -96,6 +96,9 @@ export default class Activities {
       const jarObj = { def, i, group, soul, top, fy, J, count: 0, need: 0, shown: 0, state: 'open', pulse: 0 };
       g.interact.add({
         kind: 'jar',
+        // (en línea el anfitrión busca el frasco por acá: sin esto le daba
+        // siempre el primero y el regalo de los otros no se podía agarrar)
+        jarIndex: i,
         pos: new THREE.Vector3(a.x, fy + 1.3, a.z),
         radius: 2.2,
         prompt: () => {
@@ -173,7 +176,10 @@ export default class Activities {
     const gift = GIFTS[j.giftI];
     j.state = 'done';
     j.orb?.removeFromParent();
+    j.orb = null;
     j.soulTarget = 0;
+    // (que los invitados lo vean vacío y no lo pidan de nuevo)
+    g.net?.event('jar', { i: this.jars.indexOf(j), c: j.count, s: 'done' });
     g.audio.powerupGrab();
     g.hud.toast(gift.name);
     if (gift.id === 'perk') {

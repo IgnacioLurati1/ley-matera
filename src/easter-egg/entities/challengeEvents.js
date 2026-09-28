@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TOWER, SKY } from '../config/map';
-import { PLAYER, SPEEDS, rollSpeed } from '../config/rules';
+import { PLAYER, SPEEDS, rollSpeedClassic } from '../config/rules';
 import { weaponStats } from '../config/weapons';
 
 // Los eventos del remolino del Challenge de la torre (los maneja
@@ -44,6 +44,9 @@ const POP_HURT = 8;
 const POP_CAP = 30;
 // las ánimas: a qué distancia se ven
 const GHOST_R = 6.5;
+// el más rápido de los muertos, contra el jugador caminando (PLAYER.walk):
+// sin aire igual se escapa, apenas (pedido del usuario 2026-09-27)
+const SPEED_CAP = 0.96;
 
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 const tmpV = new THREE.Vector3();
@@ -134,7 +137,8 @@ export default class ChallengeEvents {
     if (n < 3 || Math.random() > 0.85) return [];
     const r = Math.random();
     const kind = r < 0.18 ? 'bien' : r < 0.28 ? 'raro' : 'mal';
-    const from = (k, not = []) => IDS.filter((id) => CHALLENGE_EVENTS[id].kind === k && !this.last.includes(id) && !not.includes(id));
+    // (la noche de minijefes, recién desde la 5: antes no hay minijefes)
+    const from = (k, not = []) => IDS.filter((id) => CHALLENGE_EVENTS[id].kind === k && !this.last.includes(id) && !not.includes(id) && (id !== 'jefes' || n >= 5));
     const pool = from(kind);
     if (!pool.length) return [];
     const wt = (id) => CHALLENGE_EVENTS[id].w ?? 1;
@@ -156,7 +160,8 @@ export default class ChallengeEvents {
       R.delay *= 0.4;
       R.total = Math.round(R.total * 1.5);
       R.toSpawn = R.total;
-      R.specials += 4;
+      // (los especiales, recién desde la 5)
+      if (n >= 5) R.specials += 4;
     }
     this.bossLeft = list.includes('jefes') ? 3 + Math.floor(n / 8) : 0;
     this.bossT = 7;
@@ -166,6 +171,8 @@ export default class ChallengeEvents {
 
   // (anfitrión, Zombies.spawn) Cada muerto nuevo según los eventos.
   tuneZombie(z, round) {
+    // (acá no se largan a correr a medida que caen los números: eso es del juego normal)
+    z.runU = null;
     if (this.has('siesta')) {
       z.speedType = 'walk';
       z.speed = SPEEDS.walk * (0.78 + Math.random() * 0.12);
@@ -173,9 +180,19 @@ export default class ChallengeEvents {
       return;
     }
     const stamp = this.has('estampida');
-    z.speedType = stamp ? 'sprint' : rollSpeed(round + 5);
-    z.speed = SPEEDS[z.speedType] * (0.98 + Math.random() * 0.2) * (stamp ? 1.15 : 1.08);
     z.fury = 1.35;
+    // las primeras 5 rondas corren como corría el juego normal antes del
+    // 2026-09-27 (rollSpeedClassic); después, rápidos (un poco menos desde ese día)
+    if (round > 5) {
+      z.speedType = stamp ? 'sprint' : rollSpeedClassic(round + 3);
+      z.speed = SPEEDS[z.speedType] * (0.95 + Math.random() * 0.1);
+    } else {
+      z.speedType = rollSpeedClassic(round);
+      z.speed = SPEEDS[z.speedType] * (0.92 + Math.random() * 0.16);
+    }
+    // nunca más rápidos que el jugador caminando: el que se queda sin aire
+    // todavía se les escapa (comiéndose algún zarpazo si lo alcanzan)
+    z.speed = Math.min(z.speed, PLAYER.walk * SPEED_CAP);
   }
 
   set(list, n) {

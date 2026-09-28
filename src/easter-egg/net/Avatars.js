@@ -17,6 +17,13 @@ const tmpEul = new THREE.Euler();
 const tmpP = new THREE.Vector3();
 const tmpD = new THREE.Vector3();
 const SHIELD_TILT = new THREE.Matrix4().makeRotationX(0.12).multiply(new THREE.Matrix4().makeRotationY(Math.PI));
+// El mate de verdad de cada compañero (el que tiene en la mano, mejorado o el
+// potenciador): en la mano derecha, apuntando adonde mira. GUN_OFF: de la
+// mano al origen del modelo (en el marco de la mirada: +x derecha, -z adelante).
+const GUN_OFF = new THREE.Vector3(0, 0.02, -0.02);
+const tmpQ = new THREE.Quaternion();
+const tmpE = new THREE.Euler(0, 0, 0, 'YXZ');
+const ONE = new THREE.Vector3(1, 1, 1);
 
 export default class Avatars {
   constructor(game, session) {
@@ -190,6 +197,32 @@ export default class Avatars {
     if (a.shield) a.shield.visible = on;
   }
 
+  // El mate que tiene en la mano un compañero (lo avisa él: Session 'wpn').
+  // Es una copia del que ya está armado en weapons.models (mismas mallas y
+  // materiales, ya compilados en la carga: no traba). Sin eso, el gauchito
+  // lleva el mate de siempre.
+  setGun(a, w, u) {
+    a.gun?.removeFromParent();
+    a.gun = null;
+    const W = this.g.weapons;
+    const src = w && (W?.models?.get(`${w}|${u}`) || W?.models?.get(`${w}|0`));
+    if (!src?.root) return;
+    const gun = src.root.clone();
+    // (el fogonazo de la mano propia no viaja con la copia)
+    const drop = [];
+    gun.traverse((o) => {
+      if (W.flash && o.material === W.flash.material) drop.push(o);
+      o.castShadow = false;
+    });
+    for (const o of drop) o.removeFromParent();
+    gun.visible = true;
+    const holder = new THREE.Group();
+    holder.matrixAutoUpdate = false;
+    holder.add(gun);
+    a.group.add(holder);
+    a.gun = holder;
+  }
+
   // El color del poncho de un compañero (el estero: cada jugador es un
   // personaje; Gil va de colorado).
   restyle(id, hex) {
@@ -314,6 +347,13 @@ export default class Avatars {
       // los que esperan la próxima ronda no se ven (como en el original)
       a.group.visible = !r.dead || !!r.corpse;
       if (!a.group.visible) continue;
+      // el mate que tiene en la mano (Session 'wpn')
+      const wp = this.team ? this.s.wpn?.get(r.id) : null;
+      const wkey = wp?.w ? `${wp.w}|${wp.u | 0}` : '';
+      if (wkey !== (a.wkey || '')) {
+        a.wkey = wkey;
+        this.setGun(a, wp?.w, wp?.u | 0);
+      }
       // pose: caminando, quieto o caído
       if (r.downed || r.dead || r.corpse) {
         g.zombies.poseCrawl(a.fake, dt * (r.corpse || r.dead ? 0 : 0.6));
@@ -348,6 +388,19 @@ export default class Avatars {
         P.elR = -1.25;
         P.shLp = -0.25 + (r.moving ? Math.sin(a.fake.phase) * 0.35 : 0);
         P.elL = -0.35;
+        if (a.gun) {
+          // con su mate de verdad: los dos brazos adelante, apuntando adonde mira
+          const up = Math.max(-1, Math.min(1, r.pitch || 0));
+          P.shRp = -1.35 - up;
+          P.shRr = -0.05;
+          P.elR = -0.35;
+          P.shLp = -1.2 - up * 0.9;
+          P.shLr = 0.45;
+          P.elL = -0.75;
+        } else {
+          P.shRr = -0.1;
+          P.shLr = 0.1;
+        }
       }
       // (las cinemáticas pueden poner su pose: levantar el mate, arrodillarse)
       r.poseFn?.(P);
@@ -374,7 +427,22 @@ export default class Avatars {
         if (e.obj === a.poncho) e.obj.matrix.multiply(tmpRot.makeRotationFromEuler(tmpEul.set(a.sway.x, 0, a.sway.y)));
         e.obj.matrixWorldNeedsUpdate = true;
       }
-      a.hand.visible = !r.downed && !r.dead && !r.corpse && !r.ghost;
+      const armed = !r.downed && !r.dead && !r.corpse && !r.ghost;
+      a.hand.visible = armed && !a.gun;
+      if (a.gun) {
+        // en la mano derecha (el brazo va adelante), girado con la mirada
+        // (yaw y pitch, como la cámara)
+        a.gun.visible = armed && (r.swim || 0) < 2;
+        if (a.gun.visible) {
+          tmpE.set(Math.max(-1.2, Math.min(1.2, r.pitch || 0)), r.yaw, 0, 'YXZ');
+          tmpQ.setFromEuler(tmpE);
+          tmpP.copy(GUN_OFF).applyQuaternion(tmpQ);
+          tmpD.set(0, -0.19, 0).applyMatrix4(a.mats[6]);
+          tmpP.add(tmpD);
+          a.gun.matrix.compose(tmpP, tmpQ, ONE);
+          a.gun.matrixWorldNeedsUpdate = true;
+        }
+      }
       // (el alma de gaucho life no lo lleva)
       const shield = !!r.shield && !r.ghost;
       if (shield !== !!a.shieldOn) this.backShield(a, shield);

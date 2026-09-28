@@ -340,7 +340,23 @@ export default class PostFX {
     }
     this.taa.jitter();
     this.epic.before(dt, this.game);
-    this.composer.render(dt);
+    // las matrices del mundo, una sola vez por cuadro: cada dibujo de la escena
+    // (el mundo, el G-buffer de Épica) las recorría enteras otra vez. Y el
+    // espejo del agua, antes del mundo (fx/Water.prerender)
+    const scene = this.world.scene;
+    const cam = this.world.camera;
+    scene.updateMatrixWorld();
+    if (cam.parent === null) cam.updateMatrixWorld();
+    const mwa = scene.matrixWorldAutoUpdate;
+    scene.matrixWorldAutoUpdate = false;
+    const water = this.game?.water;
+    try {
+      water?.prerender?.(this.renderer, scene, cam);
+      this.composer.render(dt);
+    } finally {
+      scene.matrixWorldAutoUpdate = mwa;
+      if (water) water.pre = null;
+    }
     this.epic.after();
     this.taa.unjitter();
   }

@@ -55,8 +55,9 @@ const SPECIALS = {
   esteros: { id: 'especial-esteros', gain: 0.38, lp: 3400 },
   castillo: { id: 'especial-castillo', gain: 0.36, lp: 2200 },
 };
-// probabilidad por ronda (desde la 2, nunca en la especial) y cuándo, después de la canción
-const SPECIAL_P = 0.08;
+// cuántas rondas por tramo: suena una vez en cada tramo (dos cada 30 rondas,
+// sin excepción; antes era un 8 % por ronda y con mala suerte se amontonaba)
+const SPECIAL_EVERY = 15;
 
 // Cuánto dura la canción de cada mapa al empezar la ronda (audio.roundStart):
 // la llegada de la ronda especial suena unos segundos después, y recién ahí
@@ -221,9 +222,23 @@ export default class SfxPack {
 
   // ---------- el especial de fondo ----------
   // ¿Suena esta ronda? Devuelve cuál (1..n) o 0. Lo decide el anfitrión.
+  // Una vez por tramo de SPECIAL_EVERY rondas, en una ronda al azar del tramo
+  // (desde la 2). Si esa ronda es especial o de creciente (Rounds no pregunta),
+  // suena en la siguiente, siempre dentro del tramo.
   rollSpecial(round) {
     const L = this.specialIds();
-    if (!L.length || round < 2 || Math.random() >= SPECIAL_P) return 0;
+    if (!L.length) return 0;
+    // partida nueva (la ronda volvió para atrás): tramos de cero
+    if (round < (this.specRound || 0)) this.specBlock = null;
+    this.specRound = round;
+    const block = Math.floor((round - 1) / SPECIAL_EVERY);
+    if (this.specBlock !== block) {
+      this.specBlock = block;
+      this.specAt = block * SPECIAL_EVERY + 2 + Math.floor(Math.random() * (SPECIAL_EVERY - 3));
+      this.specDone = false;
+    }
+    if (this.specDone || round < this.specAt) return 0;
+    this.specDone = true;
     return 1 + Math.floor(Math.random() * L.length);
   }
 
@@ -237,4 +252,20 @@ export default class SfxPack {
     a.playBuffer(buf, { gain: S.gain, reverb: 0.8, when: a.now + when, filter: [{ type: 'lowpass', freq: S.lp }] });
     return true;
   }
+}
+
+// El tipo de efecto de cada uno (el volumen de las opciones, core/audio.js
+// CAT_OF): la llegada de los bichos de las rondas especiales va con los
+// zombies; los especiales del mapa, con el ambiente.
+for (const [n, cat] of [['intro', 'zombies'], ['special', 'world']]) {
+  const fn = SfxPack.prototype[n];
+  SfxPack.prototype[n] = function (...args) {
+    const was = this.a.cat;
+    this.a.cat = cat;
+    try {
+      return fn.apply(this, args);
+    } finally {
+      this.a.cat = was;
+    }
+  };
 }

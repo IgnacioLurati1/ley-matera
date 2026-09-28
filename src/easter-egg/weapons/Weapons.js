@@ -412,6 +412,10 @@ export default class Weapons {
   prebuild() {
     const warm = new THREE.Group();
     warm.visible = false;
+    // (escondido: sin recorrer sus ~4000 piezas cada cuadro al poner al día las
+    // matrices de la escena de la mano; el que se equipa se pone al día en la
+    // mano. matrixWorldAutoUpdate no alcanza: three igual recorre los hijos)
+    warm.updateMatrixWorld = () => {};
     this.vmScene.add(warm);
     this.warm = warm;
     for (const [id, w] of Object.entries(WEAPONS)) {
@@ -2008,6 +2012,8 @@ export default class Weapons {
       g.ee?.onBlast?.(origin, fwd, st.range, C.angle);
     }
     const tanA = Math.tan(C.angle);
+    // (el del hielo, con más margen: la horda de al lado también queda dura)
+    const margin = type === 'freeze' ? 1.25 : 0.9;
     const list = [];
     for (const { z, d } of g.zombies.inRadius(origin, st.range + 0.5)) {
       tmpV2.set(z.pos.x - origin.x, z.pos.y + 1 - origin.y, z.pos.z - origin.z);
@@ -2017,7 +2023,7 @@ export default class Weapons {
         // de cerca, a todo lo que tenga adelante
         if (along <= 0) continue;
         const side = Math.sqrt(Math.max(0, tmpV2.lengthSq() - along * along));
-        if (side > 0.9 + along * tanA) continue;
+        if (side > margin + along * tanA) continue;
       } else if (along < -0.3) continue;
       // se lo ve si se ve alguna parte: la cabeza, el pecho o las rodillas (detrás de un banco o gateando)
       const s = z.scale || 1;

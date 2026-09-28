@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import Avatars from './Avatars';
-import { GRENADE, maxTier } from '../config/weapons';
+import { GRENADE, maxTier, tierOf } from '../config/weapons';
 import { POMBERO_ID } from '../entities/Pombero';
 import { CROW_ID } from '../entities/Crow';
 import { STAKE_ID } from '../entities/bossMoves';
@@ -58,6 +58,10 @@ export default class Session {
     this.pings = new Map();
     this.pingT = 0;
     this.outT = 0;
+    // el mate que tiene en la mano cada compañero (id -> { w, u }): lo dibuja Avatars
+    this.wpn = new Map();
+    this.wpnKey = null;
+    this.wpnT = 0;
     this.hookHandlers();
     if (this.guest) net.send({ t: 'name', name: net.name });
   }
@@ -192,6 +196,18 @@ export default class Session {
     }
     // los muertos de otros jugadores también cuentan para la ronda del anfitrión
     if (this.host && g.rounds) g.rounds.players = this.net.count;
+    // el mate de la mano, para que los demás lo vean (al cambiar, y cada tanto
+    // por si alguien entró después)
+    if (g.state === 'playing' && g.weapons) {
+      const s = g.weapons.slot;
+      const key = s ? `${s.id}|${tierOf(s.up)}` : '';
+      this.wpnT -= dt;
+      if (key !== this.wpnKey || this.wpnT <= 0) {
+        this.wpnKey = key;
+        this.wpnT = 4;
+        this.share('wpn', { id: this.id, w: s?.id || '', u: s ? tierOf(s.up) : 0 });
+      }
+    }
     // panel de compañeros
     this.teamT = (this.teamT || 0) - dt;
     if (this.teamT <= 0) {
@@ -696,6 +712,7 @@ export default class Session {
       doors: [...g.world.doorOpen],
       zones: [...g.activeZones],
       box: { spot: g.interact.box.spot, state: g.interact.box.state },
+      locks: g.interact.list.filter((it) => it.locked).map((it) => it.index),
       weather: g.weather.name,
       arena: g.arena.active,
       ee: g.ee.fullState(),
@@ -734,6 +751,7 @@ export default class Session {
     });
     for (const z of m.zones) g.activeZones.add(z);
     g.interact.placeBox(m.box.spot);
+    for (const i of m.locks || []) if (g.interact.list[i]) g.interact.lock(g.interact.list[i], true);
     g.weather.set(m.weather, false);
     g.rounds.round = m.round;
     g.hud.setRound(m.round);
@@ -842,28 +860,45 @@ export default class Session {
     const it = g.interact.list[m.i];
     if (!it) return;
     const reply = (ok, payload = {}) => this.net.to(from, { t: 'ok', i: m.i, ok, ...payload });
+    // (con el candado del minijefe no anda para nadie)
+    if (it.locked) return reply(false);
     const kind = it.kind;
     if (kind === 'pap') {
       // el mate del invitado entra a la máquina
       const pap = g.interact.pap;
+      // su mate ya mejorado: lo saca de la máquina (free: ya pagó al meterlo)
+      if (pap.state === 'ready' && pap.entry?.remote === from && !pap.entry.auto) {
+        const w = pap.entry.id;
+        const up = pap.tier;
+        g.interact.clearPap();
+        this.event('pap', { s: 'idle' });
+        return reply(true, { w, up, free: 1 });
+      }
       const tier = (m.up | 0) + 1;
       if (!m.w || pap.state !== 'idle' || tier > maxTier(m.w)) return reply(false);
       const res = g.interact.startPapFor(m.w, from, tier);
+      if (!res) return reply(false);
       // la hoz entra al ritual: vuelve cuando termina (llega con 'hozup')
       if (res === 'ritual') return reply(true, { ritual: 1 });
-      return reply(true, { w: m.w, up: tier });
+      // el mate entra a la máquina: sale mejorado cuando termina y lo saca él
+      // (antes le llegaba al toque, sin esperar)
+      return reply(true, { pin: m.w });
     }
-    if (kind === 'box') {
-      const box = g.interact.box;
+    // la caja, o una de las de la liquidación (cada una anda por su cuenta)
+    if (kind === 'box' || kind === 'salebox') {
+      const sale = kind === 'salebox';
+      const box = sale ? g.interact.saleBoxes[it.saleIndex] : g.interact.box;
+      if (!box || (sale && !box.group.visible)) return reply(false);
       if (box.state === 'closed') {
-        g.interact.openBox();
+        g.interact.openBox(box);
         box.taker = from;
         return reply(true, { open: true });
       }
       if (box.state === 'offer') {
         const w = box.offer;
-        g.interact.takeBoxWeapon();
-        return reply(true, { w });
+        g.interact.takeBoxWeapon(box);
+        // (free: el aviso de que se cierra llega antes y le cobraba la caja de nuevo)
+        return reply(true, { w, free: 1 });
       }
       return reply(false);
     }
@@ -921,7 +956,7 @@ export default class Session {
       return;
     }
     const it = g.interact.list[m.i];
-    const cost = it ? it.cost() : 0;
+    const cost = it && !m.free ? it.cost() : 0;
     if (m.board != null) {
       if (m.board) g.addPoints(10, null, false, 'board');
       return;
@@ -929,6 +964,15 @@ export default class Session {
     if (cost > 0) g.spend(cost);
     else g.audio.purchase();
     if (m.ritual) g.ee.papGiven?.();
+    // su mate quedó en el Pack-a-Pava (y el regalo de las ánimas, si lo tenía, se gastó)
+    if (m.pin) {
+      // (el que metió, aunque justo haya cambiado de mate)
+      const W = g.weapons;
+      const k = W.slots.findIndex((s) => s.id === m.pin);
+      if (k >= 0) W.cur = k;
+      W.take();
+      if (g.activities) g.activities.freePap = false;
+    }
     if (m.w) g.weapons.give(m.w, m.up || 0);
     if (m.nade) {
       g.weapons.grenades = GRENADE.max;
@@ -1020,6 +1064,21 @@ export default class Session {
       case 'box':
         g.interact.applyRemoteBox(m);
         break;
+      // el mate que tiene en la mano un compañero (net/Avatars lo dibuja)
+      case 'wpn':
+        if (m.id !== this.id) this.wpn.set(m.id, { w: m.w || '', u: m.u | 0 });
+        break;
+      // los candados de los minijefes (los pone el anfitrión, los saca cualquiera)
+      case 'lock': {
+        const it = g.interact.list[m.i];
+        if (it && this.guest) g.interact.lock(it);
+        break;
+      }
+      case 'unlock': {
+        const it = g.interact.list[m.i];
+        if (it) g.interact.unlock(it);
+        break;
+      }
       case 'pap':
         g.interact.applyRemotePap(m);
         break;

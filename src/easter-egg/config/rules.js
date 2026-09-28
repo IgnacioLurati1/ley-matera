@@ -43,8 +43,39 @@ export function spawnDelay(round) {
   return Math.max(0.08, 2 * Math.pow(0.95, round - 1));
 }
 
-// Velocidad: cada zombie tira un número en [ronda*8, ronda*8+35].
+// Velocidad (2026-09-27, pedido del usuario; el Challenge de la torre sigue con
+// rollSpeedClassic): de la 1 a la 3 caminan (cada ronda un poco más ligero,
+// walkPace); de la 4 a la 7 salen caminando y se largan a correr a medida que
+// caen los números (runShare: cada ronda, más); desde la 8 corren todos y de a
+// poco se suman los rapidísimos. Desde la 3, el último corre siempre (Zombies).
 export function rollSpeed(round, rand = Math.random) {
+  if (round < 8) return 'walk';
+  return rand() < sprintShare(round) ? 'sprint' : 'run';
+}
+
+// La parte de rapidísimos: desde la 9, un 10% más por ronda (tope 80%).
+export const sprintShare = (round) => (round < 8 ? 0 : Math.min(0.8, (round - 8) * 0.1));
+
+// En las actividades del easter egg donde hay que aguantar (encierros,
+// rituales, la defensa del yerbal...): como mínimo corren, y los rapidísimos
+// van con la ronda pero con un piso, para que cada tanto salga alguno.
+export function rollSpeedHold(round, rand = Math.random) {
+  return rand() < Math.max(0.1, sprintShare(round)) ? 'sprint' : 'run';
+}
+
+// El paso de los que caminan: x0,94 en la 1, +0,05 por ronda hasta la 7.
+export const walkPace = (round) => 0.94 + Math.min(Math.max(round, 1) - 1, 6) * 0.05;
+
+// De la 4 a la 7: la parte de los muertos que ya corre con la ronda en q
+// (0 al arrancar, 1 con el último); arranca a subir con el 10% caído.
+const RUN_TOP = { 4: 0.35, 5: 0.55, 6: 0.75, 7: 0.9 };
+export function runShare(round, q) {
+  const top = RUN_TOP[round];
+  return top ? top * Math.min(1, Math.max(0, (q - 0.1) / 0.7)) : 0;
+}
+
+// La de antes (la usa el Challenge): cada zombie tira un número en [ronda*8, ronda*8+35].
+export function rollSpeedClassic(round, rand = Math.random) {
   if (round === 1) return 'walk';
   const base = round * 8;
   const v = base + rand() * 35;
@@ -60,8 +91,10 @@ export const SPEEDS = { walk: 1.05, run: 2.7, sprint: 4.1 };
 export const dogRound = (round) => round >= 6 && round % 6 === 0 && !bossRound(round);
 export const dogCount = (round, players = 1) => 6 + (players - 1) * 4 + Math.floor(round / 6) * 2;
 
-// Jefe: el Capataz aparece en las rondas múltiplo de 5.
-export const bossRound = (round) => round >= 5 && round % 5 === 0;
+// Jefe: el Capataz aparece en las rondas múltiplo de 5. (from: el mapa puede
+// arrancarlo más tarde, y sigue cada 5 desde ahí: FEATURES.bossFrom, el
+// Sargento del estero desde la 8)
+export const bossRound = (round, from = 5) => round >= from && (round - from) % 5 === 0;
 // (x1,5 desde el 2026-09-27: morían antes de enfurecerse)
 export const bossHealth = (round) => Math.max(6000, zombieHealth(round) * 21);
 // En co-op los jefes aguantan más: +100% de vida por cada jugador extra (con

@@ -17,7 +17,7 @@ import { SILL_Y } from '../world/HighWindows';
 import { RISERS, FEATURES, MAP_ID, WATER_Y } from '../config/map';
 import { ATTIC, SKYLIGHTS, STAIR_BOTTOM, STAIR_TOP, STAIR_TURN, UP_Y, atticNavWorld, inAtticRect, inStair, levelOf, stairY } from '../world/Attic';
 import { walkLine } from '../world/Levels';
-import { SPEEDS, rollSpeed, ZOMBIE_DAMAGE, BOSS_DAMAGE, PUP_LUISON, POINTS, bossHealth, bossScale } from '../config/rules';
+import { SPEEDS, rollSpeed, rollSpeedHold, walkPace, runShare, ZOMBIE_DAMAGE, BOSS_DAMAGE, PUP_LUISON, POINTS, bossHealth, bossScale } from '../config/rules';
 import { rng } from '../core/noise';
 import BossMoves from './bossMoves';
 
@@ -327,12 +327,14 @@ export default class Zombies {
     const fx = Math.sin(z.yaw);
     const fz = Math.cos(z.yaw);
     this.whipFx(z);
+    // (el del Capataz, lo que se ve: la franja mide 0,9 y pegaba en 1,8; se sentía injusto)
+    const wide = z.kind === 'capataz' ? 0.65 : 0.9;
     for (const p of this.bossTargets()) {
       const dx = p.pos.x - z.pos.x;
       const dz = p.pos.z - z.pos.z;
       const along = dx * fx + dz * fz;
       const side = Math.abs(dx * fz - dz * fx);
-      if (along > 0.5 && along < 9 && side < 0.9) g.damagePlayer(p, 65, z.pos);
+      if (along > 0.5 && along < 9 && side < wide) g.damagePlayer(p, 65, z.pos);
     }
   }
 
@@ -467,7 +469,7 @@ export default class Zombies {
       const at = new THREE.Vector3(z.pos.x + Math.cos(a) * 3.2, z.baseY || 0, z.pos.z + Math.sin(a) * 3.2);
       if (g.nav.blocked(Math.floor(at.x), Math.floor(at.z), at.y)) continue;
       if (g.world.levels && Math.abs(g.world.floorAt(at.x, at.z, z.baseY) - (z.baseY || 0)) > 0.5) continue;
-      g.later(0.4 + i * 0.3, () => this.spawn(round, Math.floor(bossHealth(round) / 60), at));
+      g.later(0.4 + i * 0.3, () => this.spawn(round, Math.floor(bossHealth(round) / 60), at, false));
     }
   }
 
@@ -573,7 +575,9 @@ export default class Zombies {
   }
 
   // at: punto fijo (sale de la tierra ahí), si no elige ventana o pozo.
-  spawn(round, health, at = null) {
+  // hold: es de una actividad del easter egg donde hay que aguantar (los que
+  // salen en un punto fijo, salvo los peones del jefe; y la defensa del yerbal)
+  spawn(round, health, at = null, hold = !!at) {
     // con alguien en el altillo, muchos se tiran por las claraboyas
     const sky = !at && this.atticBusy() && Math.random() < 0.45 ? SKYLIGHTS[Math.floor(Math.random() * SKYLIGHTS.length)] : null;
     const sp = at ? { kind: 'riser', r: { pos: [at.x, at.z], y: at.y } } : sky ? { kind: 'sky', s: sky } : this.pickSpawner();
@@ -586,8 +590,12 @@ export default class Zombies {
     z.id = ++this.idc;
     z.hp = health;
     z.maxHp = health;
-    z.speedType = rollSpeed(round);
-    z.speed = SPEEDS[z.speedType] * (0.92 + r() * 0.16);
+    // (en las actividades de aguantar, como mínimo corren: rollSpeedHold)
+    hold = hold || !!this.g.ee?.defense?.active;
+    z.speedType = hold ? rollSpeedHold(round) : rollSpeed(round);
+    z.speed = SPEEDS[z.speedType] * (0.92 + r() * 0.16) * (z.speedType === 'walk' ? walkPace(round) : 1);
+    // de la 4 a la 7 se larga a correr cuando la parte que corre (runShare) pasa su número
+    z.runU = hold ? null : r();
     // (el Challenge de la torre los hace más rápidos y más bravos: entities/TowerChallenge.js)
     z.fury = 1;
     this.g.ee?.tuneZombie?.(z, round);
@@ -1398,14 +1406,20 @@ export default class Zombies {
     // campo de flujo hacia el señuelo más cercano, si hay
     this.lure = g.lures.length ? g.lures[0] : null;
     if (this.lure) this.navLure.update(this.lure.pos.x, this.lure.pos.z, false, this.lure.pos.y);
-    const lastAlive = g.rounds.remainingTotal() <= 2 && g.rounds.round >= 4;
+    // desde la 3 el último corre siempre (en el Challenge, los dos últimos desde la 4);
+    // de la 4 a la 7 los que caminan se largan a correr a medida que caen los números
+    const R = g.rounds;
+    const challenge = !!g.ee?.tuneZombie;
+    const left = R.remainingTotal();
+    const lastAlive = challenge ? left <= 2 && R.round >= 4 : left <= 1 && R.round >= 3;
+    const share = challenge || !R.total ? 0 : runShare(R.round, 1 - left / R.total);
     // lo hondo cuesta más en el campo de flujo (y la inundación lo cambia)
     updateNavCost(g);
     for (const z of this.pool) {
       if (!z.active) continue;
-      if (lastAlive && !z.dead && z.speedType === 'walk') {
+      if (!z.dead && z.speedType === 'walk' && (lastAlive || (z.runU != null && z.runU < share))) {
         z.speedType = 'run';
-        z.speed = SPEEDS.run;
+        z.speed = SPEEDS.run * (0.92 + Math.random() * 0.16);
       }
       this.think(z, dt, t, player);
     }
@@ -2239,7 +2253,9 @@ export default class Zombies {
         break;
       }
       case 'slam': {
-        this.turn(z, Math.atan2(dxp, dzp), 3, dt);
+        // (el Capataz fija el golpe a los 0,45 s y pega un poco más cerca)
+        const capataz = z.kind === 'capataz';
+        if (!(capataz && z.stateT > 0.45)) this.turn(z, Math.atan2(dxp, dzp), 3, dt);
         this.poseSlam(z, z.stateT);
         if (!z.attackHit && z.stateT > 0.75) {
           z.attackHit = true;
@@ -2247,14 +2263,15 @@ export default class Zombies {
           g.audio.bossSlam(hit);
           g.fx.dust(hit, { x: 0, y: 1, z: 0 }, [0.4, 0.35, 0.3], 14);
           g.fx.addShake(0.5);
-          if (Math.hypot(pp.x - hit.x, pp.z - hit.z) < 2.4 && levelOf(pp.y) === 0 && Math.abs((pp.y || 0) - (z.baseY || 0)) < 1.5) g.damagePlayer(player, BOSS_DAMAGE, z.pos);
+          if (Math.hypot(pp.x - hit.x, pp.z - hit.z) < (capataz ? 2.1 : 2.4) && levelOf(pp.y) === 0 && Math.abs((pp.y || 0) - (z.baseY || 0)) < 1.5) g.damagePlayer(player, BOSS_DAMAGE, z.pos);
         }
         if (z.stateT > 1.4) this.setState(z, 'chase');
         break;
       }
       case 'whipWind': {
-        // levanta el rebenque apuntando a la víctima
-        this.turn(z, Math.atan2(dxp, dzp), 5, dt);
+        // levanta el rebenque apuntando a la víctima (el Capataz deja de
+        // seguirla a los 0,4 s: con la franja quieta se lo puede esquivar)
+        if (!(z.kind === 'capataz' && z.stateT > 0.4)) this.turn(z, Math.atan2(dxp, dzp), 5, dt);
         this.poseSlam(z, Math.min(0.55, z.stateT * 0.8));
         if (z.stateT > 0.65) {
           this.setState(z, 'whip');

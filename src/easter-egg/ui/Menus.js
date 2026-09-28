@@ -132,13 +132,40 @@ export default class Menus {
          <label class="mdu-field">Temblor de cámara <input type="range" min="0" max="1" step="0.05" data-set="shake"><output></output></label>
          <label class="mdu-field">Tamaño de subtítulos <input type="range" min="0.8" max="1.8" step="0.1" data-set="subSize"><output></output></label>
        </div>
-       <div class="mdu-pane" data-pane="sound" hidden>
-         <label class="mdu-field">Volumen general <input type="range" min="0" max="1" step="0.05" data-set="master"><output></output></label>
-         <label class="mdu-field">Música <input type="range" min="0" max="1" step="0.05" data-set="music"><output></output></label>
-         <label class="mdu-field">Efectos <input type="range" min="0" max="1" step="0.05" data-set="sfx"><output></output></label>
-         <label class="mdu-field">Volumen de las voces <input type="range" min="0" max="1" step="0.05" data-set="voice"><output></output></label>
+       <div class="mdu-pane mdu-pane--sound" data-pane="sound" hidden>
+         <div class="mdu-custom__cols">
+         <div class="mdu-custom__col">
+         <p class="mdu-small mdu-custom__head">Volumen</p>
+         <label class="mdu-field">General <input type="range" min="0" max="1" step="0.05" data-set="master"><output></output></label>
+         <label class="mdu-field" title="Las canciones de las entradas, los jefes, las escenas y las rondas">Música <input type="range" min="0" max="1" step="0.05" data-set="music"><output></output></label>
+         <label class="mdu-field" title="Todos los efectos juntos (encima, cada tipo tiene el suyo)">Efectos <input type="range" min="0" max="1" step="0.05" data-set="sfx"><output></output></label>
+         <label class="mdu-field" title="Lo que dicen los personajes">Voces <input type="range" min="0" max="1" step="0.05" data-set="voice"><output></output></label>
+         </div>
+         <div class="mdu-custom__col">
+         <p class="mdu-small mdu-custom__head">Efectos por tipo</p>
+         <label class="mdu-field" title="Disparos, recargas, explosiones y cuerpo a cuerpo">Armas <input type="range" min="0" max="1.5" step="0.05" data-set="volWeapons"><output></output></label>
+         <label class="mdu-field" title="Gruñidos, pasos, tablas arrancadas, jefes y los bichos de las rondas especiales">Zombies y jefes <input type="range" min="0" max="1.5" step="0.05" data-set="volZombies"><output></output></label>
+         <label class="mdu-field" title="Lluvia, viento, truenos, fuego, agua y los ruidos del mapa">Ambiente <input type="range" min="0" max="1.5" step="0.05" data-set="volWorld"><output></output></label>
+         <label class="mdu-field" title="Tus pasos, los golpes que te comés, el corazón y la respiración">Jugador <input type="range" min="0" max="1.5" step="0.05" data-set="volPlayer"><output></output></label>
+         <label class="mdu-field" title="El aviso de impacto, las compras, las puertas, la caja, los perks, el Pack-a-Pava y los potenciadores">Interfaz y máquinas <input type="range" min="0" max="1.5" step="0.05" data-set="volUi"><output></output></label>
+         </div>
+         <div class="mdu-custom__col">
+         <p class="mdu-small mdu-custom__head">Salida</p>
+         <label class="mdu-field" title="Auriculares: sonido 3D (se oye de dónde viene, también arriba y atrás). Parlantes: izquierda y derecha, más natural en parlantes. Mono: todo por igual en los dos lados">Salida <select data-set="audioOut"><option value="phones">Auriculares (3D)</option><option value="speakers">Parlantes</option><option value="mono">Mono</option></select></label>
+         <label class="mdu-field" title="Amplio: los tiros y las explosiones pegan fuerte. Nocturno: todo más parejo, para jugar bajito sin perderse nada">Rango dinámico <select data-set="dynRange"><option value="wide">Amplio</option><option value="normal">Normal</option><option value="night">Nocturno</option></select></label>
+         <label class="mdu-field" title="Cuánto retumban los sonidos en el lugar">Eco <input type="range" min="0" max="2" step="0.05" data-set="reverb"><output></output></label>
+         <label class="mdu-field" title="Automático: si el juego va trabado, el sonido se aliviana para no cortarse. Liviano: siempre aliviado (compus lentas)">Rendimiento <select data-set="audioPerf"><option value="auto">Automático</option><option value="full">Completo siempre</option><option value="light">Liviano</option></select></label>
+         </div>
+         <div class="mdu-custom__col">
+         <p class="mdu-small mdu-custom__head">Voces y efectos</p>
          <label class="mdu-field">Voces <select data-set="voiceMode"><option value="auto">Automática</option><option value="murmur">Murmullos</option><option value="off">Solo subtítulos</option></select></label>
+         <label class="mdu-field" title="Con poca vida se tapan los oídos (la respiración y el corazón suenan igual)">Oídos tapados al caer <input type="checkbox" data-set="muffleLow"></label>
+         <label class="mdu-field" title="Abajo del agua todo se oye ahogado (las burbujas suenan igual)">Sonido bajo el agua <input type="checkbox" data-set="muffleWater"></label>
+         <label class="mdu-field" title="Si pasás a otra ventana o pestaña, el juego se calla">Silenciar en segundo plano <input type="checkbox" data-set="muteBg"></label>
+         </div>
+         </div>
          <p class="mdu-small" data-voice-note></p>
+         <div class="mdu-list mdu-sound__reset"><button class="mdu-btn mdu-btn--mini" data-act="resetSound">Restablecer el sonido</button></div>
        </div>
        <div class="mdu-pane" data-pane="gfx" hidden>
          <label class="mdu-field">Calidad <select data-set="quality"><option value="auto">Automática</option><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="ultra">Ultra</option><option value="epic">Épica</option><option value="custom">Personalizada</option></select></label>
@@ -422,7 +449,7 @@ export default class Menus {
       }
       const k = input.dataset.set;
       const v = Number(input.value);
-      out.textContent = ['master', 'music', 'sfx', 'voice', 'shake', 'subSize', 'adsSens', 'sharp', 'fsrPct'].includes(k) ? `${Math.round(v * 100)}%` : k === 'fov' ? `${v}°` : v.toFixed(2);
+      out.textContent = ['master', 'music', 'sfx', 'voice', 'volWeapons', 'volZombies', 'volWorld', 'volPlayer', 'volUi', 'reverb', 'shake', 'subSize', 'adsSens', 'sharp', 'fsrPct'].includes(k) ? `${Math.round(v * 100)}%` : k === 'fov' ? `${v}°` : v.toFixed(2);
     });
   }
 
@@ -477,6 +504,10 @@ export default class Menus {
         break;
       case 'resume':
         g.resume();
+        break;
+      case 'resetSound':
+        g.resetSound();
+        this.syncOptions();
         break;
       case 'resetKeys':
         if (g.input) g.input.capture = null;

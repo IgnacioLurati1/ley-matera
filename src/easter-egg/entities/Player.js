@@ -67,7 +67,8 @@ export default class Player {
   // En gaucho life (el penal) los muertos no te ven; al volver al cuerpo hay
   // un ratito sin que te toquen.
   canBeHit() {
-    return this.alive && !this.downed && !this.ghost && !((this.guardT || 0) > this.g.time);
+    // (en la cinemática de entrada, nadie te toca: ni los muertos te buscan)
+    return this.alive && !this.downed && !this.ghost && !((this.guardT || 0) > this.g.time) && !this.g.intro?.active;
   }
 
   addRecoil(p, y) {

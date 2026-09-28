@@ -200,10 +200,9 @@ export default class Crow {
     else if (s === 'dead') {
       this.caw(4);
       a.crowScreech(this.z.pos);
-    } else if (s === 'arrive') {
-      a.crowScreech(null);
-      this.caw(3);
     }
+    // (al llegar suena solo el grabado, audio.bossSfx('crow'): el chillido y
+    // los graznidos sintetizados de encima sonaban a 8 bits, pedido del usuario)
   }
 
   // El jugador de pie más cercano.

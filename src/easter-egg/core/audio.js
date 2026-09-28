@@ -27,6 +27,11 @@ const THUNDERS = { 'trueno-medio-1': 1, 'trueno-medio-2': 1.08, 'trueno-intenso'
 const THUNDER_MAX = 3;
 // abajo del agua (setUnder): hasta dónde pasan los agudos
 const UNDER_HZ = 460;
+// Opciones → Sonido: los tipos de efecto con volumen propio (CAT_OF, al final)
+// y el rango dinámico (umbral y proporción del compresor, y cuánto se sube
+// después: el nocturno aplasta los golpes y levanta lo bajito).
+const CATS = ['weapons', 'zombies', 'world', 'player', 'ui'];
+const DYN = { wide: { th: -4, ratio: 2, gain: 0.9 }, normal: { th: -14, ratio: 4, gain: 1 }, night: { th: -34, ratio: 12, gain: 1.9 } };
 const CRACK_MAX = 5;
 // la llegada de cada jefe de ronda, grabada (audio.bossSfx): el de la torre
 // suena con el de su mapa
@@ -106,7 +111,11 @@ export default class GameAudio {
     this.underLow.frequency.value = 170;
     this.underLow.Q.value = 0.8;
     this.underLow.gain.value = 0;
-    this.master.connect(this.muffle).connect(this.under).connect(this.underLow).connect(this.comp).connect(c.destination);
+    // la salida: lo que se sube después del compresor (rango dinámico) y el
+    // silencio con la ventana atrás (setMix)
+    this.post = c.createGain();
+    this.makeup = 1;
+    this.master.connect(this.muffle).connect(this.under).connect(this.underLow).connect(this.comp).connect(this.post).connect(c.destination);
     // lo que no se tapa (el corazón y la respiración) va directo
     this.body = c.createGain();
     this.body.connect(this.comp);
@@ -121,6 +130,26 @@ export default class GameAudio {
     this.reverbGain = c.createGain();
     this.reverbGain.gain.value = 0.55;
     this.reverb.connect(this.reverbGain).connect(this.sfx);
+    // los efectos por tipo: cada uno con su volumen en lo seco y en lo que
+    // manda al eco (cat: el tipo de lo que está sonando ahora; ver CAT_OF)
+    this.cats = {};
+    for (const k of CATS) {
+      const dry = c.createGain();
+      const wet = c.createGain();
+      dry.connect(this.sfx);
+      wet.connect(this.reverb);
+      this.cats[k] = { dry, wet };
+    }
+    this.cat = null;
+    this.verbK = 1;
+    // con la ventana atrás (si lo pidió en las opciones) no suena nada
+    this.onFocus = () => {
+      this.away = document.hidden || !document.hasFocus();
+      this.applyPost();
+    };
+    window.addEventListener('blur', this.onFocus);
+    window.addEventListener('focus', this.onFocus);
+    document.addEventListener('visibilitychange', this.onFocus);
     this.noiseBuf = this.makeNoise(2, 'white');
     this.brownBuf = this.makeNoise(4, 'brown');
     this.voices = 0;
@@ -324,6 +353,58 @@ export default class GameAudio {
     if (voice != null) this.voice.gain.value = voice;
   }
 
+  // Lo demás de Opciones → Sonido: el volumen de cada tipo de efecto, la
+  // salida (auriculares con sonido 3D, parlantes o mono), el rango dinámico,
+  // el eco, los oídos tapados (por caer, abajo del agua) y el silencio con la
+  // ventana atrás. (El rendimiento, audioPerf, lo aplica Game en budget.)
+  setMix(s) {
+    const c = this.ctx;
+    const vol = { weapons: s.volWeapons, zombies: s.volZombies, world: s.volWorld, player: s.volPlayer, ui: s.volUi };
+    for (const k of CATS) {
+      const v = vol[k] ?? 1;
+      this.cats[k].dry.gain.value = v;
+      this.cats[k].wet.gain.value = v;
+    }
+    // (el corazón, la respiración y las burbujas van por el cuerpo: son del jugador)
+    this.body.gain.value = vol.player ?? 1;
+    this.flat = s.audioOut === 'speakers' || s.audioOut === 'mono';
+    try {
+      c.destination.channelCount = s.audioOut === 'mono' ? 1 : Math.min(2, c.destination.maxChannelCount || 2);
+    } catch {
+      /* la salida no deja cambiar los canales */
+    }
+    const D = DYN[s.dynRange] || DYN.normal;
+    this.comp.threshold.value = D.th;
+    this.comp.ratio.value = D.ratio;
+    this.makeup = D.gain;
+    this.verbK = s.reverb ?? 1;
+    this.noMuffle = s.muffleLow === false;
+    if (this.noMuffle) {
+      this.muffle.frequency.cancelScheduledValues(this.now);
+      this.muffle.frequency.value = 20000;
+    }
+    const noUnder = s.muffleWater === false;
+    if (noUnder !== !!this.noUnder && this.underOn) {
+      // (cambió estando abajo del agua: se tapa o se destapa ya)
+      this.noUnder = noUnder;
+      this.underOn = false;
+      this.setUnder(true);
+    }
+    this.noUnder = noUnder;
+    const rg = this.reverbGain.gain;
+    rg.cancelScheduledValues(this.now);
+    rg.value = (this.underOn && !this.noUnder ? 0.95 : 0.55) * this.verbK;
+    this.muteBg = !!s.muteBg;
+    this.applyPost();
+  }
+
+  applyPost() {
+    const on = !(this.muteBg && this.away);
+    const g = this.post.gain;
+    g.cancelScheduledValues(this.now);
+    g.setTargetAtTime(on ? this.makeup : 0, this.now, 0.06);
+  }
+
   resume() {
     if (this.ctx.state !== 'running') this.ctx.resume();
   }
@@ -394,12 +475,15 @@ export default class GameAudio {
     const now = c.currentTime;
     this.load = (this.load || 0) * Math.exp(-(now - (this.loadT || 0)) / LOAD_TAU) + 1;
     this.loadT = now;
-    if (pos && !bus && this.load > LOAD_MAX) return g;
-    if (this.load > LOAD_VERB) reverb = 0;
+    // (budget: lo pone Game según cuánto tarda cada cuadro; con la compu
+    // trabada los topes bajan y el HRTF se deja del todo)
+    const k = this.budget ?? 1;
+    if (pos && !bus && this.load > LOAD_MAX * k) return g;
+    if (this.load > LOAD_VERB * k) reverb = 0;
     let node = g;
     if (pos) {
       const p = c.createPanner();
-      p.panningModel = this.load > LOAD_HRTF ? 'equalpower' : 'HRTF';
+      p.panningModel = this.flat || k < 0.6 || this.load > LOAD_HRTF * k ? 'equalpower' : 'HRTF';
       p.distanceModel = 'inverse';
       p.refDistance = ref;
       p.rolloffFactor = ref > 2.2 ? 0.8 : 1.3;
@@ -412,11 +496,13 @@ export default class GameAudio {
       g.connect(p);
       node = p;
     }
-    node.connect(bus || this.sfx);
+    // (sin bus propio: por el volumen de su tipo, si se sabe cuál es)
+    const C = !bus && this.cat ? this.cats[this.cat] : null;
+    node.connect(bus || C?.dry || this.sfx);
     if (reverb > 0) {
       const s = c.createGain();
       s.gain.value = reverb;
-      node.connect(s).connect(this.reverb);
+      node.connect(s).connect(C?.wet || this.reverb);
     }
     return g;
   }
@@ -1133,9 +1219,10 @@ export default class GameAudio {
   // Estado crítico: oídos tapados, zumbido al entrar y respiración agitada.
   setCritical(on) {
     const t = this.now;
+    // (los oídos tapados se pueden apagar en las opciones; la respiración queda)
     this.muffle.frequency.cancelScheduledValues(t);
     this.muffle.frequency.setValueAtTime(this.muffle.frequency.value, t);
-    this.muffle.frequency.exponentialRampToValueAtTime(on ? 650 : 20000, t + (on ? 0.25 : 1.2));
+    this.muffle.frequency.exponentialRampToValueAtTime(on && !this.noMuffle ? 650 : 20000, t + (on ? 0.25 : 1.2));
     clearInterval(this.breathTimer);
     this.breathTimer = null;
     if (!on) return;
@@ -1167,13 +1254,15 @@ export default class GameAudio {
       param.setValueAtTime(param.value, t);
       param.linearRampToValueAtTime(v, t + dur);
     };
+    // (el sonido ahogado se puede apagar en las opciones: quedan el retumbe y las burbujas)
+    const muf = on && !this.noUnder;
     const f = this.under.frequency;
     f.cancelScheduledValues(t);
     f.setValueAtTime(f.value, t);
-    f.exponentialRampToValueAtTime(on ? UNDER_HZ : 20000, t + (on ? 0.12 : 0.4));
-    ramp(this.under.Q, on ? 1.1 : 0.5, 0.2);
-    ramp(this.underLow.gain, on ? 5 : 0, on ? 0.15 : 0.4);
-    ramp(this.reverbGain.gain, on ? 0.95 : 0.55, on ? 0.2 : 0.5);
+    f.exponentialRampToValueAtTime(muf ? UNDER_HZ : 20000, t + (on ? 0.12 : 0.4));
+    ramp(this.under.Q, muf ? 1.1 : 0.5, 0.2);
+    ramp(this.underLow.gain, muf ? 5 : 0, on ? 0.15 : 0.4);
+    ramp(this.reverbGain.gain, (muf ? 0.95 : 0.55) * this.verbK, on ? 0.2 : 0.5);
     clearInterval(this.bubbleTimer);
     this.bubbleTimer = null;
     if (this.underBed) {
@@ -2465,6 +2554,38 @@ export default class GameAudio {
     if (this.fire) clearInterval(this.fire.crackle);
     clearInterval(this.breathTimer);
     this.voiceWorker?.terminate();
+    window.removeEventListener('blur', this.onFocus);
+    window.removeEventListener('focus', this.onFocus);
+    document.removeEventListener('visibilitychange', this.onFocus);
     this.ctx.close();
+  }
+}
+
+// Qué tipo de efecto es cada sonido (Opciones → Sonido: el volumen de cada
+// tipo). Lo que suena adentro de uno de estos va por su tipo; lo demás, por el
+// que marcó quien lo llamó (Game.update marca armas, zombies, ambiente... en
+// cada parte de la partida) o, si nadie lo marcó, solo por los efectos. Los
+// que dependen de quién los llama (los truenos de los rayos, las tonadas) no
+// están: heredan.
+const CAT_OF = {
+  weapons: ['shot', 'streamShot', 'mech', 'memeShot', 'rayShot', 'tesla', 'zap', 'iceShot', 'shatter', 'launcher', 'boltShot', 'explosion', 'empty', 'shell', 'pour', 'knife', 'swish', 'sharpen'],
+  zombies: ['growl', 'squish', 'shuffle', 'boardTear', 'rise', 'bossSfx', 'bossArrive', 'bossSlam', 'chain', 'caw', 'bigCaw', 'crowScreech', 'wingFlap', 'featherFwip', 'howl', 'pombero', 'luisonHowl', 'wolves', 'luisonSynth', 'bugle', 'saber', 'neigh', 'snort', 'gallop', 'bark', 'yelp'],
+  world: ['startAmbience', 'updateAmbience', 'startFire', 'fireOn', 'kettle', 'radioTune', 'squeak'],
+  player: ['footstep', 'gasp', 'land', 'hurt', 'heartbeat', 'setCritical', 'shieldHit', 'shieldBreak'],
+  ui: ['hitmarker', 'purchase', 'deny', 'door', 'boardRepair', 'perkJingle', 'perkDrink', 'sip', 'boxOpen', 'laugh', 'whoosh', 'pap', 'powerOn', 'powerupSpawn', 'powerupGrab'],
+};
+for (const [cat, names] of Object.entries(CAT_OF)) {
+  for (const n of names) {
+    const fn = GameAudio.prototype[n];
+    if (typeof fn !== 'function') continue;
+    GameAudio.prototype[n] = function (...args) {
+      const was = this.cat;
+      this.cat = cat;
+      try {
+        return fn.apply(this, args);
+      } finally {
+        this.cat = was;
+      }
+    };
   }
 }

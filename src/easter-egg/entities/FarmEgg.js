@@ -1575,8 +1575,9 @@ export default class FarmEgg {
     const g = this.g;
     const t = g.time;
     this.song.update(dt);
-    // se va haciendo de noche con cada paso
-    g.world.setDaylight(1 - this.progress / STEPS);
+    // se va haciendo de noche con cada paso (y la ronda de los caballos es de
+    // noche, con luna roja: config/maps/granja.js SKY.states.dogs)
+    g.world.setDaylight(g.weather?.name === 'dogs' ? 0 : 1 - this.progress / STEPS);
     // los pedazos en sus piedras
     for (const a of Object.values(this.altars)) {
       const st = this.pieces[a.def.id];

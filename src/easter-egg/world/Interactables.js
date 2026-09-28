@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { DOORS, WALL_BUYS, PERK_SPOTS, POWER, PAP, BOX_SPOTS, BOX_START, MAP_ID, FEATURES } from '../config/map';
-import { WEAPONS, BOX_POOL, GRENADE, BOWIE, weaponStats, tierOf, maxTier, PAP_COST, ELEM_INFO } from '../config/weapons';
+import { DOORS, WALL_BUYS, PERK_SPOTS, POWER, PAP, BOX_SPOTS, BOX_START, MAP_ID, FEATURES, START_ZONE } from '../config/map';
+import { WEAPONS, BOX_POOL, GRENADE, BOWIE, weaponStats, tierOf, maxTier, PAP_COST, ELEM_INFO, boxWeight } from '../config/weapons';
 import { PERKS } from '../config/perks';
 import { LOCK_COST } from '../config/rules';
 import { chalkTexture, perkLabel, toTexture } from '../core/textures';
@@ -609,7 +609,8 @@ export default class Interactables {
         // mientras no esté preparada habla el paso previo (world/PapQuest.js)
         if (g.papq && !g.papq.done) return null;
         if (!this.machineOn(pap)) return { text: this.shockPower ? 'El Pack-a-Pava no tiene corriente' : 'El Pack-a-Pava necesita luz', noCost: true };
-        if (pap.state === 'working' || pap.entry?.remote !== undefined) return null;
+        // (en línea, el mate que está adentro es de uno solo: solo ese lo saca)
+        if (pap.state === 'working' || (pap.entry && (!this.papMine() || pap.entry.auto))) return null;
         if (pap.state === 'ready') return { text: `agarrar ${weaponStats(pap.entry.id, pap.tier).name}`, noCost: true };
         const s = g.weapons.slot;
         // (los mates de la luz del castillo se templan en su altar, no acá)
@@ -645,6 +646,7 @@ export default class Interactables {
         if (pap.state === 'ready') {
           g.weapons.give(pap.entry.id, pap.tier);
           this.clearPap();
+          g.net?.event('pap', { s: 'idle' });
           return true;
         }
         if (pap.state !== 'idle') return false;
@@ -657,10 +659,9 @@ export default class Interactables {
         // la hoz entra al ritual: la máquina la tiene hasta que termine
         pap.ritual = s.id === 'hoz' && !g.ee?.papDone;
         pap.entry = g.weapons.take();
-        if (pap.ritual) {
-          g.ee.startPapRitual(g.net?.id ?? 0);
-          g.net?.event('pap', { s: 'working', w: 'hoz', up: 1 });
-        }
+        if (pap.ritual) g.ee.startPapRitual(g.net?.id ?? 0);
+        // (los demás lo ven entrar; es del anfitrión: by)
+        g.net?.event('pap', { s: 'working', w: pap.entry.id, up: pap.tier, by: g.net.id });
         if (g.activities) g.activities.freePap = false;
         pap.state = 'working';
         pap.t = 0;
@@ -738,10 +739,18 @@ export default class Interactables {
       pap.model.position.copy(pap.slotPos).addScaledVector(pap.face, k * 0.2);
       pap.model.position.y = pap.slotPos.y + Math.sin(g.time * 3) * 0.03;
       if (Math.random() < 0.3) g.fx.sparkle(pap.model.position, [0.9, 0.5, 1], 1, 0.3);
-      if (pap.entry.remote !== undefined && pap.t > 2.5) this.clearPap();
-      else if (pap.t > 12) {
-        g.hud.subtitle('El Pack-a-Pava se quedó con tu mate. Nunca lo dejes esperando.', 3);
+      // en línea también espera a que su dueño lo saque (antes al invitado le
+      // llegaba mejorado al toque, sin esperar a la máquina). El invitado
+      // espera el aviso del anfitrión (con un margen por si no llega).
+      const guest = !!g.net?.guest;
+      if (pap.entry.auto && pap.t > 2.5) {
         this.clearPap();
+        if (!guest) g.net?.event('pap', { s: 'idle' });
+      } else if (pap.t > (guest ? 16 : 12)) {
+        const by = pap.entry.remote;
+        if (this.papMine()) g.hud.subtitle('El Pack-a-Pava se quedó con tu mate. Nunca lo dejes esperando.', 3);
+        this.clearPap();
+        if (!guest) g.net?.event('pap', { s: 'idle', lost: by ?? g.net.id });
       }
     }
   }
@@ -797,7 +806,7 @@ export default class Interactables {
       glow: skin.glow,
       glowHex: skin.glowHex,
       glowMats: skin.glowMats,
-      spot: BOX_START[Math.floor(Math.random() * BOX_START.length)],
+      spot: this.startSpot(),
       state: 'closed',
       t: 0,
       uses: 0,
@@ -814,23 +823,13 @@ export default class Interactables {
       pos: new THREE.Vector3(),
       front: new THREE.Vector3(),
       radius: 2.1,
-      prompt: () => {
-        if (box.state === 'closed') return 'abrir la Caja Misteriosa';
-        if (box.state === 'offer') {
-          const name = WEAPONS[box.offer].name;
-          if (g.weapons.full && WEAPONS[box.offer].kind !== 'tactical') return { text: `cambiar tu ${g.weapons.currentName} por el ${name}`, noCost: true };
-          return { text: `agarrar ${name}`, noCost: true };
-        }
-        return null;
-      },
+      prompt: () => this.boxPrompt(box),
       cost: () => (box.state === 'offer' ? 0 : g.powerups.active.firesale ? 10 : 950),
       use: () => {
         if (box.state === 'closed') return this.openBox();
         if (box.state === 'offer') {
           g.weapons.give(box.offer);
-          box.model?.removeFromParent();
-          box.model = null;
-          this.closeBox();
+          this.takeBoxWeapon();
           return true;
         }
         return false;
@@ -850,12 +849,15 @@ export default class Interactables {
   }
 
   // Liquidación: una caja en cada lugar posible mientras dura. Son copias
-  // (misma malla y materiales); al usar una, la caja de verdad se muda ahí y
-  // se abre. Cuando termina, la caja vuelve a donde estaba antes.
+  // (misma malla y materiales), y cada una anda por su cuenta: en línea
+  // pueden estar girando varias a la vez (antes, al usar una, la caja de
+  // verdad se mudaba ahí y las demás esperaban). Cuando termina, la que se
+  // está usando se queda hasta que la cierran.
   buildSaleBoxes() {
     const g = this.g;
     const box = this.box;
-    this.saleHome = null;
+    const li = box.group.children.indexOf(box.lid);
+    const ii = box.group.children.indexOf(box.inner);
     this.saleBoxes = BOX_SPOTS.map((spot, i) => {
       const a = this.anchor(spot.cell, spot.face, BOX_OFF);
       const lat = spot.face[1] !== 0 ? [0.5, 0] : [0, 0.5];
@@ -866,6 +868,9 @@ export default class Interactables {
       group.position.set(x, fy, z);
       group.rotation.set(0, a.rot, 0);
       group.visible = false;
+      const inner = group.children[ii];
+      // (la luz de adentro, propia: si no, se prendía en todas a la vez)
+      inner.material = inner.material.clone();
       const beam = box.beam.clone();
       beam.position.set(x, fy + 20, z);
       beam.visible = false;
@@ -873,45 +878,81 @@ export default class Interactables {
       const half = spot.face[0] !== 0 ? [0.4, 0.85] : [0.85, 0.4];
       const collider = g.world.addBox([x - half[0], fy, z - half[1], x + half[0], fy + 0.6, z + half[1]], { kind: 'box' });
       collider.active = false;
-      const sale = { i, group, beam, collider };
+      const sale = {
+        sale: i,
+        i,
+        spot: i,
+        group,
+        lid: group.children[li],
+        inner,
+        beam,
+        collider,
+        center: new THREE.Vector3(x, fy, z),
+        face: new THREE.Vector3(spot.face[0], 0, spot.face[1]),
+        state: 'closed',
+        t: 0,
+        uses: 0,
+        offer: null,
+        model: null,
+        models: new Map(),
+      };
       this.add({
         kind: 'salebox',
+        saleIndex: i,
         pos: new THREE.Vector3(x, fy + 0.8, z),
         front: new THREE.Vector3(x + spot.face[0] * 1.3, fy, z + spot.face[1] * 1.3),
         floorY: fy,
         radius: 2.1,
-        prompt: () => (group.visible && box.state === 'closed' ? 'abrir la Caja Misteriosa' : null),
-        cost: () => 10,
+        prompt: () => (group.visible ? this.boxPrompt(sale) : null),
+        cost: () => (sale.state === 'offer' ? 0 : 10),
         use: () => {
-          if (!group.visible || box.state !== 'closed' || box.spot === i) return false;
-          this.placeBox(i);
-          return this.openBox();
+          if (!group.visible) return false;
+          if (sale.state === 'closed') return this.openBox(sale);
+          if (sale.state === 'offer') {
+            g.weapons.give(sale.offer);
+            this.takeBoxWeapon(sale);
+            return true;
+          }
+          return false;
         },
       });
       return sale;
     });
   }
 
-  updateSaleBoxes() {
+  // Lo que dice la caja (la de verdad o una de la liquidación).
+  boxPrompt(box) {
+    const g = this.g;
+    if (box.state === 'closed') return 'abrir la Caja Misteriosa';
+    if (box.state === 'offer') {
+      const name = WEAPONS[box.offer].name;
+      if (g.weapons.full && WEAPONS[box.offer].kind !== 'tactical') return { text: `cambiar tu ${g.weapons.currentName} por el ${name}`, noCost: true };
+      return { text: `agarrar ${name}`, noCost: true };
+    }
+    return null;
+  }
+
+  updateSaleBoxes(dt) {
     const g = this.g;
     const box = this.box;
     const sale = g.powerups.active.firesale > 0;
-    if (sale && this.saleHome == null) this.saleHome = box.spot;
-    // terminó: la caja vuelve a su lugar (cuando nadie la está usando)
-    if (!sale && this.saleHome != null && box.state === 'closed') {
-      if (!g.net?.guest && box.spot !== this.saleHome) {
-        this.placeBox(this.saleHome);
-        g.net?.event('box', { spot: this.saleHome });
-      }
-      this.saleHome = null;
-    }
     for (const s of this.saleBoxes) {
-      const on = sale && s.i !== box.spot;
-      if (s.group.visible === on) continue;
-      s.group.visible = on;
-      s.beam.visible = on;
-      s.collider.active = on;
-      if (on) g.fx.flash(s.group.position, box.glowHex, 20, 0.4, 8);
+      // (la que está en uso se queda hasta que la cierran)
+      const on = (sale && s.i !== box.spot) || (s.group.visible && s.state !== 'closed');
+      if (s.group.visible !== on) {
+        s.group.visible = on;
+        s.beam.visible = on;
+        s.collider.active = on;
+        if (on) g.fx.flash(s.group.position, box.glowHex, 20, 0.4, 8);
+        else {
+          s.model?.removeFromParent();
+          s.model = null;
+          s.state = 'closed';
+          s.lid.rotation.x = 0;
+          s.inner.material.opacity = 0;
+        }
+      }
+      if (on) this.stepBox(s, dt);
     }
   }
 
@@ -939,12 +980,11 @@ export default class Interactables {
     box.collider = this.g.world.addBox([x - half[0], fy, z - half[1], x + half[0], fy + 0.6, z + half[1]], { kind: 'box' });
   }
 
-  // El invitado se lleva el mate que ofrece la caja.
-  takeBoxWeapon() {
-    const box = this.box;
+  // Alguien se lleva el mate que ofrece la caja (o una de la liquidación).
+  takeBoxWeapon(box = this.box) {
     box.model?.removeFromParent();
     box.model = null;
-    this.closeBox();
+    this.closeBox(box);
   }
 
   // Mejora el mate de un invitado (el anfitrión no lo tiene en la mano).
@@ -952,10 +992,12 @@ export default class Interactables {
     const g = this.g;
     const pap = this.pap;
     if (pap.state !== 'idle') return false;
-    if (weaponId === 'hoz' && !g.ee?.papDone && g.ee?.hozWait?.()) return false;
+    if (weaponId === 'hoz' && !g.net?.guest && !g.ee?.papDone && g.ee?.hozWait?.()) return false;
     pap.entry = { id: weaponId, up: tier - 1, remote: playerId };
     pap.tier = tier;
     pap.ritual = weaponId === 'hoz' && !g.ee?.papDone;
+    // (la hoz de un invitado vuelve sola con 'hozup': la máquina la suelta)
+    pap.entry.auto = pap.ritual && playerId > 0;
     // la hoz de un invitado: arranca el ritual (lo lleva el anfitrión)
     if (pap.ritual && playerId >= 0 && !g.net?.guest) g.ee.startPapRitual(playerId);
     pap.state = 'working';
@@ -966,13 +1008,21 @@ export default class Interactables {
     pap.model.rotation.y = this.anchor(PAP.cell, PAP.face).rot + Math.PI / 2;
     this.root.add(pap.model);
     g.audio.pap(pap.slotPos);
-    g.net?.event('pap', { s: 'working', w: weaponId, up: tier });
+    g.net?.event('pap', { s: 'working', w: weaponId, up: tier, by: playerId });
     return pap.ritual ? 'ritual' : true;
   }
 
   applyRemoteBox(m) {
-    const box = this.box;
-    if (m.spot !== undefined && m.spot !== box.spot) this.placeBox(m.spot);
+    // (b: una de las cajas de la liquidación)
+    const sale = m.b != null ? this.saleBoxes[m.b] : null;
+    if (m.b != null && !sale) return;
+    const box = sale || this.box;
+    if (!sale && m.spot !== undefined && m.spot !== box.spot) this.placeBox(m.spot);
+    if (sale && m.s === 'spinning') {
+      sale.group.visible = true;
+      sale.beam.visible = true;
+      sale.collider.active = true;
+    }
     if (m.s === 'spinning' && box.state !== 'spinning') {
       box.state = 'spinning';
       box.t = 0;
@@ -984,29 +1034,93 @@ export default class Interactables {
     } else if (m.s === 'closing') {
       box.model?.removeFromParent();
       box.model = null;
-      this.closeBox();
+      this.closeBox(box);
+    } else if (m.s === 'offer') {
+      if (m.w) box.offer = m.w;
+      box.state = 'offer';
+      box.t = 0;
+      if (box.offer) this.showBoxModel(box.offer, box);
     } else if (m.s) box.state = m.s;
+    if (sale) return;
+    // la caja volvió (o se está usando): si acá la taza todavía no había
+    // terminado de llevársela cuando llegó el aviso, quedaba invisible, sin
+    // su haz de luz, pero se podía usar igual
+    if (m.s === 'closed' || m.s === 'spinning') this.showBox();
+  }
+
+  // La caja a la vista en su lugar (después de que se la llevó la taza).
+  showBox() {
+    const box = this.box;
+    if (box.group.visible && !box.cup.visible && box.group.position.y === box.center.y) return;
+    box.cup.visible = false;
+    box.refunded = false;
+    box.group.visible = true;
+    box.beam.visible = true;
+    box.group.position.y = box.center.y;
+    box.group.rotation.z = 0;
+    if (box.collider) box.collider.active = true;
+    if (box.state === 'closed') {
+      box.lid.rotation.x = 0;
+      box.inner.material.opacity = 0;
+    }
+  }
+
+  // Dónde arranca la caja: al azar, cerca del comienzo (en la zona de
+  // arranque o detrás de una puerta que se compra desde ahí; la del comienzo
+  // sale la mitad de seguido). La torre, con sus pisos, usa su BOX_START.
+  startSpot() {
+    const pickStart = () => BOX_START[Math.floor(Math.random() * BOX_START.length)];
+    if (FEATURES.tower) return pickStart();
+    const near = new Set([START_ZONE]);
+    for (const d of DOORS) if (d.cost > 0 && d.zones.includes(START_ZONE)) near.add(d.zones[0] === START_ZONE ? d.zones[1] : d.zones[0]);
+    const list = BOX_SPOTS.map((s, i) => ({ i, w: s.zone === START_ZONE ? 0.5 : 1 })).filter((c) => near.has(BOX_SPOTS[c.i].zone));
+    if (!list.length) return pickStart();
+    let r = Math.random() * list.reduce((s, c) => s + c.w, 0);
+    for (const c of list) if ((r -= c.w) <= 0) return c.i;
+    return list[list.length - 1].i;
+  }
+
+  // Partida nueva (solo o anfitrión): la caja arranca en un lugar al azar.
+  newRun() {
+    const box = this.box;
+    if (box.state !== 'closed') return;
+    this.placeBox(this.startSpot());
+    this.g.net?.event('box', { spot: box.spot });
   }
 
   applyRemotePap(m) {
     const pap = this.pap;
-    if (m.s === 'working' && pap.state === 'idle') this.startPapFor(m.w, -1, m.up || 1);
+    if (m.s === 'working') {
+      if (pap.state !== 'idle') this.clearPap();
+      this.startPapFor(m.w, m.by ?? -1, m.up || 1);
+    } else if (m.s === 'idle' && pap.state !== 'idle') {
+      // se lo llevó su dueño, o la máquina se quedó con él
+      if (m.lost != null && m.lost === this.g.net?.id) this.g.hud.subtitle('El Pack-a-Pava se quedó con tu mate. Nunca lo dejes esperando.', 3);
+      this.clearPap();
+    }
   }
 
-  openBox() {
+  // ¿El mate que está en el Pack-a-Pava es de este jugador? (solo: siempre;
+  // en línea, el del anfitrión no lleva `remote` en su compu)
+  papMine() {
+    const e = this.pap.entry;
+    if (!e) return false;
+    return e.remote === undefined || (e.remote === this.g.net?.id && !!this.g.net?.guest);
+  }
+
+  openBox(box = this.box) {
     const g = this.g;
-    const box = this.box;
     box.state = 'spinning';
     box.t = 0;
     box.uses++;
     box.taker = null; // si la abrió un invitado, lo anota el anfitrión después
     g.audio.boxOpen(box.center);
     // la taza de café aparece a partir del 4to uso (no en fire sale)
-    const coffeeChance = box.uses >= 4 && !g.powerups.active.firesale ? 0.18 + (box.uses - 4) * 0.03 : 0;
+    const coffeeChance = box.uses >= 4 && box.sale == null && !g.powerups.active.firesale ? 0.18 + (box.uses - 4) * 0.03 : 0;
     box.coffee = Math.random() < coffeeChance;
     const pool = BOX_POOL.filter((w) => inBox(w) && !g.weapons.has(w.id) && !(w.id === 'pava' && g.weapons.tactical?.id === 'pava') && !(w.id === 'gut' && g.weapons.has('gutacida')));
     // el easter egg puede pedir más de algún mate (el Tronador para el barbacuá)
-    const weight = (w) => w.weight * (g.ee?.boxBoost?.(w.id) || 1);
+    const weight = (w) => boxWeight(w, MAP_ID) * (g.ee?.boxBoost?.(w.id) || 1);
     let total = pool.reduce((s, w) => s + weight(w), 0);
     let r = Math.random() * total;
     box.offer = pool[pool.length - 1].id;
@@ -1019,24 +1133,28 @@ export default class Interactables {
     }
     box.pool = pool;
     box.nextSwap = 0;
-    g.net?.event('box', { s: 'spinning', w: box.offer, coffee: box.coffee, pool: pool.map((w) => w.id), spot: box.spot });
+    const ev = { s: 'spinning', w: box.offer, coffee: box.coffee, pool: pool.map((w) => w.id) };
+    if (box.sale != null) ev.b = box.sale;
+    else ev.spot = box.spot;
+    g.net?.event('box', ev);
     return true;
   }
 
-  closeBox() {
-    const box = this.box;
+  closeBox(box = this.box) {
     box.state = 'closing';
     box.t = 0;
     box.offer = null;
-    this.g.net?.event('box', { s: 'closing' });
+    this.g.net?.event('box', box.sale != null ? { s: 'closing', b: box.sale } : { s: 'closing' });
   }
 
-  boxModel(id) {
-    const box = this.box;
+  boxModel(id, box = this.box) {
     let m = box.models.get(id);
     if (!m) {
+      // (las cajas de la liquidación usan copias de los de la caja de verdad:
+      // misma malla y materiales, sin shaders nuevos)
+      if (box !== this.box) m = this.boxModel(id).clone();
       // (la pava no es un mate: se muestra la pava de verdad)
-      m = id === 'pava' ? buildGrenade(this.g.textures, 'pava') : buildMate(id, false, this.g.textures).root;
+      else m = id === 'pava' ? buildGrenade(this.g.textures, 'pava') : buildMate(id, false, this.g.textures).root;
       m.scale.setScalar(2.6);
       box.models.set(id, m);
     }
@@ -1046,15 +1164,21 @@ export default class Interactables {
   updateBox(dt) {
     const g = this.g;
     const box = this.box;
+    box.beam.material.opacity = 0.15 + Math.sin(g.time * 2) * 0.04;
+    const pulse = 1.2 + Math.sin(g.time * 3) * 0.4;
+    for (const m of box.glowMats) m.color.copy(box.glow).multiplyScalar(pulse);
+    this.stepBox(box, dt);
+    this.updateSaleBoxes(dt);
+  }
+
+  // Lo que hace una caja (la de verdad o una de la liquidación) en el cuadro.
+  stepBox(box, dt) {
+    const g = this.g;
     box.t += dt;
-    this.updateSaleBoxes();
     const lidOpen = (k) => {
       box.lid.rotation.x = -LID_OPEN * k;
       box.inner.material.opacity = k * 0.8;
     };
-    box.beam.material.opacity = 0.15 + Math.sin(g.time * 2) * 0.04;
-    const pulse = 1.2 + Math.sin(g.time * 3) * 0.4;
-    for (const m of box.glowMats) m.color.copy(box.glow).multiplyScalar(pulse);
     switch (box.state) {
       case 'spinning': {
         lidOpen(Math.min(1, box.t / 0.4));
@@ -1064,7 +1188,7 @@ export default class Interactables {
           if (box.nextSwap <= 0 && k < 1) {
             box.nextSwap = 0.06 + k * k * 0.35;
             const pick = box.pool[Math.floor(Math.random() * box.pool.length)].id;
-            this.showBoxModel(pick);
+            this.showBoxModel(pick, box);
           }
           if (box.model) {
             box.model.position.copy(box.center).add(new THREE.Vector3(0, 0.5 + k * 0.5, MODEL_FWD).applyQuaternion(box.group.quaternion).setY(0.5 + k * 0.5));
@@ -1081,20 +1205,24 @@ export default class Interactables {
             box.cup.position.copy(box.center).add(new THREE.Vector3(0, 0.6, 0));
             box.cup.rotation.y = box.group.rotation.y;
             g.audio.laugh(box.center);
-          } else {
-            this.showBoxModel(box.offer);
+          } else if (!g.net?.guest) {
+            this.showBoxModel(box.offer, box);
             box.state = 'offer';
             box.t = 0;
+            // (el invitado lo muestra cuando le llega esto: si su compu iba
+            // adelantada, pedía un mate que acá todavía estaba girando)
+            g.net?.event('box', box.sale != null ? { s: 'offer', w: box.offer, b: box.sale } : { s: 'offer', w: box.offer });
           }
         }
         break;
       }
       case 'offer': {
         if (box.model) box.model.position.y = box.center.y + 1.0 + Math.sin(g.time * 2.5) * 0.03 - Math.max(0, box.t - 9) * 0.15;
-        if (box.t > 12) {
+        // (el anfitrión la cierra y avisa; el invitado espera el aviso)
+        if (box.t > 12 && !g.net?.guest) {
           box.model?.removeFromParent();
           box.model = null;
-          this.closeBox();
+          this.closeBox(box);
         }
         break;
       }
@@ -1110,7 +1238,7 @@ export default class Interactables {
         box.cup.rotation.z = Math.sin(k * 20) * 0.15;
         if (k > 2) {
           box.cup.visible = false;
-          box.group.position.y = (k - 2) * (k - 2) * 3;
+          box.group.position.y = box.center.y + (k - 2) * (k - 2) * 3;
           box.group.rotation.z = Math.sin(k * 30) * 0.1 * (k - 2);
           if (Math.random() < 0.4) g.fx.sparkle(box.group.position, [box.glow.r, box.glow.g, box.glow.b], 3, 1);
         }
@@ -1134,7 +1262,8 @@ export default class Interactables {
         break;
       }
       case 'away': {
-        if (box.t > 5) {
+        // (el invitado espera adónde la manda el anfitrión: applyRemoteBox)
+        if (box.t > 5 && !g.net?.guest) {
           const options = BOX_SPOTS.map((_, i) => i).filter((i) => i !== box.spot);
           const next = options[Math.floor(Math.random() * options.length)];
           box.group.visible = true;
@@ -1155,10 +1284,9 @@ export default class Interactables {
     }
   }
 
-  showBoxModel(id) {
-    const box = this.box;
+  showBoxModel(id, box = this.box) {
     box.model?.removeFromParent();
-    box.model = this.boxModel(id);
+    box.model = this.boxModel(id, box);
     box.model.visible = true;
     box.model.position.copy(box.center).add(new THREE.Vector3(0, 0.6, 0));
     box.model.rotation.y = box.group.rotation.y + Math.PI / 2;
@@ -1204,10 +1332,13 @@ export default class Interactables {
     return best;
   }
 
-  lock(it) {
+  // (en línea lo pone el anfitrión y lo ven todos: 'lock'; quiet, el que entra
+  // a la partida ya empezada)
+  lock(it, quiet = false) {
     if (it.locked) return;
     it.locked = true;
     const g = this.g;
+    g.net?.event('lock', { i: it.index });
     const chain = new THREE.Group();
     const iron = this.M.iron;
     for (let i = 0; i < 12; i++) {
@@ -1224,6 +1355,7 @@ export default class Interactables {
     chain.rotation.y = Math.atan2(toFront.x, toFront.z);
     this.root.add(chain);
     it.lockMesh = chain;
+    if (quiet) return;
     const alc = g.zombies.boss?.kind === 'alcaide';
     g.hud.subtitle(alc ? 'El Alcaide clausuró una máquina.' : 'El Capataz clausuró una máquina.', 2.5, 'boss');
     if (alc) {
@@ -1232,6 +1364,7 @@ export default class Interactables {
   }
 
   unlock(it) {
+    if (!it.locked) return;
     it.locked = false;
     it.lockMesh?.removeFromParent();
     it.lockMesh = null;
@@ -1239,11 +1372,20 @@ export default class Interactables {
   }
 
   // ---------------- actualización ----------------
-  update(dt, input) {
+  // Lo que anda solo (puertas que se abren, la caja, el Pack-a-Pava), aunque
+  // el jugador no pueda tocar nada: en gaucho life, con el menú abierto o en
+  // una escena. (Antes, con el anfitrión en gaucho life, la caja quedaba
+  // girando para siempre y el Pack-a-Pava no soltaba el mate.)
+  tick(dt) {
     const g = this.g;
     for (let i = this.animations.length - 1; i >= 0; i--) if (!this.animations[i](g.time, dt)) this.animations.splice(i, 1);
     this.updateBox(dt);
     this.updatePap(dt);
+  }
+
+  update(dt, input) {
+    const g = this.g;
+    this.tick(dt);
     // jingles de las máquinas cuando estás cerca
     for (const m of this.perkMachines) {
       if (m.gone) continue;
@@ -1301,8 +1443,11 @@ export default class Interactables {
     }
     if (best.locked) {
       if (input.hit('KeyF')) {
-        if (g.spend(LOCK_COST)) this.unlock(best);
-        else g.audio.deny();
+        if (g.spend(LOCK_COST)) {
+          this.unlock(best);
+          // (que se abra para todos: antes el candado era de cada compu)
+          g.net?.share('unlock', { i: best.index });
+        } else g.audio.deny();
       }
       return;
     }

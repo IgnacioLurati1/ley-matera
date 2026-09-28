@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MAP_W, MAP_H, WALL_H, ZONES, SKY } from '../config/map';
+import { MAP_W, MAP_H, WALL_H, ZONES, SKY, FEATURES } from '../config/map';
 import { bossRound } from '../config/rules';
 import { ceilAt } from './Levels';
 
@@ -245,7 +245,7 @@ export default class Weather {
   }
 
   onRound(round) {
-    if (bossRound(round)) {
+    if (bossRound(round, FEATURES.bossFrom)) {
       this.set('blood');
       return;
     }
