@@ -109,8 +109,9 @@ export default class DogRig {
     const dt = Math.min(0.1, Math.max(0, g.time - this.last));
     this.last = g.time;
     // sin carpinchos en juego no se dibuja nada (ahorra llamadas y triángulos)
-    // (en la torre andan mezclados con caballos: esos los dibuja el otro)
-    const mine = (z) => z.dog && !(this.mixed && z.horse);
+    // (en la torre andan mezclados con caballos y, en el Challenge, con
+    // yacarés: esos los dibujan los otros)
+    const mine = (z) => z.dog && !(this.mixed && (z.horse || z.yac));
     const any = pool.some((z) => mine(z) && z.active);
     if (!any && !this.on) return;
     this.on = any;

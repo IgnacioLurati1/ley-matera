@@ -182,12 +182,45 @@
   position: relative;
   padding: 18px clamp(24px, 6vw, 96px) clamp(22px, 5vh, 48px);
 }
-.mdu-arrive__status {
+/* el estado a la izquierda y la firma a la derecha, sobre la barra */
+.mdu-arrive__line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 18px;
   margin: 0 0 10px;
+}
+.mdu-arrive__status {
+  margin: 0;
   font-size: 15px;
   min-height: 1.3em;
   color: #cfc3a6;
   text-shadow: var(--shadow);
+}
+.mdu-arrive__credit {
+  flex: none;
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #9d9180;
+  text-decoration: none;
+  text-shadow: var(--shadow);
+  animation: mdu-arrive-in 0.8s ease-out 0.6s both;
+  transition: color 0.2s;
+}
+/* (lleva al Instagram del autor) */
+.mdu-arrive__credit:hover,
+.mdu-arrive__credit:focus-visible { color: #efe4c8; }
+.mdu-arrive__credit:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.mdu-arrive__credit b {
+  margin-left: 4px;
+  font-family: 'Creepster', 'Special Elite', serif;
+  font-weight: normal;
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--gold);
 }
 .mdu-arrive__bar {
   height: 4px;
@@ -229,5 +262,6 @@
   .mdu-arrive,
   .mdu-arrive__bg,
   .mdu-postal,
-  .mdu-arrive__info { animation: none; }
+  .mdu-arrive__info,
+  .mdu-arrive__credit { animation: none; }
 }

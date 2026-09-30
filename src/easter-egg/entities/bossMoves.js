@@ -201,7 +201,8 @@ export default class BossMoves {
     const near = g.nearestPlayer(z.pos.x, z.pos.z, z.baseY);
     if (!g.net || !near) return near;
     const by = z.baseY || 0;
-    const list = this.standing().filter((p) => !g.world.levels || Math.abs((p.pos.y || 0) - by) < 2);
+    // (al escondido en una mata del Maizaster no lo elige)
+    const list = this.standing().filter((p) => !p.maizIn && (!g.world.levels || Math.abs((p.pos.y || 0) - by) < 2));
     if (list.length < 2) return near;
     z.aggro ||= new Map();
     let cur = z.tgtId != null ? this.byId(z.tgtId) : null;

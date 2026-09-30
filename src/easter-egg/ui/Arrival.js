@@ -22,6 +22,7 @@ const TIPS = [
   () => `Con ${keyLabel('knife')} sacás el facón: en las primeras rondas ahorra yerba.`,
   () => `${keyLabel('grenade')} tira una bomba de yerba y ${keyLabel('tactical')}, la pava silbadora.`,
   () => `${keyLabel('reload')} ceba el mate (recarga). Hacelo antes de quedarte seco.`,
+  () => `Con ${keyLabel('shield')} el escudo pasa adelante: cubre de frente y el clic da un escudazo.`,
   () => `En línea, mantené ${keyLabel('use')} sobre un compañero caído para levantarlo.`,
   () => 'Las teclas se cambian en Controles, desde el título o la pausa.',
 ];
@@ -94,6 +95,89 @@ export async function compile(g) {
     hideBoss?.();
   }
   await Promise.all(jobs).catch(() => {});
+}
+
+// Todo el mapa de una, sin recorte por cámara: sube a la placa los modelos y
+// las texturas y compila cada variante (G-buffer, sombras, reflejo del agua)
+// de lo que no se ve desde donde se aparece. Si no, eso se subía al verlo por
+// primera vez en plena partida: tirones de 30-50 ms al pasar a otra zona (el
+// corral de la granja, el puente del estero). Tarda lo que tarde: es la carga.
+export function warmWorld(g) {
+  const R = g.renderer;
+  if (!R || !g.scene) return;
+  // las texturas de todo, también de lo escondido
+  const seen = new Set();
+  const tex = (t) => {
+    if (!t?.isTexture || t.isRenderTargetTexture || seen.has(t)) return;
+    seen.add(t);
+    try {
+      R.initTexture(t);
+    } catch {
+      /* una que no sube se sube al verla, como antes */
+    }
+  };
+  const mats = (o) => {
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!m) continue;
+      for (const k in m) if (m[k]?.isTexture) tex(m[k]);
+      for (const u of Object.values(m.uniforms || {})) {
+        const v = u?.value;
+        if (v?.isTexture) tex(v);
+        else if (Array.isArray(v)) v.forEach(tex);
+      }
+    }
+  };
+  g.scene.traverse(mats);
+  g.weapons?.vmScene?.traverse(mats);
+  // dos cuadros con todo lo visible, cerca o lejos, adelante o atrás (el
+  // segundo, para lo que el primero recién armó: los cubos de sombra guardados)
+  const culled = [];
+  g.scene.traverse((o) => {
+    if (o.frustumCulled && (o.isMesh || o.isPoints || o.isLine || o.isSprite)) {
+      o.frustumCulled = false;
+      culled.push(o);
+    }
+  });
+  // el maizal del matorral apaga lo lejano (entities/Matorral.js)
+  const far = [];
+  for (const ch of g.matorral?.chunks || []) {
+    if (ch.im.visible) continue;
+    ch.im.visible = true;
+    far.push(ch.im);
+  }
+  // los haces de las ventanas (fx/Shafts) cambian de cara cuando la cámara se
+  // mete adentro: esa variante se compilaba al cruzar el primer haz (el puente
+  // del estero, 40 ms). En el segundo cuadro van dadas vuelta.
+  // (con los pasos de la calidad en uso: si no, los pone Ambience.update recién
+  // al jugar y se compilaban igual al ver el primer haz)
+  g.ambience?.beams?.setQuality?.(g.tier?.('amb') ?? g.settings.quality);
+  const beams = [];
+  g.ambience?.beams?.root?.traverse((o) => {
+    if (o.isMesh && o.material?.uniforms?.uBoards && o.material.side === THREE.FrontSide) beams.push(o.material);
+  });
+  const flip = (side) => {
+    for (const m of beams) {
+      m.side = side;
+      m.needsUpdate = true;
+    }
+  };
+  // las luces con sombra de los fuegos (fx/Epic): en la carga todavía no
+  // tomaron ningún fuego y no dibujan nada; sin esto, la sombra de cada tipo
+  // de cosa (los recortes, lo instanciado) se compilaba al acercarse a un farol
+  for (const l of g.post?.epic?.pool || []) if (l.parent) l.shadow.needsUpdate = true;
+  try {
+    g.render(0.016);
+    flip(THREE.BackSide);
+    g.render(0.016);
+    // que la placa termine de subir y compilar antes de seguir
+    const gl = R.getContext();
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  } finally {
+    flip(THREE.FrontSide);
+    for (const o of culled) o.frustumCulled = true;
+    for (const o of far) o.visible = false;
+  }
+  R.shadowMap.needsUpdate = true;
 }
 
 // Un cuadro desde la cámara del título: sube texturas y sombras a la placa.
@@ -272,6 +356,11 @@ export default class Arrival {
     g.intro?.warm();
     // un cuadro desde donde se aparece: texturas y sombras ya en la placa
     g.player.updateCamera(g.camera);
+    // (antes, todo el mapa: lo que no se ve desde acá tampoco traba después)
+    this.screen.progress(0.85, 'Cargando el mapa entero…');
+    await frame();
+    if (token !== this.run) return false;
+    warmWorld(g);
     g.render(0.016);
     if (!postcards.has(g.mapId)) {
       warmTitle(g);

@@ -20,7 +20,8 @@ import { VM } from './viewmodels';
 // Las inspecciones son más largas (y cuentan otra cosa: la quena del Zonda,
 // la llamita en la palma del Pillán, la bola de plasma del Illapa, el dibujo
 // en la escarcha del Penitente). Los sonidos de cada paso los pone
-// weapons/elementalSounds.js (cue) en el cuadro en que pasa.
+// weapons/elementalSounds.js (cue) en el cuadro en que pasa. Además, lo que
+// se junta en el mate mientras se mantiene el clic de un templado (chargeFx).
 
 const tmpV = new THREE.Vector3();
 const tmpW = new THREE.Vector3();
@@ -898,6 +899,7 @@ export default class ElemVm {
     } else {
       this.bolts.begin();
       if (this.hand) this.hand.root.visible = this.hand.arm.visible = false;
+      if (E && el) this.chargeFx(el, dt, E);
     }
     this.shakeT = Math.max(0, (this.shakeT || 0) - dt);
     this.bolts.end();
@@ -1195,6 +1197,112 @@ export default class ElemVm {
     }
   }
 
+  // ---------------- la carga (mantener el clic) ----------------
+  // Mientras carga el tiro de un templado, el elemento se junta en el mate,
+  // cada vez más rápido: brasas que giran y entran por la boca (Pillán),
+  // un remolino que sube alrededor (Zonda), rayos que saltan del cristal al
+  // aire (Illapa), escarcha que baja en espiral (Penitente). Cargado, queda
+  // latiendo en la boca.
+  chargeFx(el, dt, E) {
+    const Q = this.E;
+    const k = Q.charging ? Q.charge : 0;
+    const full = Q.full && Q.charging;
+    this.readyT = Math.max(0, (this.readyT || 0) - dt);
+    if (k <= 0 && this.readyT <= 0) return;
+    const F = this.fx;
+    const S = this.sparks;
+    const mouth = this.anchor('mouth', new THREE.Vector3());
+    const rate = (n) => Math.random() < dt * n;
+    const TAU = Math.PI * 2;
+    this.pulseT = (this.pulseT || 0) - dt;
+    if (el === 'fuego') {
+      // brasas que giran alrededor de la boca y se meten
+      for (let n = dt * (25 + 110 * k); n > 0; n--) {
+        if (n < 1 && Math.random() > n) break;
+        S.spawn(tmpV, { life: 0.5 + Math.random() * 0.15, size: 0.011, size1: 0.003, alpha: 0.85, color: [2, 0.5 + Math.random() * 0.4, 0.12], fade: 'inout', orbit: { obj: E.gourd, a: Math.random() * TAU, w: 7 + k * 10, r: 0.1 + Math.random() * 0.05, vr: -(0.17 + k * 0.1), y: E.topY - 0.035 + Math.random() * 0.02, vy: 0.05 + Math.random() * 0.05 } });
+      }
+      if (rate(k * 40)) this.emberAt(mouth, 0.08 + k * 0.12);
+      F.flare = k * 0.9 + this.readyT * 2.5;
+      F.lava = k * 1.2 + this.readyT * 3;
+      // cargado: cada tanto un anillo de fuego que entra a la boca
+      if (full && this.pulseT <= 0) {
+        this.pulseT = 0.42;
+        this.ring(E, 16);
+      }
+    } else if (el === 'viento') {
+      // el aire que entra girando y sube
+      for (let n = dt * (35 + 120 * k); n > 0; n--) {
+        if (n < 1 && Math.random() > n) break;
+        S.spawn(tmpV, { life: 0.55, size: 0.004, size1: 0.011, alpha: 0.45, color: [0.7, 1.1, 0.85], fade: 'inout', orbit: { obj: E.gourd, a: Math.random() * TAU, w: 10 + k * 16, r: 0.15 + Math.random() * 0.05, vr: -(0.2 + k * 0.14), y: Math.random() * 0.06, vy: 0.08 + k * 0.07 } });
+      }
+      F.twister = k + this.readyT * 2;
+      F.feather = k * 0.9 + this.readyT * 2;
+      F.turb = k * 35 + this.readyT * 60;
+      // cargado: el embudo chiquito arriba de la boca
+      if (full && rate(70)) S.spawn(tmpV, { life: 0.45, size: 0.003, size1: 0.008, alpha: 0.55, color: [0.8, 1.2, 0.95], fade: 'inout', orbit: { obj: E.gourd, a: Math.random() * TAU, w: 18, r: 0.008 + Math.random() * 0.012, vr: 0.05, y: E.topY + 0.005, vy: 0.14 } });
+    } else if (el === 'rayo') {
+      const orb = this.anchor('orb', new THREE.Vector3());
+      const col = [1.6, 1.35, 0.55];
+      // rayos del cristal al aire, cada vez más y más gruesos
+      if (Math.random() < 0.15 + k * 0.85 || this.readyT > 0) {
+        const n = 1 + Math.floor(k * 2.5 + this.readyT * 12);
+        for (let i = 0; i < n; i++) {
+          const to = tmpB.set(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5).normalize().multiplyScalar(0.05 + Math.random() * 0.05).add(orb);
+          const end = to.clone();
+          this.bolts.bolt(orb, end, { width: 0.001 + k * 0.0009, color: col, jag: 0.3, n: 5 });
+          if (Math.random() < 0.3) S.spawn(end, { vel: tmpW.set((Math.random() - 0.5) * 0.15, Math.random() * 0.1, (Math.random() - 0.5) * 0.15), life: 0.2, size: 0.003, alpha: 1, color: [2, 1.8, 1], grav: 0.6, fade: 'flicker' });
+        }
+      }
+      if (Math.random() < k * 0.7) this.rodArc(E, Math.random());
+      F.orb = k * 0.9 + this.readyT * 5 + (full ? Math.sin(this.g.time * 18) * 0.25 : 0);
+      F.arcs = 0.3 + k * 0.7;
+      // cargado: la corriente sube por la bombilla hasta la boca
+      if (full) {
+        this.bolts.bolt(orb, mouth, { width: 0.0014, color: [2, 1.8, 1], jag: 0.2, n: 7 });
+        if (Math.random() < 0.5) this.bolts.bolt(orb, this.anchor('straw', new THREE.Vector3()), { width: 0.001, color: col, jag: 0.3, n: 5 });
+      }
+    } else {
+      this.spikeGrow = null;
+      // la escarcha baja en espiral y se junta en la boca; el frío que cae
+      for (let n = dt * (25 + 70 * k); n > 0; n--) {
+        if (n < 1 && Math.random() > n) break;
+        S.spawn(tmpV, { life: 0.8, size: 0.003, size1: 0.006, alpha: 0.75, color: [0.8, 0.97, 1.25], fade: 'inout', orbit: { obj: E.gourd, a: Math.random() * TAU, w: 3 + k * 5, r: 0.13 + Math.random() * 0.04, vr: -(0.14 + k * 0.08), y: E.topY - 0.02 + Math.random() * 0.08, vy: -0.03 } });
+      }
+      if (rate(k * 20)) S.spawn(mouth, { vel: tmpW.set((Math.random() - 0.5) * 0.02, -0.04, (Math.random() - 0.5) * 0.02), life: 0.7, size: 0.01, size1: 0.028, alpha: 0.12, color: [0.8, 0.95, 1.2], drag: 1, fade: 'inout' });
+      F.core = k * 0.9 + this.readyT * 4;
+      F.crown = k * 0.6 + this.readyT * 4 + (full ? 0.3 + Math.sin(this.g.time * 6) * 0.15 : 0);
+      F.grow = 1 + k * 0.2;
+      // cargado: las agujas destellan de a una
+      if (full && E.spikes?.length && rate(14)) {
+        const p = E.spikes[Math.floor(Math.random() * E.spikes.length)].getWorldPosition(new THREE.Vector3());
+        S.spawn(p, { life: 0.35, size: 0.012, size1: 0.002, alpha: 1, color: [1.6, 1.9, 2.2], fade: 'flicker' });
+      }
+    }
+  }
+
+  // El golpe del elemento en la boca: al llenarse la carga (full) y al salir
+  // el tiro cargado (release, más grande).
+  chargeBurst(el, what) {
+    const E = this.model?.elem;
+    if (!E) return;
+    this.w.holder.updateMatrixWorld(true);
+    const mouth = this.anchor('mouth', new THREE.Vector3());
+    const big = what === 'release' ? 1.5 : 1;
+    const n = (x) => Math.round(x * big);
+    if (el === 'fuego') {
+      this.burst(mouth, 'fire', n(22), 0.35 * big);
+      this.burst(mouth, 'spark', n(14), 0.5);
+    } else if (el === 'viento') {
+      this.burst(mouth, 'wind', n(26), 0.5 * big);
+    } else if (el === 'rayo') {
+      this.burst(mouth, 'spark', n(26), 0.55 * big);
+    } else {
+      this.burst(mouth, 'frost', n(22), 0.25 * big);
+      for (let i = 0; i < n(4); i++) this.shards.spawn(mouth.clone(), tmpW.set((Math.random() - 0.5) * 0.25, 0.1 + Math.random() * 0.15, (Math.random() - 0.5) * 0.25), 0.004);
+    }
+    this.readyT = 0.25;
+  }
+
   emberAt(p, speed) {
     this.sparks.spawn(p, { vel: new THREE.Vector3((Math.random() - 0.5) * speed, speed * (0.6 + Math.random()), (Math.random() - 0.5) * speed), life: 0.4 + Math.random() * 0.3, size: 0.004, size1: 0.001, alpha: 1, color: [2.2, 0.9, 0.3], drag: 1, grav: -0.05, fade: 'flicker' });
   }
@@ -1202,6 +1310,7 @@ export default class ElemVm {
   clear() {
     this.sparks.clear();
     this.shards.clear();
+    this.readyT = 0;
     this.stopOut();
     if (this.hand) this.hand.root.visible = this.hand.arm.visible = false;
     this.mode = null;

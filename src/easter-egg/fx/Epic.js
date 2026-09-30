@@ -64,7 +64,9 @@ function reflOf(m) {
   // el pasto (recortes de doble cara y las matas): sin reflejo y con poca
   // oclusión. Solo en el estero (Mate no Numa), que es para lo que se hizo: en
   // los otros mapas queda como estaba (el usuario, 2026-09-26)
-  if (FEATURES.esteros && (m.userData?.foliage || (m.alphaTest > 0 && m.map && m.side === THREE.DoubleSide))) return FOLIAGE_B;
+  // (userData.gbuf: un recorte que pide ir al G-buffer en cualquier mapa, como
+  // el maizal del Prado: world/Prado.js)
+  if ((FEATURES.esteros && (m.userData?.foliage || (m.alphaTest > 0 && m.map && m.side === THREE.DoubleSide))) || m.userData?.gbuf) return FOLIAGE_B;
   // (con mapa de rugosidad de fx/Surfaces, la media que dejó ahí)
   let rough = m.userData?.reflRough ?? m.roughness;
   if (rough === undefined) rough = m.shininess ? 1 - Math.min(1, m.shininess / 90) : 1;
@@ -96,6 +98,9 @@ class GBufferPass extends Pass {
     // el material del G-buffer de cada malla (armar la clave de texto en cada
     // cuadro para cada malla era basura para el recolector)
     this.pick = new WeakMap();
+    // un número por cada userData.gbuf (ver material())
+    this.gbIds = new WeakMap();
+    this.gbN = 0;
     this.reflT = 0;
     // listas que se reusan (vaciarlas con length = 0 les suelta la memoria y
     // cada cuadro volvían a crecer)
@@ -124,7 +129,21 @@ class GBufferPass extends Pass {
     const cut = src.alphaTest > 0 && src.map ? src.map : null;
     // el pasto que se aparta (fx/grassPush.js): acá también, si no la oclusión dibujaba la mata quieta
     const push = src.userData?.grassPush || null;
-    const key = `${side}|${b}|${src.flatShading ? 1 : 0}|${o.isInstancedMesh ? 1 : 0}${o.instanceColor ? 1 : 0}${o.isSkinnedMesh ? 1 : 0}${o.isBatchedMesh ? 1 : 0}${morph}|${nm ? nm.id : 0}|${cut ? cut.id : 0}|${push ? 1 : 0}`;
+    // un recorte con su propio vértice/descarte (userData.gbuf: { key, patch }):
+    // el mismo que en el color, si no la oclusión y los reflejos no calzan
+    const gb = src.userData?.gbuf || null;
+    // (uno por cada gbuf, no por su key: cada uno trae sus propios uniforms. Con
+    // la key sola, al rearmar el mapa (del título a la partida) quedaba el
+    // material del anterior, con sus uniforms viejos: el maizal del matorral
+    // cortado seguía entero en la oclusión y la niebla, como fantasmas en el
+    // cielo; el usuario, 2026-09-29. El programa se comparte igual: la clave
+    // del programa sigue siendo gb.key.)
+    let gi = 0;
+    if (gb) {
+      gi = this.gbIds.get(gb);
+      if (!gi) this.gbIds.set(gb, (gi = ++this.gbN));
+    }
+    const key = `${side}|${b}|${src.flatShading ? 1 : 0}|${o.isInstancedMesh ? 1 : 0}${o.instanceColor ? 1 : 0}${o.isSkinnedMesh ? 1 : 0}${o.isBatchedMesh ? 1 : 0}${morph}|${nm ? nm.id : 0}|${cut ? cut.id : 0}|${push ? 1 : 0}|${gb ? `${gb.key}#${gi}` : ''}`;
     let m = this.mats.get(key);
     if (!m) {
       m = new THREE.MeshNormalMaterial({ side, flatShading: !!src.flatShading, normalMap: nm });
@@ -147,8 +166,9 @@ class GBufferPass extends Pass {
         }
         s.fragmentShader = s.fragmentShader.replace(/}\s*$/, `\tgl_FragColor = vec4(mix(gl_FragColor.rgb, vec3(0.5, 0.5, 1.0), greaterThanEqual(floatBitsToUint(gl_FragColor.rgb) & 0x7fffffffu, uvec3(0x7f800000u))), ${a});\n}`);
         push?.(s);
+        gb?.patch(s);
       };
-      m.customProgramCacheKey = () => `gbuf${b}${cut ? 'c' : ''}${push ? 'g' : ''}`;
+      m.customProgramCacheKey = () => `gbuf${b}${cut ? 'c' : ''}${push ? 'g' : ''}${gb ? gb.key : ''}`;
       m.userData.key = key;
       this.mats.set(key, m);
     }
@@ -159,8 +179,10 @@ class GBufferPass extends Pass {
   skip(o, m) {
     if (!m || m.visible === false || m.colorWrite === false) return true;
     // (los recortes van al G-buffer solo en el estero, para el pasto alto; en
-    // los otros mapas, como antes, no van)
-    if (m.isShaderMaterial || (m.alphaTest > 0 && (!m.map || this.noCut || !FEATURES.esteros))) return true;
+    // los otros mapas, como antes, no van, salvo los que lo piden: userData.gbuf,
+    // el maizal del Prado, que si no dejaba ver la niebla y los reflejos de lo
+    // de atrás a través de las hojas)
+    if (m.isShaderMaterial || (m.alphaTest > 0 && !m.userData?.gbuf && (!m.map || this.noCut || !FEATURES.esteros))) return true;
     if (m.transparent && (!m.depthWrite || m.opacity < 0.3)) return true;
     return false;
   }

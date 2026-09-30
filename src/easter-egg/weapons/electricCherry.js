@@ -128,12 +128,15 @@ export function cherryShock(g, at, k, mine) {
 function crackle(g, p, k) {
   const a = g.audio;
   if (!a?.ctx) return;
-  const o = a.out({ pos: p.clone(), gain: 0.9 + 0.4 * k, reverb: 0.35, ref: 6 });
-  const t = a.now;
-  a.tone(o, { t, dur: 0.35, type: 'sawtooth', freq: 120, freqEnd: 900, gain: 0.12, attack: 0.01 });
-  a.tone(o, { t: t + 0.02, dur: 0.3, type: 'square', freq: 60, freqEnd: 40, gain: 0.1 });
-  a.noise(o, { t, dur: 0.4, type: 'highpass', freq: 2500, freqEnd: 6000, gain: 0.45, attack: 0.005 });
-  for (let i = 0; i < 10 + 10 * k; i++) a.noise(o, { t: t + Math.random() * 0.45, dur: 0.018, type: 'bandpass', freq: 2500 + Math.random() * 4500, q: 2, gain: 0.35 });
+  // la descarga grabada (core/weaponSfx.js); si no bajó, la sintetizada
+  if (!a.guns?.play('cherry', { pos: p.clone(), gain: 0.8 + 0.35 * k, rate: 0.96 + Math.random() * 0.08 })) {
+    const o = a.out({ pos: p.clone(), gain: 0.9 + 0.4 * k, reverb: 0.35, ref: 6 });
+    const t = a.now;
+    a.tone(o, { t, dur: 0.35, type: 'sawtooth', freq: 120, freqEnd: 900, gain: 0.12, attack: 0.01 });
+    a.tone(o, { t: t + 0.02, dur: 0.3, type: 'square', freq: 60, freqEnd: 40, gain: 0.1 });
+    a.noise(o, { t, dur: 0.4, type: 'highpass', freq: 2500, freqEnd: 6000, gain: 0.45, attack: 0.005 });
+    for (let i = 0; i < 10 + 10 * k; i++) a.noise(o, { t: t + Math.random() * 0.45, dur: 0.018, type: 'bandpass', freq: 2500 + Math.random() * 4500, q: 2, gain: 0.35 });
+  }
   // y un trueno medio (el grabado, entero con su retumbe) bien bajito
   a.playThunder?.(Math.random() < 0.5 ? 'trueno-medio-1' : 'trueno-medio-2', { pos: p.clone(), gain: 0.14 + 0.08 * k });
 }

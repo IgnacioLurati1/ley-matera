@@ -1117,6 +1117,121 @@ function cherry(T, M, perk) {
   return { g, rAt, top, vir: [M.silver, 0.012, 0.004], topping: (gg) => sparks(gg, top, 18, 0x56c8ff, 71) };
 }
 
+// Dying Wish (Extremaunión): de loza negra laqueada como el ataúd de la
+// máquina, la faja de luto con la marca en oro, el corazón rojo al frente y
+// la aureola de oro que cuelga del borde; arriba, brasitas rojas que laten.
+function wish(T, M, perk) {
+  const L = perk.label;
+  const g = new THREE.Group();
+  const pts = profile([[0, 0], [0.022, 0.002], [0.039, 0.013], [0.047, 0.035], [0.046, 0.058], [0.04, 0.076], [0.032, 0.088], [0.029, 0.095], [0.031, 0.101]]);
+  const rAt = (y) => VM.profileRadius(pts, y);
+  const top = { r: 0.031, y: 0.101 };
+  const gold = std({ color: 0xd4ac48, metalness: 1, roughness: 0.28 });
+  g.add(body(pts, phys({ color: 0x141012, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.04 })));
+  const bandTex = texOf('dw-faja', 1024, 128, paintBand(L, perk, { bg: L.band, ink: L.bg, rule: L.accent }));
+  g.add(band(rAt, 0.028, 0.05, phys({ map: bandTex, roughness: 0.3, clearcoat: 1 }), 0.0009));
+  // el corazón rojo arriba de la faja, al frente (lejos de los dedos)
+  const heart = flat(heartShape(0.0075), 0.002, phys({ color: 0xd0142e, emissive: 0x4a000c, roughness: 0.2, clearcoat: 1 }), 0.0006);
+  heart.geometry.center();
+  onSurface(heart, rAt, 0.35, 0.066, 0.0012);
+  g.add(heart);
+  // la aureola: un aro de oro colgado de la virola, inclinado para afuera
+  const halo = VM.tor(0.009, 0.0012, gold, 6, 24);
+  halo.position.set(Math.sin(-0.5) * (top.r + 0.006), top.y - 0.012, Math.cos(-0.5) * (top.r + 0.006));
+  halo.rotation.set(0.35, -0.5, 0, 'YXZ');
+  g.add(halo);
+  return { g, rAt, top, vir: [gold, 0.012, 0.004], bomb: { mat: gold }, topping: (gg) => sparks(gg, top, 14, 0xff2a44, 83) };
+}
+
+// Maizaster (Maleza Gaucha): un choclo ahuecado hecho mate, con los granos
+// (alguno colorado, de maíz criollo) y las hojas de chala seca que lo abrazan
+// desde abajo y se abren arriba; la faja de la marca y, arriba de la yerba,
+// unos pochoclos.
+function maiz(T, M, perk) {
+  const L = perk.label;
+  const g = new THREE.Group();
+  const pts = profile([[0, 0], [0.02, 0.002], [0.035, 0.012], [0.043, 0.03], [0.045, 0.05], [0.042, 0.07], [0.035, 0.086], [0.03, 0.095], [0.031, 0.101]]);
+  const rAt = (y) => VM.profileRadius(pts, y);
+  const top = { r: 0.031, y: 0.101 };
+  const kernels = texOf('mz-granos', 512, 256, (ctx, W, H) => {
+    const r = rng(311);
+    ctx.fillStyle = '#5a3208';
+    ctx.fillRect(0, 0, W, H);
+    const cols = 18;
+    const rows = 13;
+    const cw = W / cols;
+    const rh = H / rows;
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        // (las filas corridas medio grano, como en el choclo)
+        const x = (i + (j % 2) * 0.5) * cw;
+        const y = j * rh;
+        const red = r() < 0.05;
+        const k = 0.85 + r() * 0.25;
+        const gr = ctx.createRadialGradient(x + cw * 0.4, y + rh * 0.35, 1, x + cw / 2, y + rh / 2, cw * 0.62);
+        gr.addColorStop(0, red ? '#e0524a' : `rgb(${255 * k},${226 * k},${128 * k})`);
+        gr.addColorStop(0.55, red ? '#a3202a' : `rgb(${236 * k},${170 * k},${40 * k})`);
+        gr.addColorStop(1, red ? '#5a0c14' : `rgb(${170 * k},${104 * k},${16 * k})`);
+        ctx.fillStyle = gr;
+        for (const dx of [0, -W]) {
+          ctx.beginPath();
+          ctx.roundRect(x + dx + 1.5, y + 1.5, cw - 3, rh - 3, 5);
+          ctx.fill();
+        }
+      }
+    }
+  });
+  g.add(body(pts, phys({ map: kernels, bumpMap: kernels, bumpScale: 1.4, roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.2 })));
+  // la chala: hojas secas que suben pegadas y se abren arriba (fuera de donde van los dedos)
+  const chala = texOf('mz-chala', 128, 256, (ctx, W, H) => {
+    const r = rng(313);
+    const gr = ctx.createLinearGradient(0, 0, 0, H);
+    gr.addColorStop(0, '#e9dcb0');
+    gr.addColorStop(1, '#b89a5c');
+    ctx.fillStyle = gr;
+    ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 70; i++) {
+      const x = r() * W;
+      ctx.strokeStyle = `rgba(${90 + r() * 40},${64 + r() * 30},${30},${0.2 + r() * 0.3})`;
+      ctx.lineWidth = 0.6 + r() * 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x + (r() - 0.5) * 6, H);
+      ctx.stroke();
+    }
+  });
+  const huskMat = std({ map: chala, roughness: 0.85, side: THREE.DoubleSide });
+  for (const [a, h] of [[0, 0.066], [0.9, 0.058], [-0.9, 0.062], [1.72, 0.05], [-1.72, 0.054]]) {
+    const hp = [];
+    for (let i = 0; i <= 12; i++) {
+      const y = 0.004 + (h * i) / 12;
+      const u = i / 12;
+      hp.push(new THREE.Vector2(rAt(y) + 0.0012 + u * u * u * 0.011, y));
+    }
+    g.add(new THREE.Mesh(new THREE.LatheGeometry(hp, 8, a - 0.4, 0.8), huskMat));
+  }
+  const bandTex = texOf('mz-faja', 1024, 128, paintBand(L, perk, { bg: L.band, ink: L.bandText, rule: L.bg }));
+  g.add(band(rAt, 0.071, 0.087, std({ map: bandTex, roughness: 0.6 }), 0.0009));
+  // los pochoclos arriba de la yerba
+  const pop = std({ color: 0xf7f0dc, roughness: 0.8 });
+  const popcorn = (gg) => {
+    const r = rng(317);
+    for (let k = 0; k < 6; k++) {
+      const a = r() * TAU;
+      const d = Math.sqrt(r()) * top.r * 0.6;
+      const c = new THREE.Group();
+      for (let j = 0; j < 4; j++) {
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.0022 + r() * 0.0012, 7, 5), pop);
+        b.position.set((r() - 0.5) * 0.004, r() * 0.003, (r() - 0.5) * 0.004);
+        c.add(b);
+      }
+      c.position.set(Math.sin(a) * d, yerbaY(top) + 0.0015, Math.cos(a) * d);
+      gg.add(c);
+    }
+  };
+  return { g, rAt, top, vir: [std({ color: 0x8a6a3a, metalness: 0.6, roughness: 0.45 }), 0.011, 0.004], topping: popcorn };
+}
+
 // Cualquier otro perk: la calabaza del color del perk, con la faja de su nombre.
 function generic(T, M, perk) {
   const g = new THREE.Group();
@@ -1127,7 +1242,7 @@ function generic(T, M, perk) {
   return { g, rAt, top, vir: [M.silver, 0.012, 0.004] };
 }
 
-const BUILDERS = { jugg, revive, speed, doubletap, mule, deadshot, phd, dragon, aqua, cherry };
+const BUILDERS = { jugg, revive, speed, doubletap, mule, deadshot, phd, dragon, aqua, cherry, wish, maiz };
 
 // Arma el mate de un perk (o uno genérico del color, si no hay perk).
 // Devuelve { root, tip, strawDir } como el de siempre (Weapons.drink).

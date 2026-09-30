@@ -1,0 +1,38 @@
+/* La firma en la pantalla de carga del juego (la que baja todo, ui/Menus.js):
+   abajo a la derecha, lleva al Instagram del autor. La de la pantalla de
+   entrar a un mapa está en ui/loadscreen.css. (Adentro de .mdu-loading, los
+   <b> y los <i> son la barra: por eso el nombre va en <strong>.) */
+.mdu-credit {
+  position: absolute;
+  right: clamp(16px, 3vw, 44px);
+  bottom: clamp(14px, 3vh, 34px);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #9d9180;
+  text-decoration: none;
+  text-shadow: var(--shadow);
+  /* (backwards: al terminar suelta la opacidad, así el fundido de .is-out anda) */
+  animation: mdu-credit-in 0.8s ease-out 0.3s backwards;
+  transition: color 0.2s, opacity 0.35s;
+}
+@keyframes mdu-credit-in {
+  from { opacity: 0; }
+}
+.mdu-credit strong {
+  margin-left: 4px;
+  font-family: 'Creepster', 'Special Elite', serif;
+  font-weight: normal;
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--gold);
+}
+.mdu-credit:hover,
+.mdu-credit:focus-visible { color: #efe4c8; }
+.mdu-credit:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+/* cuando arranca la entrada del menú (ui/TitleIntro.js) se va con el cartel */
+.mdu-loading.is-out .mdu-credit { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mdu-credit { animation: none; }
+}

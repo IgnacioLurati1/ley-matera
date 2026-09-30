@@ -23,6 +23,12 @@ import { mesh, boxGeo, cylGeo, rboxGeo, mergeByMaterial } from './props';
 //    buey con burbujas.
 //  · Chisporé (Electric Cherry): el tablero de alta tensión del penal, con la
 //    llave de cuchilla y la escalera de Jacob arriba (el arco sube y se corta).
+//  · Extremaunión (Dying Wish): el ataúd parado, laqueado y con filete de oro,
+//    las velas, la jeringa de adrenalina clavada arriba y el relicario con el
+//    corazón que late (tum-tum) bajo la aureola.
+//  · Maleza Gaucha (Maizaster): la troje de maíz con los choclos entre las
+//    tablas, el techito de paja, los atados de chala seca y, en el hastial,
+//    dos ojos que miran desde lo oscuro (y parpadean).
 // Devuelve { group, sign, bulbs, front, anim }: sign (lo que se prende con la
 // luz), bulbs (los foquitos que titilan), front (el material de la etiqueta) y
 // anim(t, dt, on) para lo que se mueve (solo corre con el jugador cerca).
@@ -622,7 +628,189 @@ const BUILD = {
       },
     };
   },
+
+  wish(g, P, label) {
+    const lacquer = std({ color: 0x141012, roughness: 0.22, metalness: 0.15 });
+    const wine = std({ color: 0x3a0c16, roughness: 0.5 });
+    const gold = std({ color: 0xc9a13c, metalness: 0.9, roughness: 0.3 });
+    const marble = std({ color: 0x2c2729, roughness: 0.35, metalness: 0.05 });
+    const wax = std({ color: 0xefe6d0, roughness: 0.7 });
+    // la tarima de mármol y el ataúd parado (el perfil de seis lados, con los hombros anchos)
+    g.add(mesh(boxGeo(1.12, 0.12, 0.78), marble, 0, 0.06, 0));
+    const prof = [[-0.35, 0.12], [0.35, 0.12], [0.53, 1.55], [0.4, 2.06], [-0.4, 2.06], [-0.53, 1.55]];
+    g.add(shape(prof, 0.62, lacquer, 0, 0, -0.02));
+    g.add(shape(prof.map(([x, y]) => [x * 0.9, 0.12 + (y - 0.12) * 0.97 + 0.03]), 0.66, wine, 0, 0, -0.02));
+    // el filete dorado de la tapa, por todo el borde
+    for (let i = 0; i < prof.length; i++) {
+      const [x0, y0] = prof[i];
+      const [x1, y1] = prof[(i + 1) % prof.length];
+      g.add(mesh(boxGeo(Math.hypot(x1 - x0, y1 - y0) + 0.03, 0.035, 0.04), gold, (x0 + x1) / 2, (y0 + y1) / 2, 0.3, 0, 0, Math.atan2(y1 - y0, x1 - x0)));
+    }
+    const { front } = common(g, label, { z: 0.335, frame: gold, frameW: 0.03, w: 0.64, h: 1.24, y: 1.02 });
+    // la cruz arriba de la etiqueta
+    g.add(mesh(boxGeo(0.05, 0.24, 0.03), gold, 0, 1.86, 0.33));
+    g.add(mesh(boxGeo(0.16, 0.05, 0.03), gold, 0, 1.9, 0.33));
+    // las manijas de los costados
+    // (pegadas al costado, que se abre hacia los hombros)
+    for (const sx of [-1, 1]) for (const y of [0.7, 1.25]) g.add(mesh(cylGeo(0.018, 0.018, 0.3, 8), gold, sx * (0.38 + (y - 0.12) * 0.126), y, 0.12, Math.PI / 2, 0, 0));
+    // la jeringa de adrenalina clavada arriba, al lado del relicario (el líquido rojo brilla)
+    const juice = glow(0xff1a3a, { transparent: true, opacity: 0.9 });
+    const syr = new THREE.Group();
+    syr.add(mesh(cylGeo(0.045, 0.045, 0.36, 12), std({ color: 0xdfe8ee, roughness: 0.05, transparent: true, opacity: 0.45 }), 0, 0, 0));
+    syr.add(mesh(cylGeo(0.036, 0.036, 0.26, 10), juice, 0, -0.04, 0));
+    syr.add(mesh(cylGeo(0.008, 0.008, 0.22, 6), std({ color: 0xc8ccd0, metalness: 1, roughness: 0.2 }), 0, -0.29, 0));
+    syr.add(mesh(cylGeo(0.012, 0.012, 0.16, 6), gold, 0, 0.26, 0));
+    syr.add(mesh(boxGeo(0.14, 0.02, 0.06), gold, 0, 0.35, 0));
+    syr.add(mesh(boxGeo(0.12, 0.02, 0.1), gold, 0, 0.17, 0));
+    syr.position.set(0.33, 2.2, 0.06);
+    syr.rotation.z = -0.35;
+    mergeByMaterial(syr);
+    g.add(syr);
+    // el relicario de arriba: la base dorada, el vidrio y el corazón que late adentro
+    g.add(mesh(cylGeo(0.17, 0.2, 0.06, 18), gold, 0, 2.09, 0.02));
+    g.add(mesh(cylGeo(0.14, 0.14, 0.28, 18, true), std({ color: 0xcfe0e8, roughness: 0.05, transparent: true, opacity: 0.22, side: THREE.DoubleSide }), 0, 2.26, 0.02));
+    g.add(mesh(cylGeo(0.16, 0.16, 0.03, 18), gold, 0, 2.41, 0.02));
+    const heart = new THREE.Group();
+    const hm = glow(0xff1a3a);
+    heart.add(sphere(0.05, hm, -0.036, 0.018, 0, 1, 1, 0.75, 10));
+    heart.add(sphere(0.05, hm, 0.036, 0.018, 0, 1, 1, 0.75, 10));
+    heart.add(mesh(new THREE.ConeGeometry(0.07, 0.11, 10), hm, 0, -0.05, 0, Math.PI, 0, 0));
+    heart.position.set(0, 2.25, 0.02);
+    g.add(heart);
+    // la aureola que flota arriba de todo
+    const halo = torus(0.12, 0.014, glow(0xffd66a, { emissiveIntensity: 1.2 }), 0, 2.53, 0.02, Math.PI / 2, 0, 0, Math.PI * 2, 28);
+    g.add(halo);
+    // las velas de los rincones (las llamitas son los foquitos)
+    const flames = [];
+    for (const sx of [-1, 1]) {
+      g.add(mesh(cylGeo(0.035, 0.04, 0.26, 10), wax, sx * 0.48, 0.25, 0.28));
+      g.add(mesh(cylGeo(0.06, 0.06, 0.02, 12), gold, sx * 0.48, 0.13, 0.28));
+      flames.push([sx * 0.48, 0.41, 0.28]);
+    }
+    const bulbs = bulbRow(g, [...flames, [-0.3, 2.02, 0.31], [0.3, 2.02, 0.31]], 0xffb050);
+    mergeByMaterial(g, [heart, halo, ...bulbs]);
+    return {
+      sign: { material: hm },
+      bulbs,
+      front,
+      anim: (t, dt, on) => {
+        // el latido de a dos (tum-tum) y la aureola que gira despacio
+        const ph = (t * 1.3) % 1;
+        const beat = Math.exp(-(((ph - 0.08) / 0.05) ** 2)) + 0.7 * Math.exp(-(((ph - 0.28) / 0.05) ** 2));
+        heart.scale.setScalar(on ? 1 + beat * 0.28 : 0.9);
+        if (on) hm.emissiveIntensity = 1.4 + beat * 2.4;
+        halo.rotation.z = t * 0.8;
+        halo.position.y = 2.53 + Math.sin(t * 1.7) * 0.015;
+      },
+    };
+  },
+  maiz(g, P, label) {
+    const wood = std({ color: 0x6e4e30, roughness: 0.88 });
+    const woodDark = std({ color: 0x3a2716, roughness: 0.92 });
+    const straw = std({ map: strawTex(), color: 0xe6cc84, roughness: 0.95 });
+    const husk = std({ color: 0xcdb070, roughness: 0.9, side: THREE.DoubleSide });
+    const cob = std({ color: 0xe2a326, roughness: 0.5 });
+    const cobDark = std({ color: 0xa8641a, roughness: 0.6 });
+    // la tarima y la troje: cuatro postes, el fondo cerrado y los costados de
+    // tablas con luz entre medio (adentro, la pila de choclos)
+    g.add(mesh(boxGeo(1.12, 0.12, 0.78), woodDark, 0, 0.06, 0));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(mesh(boxGeo(0.09, 1.96, 0.09), wood, sx * 0.5, 1.1, sz * 0.31));
+    g.add(mesh(boxGeo(1.0, 1.9, 0.04), woodDark, 0, 1.07, -0.3));
+    for (const sx of [-1, 1]) {
+      for (let i = 0; i < 9; i++) g.add(mesh(boxGeo(0.03, 0.11, 0.62), i % 3 ? wood : woodDark, sx * 0.5, 0.26 + i * 0.205, 0, 0, 0, (i % 2 ? 1 : -1) * 0.02));
+      // los choclos apilados de punta (asoman entre las tablas)
+      for (let row = 0; row < 8; row++) for (let k = 0; k < 3; k++) g.add(mesh(cylGeo(0.042, 0.036, 0.19, 8), (row + k) % 4 ? cob : cobDark, sx * 0.43, 0.3 + row * 0.2 + (k % 2) * 0.04, -0.2 + k * 0.2, Math.PI / 2, 0, 0));
+    }
+    const { front } = common(g, label, { z: 0.34, frame: wood, frameW: 0.05, w: 0.76, h: 1.46, y: 1.08 });
+    // el techito de paja a dos aguas (la cumbrera de adelante hacia atrás)
+    for (const sx of [-1, 1]) g.add(mesh(boxGeo(0.7, 0.07, 0.86), straw, sx * 0.285, 2.25, 0, 0, 0, -sx * 0.6));
+    for (const sx of [-1, 1]) for (let i = 0; i < 7; i++) g.add(mesh(boxGeo(0.02, 0.1 + (i % 3) * 0.03, 0.12), straw, sx * 0.56, 2.02, -0.36 + i * 0.12, 0, 0, sx * 0.3));
+    // el hastial de adelante: tablas oscuras con un hueco negro... y dos ojos que miran
+    g.add(shape([[-0.5, 0], [0.5, 0], [0, 0.36]], 0.03, woodDark, 0, 2.06, 0.34));
+    g.add(shape([[-0.2, 0], [0.2, 0], [0, 0.14]], 0.01, std({ color: 0x050302, roughness: 1 }), 0, 2.1, 0.36));
+    const eyeMat = glow(0xffd24a);
+    const eyes = new THREE.Group();
+    for (const sx of [-1, 1]) eyes.add(sphere(0.022, eyeMat, sx * 0.055, 0, 0, 1.3, 0.8, 0.5, 8));
+    eyes.position.set(0, 2.155, 0.366);
+    g.add(eyes);
+    // el sombrero de paja del espantapájaros, tirado arriba de la cumbrera
+    const hat = new THREE.Group();
+    hat.add(mesh(cylGeo(0.21, 0.21, 0.015, 18), straw, 0, 0, 0));
+    hat.add(mesh(cylGeo(0.1, 0.12, 0.11, 14), straw, 0, 0.06, 0));
+    hat.add(mesh(cylGeo(0.122, 0.122, 0.025, 14), std({ color: 0x7a2a12, roughness: 0.8 }), 0, 0.02, 0));
+    hat.position.set(0.05, 2.47, -0.05);
+    hat.rotation.set(0.08, 0.4, -0.12);
+    mergeByMaterial(hat);
+    g.add(hat);
+    // los atados de chala seca en las esquinas de adelante (se mecen)
+    const bundles = [];
+    for (const sx of [-1, 1]) {
+      const b = new THREE.Group();
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        const h = 1.7 + ((i * 37) % 7) * 0.09;
+        b.add(mesh(cylGeo(0.008, 0.013, h, 5), husk, Math.cos(a) * 0.035, h / 2, Math.sin(a) * 0.035, Math.sin(a) * 0.05, 0, -Math.cos(a) * 0.05));
+      }
+      for (let i = 0; i < 6; i++) {
+        const leaf = new THREE.PlaneGeometry(0.05, 0.3).translate(0, -0.15, 0);
+        const y = 0.9 + i * 0.17;
+        b.add(mesh(leaf, husk, 0, y, 0, 0.3 + (i % 2) * 0.2, i * 2.1, (i % 2 ? 1 : -1) * 0.45));
+      }
+      b.add(mesh(new THREE.TorusGeometry(0.045, 0.012, 5, 12), std({ color: 0x5a3a1a, roughness: 0.9 }), 0, 0.95, 0, Math.PI / 2, 0, 0));
+      b.position.set(sx * 0.52, 0.12, 0.33);
+      b.rotation.z = -sx * 0.06;
+      mergeByMaterial(b);
+      g.add(b);
+      bundles.push(b);
+    }
+    // los foquitos colgados del alero
+    const bulbs = bulbRow(g, [-0.45, -0.25, 0.25, 0.45].map((x) => [x, 2.02 + (0.5 - Math.abs(x)) * 0.62, 0.43]), 0xffd890);
+    mergeByMaterial(g, [eyes, hat, ...bundles, ...bulbs]);
+    let blink = 3;
+    return {
+      sign: { material: eyeMat },
+      bulbs,
+      front,
+      anim: (t, dt, on) => {
+        // la chala que se mece; los ojos que parpadean y miran para los costados
+        bundles.forEach((b, i) => {
+          b.rotation.z = (i ? 0.06 : -0.06) + Math.sin(t * 1.3 + i * 1.7) * 0.035;
+          b.rotation.x = Math.sin(t * 0.9 + i) * 0.02;
+        });
+        blink -= dt;
+        if (blink < -0.14) blink = 2 + Math.random() * 4;
+        eyes.scale.y = blink < 0 ? 0.1 : 1;
+        eyes.position.x = Math.sin(t * 0.6) * 0.02;
+        if (on) eyeMat.emissiveIntensity = 1.6 + Math.sin(t * 2.3) * 0.3;
+      },
+    };
+  },
 };
+
+// La paja del techito: tallos dorados y grises apretados.
+let strawCanvas = null;
+function strawTex() {
+  const t = canvasTex(128, 128, (ctx, w, h) => {
+    if (!strawCanvas) {
+      ctx.fillStyle = '#6a5430';
+      ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 900; i++) {
+        const x = Math.random() * w;
+        const y = Math.random() * h;
+        const v = 120 + Math.random() * 110;
+        ctx.strokeStyle = `rgba(${v},${v * 0.84},${v * 0.5},0.85)`;
+        ctx.lineWidth = 1 + Math.random();
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + (Math.random() - 0.5) * 4, y + 10 + Math.random() * 16);
+        ctx.stroke();
+      }
+      strawCanvas = ctx.canvas;
+    } else ctx.drawImage(strawCanvas, 0, 0);
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
 
 // Arma la máquina del perk (id de config/perks) con su etiqueta (perkLabel).
 export function buildPerkMachine(id, perk, label) {

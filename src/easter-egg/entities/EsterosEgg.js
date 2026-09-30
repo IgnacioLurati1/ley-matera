@@ -6,6 +6,7 @@ import Saber from './esteros/Saber';
 import Poder from './esteros/Poder';
 import Ofrenda from './esteros/Ofrenda';
 import EsterosEnding from '../ui/EsterosEnding';
+import LuisonArrival, { prefetchSong } from '../ui/LuisonArrival';
 import SongEgg from '../world/SongEgg';
 import { TRACKS, LUISON_FROM } from '../core/music';
 import { LUISON_PREP } from '../core/audio';
@@ -398,16 +399,58 @@ export default class EsterosEgg {
   }
 
   // ---------------- el final ----------------
-  // (anfitrión) La luz entró en el hueco: la voz llama al Luisón, que llega
-  // del oeste justo en el golpe de la canción de la pelea (luisonMusic).
+  // (anfitrión) La luz entró en el hueco: arranca la canción de la pelea y
+  // con ella la llegada del Luisón (ui/LuisonArrival: la horda en el
+  // algarrobo y él, detrás del tronco, cuando la canción grita). Para todos.
   startLuison() {
-    const g = this.g;
     this.step = 5;
-    this.voice('luison');
-    this.luisonWait = g.time;
     this.calmFlood();
-    this.announce('La luz entró en el hueco y el árbol se apagó. Del oeste viene un aullido...', 5, true);
     this.netSync();
+    this.g.net?.event('ee', { cine: 'llegada' });
+    this.playArrival();
+  }
+
+  // La escena ya armada (y compilada) desde que la luz está en la laguna: al
+  // dar la luz no se traba nada (el usuario, 2026-09-29).
+  prepArrival() {
+    if (this.arrival || this.step >= 6 || this.arrivalSeen) return;
+    prefetchSong();
+    try {
+      this.arrival = new LuisonArrival(this.g, this);
+    } catch (err) {
+      console.error(err);
+      this.arrival = null;
+    }
+  }
+
+  playArrival() {
+    const g = this.g;
+    if (this.scene || this.arrivalSeen) return;
+    this.prepArrival();
+    const cine = this.arrival;
+    this.arrival = null;
+    if (!cine) {
+      // (sin escena: como antes, el Luisón llega con el golpe de la canción)
+      this.luisonWait = g.time;
+      return;
+    }
+    this.arrivalSeen = true;
+    this.scene = { update: (dt) => cine.update(dt), cine };
+    cine.play(() => {
+      this.scene = null;
+      this.arrivalDone(cine);
+    });
+  }
+
+  // Terminó la llegada (en cada compu): cada uno queda en el lugar de su
+  // personaje y el anfitrión suelta al Luisón de verdad donde quedó.
+  arrivalDone(cine) {
+    const g = this.g;
+    cine.placePlayer();
+    // (ya aulló en la escena: no lo repite al aparecer)
+    this.howlPre = g.time;
+    this.howlCue = HOWL_CUES.length;
+    if (isHost(g) && this.step === 5) this.ofrenda.callLuison({ at: cine.luAt.clone(), yaw: cine.luisonYaw, quiet: true, hold: 2.5 });
   }
 
   // En la pelea del Luisón no se pasa de ronda: si lo llaman en plena
@@ -427,10 +470,12 @@ export default class EsterosEgg {
   luisonMusic() {
     const g = this.g;
     const M = g.music;
-    if (this.step !== 5 || this.scene) {
+    if (this.step !== 5) {
       this.luisonSong = false;
       return;
     }
+    // (la llegada pone la canción ella misma y sigue en la pelea)
+    if (this.scene) return;
     if (!this.luisonSong && M) {
       this.luisonSong = true;
       const b = g.zombies.boss;
@@ -612,6 +657,8 @@ export default class EsterosEgg {
     if (m.wi) return this.poder.apply(m);
     if (m.down) return this.downFx();
     if (m.cine === 'final') return this.playEnding(!!m.hoja);
+    if (m.cine === 'llegada') return this.playArrival();
+    if (m.arrSkip) return this.scene?.cine?.skip?.(true);
     if (m.fin) return this.scene?.cine.choose(m.fin);
     if (m.s != null) this.step = m.s;
     if (this.step === 5) this.calmFlood();
@@ -634,6 +681,8 @@ export default class EsterosEgg {
     this.poder.update(dt);
     this.ofrenda.update(dt);
     this.song.update(dt);
+    // la llegada del Luisón, armada de antes (con la luz ya en la laguna)
+    if (this.step === 4 && !this.arrival && !this.scene) this.prepArrival();
     this.luisonMusic();
     // (anfitrión) se lo vio caer: el final
     if (this.endAt != null && g.time >= this.endAt) this.startEnding();
@@ -721,6 +770,8 @@ export default class EsterosEgg {
     // (si se sale al menú en pleno final, que no quede su cartel en pantalla)
     this.scene?.cine?.dispose();
     this.scene = null;
+    this.arrival?.dispose();
+    this.arrival = null;
     window.removeEventListener('keydown', this.onKey);
     this.saber.dispose();
     this.poder.dispose();

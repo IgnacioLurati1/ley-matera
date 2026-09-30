@@ -1,13 +1,33 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import Arena from './Arena';
 import { mesh, boxGeo, cylGeo, mergeByMaterial } from './props';
 import { EE } from '../config/map';
+import { depthPrepass } from '../fx/prepass';
 
 // El Prado: el claro redondo en el maizal donde termina la granja. Se abre
 // cuando la yerba está empaquetada; al ofrecerla en el centro sale de la
 // tierra el Espantapájaros gigante. Por dentro es la misma pelea que la de la
 // Salamanca (peones, escudo, lluvia y cosas que vuelan), con su propia ropa:
 // calabazas prendidas fuego y una lluvia de plumas negras.
+// A mitad de la pelea (en lugar del escudo de cuervos del 50%) el claro se
+// llena de maíz más alto que uno: no se ve casi nada, el Espantapájaros y los
+// peones atacan igual, y el que quiere ver tiene que cortar con la hoz (el
+// usuario, 2026-09-28).
+
+// el maizal: con cuánta vida arranca y con cuánta (o a los cuántos segundos)
+// se seca; cuánto tarda en crecer (del borde al centro) y en secarse; la
+// separación entre plantas; lo alto (x 2,7 m); los peones que andan escondidos
+const GRASS = { at: 0.5, until: 0.3, max: 75, grow: 1.6, spread: 1.8, wither: 2.2, step: 0.5, stepLow: 0.68, h: [1.12, 1.42], peonEvery: 4, net: 0.12 };
+// los cortes: [alcance, coseno del arco] (la hoz barre ancho; la medialuna de
+// la Hoz de la Muerte, un círculo a su paso; el cuchillo, un poquito adelante)
+const CUT = { hoz: [3.1, 0.15], crescent: [1.3, -1], knife: [1.5, 0.55] };
+const tmpM = new THREE.Matrix4();
+const tmpQ = new THREE.Quaternion();
+const tmpS = new THREE.Vector3();
+const tmpP = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
+const ease = (k) => k * k * (3 - 2 * k);
 
 export default class Prado extends Arena {
   constructor(game) {
@@ -23,6 +43,8 @@ export default class Prado extends Arena {
     // más lento que el Mandinga: es enorme y es de paja (igual, ya no se lo
     // deja atrás caminando para atrás)
     this.speeds = [3.1, 3.6, 4.1];
+    // (el 50% es el maizal: buildGrass)
+    this.wards = [0.75, 0.25];
     this.rainColor = 0x8a3aff;
     this.fireColor = 0xff7a18;
     this.weatherName = 'fog';
@@ -32,6 +54,7 @@ export default class Prado extends Arena {
       ward: 'Los cuervos lo cubren: ¡liquidá a los peones para que se vayan!',
       unward: '¡Se le fueron los cuervos! Ahora, dale.',
       summon: 'El Espantapájaros levanta a los muertos del maizal...',
+      grass: ['espantapajaros', '¡Que crezca el maizal!'],
     };
   }
 
@@ -101,11 +124,19 @@ export default class Prado extends Arena {
       this.cols.push({ x: cx, z: cz, r: 0.85, h: 1.5, what: 'el fardo' });
     }
     this.decor();
+    this.buildGrass();
   }
 
   start() {
     super.start();
     this.digT = 12;
+    this.grassDone = false;
+    this.grassOff();
+  }
+
+  onBossDead() {
+    super.onBossDead();
+    this.setGrass('wither');
   }
 
   // (anfitrión) Cada tanto se mete bajo tierra y el cuervo marca a uno
@@ -114,13 +145,15 @@ export default class Prado extends Arena {
     super.update(dt);
     const g = this.g;
     if (!this.active || g.net?.guest || this.phase !== 'fight') return;
+    this.grassTick(dt);
     const b = g.zombies.boss;
     if (!b || b.dead || b.kind !== 'scarecrow' || this.ward || b.state !== 'chase') return;
     this.digT = (this.digT ?? 12) - dt;
     if (this.digT > 0) return;
     this.digT = b.hp / b.maxHp < 0.5 ? 15 : 20;
     const M = g.zombies.moves;
-    const list = M.standing();
+    // (el cuervo no marca al escondido en una mata del Maizaster)
+    const list = M.standing().filter((p) => !p.maizIn);
     if (list.length) M.startBurrow(b, M.idOf(list[Math.floor(Math.random() * list.length)]));
   }
 
@@ -540,6 +573,7 @@ export default class Prado extends Arena {
 
   updateShared(dt) {
     super.updateShared(dt);
+    this.updateGrass(dt);
     // el cuervo de la marca: da vueltas arriba del marcado
     const mk = this.g.zombies.moves.markAt(this.markV);
     this.markCrow.visible = !!mk;
@@ -571,9 +605,287 @@ export default class Prado extends Arena {
     }
   }
 
+  // ---------------- el maizal ----------------
+  // Las plantas se arman al cargar (en la escena, con la cuenta en 0: su
+  // material se compila con el resto y no traba al crecer). Cada compu tiene
+  // las suyas; un corte es un arco (dónde, hacia dónde, alcance) que todas
+  // aplican igual, así no importa que con calidad baja haya menos plantas.
+  buildGrass() {
+    const g = this.g;
+    const M = g.world.M;
+    const { x, z, r } = this.A;
+    const low = (g.tier?.('grass') ?? g.settings?.quality) === 'perf';
+    const step = low ? GRASS.stepLow : GRASS.step;
+    const R = r - 0.9;
+    let seed = 71;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    this.plants = [];
+    for (let gz = -R; gz <= R; gz += step) {
+      for (let gx = -R; gx <= R; gx += step) {
+        const px = x + gx + (rnd() - 0.5) * step * 0.8;
+        const pz = z + gz + (rnd() - 0.5) * step * 0.8;
+        const d = Math.hypot(px - x, pz - z);
+        if (d > R || this.cols.some((c) => Math.hypot(px - c.x, pz - c.z) < c.r + 0.1)) continue;
+        // crece del borde (donde está el maizal de verdad) hacia el medio
+        this.plants.push({ x: px, z: pz, yaw: rnd() * Math.PI, w: 0.9 + rnd() * 0.25, h: GRASS.h[0] + rnd() * (GRASS.h[1] - GRASS.h[0]), delay: (1 - d / R) * GRASS.spread + rnd() * 0.35, cut: false });
+      }
+    }
+    // el maíz del mapa, más: se mece con el mismo viento, se seca (uWither) y
+    // no tapa la cámara (lo que está a menos de un metro se deshace en puntitos).
+    // El mismo parche va al G-buffer de Ultra/Épica (fx/Epic.js, userData.gbuf):
+    // sin eso las hojas no tapaban la niebla, la oclusión ni los reflejos de lo
+    // de atrás y el maizal se veía transparente (el usuario, 2026-09-28). Allá
+    // (a media resolución) lo cercano se corta de una, sin puntitos.
+    const U = { uWither: { value: 0 } };
+    this.grassU = U;
+    const mat = M.corn.clone();
+    const patch = (sh, gbuf = false) => {
+      sh.uniforms.uWind = g.world.cornU || { value: 0 };
+      sh.uniforms.uWither = U.uWither;
+      sh.vertexShader = `uniform float uWind;\nvarying float vCamD;\n${sh.vertexShader}`
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+        float sway = sin(uWind * 1.4 + instanceMatrix[3].x * 0.35 + instanceMatrix[3].z * 0.22) * 0.09 + sin(uWind * 3.1 + instanceMatrix[3].x) * 0.02;
+        transformed.x += sway * uv.y * uv.y;
+        transformed.z += sway * 0.6 * uv.y * uv.y;`,
+        )
+        .replace(
+          '#include <project_vertex>',
+          `#include <project_vertex>
+        vCamD = distance((modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz, cameraPosition);`,
+        );
+      sh.fragmentShader = `uniform float uWither;\nvarying float vCamD;\n${sh.fragmentShader}`
+        .replace(
+          'void main() {',
+          gbuf
+            ? `void main() {
+        if (vCamD < 0.6) discard;`
+            : `void main() {
+        float gNear = clamp((vCamD - 0.3) / 0.6, 0.0, 1.0);
+        if (gNear < 1.0 && fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453) > gNear) discard;`,
+        )
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+        diffuseColor.rgb *= mix(vec3(1.0), vec3(0.42, 0.33, 0.24), uWither);`,
+        );
+    };
+    mat.onBeforeCompile = (sh) => patch(sh);
+    mat.customProgramCacheKey = () => 'pradoCorn';
+    mat.userData.gbuf = { key: 'pradoCorn', patch: (sh) => patch(sh, true) };
+    const a = new THREE.PlaneGeometry(1.05, 2.7).translate(0, 1.35, 0);
+    const geo = mergeGeometries([a, a.clone().rotateY(Math.PI / 2)]);
+    const im = new THREE.InstancedMesh(geo, mat, this.plants.length);
+    for (let i = 0; i < this.plants.length; i++) im.setMatrixAt(i, tmpM.makeScale(0, 0, 0));
+    im.count = 0;
+    im.receiveShadow = true;
+    im.castShadow = false;
+    im.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, 2, z), r + 3);
+    g.scene.add(im);
+    // primero la profundidad (con el mismo parche): cada píxel del maizal se
+    // sombrea una sola vez (sin esto, en Épica costaba 5 ms por cuadro a 720p)
+    depthPrepass(im);
+    const pre = im.userData.prepass;
+    pre.material.onBeforeCompile = (sh) => patch(sh);
+    pre.material.customProgramCacheKey = () => 'pradoCornPre';
+    this.grassMesh = im;
+    this.grass = { state: 'off', t: 0 };
+    this.outbox = [];
+    this.outT = 0;
+  }
+
+  plantMatrix(i, k) {
+    const p = this.plants[i];
+    const h = p.cut ? Math.min(0.09, p.h * k) : p.h * k;
+    tmpQ.setFromAxisAngle(UP, p.yaw);
+    tmpS.set(p.w * (0.35 + 0.65 * k), Math.max(1e-3, h), 1);
+    this.grassMesh.setMatrixAt(i, tmpM.compose(tmpP.set(p.x, 0, p.z), tmpQ, tmpS));
+  }
+
+  // (la pasada de profundidad va con la misma cuenta)
+  grassCount(n) {
+    this.grassMesh.count = n;
+    const pre = this.grassMesh.userData.prepass;
+    if (pre) pre.count = n;
+  }
+
+  grassOff() {
+    if (!this.grass) return;
+    this.grass.state = 'off';
+    this.grassCount(0);
+    this.outbox.length = 0;
+  }
+
+  // 'grow' (crece), 'wither' (se seca) u 'off'. El anfitrión decide y avisa.
+  setGrass(state, send = true) {
+    const g = this.g;
+    const G = this.grass;
+    if (!G || G.state === state) return;
+    // (secarse lo que nunca creció o ya se está secando: nada)
+    if (state === 'wither' && G.state === 'off') return;
+    if (state === 'off') return this.grassOff();
+    G.state = state;
+    G.t = 0;
+    if (send && !g.net?.guest) g.net?.event('pasto', { s: state });
+    const A = g.audio;
+    const at = tmpP.set(this.A.x, (this.A.y || 0) + 1.5, this.A.z).clone();
+    if (state === 'grow') {
+      for (const p of this.plants) p.cut = false;
+      this.grassU.uWither.value = 0;
+      this.grassCount(this.plants.length);
+      g.fx.addShake(0.35);
+      A.growl(at, 'boss');
+      // el maíz que sube: un siseo largo que crece
+      if (A?.ctx) {
+        const o = A.out({ pos: at, gain: 0.9, reverb: 0.3, ref: 12 });
+        A.noise(o, { dur: GRASS.grow + GRASS.spread, type: 'bandpass', freq: 900, freqEnd: 3200, q: 0.6, gain: 0.7, attack: 0.6 });
+      }
+      if (!g.net?.guest) g.later(0.4, () => g.say(...this.lines.grass, 'boss'));
+      g.later(3.2, () => (G.state === 'grow' || G.state === 'on') && g.hud.subtitle('Cortá con la hoz', 2.5));
+    } else if (state === 'wither' && A?.ctx) {
+      const o = A.out({ pos: at, gain: 0.7, reverb: 0.3, ref: 12 });
+      A.noise(o, { dur: GRASS.wither, type: 'highpass', freq: 2400, freqEnd: 900, q: 0.5, gain: 0.5, attack: 0.2 });
+    }
+  }
+
+  // (anfitrión) A mitad de la pelea crece; con menos vida (o al rato) se seca.
+  // Mientras tanto: peones escondidos y sin lluvia de plumas (los círculos del
+  // piso quedaban tapados por el maíz).
+  grassTick(dt) {
+    const g = this.g;
+    const b = this.boss;
+    const G = this.grass;
+    if (!G || !b || b.dead) return;
+    const k = b.hp / b.maxHp;
+    if (G.state === 'off' && !this.grassDone && k < GRASS.at && !this.ward) {
+      this.grassDone = true;
+      this.grassT = 0;
+      this.peonT = 2.5;
+      this.setGrass('grow');
+      const extra = Math.min(4, (g.rounds?.players || 1) - 1) * 2;
+      for (let i = 0; i < 4 + extra; i++) g.later(0.8 + i * 0.35, () => this.spawnPeon());
+    }
+    if (G.state !== 'grow' && G.state !== 'on') return;
+    this.grassT += dt;
+    this.rainT = Math.max(this.rainT, 2);
+    this.peonT -= dt;
+    if (this.peonT <= 0) {
+      this.peonT = GRASS.peonEvery;
+      const cap = 5 + Math.min(4, (g.rounds?.players || 1) - 1) * 2;
+      if (g.zombies.pool.filter((z) => z.active && !z.dead).length < cap) this.spawnPeon();
+    }
+    if (k < GRASS.until || this.grassT > GRASS.max) this.setGrass('wither');
+  }
+
+  // Un peón que se levanta en algún lado del maizal.
+  spawnPeon() {
+    if (this.phase !== 'fight') return;
+    const a = Math.random() * Math.PI * 2;
+    const d = this.A.r - 2.5 - Math.random() * 3;
+    this.g.zombies.spawn(15, 3000, new THREE.Vector3(this.A.x + Math.cos(a) * d, this.A.y || 0, this.A.z + Math.sin(a) * d));
+  }
+
+  // Todas las compus: crece, se seca y manda los cortes de acá.
+  updateGrass(dt) {
+    const g = this.g;
+    const G = this.grass;
+    if (!G || G.state === 'off') return;
+    G.t += dt;
+    if (G.state === 'grow' || G.state === 'wither') {
+      const grow = G.state === 'grow';
+      let done = true;
+      for (let i = 0; i < this.plants.length; i++) {
+        const p = this.plants[i];
+        const k = grow ? Math.min(1, Math.max(0, (G.t - p.delay) / GRASS.grow)) : 1 - Math.min(1, Math.max(0, (G.t - p.delay * 0.4) / GRASS.wither));
+        if (grow ? k < 1 : k > 0) done = false;
+        this.plantMatrix(i, ease(k));
+      }
+      this.grassMesh.instanceMatrix.needsUpdate = true;
+      if (!grow) this.grassU.uWither.value = Math.min(1, G.t / 1.1);
+      if (done) {
+        if (grow) G.state = 'on';
+        else this.grassOff();
+      }
+    }
+    // los cortes de acá, juntos, a los demás
+    this.outT -= dt;
+    if (this.outbox.length && this.outT <= 0 && g.net) {
+      this.outT = GRASS.net;
+      g.net.share('pasto', { c: this.outbox.slice() });
+      this.outbox.length = 0;
+    }
+  }
+
+  // Un golpe de acá (Weapons: el tajo de la hoz, la medialuna a su paso, el
+  // cuchillo) contra el maizal.
+  onScythe(pos, fwd, st, kind = 'hoz') {
+    const G = this.grass;
+    if (!this.active || !G || (G.state !== 'grow' && G.state !== 'on')) return;
+    const len = Math.hypot(fwd.x, fwd.z) || 1;
+    const fx = fwd.x / len;
+    const fz = fwd.z / len;
+    const [range, cos] = CUT[kind] || CUT.hoz;
+    if (!this.cutArc(pos.x, pos.z, fx, fz, range, cos)) return;
+    if (this.g.net) this.outbox.push(+pos.x.toFixed(2), +pos.z.toFixed(2), +fx.toFixed(2), +fz.toFixed(2), range, cos);
+  }
+
+  // Los cortes de otro (y el crecer/secarse del anfitrión).
+  onPasto(m) {
+    if (m.s) this.setGrass(m.s, false);
+    const c = m.c || [];
+    for (let i = 0; i + 5 < c.length; i += 6) this.cutArc(c[i], c[i + 1], c[i + 2], c[i + 3], c[i + 4], c[i + 5]);
+  }
+
+  // Lo que está adelante, en el arco, queda al ras. Devuelve cuántas cortó.
+  cutArc(x, z, fx, fz, range, cos) {
+    const g = this.g;
+    const G = this.grass;
+    if (!G || (G.state !== 'grow' && G.state !== 'on')) return 0;
+    let n = 0;
+    for (let i = 0; i < this.plants.length; i++) {
+      const p = this.plants[i];
+      if (p.cut) continue;
+      const dx = p.x - x;
+      const dz = p.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > range || (d > 0.45 && (dx * fx + dz * fz) / d < cos)) continue;
+      p.cut = true;
+      // (creciendo, la matriz la pone updateGrass en este mismo cuadro)
+      if (G.state === 'on') this.plantMatrix(i, 1);
+      // hojas y chala que vuelan (en algunas: con muchas era un chaparrón)
+      if (n < 10) {
+        for (let j = 0; j < 3; j++) {
+          g.fx.alpha.spawn(p.x + (Math.random() - 0.5) * 0.4, 0.4 + Math.random() * 1.8, p.z + (Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 2 + fx * 1.5, Math.random() * 1.6, (Math.random() - 0.5) * 2 + fz * 1.5, {
+            color: [0.55 + Math.random() * 0.2, 0.5 + Math.random() * 0.15, 0.25],
+            size: 0.06 + Math.random() * 0.05,
+            size1: 0.03,
+            life: 0.9 + Math.random() * 0.6,
+            gravity: 3,
+            drag: 1.5,
+            bounce: 0.5,
+          });
+        }
+      }
+      n++;
+    }
+    if (n) {
+      if (G.state === 'on') this.grassMesh.instanceMatrix.needsUpdate = true;
+      // el chas de las cañas
+      const A = g.audio;
+      if (A?.ctx) {
+        const o = A.out({ pos: tmpP.set(x + fx, (this.A.y || 0) + 1, z + fz), gain: Math.min(0.9, 0.35 + n * 0.04), reverb: 0.12, ref: 3 });
+        A.noise(o, { dur: 0.16 + Math.random() * 0.06, type: 'bandpass', freq: 3200 + Math.random() * 900, freqEnd: 1800, q: 0.9, gain: 0.6, attack: 0.005 });
+        A.noise(o, { t: A.now + 0.03, dur: 0.22, type: 'highpass', freq: 4800, q: 0.5, gain: 0.3, attack: 0.01 });
+      }
+    }
+    return n;
+  }
+
   dispose() {
     super.dispose();
     for (const c of this.flock || []) c.obj.removeFromParent();
     this.markCrow?.removeFromParent();
+    this.grassMesh?.removeFromParent();
   }
 }

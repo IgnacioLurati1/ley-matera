@@ -9,12 +9,16 @@ import Facon from './Facon';
 import Potenciadores from './Potenciadores';
 import Liquidificador from './Liquidificador';
 import Supernova from './Supernova';
+import Supremo from './Supremo';
 import { memeFx } from './memeMate';
 import { buildPerkMateFor, PERK_MATE_IDS } from './perkMates';
 import Mk3Fx from './mk3Fx';
 import { PERKS } from '../config/perks';
 import { startMate } from '../core/eggs';
 import { cherryReady, cherryShock } from './electricCherry';
+import { camoFor, CAMOABLE, setPapMap, tickCamos } from './camos';
+import ShieldHand, { SHIELD_VM } from './shieldHand';
+import { hozBaston } from '../entities/Yasy';
 
 // Armas: inventario, disparo (balas, proyectiles, rayos en cadena, conos),
 // recarga (= cebar con el termo), cuchillo, granadas, pava silbadora y todas
@@ -22,13 +26,22 @@ import { cherryReady, cherryShock } from './electricCherry';
 
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
-// (el rayo del Mark III contra los remolinos: `fwd` del disparo ya es tmpV)
+// (el rayo del Mark III contra los remolinos)
 const tmpHole = new THREE.Vector3();
+// `fwd` de fire(): suyo, no tmpV. Los conos (Tereré, Tronador) y la cadena del
+// Wunder-Mate usan tmpV para ver si se ve a cada muerto, y con el primero que
+// miraban la dirección del tiro pasaba a ser una posición: en fila caía uno
+// solo, y a veces ni ese.
+const tmpFwd = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const tmpV3 = new THREE.Vector3();
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0);
 const DRINK_DIP = 0.2;
+// el termo de cebar (tintTermo): balas, especial, explosivo
+const TERMO_GREEN = 0x1f8a3a;
+const TERMO_BLUE = 0x1f58c8;
+const TERMO_RED = 0xb81c1c;
 const DRINK_DIR = new THREE.Vector3(-0.55, 0.25, 0.8).normalize();
 const DRINK_MOUTH = new THREE.Vector3(0.0, -0.078, -0.07);
 const hitTmp = {};
@@ -396,10 +409,16 @@ export default class Weapons {
     // la Supernova del Challenge de la torre (weapons/Supernova.js; arma sus
     // olas del Big Bang en el grupo escondido de prebuild)
     this.nova = new Supernova(this);
+    // el Mate Supremo, el premio de los seis easter eggs (weapons/Supremo.js;
+    // arma sus soles y columnas en el grupo escondido de prebuild)
+    this.supremo = new Supremo(this);
     this.projectiles = [];
     this.projGeo = new THREE.SphereGeometry(1, 10, 8);
     this.pose = { pos: HIP.clone(), rot: new THREE.Euler() };
     this.tuning = { HIP, ADS, SPRINT, VM_POSE };
+    // el escudo adelante (Z): weapons/shieldHand
+    this.shieldHand = new ShieldHand(this);
+    this.tuning.shield = SHIELD_VM;
     this.reset();
   }
 
@@ -433,6 +452,12 @@ export default class Weapons {
         warm.add(m.root);
       }
     }
+    // un mate con camuflaje de muestra: compila el programa de los camuflajes
+    // básicos (textura con relieve; el de los animados es el mismo del
+    // Pack-a-Pava, ya armado arriba)
+    warm.add(this.modelOf('porongo', 0, 'cuero').root);
+    // la hoz de oro (el bastón del Yasy dorado, entities/Yasy.js): cambia en la mano al toque
+    if (WEAPONS.hoz) for (const up of [0, 1]) warm.add(this.modelOf('hoz', up, 'oro').root);
     // los mates de los perks (weapons/perkMates.js), uno por perk: se toman
     // de acá y vuelven acá
     this.perkMates = new Map();
@@ -466,6 +491,9 @@ export default class Weapons {
   }
 
   reset() {
+    // el camuflaje del Pack-a-Pava de este mapa y los de la armería (weapons/camos.js)
+    setPapMap(this.g.mapId, this.T);
+    this.warmCamos();
     this.slots = [this.startSlot()];
     this.cur = 0;
     this.grenades = 2;
@@ -482,6 +510,7 @@ export default class Weapons {
     this.lastStand = null;
     this.bowie = false;
     this.temp = null;
+    this.shieldHand?.reset();
     this.clearProjectiles();
     this.clearStuck();
     this.equipModel();
@@ -499,7 +528,10 @@ export default class Weapons {
 
   get stats() {
     const s = this.slot;
-    return s ? weaponStats(s.id, s.up) : null;
+    if (!s) return null;
+    const st = weaponStats(s.id, s.up);
+    // (con el bastón de oro del Yasy: tajo más ancho y medialuna más fuerte)
+    return s.id === 'hoz' && this.g.player?.baston ? hozBaston(st) : st;
   }
 
   // Manos llenas: comprar otro mate reemplaza el que tenés en la mano.
@@ -649,8 +681,18 @@ export default class Weapons {
   }
 
   startRaise() {
+    // (sacar un mate guarda el escudo que estaba adelante)
+    if (this.shieldHand?.active) this.shieldHand.toggle(false);
     this.elem?.cancelCharge();
     this.nova?.cancelCharge();
+    this.supremo?.cancelCharge();
+    // (y lo mismo con la empanada a medio comer: la mano se va y hace efecto igual)
+    if (this.eatAnim) {
+      this.eatAnim(-1);
+      this.eatAnim = null;
+      this.drinkDone?.();
+      this.drinkDone = null;
+    }
     // si algo cortó el trago de un perk, el mate del perk no queda colgado en la pantalla
     if (this.perkMate) {
       this.perkMate.removeFromParent();
@@ -665,33 +707,53 @@ export default class Weapons {
     this.updateHud();
   }
 
+  // Los mates con el camuflaje que eligió en la armería, armados al empezar
+  // la partida (el programa ya lo compiló el de muestra de prebuild: acá se
+  // pinta la textura y se sube una vez, no al agarrar el mate).
+  warmCamos() {
+    for (const id of CAMOABLE) {
+      const c = camoFor(id);
+      if (!c) continue;
+      this.warm.add(this.modelOf(id, 0, c).root);
+      if (WEAPONS[id].akimbo) this.warm.add(this.modelOf(id, 0, c, 'L').root);
+    }
+  }
+
+  // Un mate armado, de la caché: `${id}|${up}`, más `|${camo}` si lleva
+  // camuflaje (solo sin mejorar) y `|L` el de la mano izquierda.
+  modelOf(id, up, camo = null, hand = 'R') {
+    const key = `${id}|${up}${camo ? `|${camo}` : ''}${hand === 'L' ? '|L' : ''}`;
+    let m = this.models.get(key);
+    if (!m) {
+      m = buildMate(id, up, this.T, hand, camo);
+      if (hand === 'L') {
+        // espejado entero: además de dar vuelta la escala, el giro hacia el
+        // centro va para el otro lado (si no, la bombilla apunta para afuera)
+        m.root.scale.x *= -1;
+        m.root.rotation.y *= -1;
+        m.root.rotation.z *= -1;
+      }
+      this.models.set(key, m);
+    }
+    return m;
+  }
+
   equipModel() {
     this.holder.clear();
     this.holder2.clear();
     this.model2 = null;
     const s = this.slot;
     if (!s) return;
-    const key = `${s.id}|${s.up}`;
-    let m = this.models.get(key);
-    if (!m) {
-      m = buildMate(s.id, s.up, this.T);
-      this.models.set(key, m);
-    }
+    // el camuflaje de la armería va hasta que el mate pasa por el Pack-a-Pava
+    // (la hoz: dorada con el bastón del Yasy, mejorada o no)
+    const camo = s.id === 'hoz' ? (this.g.player?.baston ? 'oro' : null) : s.up ? null : camoFor(s.id);
+    const m = this.modelOf(s.id, s.up, camo);
     this.model = m;
     this.holder.add(m.root);
     m.muzzle.add(this.flash);
     if (WEAPONS[s.id].akimbo) {
       // el de la otra mano: el mismo mate espejado (el Mark III tiene otro)
-      let m2 = this.models.get(`${key}|L`);
-      if (!m2) {
-        m2 = buildMate(s.id, s.up, this.T, 'L');
-        // espejado entero: además de dar vuelta la escala, el giro hacia el
-        // centro va para el otro lado (si no, la bombilla apunta para afuera)
-        m2.root.scale.x *= -1;
-        m2.root.rotation.y *= -1;
-        m2.root.rotation.z *= -1;
-        this.models.set(`${key}|L`, m2);
-      }
+      const m2 = this.modelOf(s.id, s.up, camo, 'L');
       this.model2 = m2;
       this.holder2.add(m2.root);
     }
@@ -708,7 +770,7 @@ export default class Weapons {
     const st = this.stats;
     // la hoz sin mejorar no lleva munición; la Máquina de Muerte no se acaba
     const melee = st?.kind === 'melee' && !st.alt;
-    this.g.hud?.setWeapon(st ? { name: st.upgraded ? st.name : WEAPONS[s.id].name, mag: melee || s.temp ? '∞' : s.mag, reserve: melee || s.temp ? '∞' : s.reserve, upgraded: s.up, desc: st.upgraded && st.desc ? st.desc : WEAPONS[s.id].desc } : null);
+    this.g.hud?.setWeapon(st ? { name: st.upgraded ? st.name : WEAPONS[s.id].name, mag: melee || s.temp ? '∞' : s.mag, reserve: melee || s.temp || st.infinite ? '∞' : s.reserve, upgraded: s.up, desc: st.upgraded && st.desc ? st.desc : WEAPONS[s.id].desc } : null);
     // el cuchillo de Anacleto (el penal) ocupa el lugar de la pava y se muestra aparte
     const knife = this.tactical?.id === 'cuchillo';
     // (negativo: volando o enfriándose, se ve apagado)
@@ -734,15 +796,15 @@ export default class Weapons {
 
     // ADS
     // con un mate en cada mano no se apunta con la mira (ni con las que tiran de la cadera)
-    const wantAds = canAct && input.mouse.right && !p.sprinting && this.state !== 'drink' && this.state !== 'knife' && st && !st.akimbo && st.kind !== 'melee' && !st.temp && !st.noAds;
+    const wantAds = canAct && input.mouse.right && !p.sprinting && this.state !== 'drink' && this.state !== 'knife' && st && !st.akimbo && st.kind !== 'melee' && !st.temp && !st.noAds && !this.shieldHand.active;
     // se terminó la Máquina de Muerte
     if (this.temp && (this.g.time >= this.temp.until || !p.alive || p.downed)) this.clearTemp();
-    this.adsT += ((wantAds ? 1 : 0) - this.adsT) * Math.min(1, dt * 14);
+    this.adsT += ((wantAds ? 1 : 0) - this.adsT) * Math.min(1, dt * 14 * (g.emp?.adsMult() ?? 1));
     this.ads = this.adsT > 0.6;
 
     switch (this.state) {
       case 'raise':
-        if (this.stateT > 0.35) this.state = 'idle';
+        if (this.stateT > 0.35 * (g.emp?.swapMult() ?? 1)) this.state = 'idle';
         break;
       case 'reload':
         if (st.shellReload) {
@@ -767,7 +829,8 @@ export default class Weapons {
           const need = st.mag - s.mag;
           const take = Math.min(need, s.reserve);
           s.mag += take;
-          s.reserve -= take;
+          // (el Mate Supremo no gasta la reserva)
+          if (!st.infinite) s.reserve -= take;
           this.state = 'idle';
           this.updateHud();
         }
@@ -804,6 +867,7 @@ export default class Weapons {
           if (pm && [...(this.perkMates?.values() || [])].some((x) => x.root === pm)) this.warm.add(pm);
           else pm?.removeFromParent();
           this.perkMate = null;
+          this.eatAnim = null;
           const done = this.drinkDone;
           this.drinkDone = null;
           done?.();
@@ -823,6 +887,8 @@ export default class Weapons {
     this.pot.update(dt);
     this.liq.update(dt);
     this.nova.update(dt);
+    this.supremo.update(dt);
+    this.shieldHand.update(dt);
     this.updateStuck(dt);
     this.updatePools(dt);
     this.animate(dt, input, st);
@@ -830,6 +896,8 @@ export default class Weapons {
 
   handleInput(input, st, p) {
     const g = this.g;
+    // el escudo adelante: Z, y mientras está, el escudazo (weapons/shieldHand)
+    if (this.shieldHand.input(input)) return;
     // inspeccionar (E): se corta con E de nuevo, disparando o haciendo cualquier otra cosa
     if (this.state === 'inspect') {
       const again = input.hit('KeyE');
@@ -842,8 +910,17 @@ export default class Weapons {
       this.stateT = 0;
       return;
     }
-    // con la Máquina de Muerte no se cambia de arma ni se recarga: se tira
+    // con la Máquina de Muerte no se recarga: se tira. Cambiar de arma la
+    // termina ahí nomás (el usuario, 2026-09-29; menos el mate que presta el
+    // Challenge, que dura la ronda)
     if (this.temp) {
+      const sw = ['Digit1', 'Digit2', 'Digit3', 'KeyQ'].find((k) => input.hit(k)) || (input.mouse.wheel ? 'wheel' : null);
+      if (sw && !this.temp.knight && !['knife', 'throw', 'drink'].includes(this.state)) {
+        this.clearTemp();
+        const i = sw.startsWith('Digit') ? +sw.slice(5) - 1 : -1;
+        if (i >= 0 && i < this.slots.length && i !== this.cur) this.switchTo(i);
+        return;
+      }
       if (this.esp.input(input, st, p)) return;
       if (this.facon.input(input, st, p)) return;
       if (this.pot.input(input, st, p)) return;
@@ -901,6 +978,8 @@ export default class Weapons {
     }
     // la Supernova: el clic derecho carga el Big Bang (mientras carga no tira)
     if (st.kind === 'nova' && this.nova.input(input, st, p)) return;
+    // el Mate Supremo: el clic derecho carga el Juicio
+    if (st.kind === 'supremo' && this.supremo.input(input, st, p)) return;
     // Rayo Matero Mark III: con el derecho tira el remolino (gasta varias cargas)
     if (st.kind === 'mk3' && st.vortex && input.mouse.rightPressed && this.state === 'idle' && this.fireCd <= 0 && this.vortexCd <= 0 && !p.sprinting) {
       if (s.mag >= st.vortex.cost) this.fireVortex(st);
@@ -909,7 +988,8 @@ export default class Weapons {
       return;
     }
     if (this.state !== 'idle' && !(this.state === 'reload' && st.shellReload)) return;
-    if (p.sprinting) return;
+    // (Tiro y Corro, una empanada: se tira corriendo)
+    if (p.sprinting && !g.emp?.sprintFire()) return;
     const trigger = st.auto ? input.mouse.left : input.mouse.leftPressed || (this.buffered && input.mouse.left);
     if (!st.auto && input.mouse.leftPressed && this.fireCd > 0) this.buffered = true;
     if (!trigger || this.fireCd > 0) return;
@@ -932,6 +1012,7 @@ export default class Weapons {
     this.state = 'reload';
     this.stateT = 0;
     this.reloadTime = st.reload * g.player.reloadMult;
+    this.tintTermo(st);
     // Electric Cherry (Chisporé): la descarga al empezar a recargar, más fuerte
     // cuanto más vacío venía el cargador (acá y, por Session 'cherry', para los demás)
     const p = g.player;
@@ -950,9 +1031,20 @@ export default class Weapons {
     else if (st.kind === 'elemental') this.pourSnd = this.elem.reloadSound(st, this.reloadTime);
     else if (st.kind === 'liquid') this.pourSnd = this.liq.reloadSound(this.reloadTime);
     else if (st.kind === 'nova') this.pourSnd = this.nova.reloadSound(this.reloadTime);
+    else if (st.kind === 'supremo') this.pourSnd = this.supremo.reloadSound(this.reloadTime);
     else if (st.yerbaReload) this.pourSnd = g.audio.yerbaChange?.(this.reloadTime);
     else if (!st.shellReload) this.pourSnd = g.audio.pour(this.reloadTime);
     else g.audio.mech(g.audio.now, [0]);
+  }
+
+  // El termo de cebar, del color del mate: verde el de balas, azul el
+  // especial y rojo el explosivo (el que revienta: bombilla que explota,
+  // proyectil con onda o el Pack-a-Pava que le agrega la explosión).
+  tintTermo(st) {
+    const m = this.termo?.body?.material;
+    if (!m || !st) return;
+    const boom = !!st.explosive || st.bolt?.radius > 0 || (st.kind === 'projectile' && st.projectile?.radius > 0);
+    m.color.setHex(boom ? TERMO_RED : st.special ? TERMO_BLUE : TERMO_GREEN);
   }
 
   startKnife() {
@@ -992,7 +1084,11 @@ export default class Weapons {
   knifeStrike() {
     const g = this.g;
     this.knifeHit = true;
+    // con un Yasy en la cara, el cuchillazo es para sacárselo
+    if (g.yasy?.onMelee()) return;
     const { best, d: bestD, fwd } = this.knifeTarget();
+    // (el maizal del Prado: el cuchillo corta un poquito, para el que no tiene hoz)
+    g.arena?.onScythe?.(g.player.pos, fwd, null, 'knife');
     // sin muerto a tiro: lo del easter egg que se golpea con el cuchillo (el castillo)
     if ((!best || bestD > KNIFE.range) && g.ee.onKnife?.(fwd)) return;
     if (!best) return;
@@ -1004,7 +1100,10 @@ export default class Weapons {
     // con el Facón de Plata se liquida de un tajo (y casi siempre vuela la cabeza)
     let dmg = KNIFE.damage;
     if (this.bowie) dmg = g.rounds.round <= BOWIE.oneHitUntil ? 1e9 : KNIFE.damage * BOWIE.mult;
+    // (Facón Afilado, una empanada: cinco veces más)
+    dmg *= g.emp?.knifeMult() ?? 1;
     g.zombies.damage(best, dmg, { type: 'knife', zone: 'torso', point, dir: fwd.clone(), decap: this.bowie ? Math.random() < 0.85 : Math.random() < 0.3 });
+    g.emp?.onKnife();
     this.knifeBlood(best, point, fwd);
     g.audio.knife(true);
     g.fx.addShake(0.08);
@@ -1097,6 +1196,23 @@ export default class Weapons {
     this.g.later(2.05, () => this.g.audio.perkDrink?.(perk));
   }
 
+  // Comer una empanada (entities/Empanadas): como tomar un perk, pero la mano
+  // con la empanada la mueve anim(t) (t < 0: se cortó).
+  eat(anim, time, onDone) {
+    this.pourSnd?.stop();
+    this.perkMate?.removeFromParent();
+    this.perkMate = null;
+    this.state = 'drink';
+    this.stateT = 0;
+    this.drinkTime = time;
+    this.drinkDone = onDone;
+    this.eatAnim = anim;
+    if (!this.drinkFrame) {
+      this.drinkFrame = new THREE.Group();
+      this.vmRoot.add(this.drinkFrame);
+    }
+  }
+
   // ---------------- disparo ----------------
   fire(st) {
     const g = this.g;
@@ -1115,7 +1231,7 @@ export default class Weapons {
     g.stats.shots++;
     const cam = g.camera;
     const origin = cam.position;
-    const fwd = tmpV.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    const fwd = tmpFwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
     const muzzle = this.muzzleWorld(new THREE.Vector3());
 
     // dispersión
@@ -1185,6 +1301,9 @@ export default class Weapons {
       case 'nova':
         this.nova.fire(st, origin, fwd, muzzle);
         break;
+      case 'supremo':
+        this.supremo.fire(st, origin, fwd, muzzle);
+        break;
       default:
         break;
     }
@@ -1194,7 +1313,7 @@ export default class Weapons {
     if (st.sound !== 'stream' || Math.random() < 0.1) g.critters?.onNoise(muzzle);
     // en línea: los demás ven y escuchan el disparo
     // (la Liquidificador manda su bola aparte: los demás no ven un trazo)
-    if (g.net && st.kind !== 'liquid' && st.kind !== 'nova') {
+    if (g.net && st.kind !== 'liquid' && st.kind !== 'nova' && st.kind !== 'supremo') {
       const end = tmpV2.copy(muzzle).addScaledVector(fwd, Math.min(st.range, 40));
       g.net.sendShot(muzzle, end, st.sound, st.upgraded);
     }
@@ -1235,11 +1354,11 @@ export default class Weapons {
     const mesh = this.vortexMesh(st.upgraded);
     this.vortexN = ((this.vortexN || 0) % 9999) + 1;
     this.spawnProjectile({ kind: 'vortex', pos: muzzle, vel: fwd.clone().multiplyScalar(V.speed), gravity: 0, V, st, mesh, life: V.fly + V.life, open: false, tickT: 0, vid: this.vortexN });
-    g.audio.shot('ray', null, true);
+    g.audio.shot('mk3alt', null, true);
     g.audio.whoosh?.(muzzle);
     g.stats.shots++;
     if (g.net) {
-      g.net.sendShot(muzzle, muzzle.clone().addScaledVector(fwd, 12), 'ray', true);
+      g.net.sendShot(muzzle, muzzle.clone().addScaledVector(fwd, 12), 'mk3alt', true);
       // los demás lo ven volar y el anfitrión arrastra a los muertos (TowerEgg lo pasa)
       g.ee?.shareVortex?.({ p: [muzzle.x, muzzle.y, muzzle.z].map((n) => +n.toFixed(2)), v: [fwd.x, fwd.y, fwd.z].map((n) => +n.toFixed(3)), u: st.upgraded ? 1 : 0, id: this.vortexN });
     }
@@ -1275,7 +1394,9 @@ export default class Weapons {
     this.mk3fx.release(p.mesh);
     p.mesh = m;
     g.scene.add(m);
-    g.audio.explosion(p.pos, 0.6);
+    // (el mismo agujero negro grabado, más grave y fuerte: se transformó; si
+    // no bajó, la explosión de siempre)
+    if (!g.audio.guns?.play('mk3-agujero', { pos: p.pos, gain: 1.4, rate: 0.78 })) g.audio.explosion(p.pos, 0.6);
     // (la onda la dibuja el agujero: el fogonazo, corto y sin encandilar)
     g.fx.flash(p.pos, 0x8a4dff, 9, 0.35, 12);
     g.fx.sparkle(p.pos, [0.7, 0.45, 1], 24, 0.6);
@@ -1329,7 +1450,8 @@ export default class Weapons {
         p.open = true;
         p.openT = 0;
         p.floorY = this.vortexFloor(p.pos);
-        g.audio.explosion(p.pos, 0.4);
+        // se abre el remolino: el agujero negro grabado (si no bajó, la explosión)
+        if (!g.audio.guns?.play('mk3-agujero', { pos: p.pos })) g.audio.explosion(p.pos, 0.4);
         g.fx.flash(p.pos, 0x9aff8a, 8, 0.25, 10);
       }
       return false;
@@ -1444,6 +1566,12 @@ export default class Weapons {
     }
     // cosechar: la yerba del easter egg se corta con la hoz
     g.ee?.onScythe?.(g.player.pos, fwd, st);
+    // el maizal del Prado (la fase del Espantapájaros): se corta para ver
+    g.arena?.onScythe?.(g.player.pos, fwd, st, 'hoz');
+    // el matorral de La Tapera: se aparta un rato (más con la hoz mejor)
+    g.matorral?.onCut(g.player.pos, fwd, st, 'hoz');
+    // y el Yasy que uno tiene en la cara, afuera
+    g.yasy?.onMelee();
   }
 
   // Hoz de la Muerte: una medialuna que atraviesa todo lo que encuentra.
@@ -1459,15 +1587,18 @@ export default class Weapons {
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const pos = cam.position.clone().addScaledVector(fwd, 0.6).add(new THREE.Vector3(0, -0.15, 0));
     this.crescentMat ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0x9affc8).multiplyScalar(2.2), toneMapped: false, transparent: true, opacity: 0.85, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
+    // (la de la hoz de oro, dorada y más ancha)
+    if (st.baston) this.crescentGold ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc23a).multiplyScalar(2.6), toneMapped: false, transparent: true, opacity: 0.9, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
     const mesh = new THREE.Group();
-    const arc = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.06, 6, 20, Math.PI * 1.1), this.crescentMat);
+    const arc = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.06, 6, 20, Math.PI * 1.1), st.baston ? this.crescentGold : this.crescentMat);
+    if (st.baston) arc.scale.setScalar(1.35);
     arc.rotation.x = Math.PI / 2;
     mesh.add(arc);
     this.spawnProjectile({ kind: 'crescent', pos, vel: fwd.clone().multiplyScalar(C.speed), gravity: 0, C, st, mesh, life: C.life, hits: new Set() });
-    g.audio.shot('ray', null, true);
+    g.audio.shot('hoz', null, true);
     g.audio.whoosh?.(pos);
     g.stats.shots++;
-    if (g.net) g.net.sendShot(pos, pos.clone().addScaledVector(fwd, 20), 'ray', true);
+    if (g.net) g.net.sendShot(pos, pos.clone().addScaledVector(fwd, 20), 'hoz', true);
   }
 
   muzzleWorld(out) {
@@ -1504,6 +1635,8 @@ export default class Weapons {
       const point = new THREE.Vector3().copy(origin).addScaledVector(dir, h.t);
       const falloff = h.t > st.range ? 0.55 : 1;
       let mult = 1;
+      // (Cabezazo, una empanada: todo lo que pega va a la cabeza)
+      if (g.emp?.headAll() && !h.z.boss) h.zone = 'head';
       if (h.zone === 'head') mult = st.headMult;
       else if (h.zone === 'neck') mult = Math.max(1, st.headMult * 0.5);
       // Bombilla Gut: cada bombilla se lleva una parte fija de la vida del muerto,
@@ -1589,8 +1722,16 @@ export default class Weapons {
   acidSplash(at, radius) {
     const g = this.g;
     g.fx.flash(at, 0x7aff3a, 35, 0.3, radius * 3.5);
-    g.audio.explosion(at, 0.45);
-    g.audio.squish?.(at);
+    // el grabado (si no bajó, el sintetizado): los frascos revientan en tanda,
+    // y el que sale pegado al anterior suena más bajo y un pelito después (si
+    // no, se suman y aturden, y la misma toma encimada suena a phaser)
+    const now = g.audio.now;
+    const near = now - (this.acidBoomT ?? -1) < 0.15;
+    this.acidBoomT = now;
+    if (!g.audio.guns?.play('acido-explosion', { pos: at, gain: near ? 0.6 : 1, rate: 0.95 + Math.random() * 0.1, when: near ? 0.03 + Math.random() * 0.07 : 0 })) {
+      g.audio.explosion(at, 0.45);
+      g.audio.squish?.(at);
+    }
     g.critters?.onNoise(at, 18);
     for (let i = 0; i < 46; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -1615,6 +1756,7 @@ export default class Weapons {
     const g = this.g;
     const k = Math.min(1, (p.t - (p.stuck.until - p.B.fuse)) / p.B.fuse);
     p.mesh.scale.setScalar(1 + Math.max(0, Math.sin(p.t * (10 + k * 22))) * (0.25 + k * 0.35));
+    p.bubbles?.move(p.pos);
     if (Math.random() < dt * 14) g.fx.add.spawn(p.pos.x, p.pos.y, p.pos.z, (Math.random() - 0.5) * 0.6, 0.4 + Math.random() * 0.6, (Math.random() - 0.5) * 0.6, { color: [0.5, 1, 0.25], size: 0.07, size1: 0.01, life: 0.5, gravity: -0.5 });
     if (Math.random() < dt * 5) g.fx.alpha.spawn(p.pos.x, p.pos.y + 0.05, p.pos.z, (Math.random() - 0.5) * 0.2, 0.5, (Math.random() - 0.5) * 0.2, { color: [0.35, 0.6, 0.2], size: 0.08, size1: 0.4, life: 1, alpha: 0.2, drag: 0.8 });
     // cada tanto un blip que se oye de lejos (el "mono" de los muertos)
@@ -1623,6 +1765,19 @@ export default class Weapons {
       p.blipT = 0.45 - k * 0.25;
       g.fx.flash(p.pos, 0x6aff3a, 6 + k * 10, 0.12, 5);
     }
+  }
+
+  // Las burbujas grabadas del frasco recién pegado: estiradas para que terminen
+  // justo cuando revienta, y siguen al frasco si va pegado a un muerto. Una
+  // por tanda (los que se pegan juntos revientan juntos, y la misma toma
+  // encimada suena a phaser) y tres a la vez como mucho.
+  acidBubbles(p) {
+    const guns = this.g.audio.guns;
+    const buf = guns?.buf['acido-burbujas'];
+    const now = this.g.audio.now;
+    if (!buf || now - (this.bubbleT ?? -1) < 0.12 || this.projectiles.filter((q) => q.bubbles).length >= 3) return;
+    this.bubbleT = now;
+    p.bubbles = guns.follow('acido-burbujas', p.pos, { rate: Math.min(1.25, Math.max(0.8, buf.duration / p.B.fuse)) * (0.97 + Math.random() * 0.06) });
   }
 
   // Charco de ácido: queda en el piso unos segundos, frena y carcome a los que lo
@@ -1641,7 +1796,13 @@ export default class Weapons {
     mesh.rotation.y = Math.random() * Math.PI * 2;
     mesh.renderOrder = 2;
     g.scene.add(mesh);
-    (this.pools ||= []).push({ pos: new THREE.Vector3(pos.x, y, pos.z), r, B, t: 0, life: 4.5, tick: 0, mesh });
+    // el chirrido del charco: uno por tanda (los charcos de una misma tanda
+    // quedan juntos, y la misma toma encimada suena a phaser)
+    const now = g.audio.now;
+    const near = now - (this.poolSndT ?? -1) < 0.3;
+    if (!near) this.poolSndT = now;
+    const snd = near ? null : g.audio.guns?.play('acido-charco', { pos: mesh.position, rate: 0.9 + Math.random() * 0.06 });
+    (this.pools ||= []).push({ pos: new THREE.Vector3(pos.x, y, pos.z), r, B, t: 0, life: 4.5, tick: 0, mesh, snd });
     while (this.pools.length > 8) this.pools.shift().mesh.removeFromParent();
   }
 
@@ -1689,7 +1850,10 @@ export default class Weapons {
   }
 
   clearStuck() {
-    for (const P of this.pools || []) P.mesh.removeFromParent();
+    for (const P of this.pools || []) {
+      P.mesh.removeFromParent();
+      if (P.snd) this.g.audio.guns.fadeOut(P.snd, 0.2);
+    }
     this.pools = [];
     if (this.stuck) this.stuck.length = 0;
     if (this.stuckMesh) this.stuckMesh.count = 0;
@@ -2066,7 +2230,11 @@ export default class Weapons {
     this.pot?.clear();
     this.liq?.clear();
     this.nova?.clear();
-    for (const p of this.projectiles || []) p.mesh?.removeFromParent();
+    this.supremo?.clear();
+    for (const p of this.projectiles || []) {
+      p.mesh?.removeFromParent();
+      p.bubbles?.stop(0.1);
+    }
     this.projectiles = [];
     if (this.g.lures) this.g.lures.length = 0;
   }
@@ -2198,15 +2366,17 @@ export default class Weapons {
     p.mesh.position.copy(p.pos);
     p.mesh.rotation.y = Math.atan2(p.vel.x, p.vel.z);
     p.mesh.children[0].rotation.z += dt * 18;
-    g.fx.sparkle(p.pos, [0.5, 1, 0.7], 2, 0.3);
+    g.fx.sparkle(p.pos, p.st?.baston ? [1, 0.8, 0.3] : [0.5, 1, 0.7], 2, 0.3);
     for (const { z } of g.zombies.inRadius(p.pos, p.C.radius + 0.5)) {
       if (p.hits.has(z)) continue;
       p.hits.add(z);
       const point = new THREE.Vector3(z.pos.x, (z.pos.y || 0) + 1.2 * (z.scale || 1), z.pos.z);
-      g.zombies.damage(z, p.C.damage, { type: 'scythe', zone: 'torso', point, dir: p.vel.clone().normalize(), decap: true });
+      g.zombies.damage(z, p.C.damage, { type: 'scythe', zone: 'torso', point, dir: p.vel.clone().normalize(), decap: true, cap: p.C.bossCap });
       g.hud.hitmarker(false);
     }
     g.ee?.onScythe?.(p.pos, p.vel.clone().setY(0).normalize(), p.st, true);
+    g.arena?.onScythe?.(p.pos, p.vel, p.st, 'crescent');
+    g.matorral?.onCut(p.pos, p.vel, p.st, 'crescent');
     const seg = tmpV.subVectors(p.pos, p.prev);
     const len = seg.length();
     if (len > 1e-5 && Number.isFinite(g.world.raycast(p.prev, seg.divideScalar(len), len, hitTmp))) {
@@ -2248,6 +2418,7 @@ export default class Weapons {
       if (zhit) g.fx.blood(point, dir, 6);
       else g.fx.sparks(point, 0.5, hitTmp.normal || { x: 0, y: 1, z: 0 });
       g.audio.shell();
+      if (p.B.acid) this.acidBubbles(p);
       return false;
     }
     const P = p.P;
@@ -2259,7 +2430,7 @@ export default class Weapons {
     }
     if (P.radius > 0) {
       const color = colorArr(P.color);
-      this.explode(point, P.radius, P.splash ?? P.damage, { color, selfDamage: P.selfDamage ?? (st.id === 'porongo' ? 35 : 0), skip: zhit?.z, type: st.id === 'oro' ? 'yerba' : 'explosive', big: P.glow ? 0.6 : 1, elem: st.elem });
+      this.explode(point, P.radius, P.splash ?? P.damage, { color, selfDamage: P.selfDamage ?? (st.id === 'porongo' ? 35 : 0), skip: zhit?.z, type: st.id === 'oro' ? 'yerba' : 'explosive', big: P.glow ? 0.6 : 1, elem: st.elem, boom: st.id === 'porongo' || st.id === 'caballero' ? 'porongo-explosion' : null });
     } else if (!zhit && hitTmp.normal) {
       g.fx.impact({ point, normal: hitTmp.normal });
     }
@@ -2270,6 +2441,7 @@ export default class Weapons {
   boltBoom(p) {
     this.removeLure(p);
     p.mesh?.removeFromParent();
+    p.bubbles?.stop(0.06);
     if (p.B.acid) {
       // el ácido: un reventón verde que salpica y carcome (al Alcaide le derrite el cinturón)
       this.explode(p.pos, p.B.radius, p.B.damage, { selfDamage: 20, type: 'acid', fx: false });
@@ -2295,12 +2467,13 @@ export default class Weapons {
   // Explosión con daño decreciente y línea de visión.
   // fx: false para las que se dibujan aparte (la luz mala, el ácido); lift: de
   // qué altura sobre el punto se mira si la explosión alcanza a cada uno.
-  // pup: el bossMult del potenciador que la tiró (pega menos a los jefes)
-  explode(pos, radius, damage, { color = [1, 0.55, 0.2], selfDamage = 0, skip = null, type = 'explosive', big = 1, elem, lift = 0.4, fx = true, pup } = {}) {
+  // pup: el bossMult del potenciador que la tiró (pega menos a los jefes);
+  // boom: el grabado que suena (core/weaponSfx.js; si no, la sintetizada)
+  explode(pos, radius, damage, { color = [1, 0.55, 0.2], selfDamage = 0, skip = null, type = 'explosive', big = 1, elem, lift = 0.4, fx = true, pup, boom = null } = {}) {
     const g = this.g;
     if (fx) {
       g.fx.explosion(pos, radius * big, color);
-      g.audio.explosion(pos, big);
+      g.audio.explosion(pos, big, boom);
       g.critters?.onNoise(pos, 22);
     }
     const from = tmpV.copy(pos).add(tmpV2.set(0, lift, 0));
@@ -2384,10 +2557,10 @@ export default class Weapons {
     this.nade.visible = false;
     this.pavaVm.visible = false;
     g.ee?.knife?.hideVm();
-    this.holder.visible = this.state !== 'empty';
+    this.holder.visible = this.state !== 'empty' && this.shieldHand.lowerK < 0.99;
     let lower = 0;
     // la hoz sube menos tapada: se tiene que ver cómo la da vuelta en la muñeca
-    if (this.state === 'raise') lower = (1 - Math.min(1, t / 0.35)) * (this.model?.hoz ? 0.5 : 1);
+    if (this.state === 'raise') lower = (1 - Math.min(1, t / (0.35 * (this.g.emp?.swapMult() ?? 1)))) * (this.model?.hoz ? 0.5 : 1);
     let pour = null;
     let yerbaK = null;
     const hoz = this.model?.hoz || null;
@@ -2410,6 +2583,15 @@ export default class Weapons {
     } else if (this.state === 'reload' && st?.kind === 'liquid') {
       // la Liquidificador se carga con el porongo (weapons/Liquidificador.js)
       const o = this.liq.reloadPose(Math.min(1, t / this.reloadTime), g.time);
+      target.x += o[0];
+      target.y += o[1];
+      target.z += o[2];
+      rx += o[3];
+      ry += o[4];
+      rz += o[5];
+    } else if (st?.kind === 'supremo' && this.supremo.posing(this.state)) {
+      // el Mate Supremo: el amanecer de la recarga y el Juicio (weapons/Supremo.js)
+      const o = this.supremo.pose(this.state, Math.min(1, t / (this.reloadTime || 1)), g.time);
       target.x += o[0];
       target.y += o[1];
       target.z += o[2];
@@ -2597,6 +2779,11 @@ export default class Weapons {
       pm.position.copy(DRINK_MOUTH).sub(local).addScaledVector(DRINK_DIR, -sip);
       pm.position.x += (1 - k) * 0.12;
       pm.position.y -= (1 - k) * 0.25;
+    } else if (this.state === 'drink' && this.eatAnim) {
+      // comiendo una empanada (entities/Empanadas): la mano la anima ella y devuelve cuánto baja la mirada
+      lower = 1;
+      this.viewDip = this.eatAnim(t) || 0;
+      this.drinkFrame.rotation.x = this.viewDip;
     } else this.viewDip = Math.max(0, (this.viewDip || 0) - dt * 2);
     // inspeccionar: lo trae al centro, inclina la boca para ver la yerba y lo
     // va girando despacio para mostrar la calabaza y la virola
@@ -2643,6 +2830,7 @@ export default class Weapons {
     const bg = this.model?.bombGroup;
     if (bg) bg.rotation.y = ik * Math.sin(Math.max(0, t - 0.6) * 1.6) * 0.9;
     if (this.state === 'empty') lower = 1;
+    lower = Math.max(lower, this.shieldHand.lowerK * 1.3);
     target.y -= lower * 0.35;
     rx -= lower * 0.5;
 
@@ -2653,6 +2841,8 @@ export default class Weapons {
       target.y += o[1];
       target.z += o[2];
       rx += o[3];
+      ry += o[4];
+      rz += o[5];
     }
     pose.pos.lerp(target, Math.min(1, dt * (snap || this.state === 'knife' ? 40 : 18)));
     this.holder.position.copy(pose.pos);
@@ -2691,16 +2881,14 @@ export default class Weapons {
       if (m.anim.wobble) m.anim.wobble.rotation.z = Math.sin(g.time * 9) * 0.06 + this.sway.x * 3;
       if (m.anim.luz) this.animateLuz(m.anim.luz, dt);
     }
-    if (m?.upgraded || this.slots.some((s) => s.up)) {
-      const camo = getMats(this.T).camo;
-      camo.map.offset.x = (g.time * 0.05) % 1;
-      camo.map.offset.y = (g.time * 0.03) % 1;
-      camo.emissiveIntensity = 0.7 + Math.sin(g.time * 3) * 0.25;
-    }
+    // los camuflajes que se mueven (los del Pack-a-Pava y los animados de la
+    // armería; también los de los mates de los compañeros)
+    tickCamos(g.time);
     // la luz de la vista sigue un poco la del lugar
     const lvl = g.lightLevel ?? 1;
     this.vmHemi.intensity = 0.6 + lvl * 1.0;
     this.vmKey.intensity = 0.4 + lvl * 1.1;
+    this.shieldHand.animate(dt);
   }
 
   // El Mate de la Luz Mala: la lucecita de la punta se va con cada tiro y se

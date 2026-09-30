@@ -8,6 +8,7 @@
 //   z 21-42   [ C Huerta ][ A Patio (arranque)   ][ D Establo (PaP) + cuadra ]
 //   z 44-62   [ M ][ B Cocina / N Dormitorio ][ G Galpón (luz) ][ E Corral ]
 //   z 67-90                                                ( P Prado, al final )
+//   z 60-170  [ K El Matorral: el campo de maíz de atrás de la atahona, con campamentos ]
 //
 // Hay vueltas para correr: el patio tiene tranqueras a los tablones y a los
 // silos, la atahona tiene una puerta de atrás al dormitorio y en el corral
@@ -20,9 +21,95 @@
 // humo del fuego de abajo. Los dos se abren junto con la zona de abajo
 // (`with`). El rancho es la casa principal: tiene techos de bóveda.
 
+import { shapeRuns } from '../../world/esterosGround';
+
 export const MAP_W = 90;
-export const MAP_H = 93;
+// (hasta la 93 es la chacra; lo de abajo es el matorral)
+export const MAP_H = 176;
 export const WALL_H = 3.6;
+
+// Los campamentos abandonados del matorral: dónde, radio del claro, qué hay
+// y hacia dónde mira. El primero (el más lejos) es el de la Yerba Madre; en
+// los demás se esconde el Yasy dorado. Cada uno tiene su fogón prendido (la
+// luz va en LIGHTS). fire: dónde está el fuego, si no es el centro.
+const CAMPS = [
+  { kind: 'madre', at: [60, 151], r: 6.5, rot: 0.4, fire: [63.3, 149] },
+  { kind: 'fogon', at: [36, 83], r: 4.5, rot: 2.1 },
+  { kind: 'carpas', at: [22, 101], r: 6, rot: 0.3 },
+  { kind: 'toldo', at: [46, 121], r: 5.5, rot: -0.5 },
+  { kind: 'carreta', at: [72, 111], r: 5.5, rot: 1.2 },
+  { kind: 'ramada', at: [22, 140], r: 5.5, rot: 2.6 },
+  { kind: 'hacheros', at: [40, 158], r: 5, rot: -1.1 },
+  { kind: 'tapera', at: [70, 131], r: 5.5, rot: 0.9 },
+];
+const campFire = (c) => c.fire || c.at;
+// Las huellas entre campamento y campamento (ahí el maíz crece ralo y bajo).
+const K_TRAILS = [
+  [[11.5, 61], [11.5, 70], [17, 78], [28, 82], [36, 83]],
+  [[36, 83], [29, 92], [22, 101]],
+  [[22, 101], [35, 111], [46, 121]],
+  [[46, 121], [59, 114], [72, 111]],
+  [[72, 111], [72, 122], [70, 131]],
+  [[46, 121], [32, 131], [22, 140]],
+  [[22, 140], [30, 151], [40, 158]],
+  [[40, 158], [50, 155], [60, 151]],
+  [[70, 131], [66, 142], [60, 151]],
+];
+
+// El matorral (zona K): manchones de campo que se juntan, con el borde
+// desparejo, y el pasillo que sale de la despensa de la atahona. Nada al
+// este del pasillo antes de la fila 70 (ahí salen los muertos de las
+// ventanas del dormitorio, el galpón y el corral) ni pegado al borde.
+const K_SHAPE = {
+  seed: 7,
+  jit: 2.2,
+  blobs: [
+    [9, 76, 6.5], [19, 82, 8], [31, 81, 7], [42, 85, 7.5], [53, 91, 6.5], [9, 92, 7.5],
+    [22, 100, 10], [38, 99, 9], [55, 102, 9], [71, 108, 8.5], [8, 110, 7], [83, 114, 4.5],
+    [18, 122, 10], [36, 120, 10.5], [54, 122, 11], [72, 124, 10], [84, 129, 4],
+    [12, 140, 8], [28, 140, 10], [47, 142, 11], [66, 142, 10], [80, 145, 6],
+    [22, 156, 8], [39, 159, 9], [57, 157, 10], [72, 155, 7],
+    // (los campamentos y las huellas quedan adentro, con margen)
+    ...CAMPS.map((c) => [c.at[0], c.at[1], c.r + 2.4]),
+  ],
+  trails: [{ line: [[11.5, 60], [11.5, 67], [10, 73]], w: 6, jit: 0.2 }, ...K_TRAILS.map((line) => ({ line, w: 3.2, jit: 0.3 }))],
+};
+const K_CARVE = [[0, 0, 89, 59], [15, 0, 89, 69], [0, 0, 1, 175], [88, 0, 89, 175], [0, 173, 89, 175]];
+
+// Las tiras de la forma, con los huecos que quedan encerrados entre manchones
+// rellenos: si no, quedaban islas de maíz de afuera en medio del matorral, que
+// frenan, no se cortan ni se queman.
+function solidRuns(runs, W, H) {
+  const m = new Uint8Array(W * H);
+  for (const [x0, z, x1] of runs) for (let x = x0; x <= x1; x++) m[z * W + x] = 1;
+  const out = new Uint8Array(W * H);
+  const st = [];
+  for (let x = 0; x < W; x++) st.push(x, (H - 1) * W + x);
+  for (let z = 0; z < H; z++) st.push(z * W, z * W + W - 1);
+  while (st.length) {
+    const i = st.pop();
+    if (out[i] || m[i]) continue;
+    out[i] = 1;
+    const x = i % W;
+    if (x > 0) st.push(i - 1);
+    if (x < W - 1) st.push(i + 1);
+    if (i >= W) st.push(i - W);
+    if (i < W * (H - 1)) st.push(i + W);
+  }
+  const res = [];
+  for (let z = 0; z < H; z++) {
+    let a = -1;
+    for (let x = 0; x <= W; x++) {
+      const inK = x < W && !out[z * W + x];
+      if (inK && a < 0) a = x;
+      if (!inK && a >= 0) {
+        res.push([a, z, x - 1, z]);
+        a = -1;
+      }
+    }
+  }
+  return res;
+}
 
 export const ZONES = {
   A: { name: 'El Patio de la Tapera', sub: 'Chacra de los Cuervos · Misiones, 1987', rects: [[24, 23, 49, 33], [21, 34, 49, 42], [37, 21, 41, 22]], floor: 'dirt', outdoor: true, fence: true },
@@ -38,6 +125,10 @@ export const ZONES = {
   Y: { name: 'El Barbacuá', sub: 'La yerba se seca arriba del fuego', with: 'T', y: 2.8, rects: [[30, 3, 35, 7]], floor: 'planksDark', outdoor: true, fence: true, cliff: 'brick' },
   M: { name: 'La Atahona', sub: 'La piedra gira sola cuando nadie mira', rects: [[7, 44, 14, 54], [9, 55, 14, 58]], floor: 'terracotta', wall: 'brick', ext: 'brick', ceil: 'planksDark' },
   P: { name: 'El Prado', sub: 'Un claro redondo en el maizal', circle: { x: 75, z: 79, r: 11.5 }, rects: [[74, 66, 75, 68]], floor: 'grass', outdoor: true, edge: 'corn' },
+  // atrás de la despensa de la atahona: un campo de maíz más alto que uno, con
+  // campamentos abandonados, los Yasy y la Yerba Madre (entities/Matorral.js,
+  // entities/Yasy.js). wild: la gallina del Pack-a-Pava no va ahí.
+  K: { name: 'El Matorral', sub: 'El maíz se come los campamentos', rects: solidRuns(shapeRuns(K_SHAPE, MAP_W, MAP_H, K_CARVE), MAP_W, MAP_H), floor: 'dirtDark', outdoor: true, edge: 'corn', wild: true },
 };
 
 // La escalera del pajar (en el establo) y la del barbacuá (en los tablones).
@@ -68,6 +159,8 @@ export const DOORS = [
   { id: 13, zones: ['A', 'F'], cells: [[47, 22], [48, 22]], cost: 1250, kind: 'gate' },
   // la puerta de atrás de la atahona, al dormitorio
   { id: 14, zones: ['M', 'N'], cells: [[15, 56], [15, 57]], cost: 1000, kind: 'door' },
+  // el fondo de la despensa de la atahona, al matorral (donde estaba la ventana)
+  { id: 15, zones: ['M', 'K'], cells: [[11, 59], [12, 59]], cost: 1250, kind: 'door' },
 ];
 
 // Ventanas con tablas (en el alambrado son tranqueras bajas tapiadas).
@@ -89,11 +182,11 @@ export const WINDOWS = [
   { cell: [20, 63], out: [0, 1], zone: 'N' },
   { cell: [25, 63], out: [0, 1], zone: 'N' },
   { cell: [31, 59], out: [0, 1], zone: 'N' },
-  { cell: [15, 62], out: [-1, 0], zone: 'N' },
+  // (la del costado, [15, 62], daba al pasillo del matorral: pasó al fondo)
+  { cell: [17, 63], out: [0, 1], zone: 'N' },
   { cell: [39, 60], out: [0, 1], zone: 'G' },
   { cell: [46, 60], out: [0, 1], zone: 'G' },
   { cell: [6, 48], out: [-1, 0], zone: 'M' },
-  { cell: [11, 59], out: [0, 1], zone: 'M' },
   { cell: [81, 51], out: [1, 0], zone: 'E' },
   { cell: [81, 57], out: [1, 0], zone: 'E' },
   { cell: [78, 45], out: [0, -1], zone: 'E' },
@@ -120,6 +213,24 @@ export const RISERS = [
   { zone: 'E', pos: [78, 55] },
   { zone: 'E', pos: [63, 62.5] },
   { zone: 'D', pos: [53.5, 36.5] },
+  // el matorral: a lo largo de las huellas, entre campamento y campamento
+  { zone: 'K', pos: [11, 66] },
+  { zone: 'K', pos: [9, 80] },
+  { zone: 'K', pos: [25, 86] },
+  { zone: 'K', pos: [44, 88] },
+  { zone: 'K', pos: [12, 96] },
+  { zone: 'K', pos: [34, 104] },
+  { zone: 'K', pos: [56, 104] },
+  { zone: 'K', pos: [14, 118] },
+  { zone: 'K', pos: [58, 124] },
+  { zone: 'K', pos: [78, 118] },
+  { zone: 'K', pos: [32, 128] },
+  { zone: 'K', pos: [10, 138] },
+  { zone: 'K', pos: [50, 140] },
+  { zone: 'K', pos: [78, 144] },
+  { zone: 'K', pos: [26, 156] },
+  { zone: 'K', pos: [50, 162] },
+  { zone: 'K', pos: [70, 156] },
 ];
 
 export const WALL_BUYS = [
@@ -140,6 +251,8 @@ export const PERK_SPOTS = [
   { perk: 'deadshot', cell: [18, 63], face: [0, -1] },
   // Mulanda, arriba en el pajar
   { perk: 'mule', cell: [71, 37], face: [-1, 0] },
+  // Maleza Gaucha (Maizaster), en la huerta, contra la pared de la atahona
+  { perk: 'maiz', cell: [13, 43], face: [0, -1] },
 ];
 
 // La luz: el grupo electrógeno del galpón. El Pack-a-Pava, en el establo.
@@ -167,6 +280,8 @@ export const LIGHTS = [
   { zone: 'M', pos: [13.2, 1.55, 45.3], color: 0xffb35a, intensity: 14, noPower: 1, kind: 'candle' },
   { zone: 'E', pos: [64.5, 3.3, 50.35], color: 0xffb070, intensity: 26, noPower: 0.7, kind: 'lamp' },
   { zone: 'F', pos: [47, 3.3, 13.85], color: 0xffc890, intensity: 26, noPower: 0.6, kind: 'lamp' },
+  // los fogones de los campamentos del matorral
+  ...CAMPS.map((c) => ({ zone: 'K', pos: [campFire(c)[0], 1.1, campFire(c)[1]], color: 0xff7a2a, intensity: 38, noPower: 1, kind: 'fire' })),
 ];
 
 // La defensa del yerbal (entities/FarmDefense.js): cada 10 rondas (o antes,
@@ -181,6 +296,25 @@ const DEFENSE = {
   towers: [[12, 6.2], [21.5, 7.2], [17.5, 20.4], [33.3, 19]],
   names: ['la parcela del norte', 'la parcela del medio', 'la parcela del oeste', 'la parcela del este', 'la parcela de la tranquera'],
   map: { x0: 2, z0: 1, x1: 37, z1: 23 },
+};
+
+// El matorral (zona K, entities/Matorral.js): la puerta, la sexta planta del
+// easter egg (la Yerba Madre, en el campamento del fondo), los campamentos,
+// las huellas que los unen (ahí el maíz crece ralo y bajo), cuánto se puede
+// andar adentro antes de que se prenda fuego (s; y cuándo avisa: con el
+// campo así de grande, encontrar al dorado lleva un par de minutos), a qué
+// velocidad corre el fuego del fondo a la puerta (m/s; se le gana corriendo)
+// y en cuántas rondas vuelve a crecer.
+const MATORRAL = {
+  zone: 'K',
+  door: 15,
+  plant: CAMPS[0].at,
+  camps: CAMPS,
+  trails: K_TRAILS,
+  secs: 180,
+  warn: 30,
+  speed: 3.4,
+  regrow: 3,
 };
 
 // Easter egg "La Hoz de la Muerte" (entities/FarmEgg.js).
@@ -198,7 +332,7 @@ export const EE = {
   papRitual: { pos: [62, 26], r: 5.5, secs: 45, crowAt: 0.3, roof: [61, 31, 10.2] },
   // muertos que hay que liquidar con la hoz antes de la forja (más por jugador)
   blood: { need: 15, per: 5 },
-  bench: { pos: [42, 47.2], rot: 0 }, plants: [[15, 8.2], [26, 12.2], [9, 16.1], [32.5, 16.1], [21.5, 20.3]], mill: { pos: [10.5, 49.5] }, pack: { pos: [48, 56], rot: Math.PI / 2 }, altar: { pos: [75, 80] }, arena: { x: 75, z: 79, r: 11 }, defense: DEFENSE };
+  bench: { pos: [42, 47.2], rot: 0 }, plants: [[15, 8.2], [26, 12.2], [9, 16.1], [32.5, 16.1], [21.5, 20.3]], mill: { pos: [10.5, 49.5] }, pack: { pos: [48, 56], rot: Math.PI / 2 }, altar: { pos: [75, 80] }, arena: { x: 75, z: 79, r: 11 }, defense: DEFENSE, matorral: MATORRAL };
 
 export const PROPS = [
   { type: 'fogon', pos: [31, 33] },
@@ -366,7 +500,7 @@ export const ACT = {
   radios: RADIOS,
   parts: PARTS,
   bench: BENCH,
-  shield: { name: 'Escudo de paja', hp: 800, where: 'la mesa de trabajo del patio', plan: 'ESCUDO: paja + arpillera + alambre' },
+  shield: { name: 'Escudo de paja', hp: 800, where: 'la mesa de trabajo del patio', plan: 'ESCUDO: paja + arpillera + alambre', up: { name: 'Escudo de paja electrificado', hp: 1300, prop: 'zap', kind: 'fence', trap: 'boyero', pos: [75.26, 46.4], rot: -Math.PI / 2, need: 10 } },
   radioAch: ['Oyente de Radio Misiones', 'Escuchaste las tres transmisiones de la chacra'],
 };
 
@@ -381,4 +515,13 @@ export const TEXT = {
 // Cielo: arranca al atardecer y se hace de noche con el easter egg.
 // (la ronda de los caballos: noche de luna roja, sin tormenta; FarmEgg.update
 // baja la luz del día mientras dura, pedido del usuario 2026-09-27)
-export const SKY = { daylight: 1, sun: [-0.86, 0.1, -0.5], states: { dogs: { storm: 0, blood: 1, fog: 0.06, fogColor: 0x2e0d0b, cloud: 0.3, mist: 0.6 } } };
+// center: la chacra (el sol, la luna y su sombra; el matorral agrandó la grilla hacia el sur)
+export const SKY = { daylight: 1, sun: [-0.86, 0.1, -0.5], center: [45, 46.5], states: { dogs: { storm: 0, blood: 1, fog: 0.06, fogColor: 0x2e0d0b, cloud: 0.3, mist: 0.6 } } };
+
+// Los hornos de barro de las empanadas (entities/Empanadas): pared y hacia dónde mira.
+export const HORNO_SPOTS = [
+  { cell: [42, 43], face: [0, -1] },
+  { cell: [19, 53], face: [0, -1] },
+  { cell: [58, 22], face: [0, 1] },
+  { cell: [42, 11], face: [1, 0] },
+];

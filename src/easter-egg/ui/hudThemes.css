@@ -498,7 +498,7 @@
 .mdu-hud[data-map='torre'] .mdu-scores header b { font-weight: 700; letter-spacing: 3px; color: #fff0c8; }
 .mdu-hud[data-map='torre'] .mdu-scores td { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 700; }
 /* el ping de cada uno: verde, amarillo o rojo */
-.mdu-scores td.mdu-scores__ping { font-size: 14px; color: rgba(239, 232, 212, 0.55); }
+.mdu-scores td.mdu-scores__ping { font-size: 14px; color: rgba(239, 232, 212, 0.55); white-space: nowrap; }
 .mdu-scores td.mdu-scores__ping.is-ok { color: #8fdc7a; }
 .mdu-scores td.mdu-scores__ping.is-meh { color: #f0c85a; }
 .mdu-scores td.mdu-scores__ping.is-bad { color: #ff7a5a; }

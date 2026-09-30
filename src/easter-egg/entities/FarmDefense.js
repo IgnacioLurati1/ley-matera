@@ -170,10 +170,27 @@ export default class FarmDefense {
     return !!p && p.regrow > 0;
   }
 
-  // Todas las plantas que faltan cortar están volviendo a crecer.
+  // Las plantas que faltan cortar están volviendo a crecer (FarmEgg.harvestWaiting).
   waiting() {
-    const left = this.plots.filter((p) => !this.ee.harvested[p.i]);
-    return left.length > 0 && left.every((p) => p.regrow > 0);
+    return this.ee.harvestWaiting();
+  }
+
+  // No se cosecha mientras dura la defensa, ni mientras está por venir la del
+  // paso de la cosecha (forceEarly): primero se defiende, después se corta
+  // (el usuario, 2026-09-29). Los invitados lo reciben del anfitrión (state().l).
+  harvestLock() {
+    if (this.g.net?.guest) return !!this.lockRemote;
+    return this.active || this.early || !!this.pending;
+  }
+
+  // (anfitrión) Se llegó al paso de la cosecha: ¿va a venir la defensa
+  // adelantada? Entonces desde ya no se corta nada.
+  expectEarly() {
+    const R = this.g.rounds;
+    if (this.forced || this.active || this.g.net?.guest || !R || R.round >= this.every) return false;
+    this.pending = true;
+    this.sync(true);
+    return true;
   }
 
   // Cómo se ve la parcela: plantines (marchitos, rotos o rebrotando) y el quemado.
@@ -636,6 +653,7 @@ export default class FarmDefense {
   forceEarly() {
     const g = this.g;
     const R = g.rounds;
+    this.pending = false;
     if (this.forced || this.active || g.net?.guest || !R || R.round >= this.every) return;
     this.forced = true;
     this.skipRound = this.every;
@@ -652,7 +670,7 @@ export default class FarmDefense {
 
   regrown(p) {
     const g = this.g;
-    const plant = !this.ee.harvested[p.i];
+    const plant = this.ee.needed(this.ee.plants[p.i]);
     this.ee.announce(plant && this.ee.papDone ? `Volvió a crecer ${p.name}: la planta ya se puede cortar.` : `Volvió a crecer ${p.name}.`, 3.5);
     g.fx.sparkle(tmpA.set(p.x, p.y + 0.6, p.z), [0.5, 1, 0.5], 16, 0.8);
     if (plant && this.ee.papDone && g.world.power) this.ee.voice(LINES.regrow, 1);
@@ -724,6 +742,8 @@ export default class FarmDefense {
       g.later(1.2 + k * 0.45, () => g.powerups.drop(new THREE.Vector3(p.x + 1.2, p.y, p.z), true));
     });
     if (g.world.power && saved.length === counted.length && counted.length) this.ee.voice(LINES.saved, 2.5);
+    // (en el paso de la cosecha: ahora sí se corta)
+    this.ee.defenseOver?.();
     this.dirty = true;
     this.sync(true);
   }
@@ -742,12 +762,13 @@ export default class FarmDefense {
 
   // ---------------- red ----------------
   state() {
-    return { a: this.active ? 1 : 0, r: this.round, c: this.crowT > 0 ? 1 : 0, p: this.plots.map((p) => [Math.round(p.hp * 100), p.regrow, p.startUp ? 1 : 0]), w: this.towers.map((t) => Math.round(t.water * 100)) };
+    return { a: this.active ? 1 : 0, l: this.harvestLock() ? 1 : 0, r: this.round, c: this.crowT > 0 ? 1 : 0, p: this.plots.map((p) => [Math.round(p.hp * 100), p.regrow, p.startUp ? 1 : 0]), w: this.towers.map((t) => Math.round(t.water * 100)) };
   }
 
   applyRemote(s) {
     const was = this.active;
     this.active = !!s.a;
+    this.lockRemote = !!s.l;
     this.round = s.r || 0;
     this.crowT = s.c ? 1 : 0;
     s.p?.forEach(([hp, rg, su], i) => {

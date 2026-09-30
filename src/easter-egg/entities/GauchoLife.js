@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import Avatars from '../net/Avatars';
 import { ghostMaterial, GHOST_TIME } from '../fx/ghostMat';
+import VidaHuecos from './vidaHuecos';
 
 // Modo gaucho life (el "afterlife" del penal). Se arranca la partida así, se
 // entra con X gastando una carga (3 jugando solo, 1 en cooperativo; se
@@ -44,6 +45,8 @@ export default class GauchoLife {
     this.buildHand();
     this.buildGhostMate();
     this.buildAura();
+    // los huecos de las paredes y los tableros de las rejas eléctricas
+    this.huecos = new VidaHuecos(game, this);
     this.collectTargets();
     this.reset();
   }
@@ -223,11 +226,13 @@ export default class GauchoLife {
       } else if (it.kind === 'pap') {
         const pap = I.pap;
         this.addTarget({ pos: it.pos.clone().setY(it.pos.y + 0.6), r: 1.1, on: () => !pap.powered, hit: () => I.powerMachine(pap) });
-      } else if (it.kind === 'door' && it.door.def.kind === 'vida') {
+      } else if (it.kind === 'door' && it.door.def.kind === 'vida' && !this.huecos.hasPanel(it.door)) {
         const door = it.door;
         this.addTarget({ pos: it.pos.clone().setY(it.pos.y + 0.1), r: 0.9, on: () => !door.open, hit: () => I.openDoor(door) });
       }
     }
+    // los tableros (del otro lado de cada hueco)
+    for (const t of this.huecos.targets()) this.addTarget(t);
   }
 
   // ---------------- partida ----------------
@@ -247,7 +252,8 @@ export default class GauchoLife {
   startRun() {
     this.reset();
     this.enter({ free: true });
-    this.g.hud.subtitle('Gaucho life: con clic le tirás electricidad a las máquinas. Mantené F para volver a tu cuerpo.', 6);
+    // (las teclas ya están en el cartel del gaucho life: acá solo para qué sirve)
+    this.g.hud.subtitle('Gaucho life: tu rayo prende las máquinas.', 4);
   }
 
   // Cada 5 rondas se recupera una carga.
@@ -306,7 +312,9 @@ export default class GauchoLife {
     g.audio.tesla(p.pos.clone().setY(p.pos.y + 1));
     g.audio.setCritical?.(false);
     g.hud.setDowned(null);
-    if (!free) g.hud.subtitle(downed ? 'Caíste... pero tu alma sigue: volvé a tu cuerpo para levantarte (mantené F).' : 'Gaucho life: los muertos no te ven. Mantené F para volver a tu cuerpo.', 4);
+    // (lo que quedó escrito de antes de salir del cuerpo: acá no se toca nada)
+    g.hud.setHint(null);
+    if (!free) g.hud.subtitle(downed ? 'Caíste... pero tu alma sigue: volvé a tu cuerpo para levantarte.' : 'Gaucho life: los muertos no te ven.', 4);
     this.hud();
   }
 
@@ -316,6 +324,7 @@ export default class GauchoLife {
     const p = g.player;
     if (!this.active) return;
     this.active = false;
+    this.huecos.cancel();
     p.ghost = false;
     const b = this.body;
     if (b) {
@@ -373,7 +382,16 @@ export default class GauchoLife {
     const g = this.g;
     GHOST_TIME.value = g.time;
     this.bodies.update(dt);
+    this.huecos.update(dt, input);
     if (this.aura.visible) this.aura.material.opacity = 0.35 + Math.sin(g.time * 3) * 0.15;
+    // en línea es una carga por jugador y solo, tres: también si alguien entra
+    // (o se va) con la partida empezada, y para el que entra tarde
+    const max = g.net && g.net.net.count > 1 ? 1 : 3;
+    if (max !== this.max) {
+      this.max = max;
+      this.charges = Math.min(this.charges, max);
+      this.hud();
+    }
     if (!this.active) return;
     // en línea se repite dónde quedó el cuerpo (para el que entró tarde o arrancó después)
     if (g.net) {
@@ -405,7 +423,6 @@ export default class GauchoLife {
       this.holdT = 0;
       g.hud.setHold(null);
     }
-    g.hud.setHint('Mantené F para volver a tu cuerpo · clic: electricidad');
     // el rayo
     this.cd -= dt;
     if (input.mouse.leftPressed && this.cd <= 0 && !g.menuOpen) this.fire();
@@ -520,6 +537,7 @@ export default class GauchoLife {
     this.ghostMat.dispose();
     this.aura.removeFromParent();
     this.bodies.dispose();
+    this.huecos.dispose();
     this.g.hud.setVida?.(null);
   }
 }

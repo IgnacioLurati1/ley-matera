@@ -54,6 +54,8 @@ export default class Arena {
     this.rainR = RAIN_R;
     this.rainDelay = RAIN_DELAY;
     this.rainDmg = RAIN_DMG;
+    // la lluvia de fuego empieza con esta parte de la vida (el cerro, de entrada)
+    this.rainFrom = 0.66;
     this.fireSpeed = FIRE_SPEED;
     // velocidad del jefe: con más de la mitad de vida, menos de la mitad, menos de un cuarto
     // (de entrada ya no se lo deja atrás caminando para atrás)
@@ -571,12 +573,13 @@ export default class Arena {
 
   // El anfitrión elige a quién (a cualquiera de los que están en pie) y avisa:
   // todos la ven volar y cada uno se fija si le pega a él.
-  // Posiciones de los que están en pie (el local y los de la red).
+  // Posiciones de los que están en pie (el local y los de la red). Al
+  // escondido en una mata del Maizaster no le apunta (entities/maizaster.js).
   standing() {
     const g = this.g;
     const list = [];
-    if (g.player.canBeHit()) list.push(g.player.pos);
-    if (g.net) for (const r of g.net.remote.values()) if (!r.dead && !r.downed && !r.ghost) list.push(r.pos);
+    if (g.player.canBeHit() && !g.player.maizIn) list.push(g.player.pos);
+    if (g.net) for (const r of g.net.remote.values()) if (!r.dead && !r.downed && !r.ghost && !r.maizIn) list.push(r.pos);
     return list;
   }
 
@@ -788,18 +791,12 @@ export default class Arena {
       }
       // cada vez más rápido
       b.speed = k < 0.25 ? this.speeds[2] : k < 0.5 ? this.speeds[1] : this.speeds[0];
-      // bolas de fuego a distancia: de a dos en la segunda mitad, en abanico al final
+      // el ataque a distancia (cada arena el suyo: ranged)
       this.fireT -= dt;
-      if (this.fireT <= 0 && !b.dead && b.state === 'chase') {
-        this.fireT = k < 0.25 ? 1.9 : k < 0.5 ? 2.4 : 3.6;
-        const n = k < 0.25 ? 3 : 1;
-        const hand = tmpV.set(b.pos.x + Math.sin(b.yaw) * 0.8, (b.baseY || 0) + 2.6, b.pos.z + Math.cos(b.yaw) * 0.8).clone();
-        this.fireball(hand, n);
-        if (k < 0.5) g.later(0.35, () => !b.dead && this.fireball(hand, n));
-      }
+      if (this.fireT <= 0 && !b.dead && b.state === 'chase') this.ranged(b, k);
       this.fireColTick(dt, k);
       // lluvia de fuego cuando le quedan dos tercios
-      if (k < 0.66) {
+      if (k < this.rainFrom) {
         this.rainT -= dt;
         if (this.rainT <= 0 && !b.dead) {
           this.rainT = k < 0.33 ? 6 : 9;
@@ -815,6 +812,17 @@ export default class Arena {
       }
     }
     this.updateShared(dt);
+  }
+
+  // (anfitrión) Bolas de fuego a distancia: de a dos en la segunda mitad, en
+  // abanico al final. Pone cuándo va la próxima (fireT).
+  ranged(b, k) {
+    const g = this.g;
+    this.fireT = k < 0.25 ? 1.9 : k < 0.5 ? 2.4 : 3.6;
+    const n = k < 0.25 ? 3 : 1;
+    const hand = tmpV.set(b.pos.x + Math.sin(b.yaw) * 0.8, (b.baseY || 0) + 2.6, b.pos.z + Math.cos(b.yaw) * 0.8).clone();
+    this.fireball(hand, n);
+    if (k < 0.5) g.later(0.35, () => !b.dead && this.fireball(hand, n));
   }
 
   wave(n) {

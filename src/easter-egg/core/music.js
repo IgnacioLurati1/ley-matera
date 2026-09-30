@@ -1,5 +1,6 @@
 import { streamSong, songOn } from '../world/SongEgg';
 import { MAP_ID } from '../config/map';
+import { assetUrl } from '../../lib/assets';
 
 // La música de las escenas: las entradas de cada mapa, las peleas contra los
 // jefes, algunas cinemáticas y la muerte. Son mp3 de /public/assets/sotano/
@@ -14,6 +15,24 @@ import { MAP_ID } from '../config/map';
 // (while: la pelea terminó, se volvió al menú...).
 const DIR = '/assets/sotano/musica/';
 
+// Baja una canción de antes (queda en la caché del navegador): la que tiene
+// que arrancar justo en un golpe (la llegada del Luisón, la puñalada de la
+// traición) ya no espera a la red. Una vez por canción.
+const fetched = new Set();
+export function prefetchTrack(id) {
+  if (fetched.has(id) || !TRACKS[id]) return;
+  fetched.add(id);
+  try {
+    fetch(assetUrl(DIR + id + '.mp3')).catch(() => {});
+  } catch {
+    /* sin red: se baja al arrancar */
+  }
+}
+
+// La pelea de Gil en la cárcel: desde un poco antes del corte (la parte fuerte
+// entra con la llegada) y la vuelta adentro de la parte fuerte (15 compases).
+export const PENAL_CARCEL = { at: 27.2, loop: [32.14, 54.64] };
+
 export const TRACKS = {
   'intro-molino': { name: 'Intro del molino', gain: 1 },
   'intro-granja': { name: 'Intro de La Tapera', gain: 0.68 },
@@ -25,7 +44,12 @@ export const TRACKS = {
   // Mandinga aparece justo en el golpe; antes arrancaba cuando ya estaba)
   'jefe-molino': { name: 'Pelea final del molino', gain: 0.98, boom: 3.82, loop: [2, 193] },
   'jefe-granja': { name: 'Pelea de La Tapera', gain: 0.94, loop: [2, 236] },
-  'jefe-penal': { name: 'Pelea contra el Gauchito Gil', gain: 0.6, boom: 3.1, loop: [3.1, 55.5] },
+  // (dura 58 s: antes daba la vuelta del final al golpe del principio y sonaba a
+  // que arrancaba de nuevo. A 160 bpm: intro hasta los 28 s, un corte y la
+  // parte fuerte desde los 30,07. En el cerro da la vuelta dentro de la intro
+  // (12 compases que empalman); al pasar a la cárcel world/Cerro.js salta al
+  // corte y la vuelta queda en la parte fuerte: PENAL_CARCEL)
+  'jefe-penal': { name: 'Pelea contra el Gauchito Gil', gain: 0.6, boom: 3.1, loop: [5.2, 23.2] },
   // (el golpe de verdad es a los 23,9 s, donde se descarga todo: el de 10,75
   // es un pico chico de la intro y el de 20,6 arranca la subida que lo arma)
   'jefe-torre': { name: 'Pelea contra Francisco', gain: 0.66, boom: 23.9, loop: [23.9, 173] },
@@ -125,6 +149,16 @@ export default class Music {
     return this.cur?.id === id;
   }
 
+  // Salta a otra parte de la que suena y cambia su vuelta (la segunda fase de
+  // una pelea). false si no hay ninguna sonando.
+  jumpTo(at, loop = null) {
+    const j = this.cur;
+    if (!j?.song?.el) return false;
+    j.song.el.currentTime = at;
+    if (loop) j.loop = loop;
+    return true;
+  }
+
   // Por dónde va la que suena (segundos), o -1.
   time() {
     const el = this.cur?.song?.el;
@@ -216,7 +250,7 @@ export const SCENES = [
     id: 'jefe-esteros',
     map: 'esteros',
     group: 'Jefes',
-    name: 'Mate no Numa: el Luisón (desde que llevás la luz)',
+    name: 'Mate no Numa: la llegada del Luisón (la horda en el algarrobo) y la pelea',
     track: 'jefe-esteros',
     go: (g) => {
       g.godMode = true;
@@ -246,6 +280,17 @@ export const SCENES = [
       g.ee.startOrigin();
     },
   },
+  // la jura en la cumbre (castle/Juramento.js): el dragón posado y el jugador al lado (como Alt+K)
+  {
+    id: 'jura-castillo',
+    map: 'castillo',
+    group: 'Cinemáticas',
+    name: 'Der Mateendrache: la jura en la cumbre (antes del dragón)',
+    go: (g) => {
+      g.godMode = true;
+      g.cheatFinal();
+    },
+  },
   {
     id: 'cine-castillo-caballeros',
     map: 'castillo',
@@ -261,6 +306,20 @@ export const SCENES = [
         c.step = i;
         c.next = c.t;
       }
+    },
+  },
+  // el final entero (ui/CastleEnding.js), por el camino de verdad: el Éter, el
+  // duende y el golpe final (la escena arranca sola a los 3 s de gnomeDeath)
+  {
+    id: 'cine-castillo-final',
+    map: 'castillo',
+    group: 'Cinemáticas',
+    name: 'Der Mateendrache: el final (Fierro, el reinicio y el molino)',
+    go: (g) => {
+      g.godMode = true;
+      g.arena.start();
+      g.later(2, () => g.arena.debugStage('gnome'));
+      g.later(3.5, () => g.arena.gnomeDeath());
     },
   },
   {
@@ -284,6 +343,20 @@ export const SCENES = [
       // hasta la elección y Gil sella el pacto
       g.later(0.5, () => E.scene?.cine.skip());
       g.later(1.5, () => E.choose('kill'));
+    },
+  },
+  // el final de La Tapera (ui/FarmCinematic.js): la pelea arranca y el
+  // Espantapájaros cae solo (sin canción: el usuario, 2026-09-29)
+  {
+    id: 'fin-granja',
+    map: 'granja',
+    group: 'Cinemáticas',
+    name: 'La Tapera: el final (cae el Espantapájaros)',
+    go: (g) => {
+      g.godMode = true;
+      g.cheatFinal();
+      g.arena.start();
+      g.later(5, () => g.cheatBoss());
     },
   },
   // Las de mitad de partida (y los finales) que no tienen canción propia:

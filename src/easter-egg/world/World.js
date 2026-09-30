@@ -35,6 +35,9 @@ const DOOR_H = 2.7;
 // cullLights). Solo en los mapas con muchas (el penal): los demás quedan igual
 const MAX_LIGHTS = 10;
 const CULL_FROM = 13;
+// El medio del mapa, para el sol, la luna y su sombra (la granja lo corre a la
+// chacra: el matorral agrandó la grilla hacia el sur, SKY.center)
+const mapCenter = () => new THREE.Vector3(SKY.center?.[0] ?? MAP_W / 2, 0, SKY.center?.[1] ?? MAP_H / 2);
 const SURFACE = { planks: 'wood', parquet: 'wood', planksDark: 'wood', dirt: 'dirt', dirtDark: 'dirt', grass: 'dirt', calcareo: 'tile', terracotta: 'tile', concrete: 'concrete', snow: 'dirt', snowPave: 'dirt' };
 
 // Mapa: grilla, arquitectura, utilería, luces, cielo; colisiones y rayos.
@@ -884,7 +887,7 @@ export default class World {
         }`,
     });
     const sky = new THREE.Mesh(geo, mat);
-    sky.position.set(MAP_W / 2, 0, MAP_H / 2);
+    sky.position.copy(mapCenter());
     sky.renderOrder = -1;
     this.sky = sky;
     this.root.add(sky);
@@ -894,7 +897,7 @@ export default class World {
     const moonMat = new THREE.SpriteMaterial({ map: this.T.dot, color: 0xdfe8ff, fog: false, depthWrite: false, transparent: true });
     const moon = new THREE.Sprite(moonMat);
     moon.scale.set(MS.size || 22, MS.size || 22, 1);
-    moon.position.copy(moonDir).multiplyScalar(260).add(new THREE.Vector3(MAP_W / 2, 0, MAP_H / 2));
+    moon.position.copy(moonDir).multiplyScalar(260).add(mapCenter());
     this.root.add(moon);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.T.dot, color: 0x5a6a90, fog: false, depthWrite: false, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending }));
     halo.scale.set(80, 80, 1);
@@ -910,7 +913,7 @@ export default class World {
       this.sunDir = new THREE.Vector3(...(SKY.sun || [-0.86, 0.1, -0.5])).normalize();
       const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.T.dot, color: 0xffc27a, fog: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending }));
       sun.scale.set(34, 34, 1);
-      sun.position.copy(this.sunDir).multiplyScalar(250).add(new THREE.Vector3(MAP_W / 2, 0, MAP_H / 2));
+      sun.position.copy(this.sunDir).multiplyScalar(250).add(mapCenter());
       this.root.add(sun);
       this.sunSprite = sun;
     }
@@ -930,8 +933,8 @@ export default class World {
     this.ambient = new THREE.AmbientLight(0x505060, 0.5);
     s.add(this.ambient);
     const moon = new THREE.DirectionalLight(0x9fb4ff, 0.9);
-    moon.position.copy(this.moonDir).multiplyScalar(60).add(new THREE.Vector3(MAP_W / 2, 0, MAP_H / 2));
-    moon.target.position.set(MAP_W / 2, 0, MAP_H / 2);
+    moon.position.copy(this.moonDir).multiplyScalar(60).add(mapCenter());
+    moon.target.position.copy(mapCenter());
     moon.castShadow = true;
     const sc = moon.shadow.camera;
     // el penal es más grande (y más alto): la sombra tiene que tapar todo
@@ -1062,8 +1065,8 @@ export default class World {
       const sunDir = this.sunDir.clone();
       sunDir.y = -0.08 + d * 0.2;
       const dir = this.moonDir.clone().lerp(sunDir.normalize(), Math.min(1, d * 1.6)).normalize();
-      this.moon.position.copy(dir).multiplyScalar(60).add(new THREE.Vector3(MAP_W / 2, 0, MAP_H / 2));
-      this.sunSprite.position.copy(sunDir).multiplyScalar(250).add(new THREE.Vector3(MAP_W / 2, 0, MAP_H / 2));
+      this.moon.position.copy(dir).multiplyScalar(60).add(mapCenter());
+      this.sunSprite.position.copy(sunDir).multiplyScalar(250).add(mapCenter());
       this.sunSprite.material.opacity = Math.min(1, d * 1.5);
       this.moonSprite.material.opacity = 1 - Math.min(1, d * 1.4);
       this.moonHalo.visible = d < 0.6;

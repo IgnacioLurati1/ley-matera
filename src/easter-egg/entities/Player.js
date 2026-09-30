@@ -3,6 +3,7 @@ import { PLAYER } from '../config/rules';
 import { PLAYER_START } from '../config/map';
 import { dragonBreath, DRAGON_CD, DRAGON_GAP } from '../weapons/dragonBreath';
 import { playerWater, swimMove, wadeSlow, SWIM } from './swim';
+import { tryWish, wishActive, wishBlocked, WISH_SPEED } from './dyingWish';
 
 const specTarget = new THREE.Vector3();
 const specFwd = new THREE.Vector3();
@@ -50,8 +51,13 @@ export default class Player {
     this.lungeDir = new THREE.Vector3();
     this.hurtT = 0;
     this.shield = null;
+    this.shieldFront = false;
     this.ghost = false;
     this.guardT = 0;
+    // adentro de una mata del Maizaster (entities/maizaster.js): los zombies no lo ven
+    this.maizIn = false;
+    // el bastón de oro del Yasy dorado (entities/Yasy.js): la hoz de oro
+    this.baston = false;
     // el agua (entities/swim.js): 0 seco, 1 vadea, 2 nada, 3 bucea
     this.swim = 0;
     this.underwater = false;
@@ -61,7 +67,8 @@ export default class Player {
   }
 
   get reloadMult() {
-    return this.perks.has('speed') ? 0.5 : 1;
+    // (Manos Rápidas, una empanada: otro tanto)
+    return (this.perks.has('speed') ? 0.5 : 1) * (this.g.emp?.reloadMult() ?? 1);
   }
 
   // En gaucho life (el penal) los muertos no te ven; al volver al cuerpo hay
@@ -100,18 +107,23 @@ export default class Player {
     if (hadMule) this.g.weapons.trimSlots();
   }
 
-  damage(amount, from, explosion = false) {
+  // src: el zombie que pegó, si se sabe (para lo que hace el escudo mejorado)
+  damage(amount, from, explosion = false, src = null) {
     const g = this.g;
     if (!this.canBeHit() || g.godMode) return;
+    // Dying Wish (la Extremaunión): mientras dura la adrenalina no lastima nada
+    if (wishActive(this)) return wishBlocked(this);
     // PhD Flopper (la Flopa Hermanos): las explosiones no le hacen nada
     if (explosion && this.perks.has('phd')) return;
-    // el escudo de la espalda frena lo que viene de atrás
+    // el escudo de la espalda frena lo que viene de atrás; puesto adelante
+    // (Z: weapons/shieldHand), solo lo de adelante
     if (this.shield && from && !explosion) {
       const dx = from.x - this.pos.x;
       const dz = from.z - this.pos.z;
       const d = Math.hypot(dx, dz) || 1;
-      if ((dx * -Math.sin(this.yaw) + dz * -Math.cos(this.yaw)) / d < -0.2) {
-        g.activities?.shieldHit(amount, from);
+      const dot = (dx * -Math.sin(this.yaw) + dz * -Math.cos(this.yaw)) / d;
+      if (d > 0.05 && (this.shieldFront ? dot > 0.45 : dot < -0.2)) {
+        g.activities?.shieldHit(amount, from, src);
         return;
       }
     }
@@ -193,6 +205,8 @@ export default class Player {
 
   goDown() {
     const g = this.g;
+    // Dying Wish: el golpe que te iba a tirar no te tira (entities/dyingWish.js)
+    if (!this.downed && tryWish(this)) return;
     this.health = 0;
     // en el penal, con cargas de gaucho life, el alma sale del cuerpo en vez de quedar tirado
     // (caer igual cuesta los perks: solo el gaucho life a mano, con X, los conserva)
@@ -303,6 +317,8 @@ export default class Player {
       this.slowT -= dt;
       speed *= 0.45;
     }
+    // la adrenalina del Dying Wish: se corre un poco más
+    if (wishActive(this)) speed *= WISH_SPEED;
     // el agua: vadeando se va más lento; sin hacer pie se nada (swimMove, más abajo)
     const W = playerWater(this, dt);
     if (this.swim === 1) speed *= wadeSlow(W.depth, SWIM, this.perks.has('aqua'));

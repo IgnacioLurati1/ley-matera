@@ -1,0 +1,107 @@
+/* La pregunta del Mate Supremo (ui/SupremoAsk.js): un sol de oro con las seis
+   reliquias girando, el nombre y dos botones. */
+
+.mdu-supremo {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: radial-gradient(circle at 50% 42%, rgba(70, 38, 6, 0.72), rgba(4, 2, 0, 0.9) 70%);
+  animation: mdu-sup-in 0.35s ease-out both;
+}
+.mdu-supremo.is-out { animation: mdu-sup-out 0.26s ease-in both; }
+
+.mdu-supremo__card {
+  display: grid;
+  justify-items: center;
+  gap: var(--gap, 10px);
+  padding: clamp(22px, 3.4vh, 44px) clamp(26px, 4vh, 60px);
+  max-width: min(92vw, 640px);
+  text-align: center;
+  background: var(--panel, rgba(20, 8, 3, 0.94));
+  border: 1px solid rgba(255, 214, 130, 0.55);
+  box-shadow: 0 0 60px rgba(255, 170, 50, 0.28), inset 0 0 30px rgba(0, 0, 0, 0.6);
+  animation: mdu-sup-pop 0.5s var(--ease-pop, ease-out) both;
+}
+
+.mdu-supremo__sun {
+  position: relative;
+  width: clamp(110px, 16vh, 190px);
+  aspect-ratio: 1;
+  margin-bottom: 4px;
+}
+/* el sol: el disco caliente y los rayos que giran */
+.mdu-supremo__sun b {
+  position: absolute;
+  inset: 26%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fffdf2 0 30%, #ffd66a 55%, #ff9a1a 100%);
+  box-shadow: 0 0 34px 8px rgba(255, 190, 70, 0.75), 0 0 90px 24px rgba(255, 140, 30, 0.35);
+  animation: mdu-sup-pulse 2.4s ease-in-out infinite;
+}
+.mdu-supremo__sun b::before {
+  content: '';
+  position: absolute;
+  inset: -52%;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 226, 150, 0.55) 0deg 4deg, rgba(255, 226, 150, 0) 4deg 22.5deg);
+  mask: radial-gradient(circle, transparent 30%, #000 36%, transparent 72%);
+  -webkit-mask: radial-gradient(circle, transparent 30%, #000 36%, transparent 72%);
+  animation: mdu-sup-spin 14s linear infinite;
+}
+/* las seis reliquias en órbita (un color por mapa) */
+.mdu-supremo__sun span {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 214, 130, 0.35);
+  transform: rotateX(62deg) rotateZ(0deg);
+  animation: mdu-sup-orbit 7s linear infinite;
+}
+.mdu-supremo__sun i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12%;
+  aspect-ratio: 1;
+  margin: -6% 0 0 -6%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 22%, var(--c) 48%, transparent 72%);
+  box-shadow: 0 0 14px 3px var(--c);
+  transform: rotate(calc(var(--i) * 60deg)) translateX(clamp(55px, 8vh, 95px));
+}
+
+.mdu-supremo__title {
+  margin: 0;
+  font-family: 'Special Elite', serif;
+  font-weight: normal;
+  font-size: var(--u-xl, 40px);
+  letter-spacing: 0.06em;
+  color: #ffe7a8;
+  background: linear-gradient(180deg, #fffaf0 0%, #ffd46a 55%, #e0891e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 14px rgba(255, 170, 50, 0.55));
+}
+.mdu-supremo__q { margin: 0; font-size: var(--u-l, 24px); color: var(--cream, #fff1d6); }
+.mdu-supremo__btns { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--gap, 10px); margin-top: 6px; }
+.mdu-supremo__btns .mdu-btn { font-size: var(--u, 18px); min-width: 9em; }
+.mdu-supremo__yes {
+  border-color: rgba(255, 214, 130, 0.9) !important;
+  box-shadow: 0 0 22px rgba(255, 180, 60, 0.45);
+}
+.mdu-supremo__note { margin: 0; font-size: var(--u-xs, 13px); opacity: 0.5; }
+
+@keyframes mdu-sup-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mdu-sup-out { to { opacity: 0; } }
+@keyframes mdu-sup-pop { from { opacity: 0; transform: scale(0.9) translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes mdu-sup-spin { to { transform: rotate(360deg); } }
+@keyframes mdu-sup-orbit { to { transform: rotateX(62deg) rotateZ(360deg); } }
+@keyframes mdu-sup-pulse { 50% { transform: scale(1.06); box-shadow: 0 0 44px 12px rgba(255, 200, 90, 0.85), 0 0 110px 30px rgba(255, 150, 40, 0.4); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .mdu-supremo, .mdu-supremo__card, .mdu-supremo__sun b, .mdu-supremo__sun b::before, .mdu-supremo__sun span { animation: none; }
+}

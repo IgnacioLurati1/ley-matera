@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { TOWER, SKY } from '../config/map';
 import { PLAYER, SPEEDS, rollSpeedClassic } from '../config/rules';
 import { weaponStats } from '../config/weapons';
+import ChallengeFlood from './challengeFlood';
 
 // Los eventos del remolino del Challenge de la torre (los maneja
 // entities/TowerChallenge.js). Desde la ronda 3 casi siempre hay uno; de la 10
@@ -22,6 +23,8 @@ export const CHALLENGE_EVENTS = {
   animas: { kind: 'mal', name: 'Ánimas en Pena', sub: 'Los muertos se hacen invisibles: solo se ven de cerca (y los ojos)', tint: 'rgba(110, 200, 255, 0.35)' },
   globos: { kind: 'mal', name: 'Muertos Globo', sub: 'Vienen inflados y revientan al morir: la explosión te revolea', tint: 'rgba(170, 230, 60, 0.35)' },
   mareo: { kind: 'mal', name: 'Borrachera de Caña', sub: 'La torre da vueltas, se camina torcido y hay hipo', tint: 'rgba(255, 160, 50, 0.35)' },
+  // (el agua y los yacarés de Mate no Numa: entities/challengeFlood.js)
+  inundacion: { kind: 'mal', name: 'Inundación', sub: 'Sube el agua del estero y vienen los yacarés', tint: 'rgba(40, 120, 100, 0.35)' },
   luna: { kind: 'raro', name: 'Luna de Mate', sub: 'Gravedad baja: se salta altísimo y se cae despacio', tint: 'rgba(170, 190, 255, 0.3)' },
   estrellas: { kind: 'bien', name: 'Lluvia de Estrellas', sub: 'Caen estrellas del cielo encima de los muertos', tint: 'rgba(255, 215, 110, 0.35)' },
   siesta: { kind: 'bien', name: 'Hora de la Siesta', sub: 'Los muertos caminan dormidos toda la ronda', tint: 'rgba(120, 255, 190, 0.3)' },
@@ -79,6 +82,8 @@ export default class ChallengeEvents {
     this.popHurt = 0;
     this.shove = new THREE.Vector3();
     this.saved = null;
+    this.flood = new ChallengeFlood(this);
+    this.floodY = 0;
     this.buildDom();
   }
 
@@ -156,6 +161,12 @@ export default class ChallengeEvents {
   tuneRound(R) {
     const n = R.round;
     const list = this.pick(n);
+    if (list.includes('inundacion')) {
+      this.floodY = this.flood.pickFloor();
+      // los yacarés: salen cuando el agua ya subió (más con más jugadores y más adelante)
+      R.specials += 3 + Math.floor(n / 6) + ((R.players || 1) - 1) * 2;
+      R.specialT = Math.max(R.specialT || 0, 7);
+    }
     if (list.includes('estampida')) {
       R.delay *= 0.4;
       R.total = Math.round(R.total * 1.5);
@@ -166,7 +177,7 @@ export default class ChallengeEvents {
     this.bossLeft = list.includes('jefes') ? 3 + Math.floor(n / 8) : 0;
     this.bossT = 7;
     this.set(list, n);
-    this.g.net?.event('pee', { rt: { ev: list, n } });
+    this.g.net?.event('pee', { rt: { ev: list, n, fl: this.floodY } });
   }
 
   // (anfitrión, Zombies.spawn) Cada muerto nuevo según los eventos.
@@ -227,6 +238,7 @@ export default class ChallengeEvents {
     const g = this.g;
     const host = !g.net?.guest;
     if (id === 'apagon') this.lightsOut(true);
+    else if (id === 'inundacion') this.flood.start(this.floodY);
     else if (id === 'animas') {
       this.revealT = 1.2;
       this.flickT = 2;
@@ -249,6 +261,7 @@ export default class ChallengeEvents {
   stop(id) {
     if (id === 'caballeros' && this.g.weapons.temp?.knight) this.g.weapons.clearTemp();
     if (id === 'apagon') this.lightsOut(false);
+    else if (id === 'inundacion') this.flood.stop();
     else if (id === 'globos') this.deflate();
   }
 
@@ -327,6 +340,7 @@ export default class ChallengeEvents {
     const me = live && p.alive && !p.downed && !p.ride;
     const host = !g.net?.guest;
     const active = live && g.rounds.state === 'active';
+    this.flood.update(dt);
     // el apagón (y sus relámpagos)
     let want = 1;
     if (this.has('apagon')) {
@@ -659,6 +673,7 @@ export default class ChallengeEvents {
   applyRemote(m) {
     if (m.rt) {
       const ev = Array.isArray(m.rt.ev) ? m.rt.ev : m.rt.ev ? [m.rt.ev] : [];
+      if (Number.isFinite(m.rt.fl)) this.floodY = m.rt.fl;
       if (ev.join() !== this.list.join() || m.rt.n !== this.round) this.set(ev, m.rt.n | 0);
       return true;
     }
@@ -678,7 +693,7 @@ export default class ChallengeEvents {
   }
 
   state() {
-    return { ev: this.list.slice(), n: this.round };
+    return { ev: this.list.slice(), n: this.round, fl: this.floodY };
   }
 
   // ---------------- lo que se escucha ----------------
@@ -728,6 +743,7 @@ export default class ChallengeEvents {
   dispose() {
     for (const id of this.list) this.stop(id);
     this.lightsOut(false);
+    this.flood.dispose();
     this.list = [];
     if (this.T) this.T.dim = 1;
     this.tintEl?.remove();

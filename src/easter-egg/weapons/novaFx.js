@@ -71,10 +71,13 @@ const sprite = (map, hex, k) =>
   new THREE.Sprite(new THREE.SpriteMaterial({ map, color: new THREE.Color(hex).multiplyScalar(k), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, toneMapped: false, fog: false }));
 
 export default class NovaFx {
-  // group: donde viven escondidas (weapons.warm); flare: la estrella de cuatro puntas; dot: el punto suave
-  constructor(group, flare, dot, scene) {
+  // group: donde viven escondidas (weapons.warm); flare: la estrella de cuatro
+  // puntas; dot: el punto suave; game: para la escena de ahora (las armas duran
+  // entre mapas y cada mapa arma su escena: guardar la del principio dejaba
+  // los golpes en una escena vieja, sin verse)
+  constructor(group, flare, dot, game) {
     this.home = group;
-    this.scene = scene;
+    this.game = game;
     this.items = [];
     for (const up of [0, 1]) {
       const C = PAL[up];
@@ -94,6 +97,10 @@ export default class NovaFx {
         this.items.push({ up, root, star, halo, ring, gal, t: 0, life: 0.4, s: 1, busy: false, spin: 0 });
       }
     }
+  }
+
+  get scene() {
+    return this.game.scene;
   }
 
   // Un golpe en `at` (s: el tamaño; mini: solo la estrellita, para los arcos).

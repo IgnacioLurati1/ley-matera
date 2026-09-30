@@ -39,6 +39,9 @@ const GradeShader = {
     uPulse: { value: 0 },
     uVida: { value: 0 },
     uUnder: { value: 0 },
+    // Dying Wish (entities/dyingWish.js): la adrenalina y su latido
+    uWish: { value: 0 },
+    uWishBeat: { value: 0 },
     uUnderCol: { value: new THREE.Color(0.06, 0.07, 0.05) },
     // (a la mitad: con la cámara en movimiento el grano hacía titilar el pasto)
     uGrain: { value: 0.03 },
@@ -46,7 +49,7 @@ const GradeShader = {
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uTime, uHurt, uDown, uFlash, uGrain, uCrit, uPulse, uVida, uUnder; uniform vec2 uRes; uniform vec3 uUnderCol;
+    uniform sampler2D tDiffuse; uniform float uTime, uHurt, uDown, uFlash, uGrain, uCrit, uPulse, uVida, uUnder, uWish, uWishBeat; uniform vec2 uRes; uniform vec3 uUnderCol;
     varying vec2 vUv;
     float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main(){
@@ -55,9 +58,10 @@ const GradeShader = {
       float r2 = dot(c, c);
       // aberración cromática sutil en los bordes
       float beat = uCrit * uPulse;
-      float ca = 0.0018 + uHurt * 0.004 + beat * 0.007;
+      float wb = uWish * uWishBeat;
+      float ca = 0.0018 + uHurt * 0.004 + beat * 0.007 + uWish * 0.004 + wb * 0.009;
       // el latido "empuja" la imagen hacia afuera
-      uv = 0.5 + c * (1.0 - beat * 0.012);
+      uv = 0.5 + c * (1.0 - beat * 0.012 - wb * 0.022);
       // gaucho life: la imagen ondula como vista a través del agua
       uv += uVida * vec2(sin(uv.y * 24.0 + uTime * 2.3), cos(uv.x * 20.0 + uTime * 1.9)) * 0.0022;
       // abajo del agua: la imagen ondula despacio
@@ -93,6 +97,20 @@ const GradeShader = {
         float lu = dot(col, vec3(0.299, 0.587, 0.114));
         col = mix(col, uUnderCol * (0.5 + lu * 3.0), uUnder * 0.5);
         col *= 1.0 - smoothstep(0.04, 0.5, r2) * 0.55 * uUnder;
+      }
+      // Dying Wish: un túnel que tira hacia el medio, todo gris menos lo rojo
+      // (que se enciende), mucho contraste y los bordes rojos latiendo
+      if (uWish > 0.001) {
+        vec3 zb = vec3(0.0);
+        for (int i = 0; i < 6; i++) zb += texture2D(tDiffuse, 0.5 + c * (1.0 - float(i) * (0.006 + wb * 0.008))).rgb;
+        col = mix(col, zb / 6.0, smoothstep(0.02, 0.3, r2) * uWish);
+        float lw = dot(col, vec3(0.299, 0.587, 0.114));
+        float red = clamp((col.r - max(col.g, col.b)) * 4.0, 0.0, 1.0);
+        vec3 wc = mix(vec3(lw) * vec3(1.12, 0.9, 0.88), col * vec3(1.5, 0.55, 0.55), red);
+        col = mix(col, wc, uWish * 0.9);
+        col = (col - 0.5) * (1.0 + 0.35 * uWish) + 0.5;
+        col = mix(col, vec3(0.5, 0.0, 0.03), smoothstep(0.06, 0.45, r2) * uWish * (0.45 + 0.5 * uWishBeat));
+        col += vec3(0.16, 0.0, 0.02) * wb;
       }
       // viñeta
       col *= 1.0 - smoothstep(0.18, 0.75, r2) * 0.55;
@@ -327,6 +345,9 @@ export default class PostFX {
     if (under && this.game.water) u.uUnderCol.value.copy(this.game.water.fogUnder || this.game.water.underCol);
     u.uCrit.value = crit;
     u.uPulse.value = pulse;
+    const P = this.game?.player;
+    u.uWish.value = (this.game?.state !== 'title' && P?.wishFx) || 0;
+    u.uWishBeat.value = P?.wishBeat || 0;
     u.uTime.value = t;
     u.uHurt.value += (hurt - u.uHurt.value) * Math.min(1, dt * 6);
     u.uDown.value += (down - u.uDown.value) * Math.min(1, dt * 3);

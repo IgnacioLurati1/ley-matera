@@ -910,7 +910,7 @@ export default class Liquidificador {
     const W = g.water;
     if (!W) return;
     W.boil(x, z, r, secs);
-    this.sndBoilStart(tmpV.set(x, W.level, z));
+    this.sndBoilStart(tmpV.set(x, W.level, z), secs);
     // el easter egg lo cuenta el anfitrión (o el que juega solo)
     if (!g.net?.guest) g.ee?.onBoil?.(new THREE.Vector3(x, W.level, z), r);
   }
@@ -1118,16 +1118,25 @@ export default class Liquidificador {
     A.noise(o, { t: at(0.7), dur: 0.12, freq: 900, gain: 0.7 });
     A.tone(o, { t: at(0.7), dur: 0.1, freq: 190, freqEnd: 110, gain: 0.35 });
     A.tone(o, { t: at(0.7), dur: 0.4, type: 'triangle', freq: 2100, gain: 0.04 });
-    // hierve: el borbotón, el golpeteo de la tapa y el silbido que sube
-    A.noise(o, { t: at(0.76), dur: dur * 0.22, freq: 320, freqEnd: 180, gain: 0.5, brown: true, attack: 0.08 });
-    for (let s = at(0.78); s < at(0.93); s += 0.05) A.noise(o, { t: s, dur: 0.03, type: 'bandpass', freq: 2400, q: 5, gain: 0.18 });
-    A.tone(o, { t: at(0.83), dur: dur * 0.15, freq: 1700, freqEnd: 2600, gain: 0.06, attack: 0.08 });
-    A.tone(o, { t: at(0.83), dur: dur * 0.15, freq: 1735, freqEnd: 2620, gain: 0.04, attack: 0.1 });
+    // hierve: la pava grabada (core/weaponSfx.js: arranca bajo la tapa y
+    // termina con la recarga); si no bajó, el borbotón, el golpeteo de la tapa
+    // y el silbido que sube
+    const rec = A.guns?.has('pava-recarga') && A.guns.playFor('pava-recarga', dur * 0.42, { when: dur * 0.58, fade: 0.25, tail: true });
+    if (!rec) {
+      A.noise(o, { t: at(0.76), dur: dur * 0.22, freq: 320, freqEnd: 180, gain: 0.5, brown: true, attack: 0.08 });
+      for (let s = at(0.78); s < at(0.93); s += 0.05) A.noise(o, { t: s, dur: 0.03, type: 'bandpass', freq: 2400, q: 5, gain: 0.18 });
+      A.tone(o, { t: at(0.83), dur: dur * 0.15, freq: 1700, freqEnd: 2600, gain: 0.06, attack: 0.08 });
+      A.tone(o, { t: at(0.83), dur: dur * 0.15, freq: 1735, freqEnd: 2620, gain: 0.04, attack: 0.1 });
+    }
     return {
       stop: () => {
         try {
           o.gain.cancelScheduledValues(A.now);
           o.gain.setTargetAtTime(0, A.now, 0.02);
+          if (rec) {
+            rec.out.gain.cancelScheduledValues(A.now);
+            rec.out.gain.setTargetAtTime(0, A.now, 0.02);
+          }
         } catch {
           /* ya terminó */
         }
@@ -1192,10 +1201,12 @@ export default class Liquidificador {
     A.noise(o, { t: A.now + 0.05, dur: 0.9, type: 'highpass', freq: 3500, gain: 0.18, attack: 0.1 });
   }
 
-  // El agua que arranca a hervir: un borbotón grave.
-  sndBoilStart(pos) {
+  // El agua que arranca a hervir: el agua caliente grabada mientras hierve
+  // (secs; core/weaponSfx.js) o, si no bajó, un borbotón grave.
+  sndBoilStart(pos, secs = 6) {
     const A = this.g.audio;
     if (!A?.ctx) return;
+    if (A.guns?.playFor('agua-caliente', secs + 1, { pos: pos.clone(), fade: 1.5 })) return;
     const o = A.out({ pos: pos.clone(), gain: 0.6, reverb: 0.3, ref: 4 });
     A.noise(o, { dur: 0.8, freq: 400, freqEnd: 120, gain: 0.6, brown: true, attack: 0.08 });
     A.tone(o, { dur: 0.6, freq: 110, freqEnd: 70, gain: 0.12, attack: 0.05 });

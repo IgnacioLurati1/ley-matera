@@ -90,16 +90,26 @@ export default class Ofrenda {
     this.g.fx.explosion(new THREE.Vector3(x, this.g.world.floorAt(x, z) + 1.4, z), 1.4, [0.6, 1, 0.8]);
   }
 
-  // (anfitrión) El Luisón entra por el oeste del algarrobo.
-  callLuison() {
+  // (anfitrión) El Luisón entra por el oeste del algarrobo. o: { at, yaw,
+  // quiet } cuando viene de la escena de la llegada (ui/LuisonArrival): ya está
+  // ahí, ya aulló, y sale corriendo derecho.
+  callLuison(o = {}) {
     const g = this.g;
     this.luison = true;
     // (si queda el cuerpo de otro jefe, se va; si anda uno vivo, spawnBoss lo saca)
     freeBoss(g);
     const [x, z] = EE.luison;
     const round = Math.max(12, g.rounds.round);
-    g.zombies.spawnBoss(round, { at: new THREE.Vector3(x, g.world.floorAt(x, z), z), kind: 'luison' });
-    g.audio.bossArrive?.();
+    const b = g.zombies.spawnBoss(round, { at: o.at || new THREE.Vector3(x, g.world.floorAt(x, z), z), kind: 'luison', quiet: o.quiet });
+    if (o.quiet && b) {
+      if (o.yaw != null) b.yaw = o.yaw;
+      b.state = 'chase';
+      b.stateT = 0;
+      // (recién caído de la loma: un momento quieto, mirándolos, antes de atacar)
+      if (o.hold) b.holdT = o.hold;
+    }
+    if (!o.quiet) g.audio.bossArrive?.();
+    this.egg.netSync();
   }
 
   // Dónde está la luz ahora.

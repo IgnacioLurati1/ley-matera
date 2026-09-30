@@ -46,6 +46,10 @@ export let WINDOWS;
 export let RISERS;
 export let WALL_BUYS;
 export let PERK_SPOTS;
+// los hornos de barro de las empanadas (entities/Empanadas)
+export let HORNO_SPOTS = [];
+// los huecos del gaucho life (el penal, entities/vidaHuecos.js)
+export let HUECOS = [];
 export let POWER;
 export let PAP;
 export let BOX_SPOTS;
@@ -78,6 +82,8 @@ export function useMap(id, mode = 'story') {
   ({ MAP_W, MAP_H, WALL_H, ZONES, START_ZONE, PLAYER_START, WINDOWS, RISERS, WALL_BUYS, PERK_SPOTS, POWER, PAP, BOX_SPOTS, BOX_START, LIGHTS, EE, PROPS, ACT, CRITTERS, FEATURES, FIRES, TITLE_CAM, TEXT, SKY } = m);
   // las puertas se copian: el mundo les cuelga sus cajas de colisión
   DOORS = m.DOORS.map((d) => ({ ...d }));
+  HORNO_SPOTS = m.HORNO_SPOTS || [];
+  HUECOS = m.HUECOS || [];
   RAMPS = m.RAMPS || [];
   RIVER = m.RIVER || [];
   TOWER = m.TOWER || null;

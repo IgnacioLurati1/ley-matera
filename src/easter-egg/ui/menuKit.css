@@ -1,0 +1,70 @@
+/* La escala y los colores de los menús nuevos (Jugar, Pulpería, Armería,
+   Niveles): todo crece con el alto de la ventana (a 1920x1080 el texto
+   común va a ~20px) y se comparte, así las pantallas se ven iguales. */
+
+.mdu-root {
+  --u-xs: clamp(12px, 1.3vh, 16px);
+  --u-s: clamp(13px, 1.55vh, 19px);
+  --u: clamp(15px, 1.85vh, 23px);
+  --u-l: clamp(19px, 2.5vh, 31px);
+  --u-xl: clamp(28px, 4.2vh, 52px);
+  --u-title: clamp(44px, 7.4vh, 92px);
+  --gap: clamp(8px, 1.1vh, 14px);
+  --edge: rgba(255, 200, 110, 0.24);
+  --edge-hi: rgba(255, 214, 130, 0.9);
+  --panel: linear-gradient(180deg, rgba(46, 19, 8, 0.9), rgba(14, 6, 3, 0.94));
+  --panel-hi: linear-gradient(180deg, rgba(74, 32, 12, 0.94), rgba(24, 9, 4, 0.96));
+  --glow: 0 0 32px rgba(255, 140, 40, 0.3);
+  --cream: #fff1d6;
+  --ease-pop: cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+/* un título de pantalla grande y un subtítulo corto */
+.mdu-kit-title { margin: 0; font-family: 'Creepster', 'Special Elite', serif; font-weight: normal; font-size: var(--u-title); line-height: 0.95; color: var(--red); text-shadow: 0 0 24px rgba(160, 0, 0, 0.5), 0 4px 0 #1a0000; }
+.mdu-kit-sub { margin: 4px 0 var(--gap); font-size: var(--u-s); opacity: 0.6; font-style: italic; }
+
+/* pestañas grandes */
+.mdu-kit-tabs { display: flex; gap: clamp(18px, 2.6vh, 34px); margin: 0 0 var(--gap); border-bottom: 1px solid rgba(239, 232, 212, 0.12); }
+.mdu-kit-tab {
+  position: relative;
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0 0 clamp(6px, 0.9vh, 10px);
+  color: var(--ink);
+  opacity: 0.5;
+  font: inherit;
+  font-size: var(--u-l);
+  cursor: pointer;
+  transition: opacity 0.15s, color 0.15s;
+}
+.mdu-kit-tab::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: var(--red-hi); transform: scaleX(0); transition: transform 0.25s var(--ease-pop); box-shadow: 0 0 12px var(--red-hi); }
+.mdu-kit-tab:hover, .mdu-kit-tab:focus-visible { opacity: 0.85; outline: none; }
+.mdu-kit-tab.is-on { opacity: 1; color: var(--cream); }
+.mdu-kit-tab.is-on::after { transform: scaleX(1); }
+.mdu-kit-tab[disabled] { opacity: 0.25; cursor: default; }
+
+/* tarjeta genérica con borde que brilla al pasar */
+.mdu-kit-card {
+  position: relative;
+  appearance: none;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  transition: border-color 0.16s, transform 0.16s var(--ease-pop), box-shadow 0.2s, background 0.2s;
+}
+.mdu-kit-card:hover:not([disabled]), .mdu-kit-card:focus-visible {
+  outline: none;
+  border-color: var(--edge-hi);
+  background: var(--panel-hi);
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.45), var(--glow);
+  transform: translateY(-2px);
+}
+.mdu-kit-card[disabled] { opacity: 0.4; cursor: default; }
+
+/* la línea de volver, abajo */
+.mdu-kit-back { margin-top: var(--gap); }

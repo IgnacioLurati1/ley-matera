@@ -99,7 +99,7 @@ export const PLAYER_START = { x: 30, z: 37, yaw: 0 };
 // Escombros de cada escalera: cada uno sale un 22% más que el de abajo (de
 // 700 a unos 9.300 en solitario) y +50% por cada jugador de más, así hay que
 // quedarse un rato en cada piso y convidarse la plata para subir.
-export const DOORS = TOWER.stairs.map((s, i) => ({
+const DOOR_BASE = TOWER.stairs.map((s, i) => ({
   id: i + 1,
   zones: [`P${s.n}`, `P${s.n + 1}`],
   cells: BOTTOM[s.side],
@@ -108,6 +108,13 @@ export const DOORS = TOWER.stairs.map((s, i) => ({
   kind: 'debris',
   y: yOf(s.n),
 }));
+// En la historia, cuatro no se pagan: se abren de otra forma, y lo que hay
+// que hacer se ve en el escombro (world/towerDebris.js): una carga colgada de
+// una soga (tiro a la soga), un barril de pólvora (tiro o explosión), una losa
+// de ánimas (muertos adentro del círculo) y chapas sueltas (las vuelan los
+// postigos de ese piso). El Challenge los paga todos (challenge()).
+const OPEN = { 3: 'soga', 7: 'polvora', 9: 'almas', 12: 'viento' };
+export const DOORS = DOOR_BASE.map((d) => (OPEN[d.id] ? { ...d, open: OPEN[d.id], locked: true } : d));
 
 // En la torre no hay ventanas con tablas: los muertos salen de cada piso.
 export const WINDOWS = [];
@@ -137,14 +144,16 @@ export const WALL_BUYS = [
   { weapon: 'algarrobo', ...W(26, 6) },
   { weapon: 'granadas', ...E(33, 8) },
   { weapon: 'bowie', ...S(26, 9) },
-  // el Rayo Matero Mark III: en la pared de la cima (también sale de la caja)
-  { weapon: 'mk3', ...W(26, 15) },
 ];
+// El Rayo Matero Mark III: en la historia se arma en el pararrayos de la cima
+// (entities/towerMk3Quest.js; también sale de la caja). En el Challenge se
+// sigue comprando en la pared de la cima.
+const MK3_WALL = { weapon: 'mk3', ...W(26, 15) };
 
 // Perks: uno por piso, repartidos a lo alto de la torre (hay que subir para
 // armarse). La Flopa Hermanos (PhD Flopper) queda en el Patio del Sello, que
 // es donde se usa para el easter egg.
-export const PERK_SPOTS = [
+const BASE_PERKS = [
   { perk: 'revive', ...W(26, 1) },
   { perk: 'speed', ...N(26, 3) },
   { perk: 'jugg', ...E(26, 5) },
@@ -153,6 +162,9 @@ export const PERK_SPOTS = [
   { perk: 'mule', ...N(26, 12) },
   { perk: 'deadshot', ...E(26, 13) },
 ];
+// y en la historia, dos más: el Chisporé (Electric Cherry) en los Calabozos
+// Altos (el penal también subió) y la Extremaunión (Dying Wish) en la Capilla
+export const PERK_SPOTS = [...BASE_PERKS, { perk: 'cherry', ...N(33, 11) }, { perk: 'wish', ...S(33, 13) }];
 
 // La llave de la luz de la torre, en la Plaza de las Ánimas.
 export const POWER = E(33, 5);
@@ -173,13 +185,41 @@ export const LIGHTS = [];
 export const EE = {
   fierro: { pos: [29.2, 30.4], rot: 0.4, y: 0 },
   fogon: [30.4, 31.6],
-  cano: { pos: [37.2, 20.6], y: yOf(3) },
+  // el caño, trabado en el fogón del barbacuá del secadero: se suelta con
+  // fuego, y el fuego es una brasa del fogón de Fierro (se apaga en `brasa` s)
+  cano: { pos: [22, 38.8], y: yOf(3) },
+  brasa: 80,
   rueda: { pos: [30, 30], y: yOf(8), land: yOf(5) },
   sello: { pos: [30, 30], r: 3.4, y: yOf(10) },
-  canon: { pos: [30, 30], y: yOf(15), cage: 8.6, souls: 24 },
+  // (cage: el lugar libre alrededor del cañón, que towerDecor no llena)
+  canon: { pos: [30, 30], y: yOf(15), cage: 8.6 },
+  // Las Campanas de las Ánimas (entities/towerBells.js), en orden de arriba
+  // para abajo: en un campanario de palo en la cima, y colgadas en el hueco
+  // del medio arriba del patio del 10 y de la plaza del 5 (se ven y se les
+  // tira también desde los pisos de arriba, por el agujero). `top`: de dónde
+  // cuelga (el yugo).
+  campanas: [
+    { n: 15, pos: [30, 38.2], top: yOf(15) + 3.55, frame: true },
+    { n: 10, pos: [30, 30], top: yOf(11) - 0.4 },
+    { n: 5, pos: [30, 30], top: yOf(6) - 0.4 },
+  ],
   // la escalera divina: 40.000 solo y 20.000 más por cada jugador (TowerEgg.endingCost)
   ending: { ...N(33, 15), cost: 40000, perPlayer: 20000 },
   arena: TOWER.arena,
+  // El Rayo Matero Mark III (entities/towerMk3Quest.js): el pararrayos de la
+  // cima (donde antes estaba su pared), el mate de calabaza en la mesa de
+  // operaciones de la enfermería y el porongo del Galpón del Viento.
+  pararrayos: W(26, 15),
+  calabaza: { pos: [40.25, 21.35], y: yOf(12) + 0.95 },
+  porongo: { pos: [30.5, 40.7], y: yOf(6) },
+  // Los Postigos (world/towerShutters.js): las tres arcadas de un lado se
+  // cierran con postigos grandes; la palanca los abre y el remolino chupa
+  // para afuera. side: 0 norte, 1 este, 2 sur, 3 oeste.
+  postigos: [
+    { n: 6, side: 3, name: 'los Postigos del Galpón', lever: W(19, 6) },
+    { n: 9, side: 2, name: 'los Postigos de la Tapera', lever: S(19, 9) },
+    { n: 12, side: 1, name: 'los Postigos de la Enfermería', lever: E(40, 12) },
+  ],
 };
 
 // ---------------- utilería de cada piso ----------------
@@ -508,8 +548,9 @@ const RADIOS = [
     ],
   },
   {
-    pos: [38.6, yOf(12) + 0.86, 21.2],
-    rot: 2.6,
+    // (al pie de la cama de la enfermería)
+    pos: [36.5, yOf(12) + 0.72, 20.6],
+    rot: -0.6,
     lines: [
       'Última transmisión. El mate supremo ya no le alcanza: Francisco escucha pasos que vienen de muy lejos. Pasos chiquitos...',
       'Si alguien llega a la cima: la escalera de oro no lleva al cielo. Ya lo van a ver.',
@@ -527,7 +568,7 @@ export const ACT = {
   radios: RADIOS,
   parts: SHIELD_PARTS,
   bench: { pos: [19.3, 33.5], rot: Math.PI / 2, y: yOf(10) },
-  shield: { name: 'Escudo de Tapa de Pava', hp: 1100, where: 'la mesa del Patio del Sello (piso 10)', plan: 'ESCUDO: tapa + cuero + correa' },
+  shield: { name: 'Escudo de Tapa de Pava', hp: 1100, where: 'la mesa del Patio del Sello (piso 10)', plan: 'ESCUDO: tapa + cuero + correa', up: { name: 'Escudo de la Pava Silbadora', hp: 1750, prop: 'steam', kind: 'pava', pos: [40.23, 20.73], y: yOf(9), rot: Math.PI / 2, need: 3, secs: 9 } },
   radioAch: ['Oyente del Remolino', 'Escuchaste las tres transmisiones de la torre'],
 };
 
@@ -569,6 +610,17 @@ export function challenge() {
   const ending = { ...S(28, 15), cost: 40000, perPlayer: 20000 };
   return {
     TOWER: { ...TOWER, solid: [1], challenge: true },
+    // los perks de los otros mapas, repartidos a lo alto (Electric Cherry del
+    // penal, el Acuanauta del estero, el Aliento Dragónico del castillo) y el
+    // Dying Wish, que es de acá (entre el piso 6 y el 12), y el Maizaster de La Tapera
+    PERK_SPOTS: [...BASE_PERKS, { perk: 'cherry', ...W(26, 2) }, { perk: 'aqua', ...E(26, 4) }, { perk: 'wish', ...S(33, 9) }, { perk: 'dragon', ...N(33, 14) }, { perk: 'maiz', ...S(33, 6) }],
+    // (lo de la historia no va: el Mark III se compra en la pared de la cima
+    // y todos los escombros se pagan)
+    WALL_BUYS: [...WALL_BUYS, MK3_WALL],
+    DOORS: DOOR_BASE,
+    // hay agua para nadar: la inundación del remolino (entities/challengeFlood.js);
+    // sin ella, el nivel queda muy abajo de la torre
+    WATER_Y: -100,
     PROPS: PROPS.filter((p) => !nearHole(p)),
     // arriba no hay ninguna Voz: está la Supernova
     ZONES: { ...ZONES, P15: { ...ZONES.P15, sub: 'Arriba de todo, la Supernova y la escalera al cielo' } },
@@ -598,3 +650,10 @@ export function challenge() {
     },
   };
 }
+
+// Los hornos de barro de las empanadas (entities/Empanadas): pared y hacia dónde mira.
+export const HORNO_SPOTS = [
+  N(25, 4),
+  S(24, 8),
+  W(24, 11),
+];

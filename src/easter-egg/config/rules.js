@@ -130,6 +130,9 @@ export const PLAYER = {
 };
 
 export const ZOMBIE_DAMAGE = 50;
+// el mordiscón de los carpinchos y los pumas: sin Juggernog (el "titán"),
+// tumban de a tres (el usuario, 2026-09-28: con 50 tumbaban de a dos)
+export const DOG_DAMAGE = 40;
 export const BOSS_DAMAGE = 110;
 // Los potenciadores especiales (las armas de unos segundos) contra los jefes:
 // cada una pega su bossMult (config/weapons.js) y al Luisón, además, esto

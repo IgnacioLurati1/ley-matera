@@ -479,6 +479,11 @@ export default class Infierno extends Arena {
   }
 
   // ---------------- etapas ----------------
+  // (net/Session, el que entra con la pelea empezada) La etapa del anfitrión.
+  lateJoin(stage) {
+    if (stage && stage !== this.stage) this.setStage(stage);
+  }
+
   setStage(st, need) {
     if (this.stage === st) return;
     this.stage = st;

@@ -20,7 +20,9 @@ export const ACTIONS = [
   { id: 'slot2', label: 'Mate 2', key: 'Digit2' },
   { id: 'slot3', label: 'Mate 3', key: 'Digit3' },
   { id: 'next', label: 'Mate siguiente', key: 'KeyQ' },
+  { id: 'shield', label: 'Escudo adelante', key: 'KeyZ' },
   { id: 'vida', label: 'Gaucho life (el penal)', key: 'KeyX' },
+  { id: 'empanada', label: 'Comer la empanada (las que se usan)', key: 'KeyB' },
 ];
 
 const BY_ID = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));

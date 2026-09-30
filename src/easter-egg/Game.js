@@ -18,6 +18,8 @@ import LastZombies from './entities/LastZombies';
 import Powerups from './entities/Powerups';
 import EasterEgg from './entities/EasterEgg';
 import Pombero from './entities/Pombero';
+import Matorral from './entities/Matorral';
+import Yasy from './entities/Yasy';
 import LuzMala from './world/LuzMala';
 import Curandero from './world/Curandero';
 import Ambience from './fx/Ambience';
@@ -31,7 +33,7 @@ import Critters from './world/Critters';
 import Secrets from './world/Secrets';
 import { songOn, silenceSongs } from './world/SongEgg';
 import Music, { SCENES, deathTrack } from './core/music';
-import { markEgg, isKnight, toggleEggTest } from './core/eggs';
+import { markEgg, isKnight, toggleEggTest, eggsDone, eggsTotal } from './core/eggs';
 import { buildHighWindows } from './world/HighWindows';
 import MolinoCinematic from './ui/MolinoCinematic';
 import FarmCinematic from './ui/FarmCinematic';
@@ -55,11 +57,17 @@ import Intro from './ui/Intro';
 import Session from './net/Session';
 import Avatars from './net/Avatars';
 import Weapons from './weapons/Weapons';
+import { weaponTour } from './weapons/weaponTour';
+import Empanadas from './entities/Empanadas';
 import Hud from './ui/Hud';
 import { scoreboard } from './ui/Scoreboard';
 import Menus from './ui/Menus';
-import Arrival, { prewarmMaps, compile as rewarmShaders } from './ui/Arrival';
+import Levels from './ui/Levels';
+import { addPesos } from './core/progress';
+import Arrival, { prewarmMaps, compile as rewarmShaders, warmWorld } from './ui/Arrival';
 import TitleIntro from './ui/TitleIntro';
+import { askSupremo } from './ui/SupremoAsk';
+import DeathTour from './ui/DeathTour';
 import { setBinds, remapTable } from './core/controls';
 import { START_POINTS, ZOMBIE_DAMAGE } from './config/rules';
 import { START_ZONE, ZONES, FEATURES, FIRES, TITLE_CAM, TEXT, MAPS, useMap, modeOf } from './config/map';
@@ -118,7 +126,7 @@ const MIN_FPS = 40;
 // rendimiento, los oídos tapados y el silencio con la ventana atrás.
 const SOUND_MIX = { volWeapons: 1, volZombies: 1, volWorld: 1, volPlayer: 1, volUi: 1, audioOut: 'phones', dynRange: 'normal', reverb: 1, audioPerf: 'auto', muffleLow: true, muffleWater: true, muteBg: false };
 const SOUND_KEYS = ['master', 'music', 'sfx', 'voice', 'voiceMode', ...Object.keys(SOUND_MIX)];
-const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.75, sfx: 0.9, shake: 1, quality: 'high', qualityMode: 'auto', invertY: false, voiceMode: 'murmur', showFps: false, fpsCap: '0', map: 'molino', v: 6, voice: 0.9, subSize: 1, adsSens: 1, adsMode: 'hold', crouchMode: 'hold', sprintMode: 'hold', calmFx: false, upscale: 'off', sharp: 0.8, fsrPct: 0.77, ...SOUND_MIX };
+const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.75, sfx: 0.9, shake: 1, quality: 'high', qualityMode: 'auto', invertY: false, voiceMode: 'murmur', showFps: false, fpsCap: '0', map: 'molino', v: 6, voice: 0.9, subSize: 1, adsSens: 1, adsMode: 'hold', crouchMode: 'hold', sprintMode: 'hold', calmFx: false, upscale: 'off', sharp: 0.8, fsrPct: 0.77, supremo: true, supremoAsked: false, ...SOUND_MIX };
 
 // Entrada vacía: el jugador sigue con su física pero no toca nada (menú abierto en línea).
 const IDLE_INPUT = { mouse: { dx: 0, dy: 0 }, sensitivity: 1, invertY: false, key: () => false, hit: () => false };
@@ -246,6 +254,8 @@ export default class Game {
     this.input.setRemap(remapTable());
     this.input.onLockChange = (locked) => this.onLockChange(locked);
     this.hud = new Hud(root);
+    // la experiencia y los niveles (core/progress: se guardan en el navegador)
+    this.levels = new Levels(this);
     this.hud.setSubScale(this.settings.subSize);
     this.hud.show(false);
     // el HUD va debajo de los menús
@@ -281,6 +291,13 @@ export default class Game {
     this.loop = this.loop.bind(this);
     this.raf = requestAnimationFrame(this.loop);
     this.titleIntro.play();
+    // la pulpería se arma y se compila de antemano (cuando el título ya está
+    // quieto), así entrar no traba
+    setTimeout(() => {
+      const pre = () => this.state === 'title' && this.menus?.pulperia?.preload();
+      if (window.requestIdleCallback) requestIdleCallback(pre, { timeout: 4000 });
+      else pre();
+    }, 6500);
     // los atajos de prueba (Alt+…: puntos, modo dios, saltar al final, el
     // premio del super easter egg…) solo en desarrollo: en el sitio publicado no
     const dev = !!import.meta.env.DEV;
@@ -300,6 +317,12 @@ export default class Game {
           this.weapons.swapStartMate();
           this.hud.subtitle(`Modo prueba: ${isKnight() ? 'Caballero de la Luz, con el Porongo del Caballero en la mano' : 'sin el premio, vuelve el Porongo'}.`, 3);
         }
+      }
+      // Alt+Y, en cualquier lado: 50 pesos para la pulpería (core/progress)
+      if (dev && e.altKey && e.code === 'KeyY') {
+        e.preventDefault();
+        addPesos(50);
+        if (this.state === 'playing') this.hud.subtitle('Modo prueba: +50 pesos para la pulpería.', 2.5);
       }
       // Alt+P, solo jugando solo: 100.000 puntos y nada más
       if (dev && e.altKey && e.code === 'KeyP' && this.state === 'playing' && !this.net) {
@@ -351,6 +374,12 @@ export default class Game {
         e.preventDefault();
         this.weapons.give('mk3');
         this.hud.subtitle('Modo prueba: el Rayo Matero Mark III, con munición llena.', 3);
+      }
+      // Alt+. / Alt+, solo jugando solo: la siguiente o la anterior de todas las
+      // armas, siempre en el mismo orden (weapons/weaponTour.js: probar los tiros)
+      if (dev && e.altKey && (e.code === 'Period' || e.code === 'Comma') && this.state === 'playing' && !this.net) {
+        e.preventDefault();
+        weaponTour(this, e.code === 'Period' ? 1 : -1);
       }
     };
     window.addEventListener('keydown', this.onKey);
@@ -539,12 +568,18 @@ export default class Game {
     this.rounds = new Rounds(this);
     this.lastZ = new LastZombies(this);
     this.powerups = new Powerups(this);
+    // las empanadas: los hornos de barro y lo que hace cada una
+    this.emp = new Empanadas(this);
     this.pombero = new Pombero(this);
     // el gaucho life del penal (va antes del easter egg: los dos le suman cosas al rayo)
     this.vida = FEATURES.vida ? new GauchoLife(this) : null;
     // el cuervo es el jefe de la granja (el Capataz, el del molino)
     this.crow = FEATURES.boss === 'crow' || FEATURES.boss === 'mixed' ? new Crow(this) : null;
     this.ee = FEATURES.egg === 'hoz' ? new FarmEgg(this) : FEATURES.egg === 'gauchos' ? new PenalEgg(this) : FEATURES.egg === 'revelaciones' ? new TowerEgg(this) : FEATURES.egg === 'reto' ? new TowerChallenge(this) : FEATURES.egg === 'mateendrache' ? new CastleEgg(this) : FEATURES.egg === 'pacto' ? new EsterosEgg(this) : new EasterEgg(this);
+    // La Tapera: el matorral de atrás de la atahona y sus Yasy (después del
+    // easter egg: la Yerba Madre es su sexta planta)
+    this.matorral = FEATURES.egg === 'hoz' ? new Matorral(this) : null;
+    this.yasy = this.matorral ? new Yasy(this) : null;
     // el paso previo del Pack-a-Pava (uno distinto en cada mapa)
     this.papq = new PapQuest(this);
     // la cinemática de entrada (arma sus muñecos ya, para que se compilen en la carga)
@@ -572,6 +607,8 @@ export default class Game {
 
   // Saca lo que quedó de la animación de fin de partida.
   clearEnd() {
+    this.tour?.dispose();
+    this.tour = null;
     this.endCam = null;
     this.endBody?.dispose();
     this.endBody = null;
@@ -599,6 +636,9 @@ export default class Game {
   // ---------------- flujo del juego ----------------
   startGame() {
     if (this.state === 'arriving') return;
+    // la primera partida con los seis easter eggs: ¿el Mate Supremo en la
+    // caja? (ui/SupremoAsk; contestada, arranca)
+    if (askSupremo(this, () => this.startGame())) return;
     this.audio.resume();
     // pantalla de carga con la postal; en línea el anfitrión da la orden de
     // arranque y espera a que carguen todos (ui/Arrival)
@@ -628,6 +668,8 @@ export default class Game {
   // Engancha una sala ya conectada: de acá en más se sincroniza la partida.
   attachNet(net) {
     this.net = new Session(this, net);
+    // (el invitado contesta lo del Mate Supremo mientras espera al anfitrión)
+    if (this.net.guest) askSupremo(this);
     return this.net;
   }
 
@@ -721,18 +763,33 @@ export default class Game {
   // El jugador de pie más cercano; los tirados no cuentan (null si no queda nadie).
   // Al sumergido no lo buscan (wet: los yacarés, que sí).
   nearestPlayer(x, z, y = 0, wet = false) {
-    if (!this.net) return this.player.canBeHit() && (wet || !submerged(this.player)) ? this.player : null;
+    // Ojos de Vidrio (una empanada): no ven a nadie
+    if (this.emp?.blind()) return null;
+    // (maizIn: escondido en una mata del Maizaster, entities/maizaster.js)
+    if (!this.net) return this.player.canBeHit() && !this.player.maizIn && (wet || !submerged(this.player)) ? this.player : null;
     return this.net.nearest(x, z, y, wet);
   }
 
   // Le pega a quien corresponda: si es un jugador remoto, se le avisa.
+  // (from suele ser z.pos: con eso se sabe qué zombie pegó, para el escudo:
+  // world/ShieldUpgrade; al invitado se le manda su número, zi)
   damagePlayer(target, amount, from) {
     if (!target) return;
+    const src = this.zombieAt(from);
     if (target === this.player) {
-      this.player.damage(amount, from);
+      this.player.damage(amount, from, false, src);
       return;
     }
-    this.net?.net.to(target.id, { t: 'hurt', a: amount, x: +from.x.toFixed(2), z: +from.z.toFixed(2) });
+    this.net?.net.to(target.id, { t: 'hurt', a: amount, x: +from.x.toFixed(2), z: +from.z.toFixed(2), zi: src ? src.id & 0xffff : undefined });
+  }
+
+  // El zombie cuya posición es esa (el mismo vector), o null.
+  zombieAt(pos) {
+    const Z = this.zombies;
+    if (!pos || !Z) return null;
+    if (Z.boss?.pos === pos) return Z.boss;
+    for (const z of Z.pool) if (z.active && z.pos === pos) return z;
+    return null;
   }
 
   // Atajo de prueba (Alt+K): plata, luz, puertas abiertas y el Abuelo esperando
@@ -745,8 +802,14 @@ export default class Game {
     for (const it of this.interact.list) if (it.kind === 'door' && !it.door.open) this.interact.openDoor(it.door);
     this.ee.debugFinal();
     this.papq?.finish();
+    // la granja: la hoz al máximo (de la Muerte y con el bastón de oro del Yasy)
+    if (FEATURES.egg === 'hoz') {
+      this.player.baston = true;
+      if (this.yasy) this.yasy.goldDone = true;
+      this.weapons.give('hoz', 1);
+    }
     const msg = FEATURES.farm
-      ? 'Modo prueba: 100.000 puntos, todo abierto. La yerba ya está empaquetada: el prado te espera al fondo del corral.'
+      ? 'Modo prueba: 100.000 puntos, todo abierto y la Hoz de Oro de la Muerte en la mano. La yerba ya está empaquetada: el prado te espera al fondo del corral.'
       : FEATURES.penal
         ? 'Modo prueba: 100.000 puntos, todo abierto. Los tres gauchos están libres y tenés todo: el espinillo te espera en el cerro.'
         : FEATURES.egg === 'reto'
@@ -825,8 +888,10 @@ export default class Game {
     this.audio.setCine(false);
     this.sceneOn = false;
     this.cheated = false;
+    this.levels.newGame();
     this.weapons.reset();
     this.player.reset();
+    this.emp?.newRun();
     // en línea cada uno arranca al lado del otro, no encimados
     const id = this.net?.id || 0;
     if (id > 0) {
@@ -997,7 +1062,11 @@ export default class Game {
     if (!song) this.audio.gameOver();
     this.post.flash(0.3);
     this.startEnd();
-    this.later(END_SECS, showMenu);
+    // después del alma, el paneo por el mapa (ui/DeathTour.js) y recién ahí el menú
+    this.later(END_SECS, () => {
+      if (this.state !== 'over' || !this.endCam || this.tour) return;
+      this.tour = new DeathTour(this, showMenu);
+    });
   }
 
   netRole() {
@@ -1044,6 +1113,10 @@ export default class Game {
     const cam = this.camera;
     e.t += dt;
     this.endBody?.update(dt);
+    if (this.tour) {
+      this.tour.update(dt);
+      return;
+    }
     if (e.t < 1.55) {
       // la caída: la vista se va al piso y se tuerce
       const k = Math.min(1, e.t / 1.1);
@@ -1099,11 +1172,17 @@ export default class Game {
     const was = isKnight();
     // (el Challenge de la torre no cuenta: su final es la escalera al cielo)
     if (!this.cheated && this.modeNow === 'story' && markEgg(this.mapId) && !was && isKnight()) this.stats.knight = true;
+    // la experiencia: el easter egg (el Challenge de la torre, menos) y, con
+    // los seis, el super easter egg (una sola vez)
+    this.levels.egg({ challenge: this.modeNow !== 'story' });
+    if (this.modeNow === 'story' && eggsDone().length === eggsTotal()) this.levels.superEgg();
     if (this.stats.round > this.best) {
       this.best = this.stats.round;
       store.set(this.bestKey, this.best);
     }
     this.input.unlock();
+    // (el cartel de "hacé clic para seguir jugando" no queda encima del final)
+    this.menus.showClick(false);
     this.hud.show(false);
     this.audio.stopAmbience();
     this.weather.stopAudio();
@@ -1302,7 +1381,13 @@ export default class Game {
     if (this.state === 'playing' || this.state === 'paused') {
       const tok = (this.rewarmTok = (this.rewarmTok || 0) + 1);
       setTimeout(() => {
-        if (tok === this.rewarmTok && (this.state === 'playing' || this.state === 'paused')) rewarmShaders(this).catch(() => {});
+        if (tok === this.rewarmTok && (this.state === 'playing' || this.state === 'paused'))
+          rewarmShaders(this)
+            .then(() => {
+              // (y el mapa entero, con las variantes de la calidad nueva)
+              if (tok === this.rewarmTok && (this.state === 'playing' || this.state === 'paused')) warmWorld(this);
+            })
+            .catch(() => {});
       }, 250);
     }
   }
@@ -1358,11 +1443,15 @@ export default class Game {
       }
     }
     this.music?.tick(dt);
-    if (this.state === 'title') this.titleCam(dt);
+    // un menú con escena 3D propia (la pulpería, la armería): se dibuja ella
+    // sola, sin el mundo de atrás (menus.stage = { render(renderer, dt) })
+    const stage = this.state === 'title' ? this.menus?.stage : null;
+    if (stage) stage.render(this.renderer, dt);
+    else if (this.state === 'title') this.titleCam(dt);
     else if (this.state === 'playing' || this.state === 'over') this.update(dt);
     // las cinemáticas de la granja y el penal pasan adentro del mundo
     else if (this.state === 'won' && this.cine?.update) this.cine.update(dt);
-    this.render(dt);
+    if (!stage) this.render(dt);
     this.input.endFrame();
   }
 
@@ -1445,9 +1534,12 @@ export default class Game {
     this.arena.update(dt);
     A.cat = 'ui';
     this.powerups.update(dt);
+    this.emp?.update(dt, active && !ghost ? input : null);
     A.cat = 'zombies';
     this.lastZ?.update(dt);
     this.pombero.update(dt);
+    this.matorral?.update(dt);
+    this.yasy?.update(dt);
     this.crow?.update(dt);
     A.cat = null;
     this.luz.update(dt);

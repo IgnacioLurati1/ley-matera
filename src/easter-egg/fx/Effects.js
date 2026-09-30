@@ -699,5 +699,7 @@ export default class Effects {
     this.shake = Math.max(0, this.shake - dt * 2.2);
     // la descarga de Electric Cherry (fx/cherryFx.js, solo donde está el perk)
     this.cherry?.update(dt, camera);
+    // las matas del Maizaster (entities/maizaster.js, solo donde está el perk)
+    this.maiz?.update(dt);
   }
 }

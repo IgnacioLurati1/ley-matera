@@ -15,6 +15,9 @@ const STATES = {
   fog: { rain: 0, storm: 0, fog: 0.075, fogColor: 0x4c5555, wind: 0.05, cloud: 0.6, mist: 1, blood: 0 },
   wind: { rain: 0, storm: 0, fog: 0.036, fogColor: 0x0d0f14, wind: 1, cloud: 0.45, mist: 0, blood: 0 },
   blood: { rain: 0, storm: 0, fog: 0.045, fogColor: 0x3a0e0a, wind: 0.35, cloud: 0.3, mist: 0.35, blood: 1 },
+  // la Cárcel de las Almas del penal (world/Cerro.js): tormenta con el cielo
+  // colorado y poca niebla (el redondel es grande: se tiene que ver entero)
+  carcel: { rain: 0.7, storm: 1, fog: 0.02, fogColor: 0x24090a, wind: 0.8, cloud: 1, mist: 0, blood: 0.6 },
   // ronda de perros: niebla baja y relámpagos secos, sin lluvia
   dogs: { rain: 0, storm: 1, fog: 0.07, fogColor: 0x262a33, wind: 0.35, cloud: 1, mist: 0.9, blood: 0 },
 };

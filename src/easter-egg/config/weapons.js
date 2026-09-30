@@ -24,7 +24,8 @@ export const WEAPONS = {
     spread: 0.022,
     range: 60,
     pen: 1,
-    sound: 'pistol',
+    // (el sintetizado de siempre, no el grabado de la pistola: core/weaponSfx.js ALIAS)
+    sound: 'porongo',
     recoil: 0.05,
     chalk: 'tall',
     pap: {
@@ -467,7 +468,7 @@ export const WEAPONS = {
     damage: 2200,
     headMult: 1,
     range: 60,
-    sound: 'ray',
+    sound: 'luzmala',
     recoil: 0.06,
     special: true,
     wisp: { count: 3, speed: 12, turn: 5, radius: 2.8, damage: 2200, life: 4.5 },
@@ -681,7 +682,7 @@ export const WEAPONS = {
     spread: 0.07,
     range: 30,
     pen: 3,
-    sound: 'shotgun',
+    sound: 'gut',
     recoil: 0.3,
     // se tira de la cadera: no se apunta con la mira
     noAds: true,
@@ -701,7 +702,7 @@ export const WEAPONS = {
     damage: 6000,
     headMult: 1,
     range: 60,
-    sound: 'launcher',
+    sound: 'gut',
     recoil: 0.26,
     noAds: true,
     special: true,
@@ -874,7 +875,7 @@ export const WEAPONS = {
     damage: 5000,
     headMult: 1,
     range: 120,
-    sound: 'ray',
+    sound: 'oro',
     recoil: 0.05,
     special: true,
     projectile: { speed: 80, gravity: 0, radius: 2.4, damage: 5000, splash: 1500, color: 0xffd34a, size: 0.14, glow: true },
@@ -986,6 +987,57 @@ export const WEAPONS = {
       rpm: 120,
       // y cada reventón suelta tres gotas que revientan de nuevo
       liquid: { speed: 38, gravity: 7, radius: 3.8, self: 20, boil: 5, secs: 9, heat: 30, split: 3 },
+    },
+  },
+  // El Mate Supremo: el otro premio del super easter egg (core/eggs.js,
+  // weapons/Supremo.js). Sale en la caja en todos los mapas, pero solo para el
+  // que completó los seis y lo tiene prendido en Opciones (`egg`); cuenta como
+  // un especial de la caja. Rompe el juego a propósito (lo pidió el usuario):
+  // `infinite`, la reserva no se gasta (el cargador sí, y se llena solo:
+  // `regen`, balas por segundo después de `delay` sin tirar). `bossFrac`: el
+  // pedazo de la vida de un jefe que se lleva cada golpe (si es más que el daño).
+  // `sol`: donde termina el rayo; `juicio`: el clic derecho; `aura`: el que se
+  // acerca con el mate en la mano.
+  supremo: {
+    name: 'Mate Supremo',
+    desc: 'Izquierdo: rayo del sol. Derecho: el Juicio.',
+    kind: 'supremo',
+    special: true,
+    wonder: true,
+    egg: true,
+    box: 2,
+    auto: true,
+    noAds: true,
+    infinite: true,
+    rpm: 600,
+    mag: 60,
+    reserve: 999,
+    reload: 1.9,
+    damage: 60000,
+    headMult: 1.5,
+    spread: 0,
+    range: 200,
+    sound: 'silent',
+    recoil: 0.018,
+    bossFrac: 0.03,
+    regen: { rate: 6, delay: 0.35 },
+    sol: { radius: 4.5, chain: 6, chainR: 13, chainDmg: 40000 },
+    // (el Juicio barre todo el mapa: `all`; la ola tarda `wave` s en llegar al
+    // más lejano; a cualquier jefe lo aniquila: Zombies.annihilate)
+    juicio: { cost: 10, charge: 0.6, all: true, wave: 1.6, cd: 2.5, lead: 0.15, sigil: 7 },
+    aura: { radius: 2.8, tick: 0.15, boss: 8000, bossFrac: 0.012 },
+    pap: {
+      name: 'Los Seis Soles',
+      desc: 'Blanco prisma. Todo más grande.',
+      mag: 99,
+      reserve: 999,
+      rpm: 720,
+      damage: 150000,
+      bossFrac: 0.05,
+      regen: { rate: 12, delay: 0.25 },
+      sol: { radius: 6, chain: 10, chainR: 16, chainDmg: 90000 },
+      juicio: { cost: 8, charge: 0.5, all: true, wave: 1.4, cd: 1.6, lead: 0.12, sigil: 8.5 },
+      aura: { radius: 3.6, tick: 0.12, boss: 16000, bossFrac: 0.02 },
     },
   },
 };

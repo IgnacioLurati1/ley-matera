@@ -5,6 +5,7 @@ import { ACT } from '../config/map';
 import { fireflies } from '../fx/Fireflies';
 import { shieldModel } from './shieldModels';
 import { buildJar } from './jarModels';
+import ShieldUpgrade from './ShieldUpgrade';
 
 // Cosas para hacer en las habitaciones, además de sobrevivir:
 //  · Frascos de las Ánimas: los zombies que caen cerca les mandan el alma;
@@ -70,6 +71,8 @@ export default class Activities {
     this.buildTraps();
     this.buildRadios();
     this.buildShield();
+    // la mejora del escudo de cada mapa (world/ShieldUpgrade)
+    this.upg = new ShieldUpgrade(game, this);
   }
 
   // ---------------- frascos de las ánimas ----------------
@@ -124,8 +127,9 @@ export default class Activities {
     return JAR_NEED[Math.min(this.filled, JAR_NEED.length - 1)] + 3 * (n - 1);
   }
 
-  onKill(z) {
+  onKill(z, info) {
     const g = this.g;
+    this.upg?.onKill(z, info);
     let best = null;
     let bd = JAR_RANGE;
     for (const j of this.jars) {
@@ -344,7 +348,8 @@ export default class Activities {
     }
   }
 
-  // Arma o entrega el escudo cuando lo pide un invitado.
+  // Arma el escudo (y queda en la mesa: 'built') o, si ya estaba armado, lo
+  // entrega (true). También cuando lo pide un invitado.
   benchUse(remote = false) {
     const g = this.g;
     if (!this.shieldBuilt) {
@@ -354,6 +359,7 @@ export default class Activities {
       g.audio.boardRepair(new THREE.Vector3(ACT.bench.pos[0], 1, ACT.bench.pos[1]));
       g.net?.event('shield');
       if (!remote) g.hud.achievement(ACT.shield.name, 'Te cubre la espalda de los golpes');
+      return 'built';
     }
     return true;
   }
@@ -628,26 +634,21 @@ export default class Activities {
       pos: new THREE.Vector3(ACT.bench.pos[0], by + 1.1, ACT.bench.pos[1]),
       radius: 2.1,
       prompt: () => {
-        if (g.player.shield) return null;
+        if (g.player.shield) return this.canSwap() ? { text: 'cambiar por el escudo mejorado', noCost: true } : null;
         if (this.shieldBuilt) return { text: 'agarrar el escudo', noCost: true };
         const missing = Object.values(this.parts).filter((p) => !p.taken).length;
         if (missing) return { text: `Mesa de trabajo: faltan ${missing} ${missing === 1 ? 'pieza' : 'piezas'} para el escudo`, noCost: true, info: true };
         return { text: 'armar el escudo', noCost: true };
       },
       cost: () => {
-        if (g.player.shield) return 1;
+        if (g.player.shield) return this.canSwap() ? 0 : 1;
         if (this.shieldBuilt) return 0;
         return Object.values(this.parts).every((p) => p.taken) ? 0 : 1;
       },
       use: () => {
-        if (g.player.shield) return false;
-        if (!this.shieldBuilt) {
-          if (!Object.values(this.parts).every((p) => p.taken)) return false;
-          this.shieldBuilt = true;
-          g.hud.setParts(null);
-          g.audio.boardRepair(new THREE.Vector3(ACT.bench.pos[0], 1, ACT.bench.pos[1]));
-          g.hud.achievement(ACT.shield.name, 'Te cubre la espalda de los golpes');
-        }
+        if (g.player.shield && !this.canSwap()) return false;
+        // armarlo lo deja en la mesa (que se vea cómo quedó); agarrarlo es otra F
+        if (!this.shieldBuilt) return this.benchUse() === 'built';
         this.equipShield();
         return true;
       },
@@ -684,23 +685,43 @@ export default class Activities {
       }
       p.obj.rotation.y += dt * 0.6;
     }
-    this.benchShield.visible = this.shieldBuilt && !g.player.shield;
+    this.benchShield.visible = this.shieldBuilt && (!g.player.shield || this.canSwap());
     // contador de piezas siempre a la vista hasta armar el escudo
     g.hud.setParts(this.shieldBuilt ? null : Object.values(this.parts).map((p) => p.taken));
   }
 
-  equipShield() {
+  // up: el mejorado (world/ShieldUpgrade: aguanta más y hace lo suyo).
+  equipShield(up = !!this.upg?.done) {
     const g = this.g;
-    g.player.shield = { hp: ACT.shield.hp };
-    g.hud.setShield(1);
+    const max = up ? ACT.shield.up?.hp || ACT.shield.hp : ACT.shield.hp;
+    g.player.shield = { hp: max, max, up: !!up && !!ACT.shield.up };
+    g.hud.setShield(1, g.player.shield.up);
   }
 
-  // Un golpe por la espalda lo frena el escudo.
-  shieldHit(amount, from) {
+  // Con la mejora hecha, el escudo común se cambia en la mesa por el mejorado.
+  canSwap() {
+    const s = this.g.player.shield;
+    return !!s && !s.up && !s.hot && !!this.upg?.done;
+  }
+
+  // Se terminó la mejora: en la mesa queda el mejorado.
+  benchUp() {
+    const old = this.benchShield.children[0];
+    const up = shieldModel(this.M, this.g.mapId, true);
+    up.rotation.copy(old.rotation);
+    up.position.copy(old.position);
+    old.removeFromParent();
+    this.benchShield.add(up);
+  }
+
+  // Un golpe que frena el escudo (el de la espalda o, puesto adelante, el de
+  // adelante). src: el zombie que pegó, si se sabe.
+  shieldHit(amount, from, src = null) {
     const g = this.g;
     const s = g.player.shield;
     if (!s) return;
     s.hp -= amount;
+    this.upg?.onBlock(from, src);
     g.audio.shieldHit();
     g.fx.addShake(0.12);
     g.fx.sparks(tmpV.set(g.player.pos.x, g.player.pos.y + 1.2, g.player.pos.z), 0.6, { x: from.x - g.player.pos.x, y: 0.3, z: from.z - g.player.pos.z });
@@ -708,7 +729,7 @@ export default class Activities {
       g.player.shield = null;
       g.hud.setShield(null);
       g.audio.shieldBreak();
-    } else g.hud.setShield(s.hp / ACT.shield.hp);
+    } else g.hud.setShield(s.hp / (s.max || ACT.shield.hp), s.up);
   }
 
   // ---------------- general ----------------
@@ -727,10 +748,12 @@ export default class Activities {
     this.updateJars(dt);
     this.updateTraps(dt);
     this.updateParts(dt);
+    this.upg?.update(dt);
   }
 
   dispose() {
     for (const t of this.traps) t.snd?.stop();
+    this.upg?.dispose();
   }
 }
 

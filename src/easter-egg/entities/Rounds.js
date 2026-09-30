@@ -52,6 +52,7 @@ export default class Rounds {
     } else {
       g.audio.roundEnd(m.n);
       g.hud.roundEnd(m.n);
+      g.levels?.round(m.n);
       if (this.flood) {
         this.flood = false;
         this.floodEnd();
@@ -216,6 +217,11 @@ export default class Rounds {
     if (z?.dog) this.lastDogPos = z.pos.clone();
   }
 
+  // El Kaboom: por `secs` segundos no sale nadie de la ronda (entities/Zombies.js nuke).
+  holdSpawns(secs) {
+    this.spawnT = Math.max(this.spawnT || 0, secs);
+  }
+
   // Un zombie trabado o perdido vuelve a la cola.
   requeue(n) {
     this.toSpawn += n;
@@ -252,9 +258,10 @@ export default class Rounds {
       // en la torre, cada tanto sale un especial en vez de un muerto
       const special = this.specials > 0 && !(this.specialT > 0) && Math.random() < Math.min(0.5, (this.specials * 1.4) / this.toSpawn);
       if (special) {
-        // (la torre mezcla caballos y carpinchos; el estero, yacarés)
-        const kind = FEATURES.special === 'mixed' ? (Math.random() < 0.5 ? 'horse' : 'dog') : null;
-        if (g.zombies.spawnDog(Math.max(150, Math.floor(this.health * (kind ? 0.45 : 0.6))), kind)) {
+        // (la torre mezcla caballos y carpinchos; el estero, yacarés; el
+        // Challenge inundado, yacarés: g.ee.specialKind)
+        const kind = FEATURES.special === 'mixed' ? g.ee?.specialKind?.() || (Math.random() < 0.5 ? 'horse' : 'dog') : null;
+        if (g.zombies.spawnDog(Math.max(150, Math.floor(this.health * (kind && kind !== 'yacare' ? 0.45 : 0.6))), kind)) {
           this.specials--;
           this.toSpawn--;
           this.spawnT = this.delay;
@@ -321,6 +328,7 @@ export default class Rounds {
     this.breakT = FEATURES.tower ? 4 : ROUND_BREAK;
     g.audio.roundEnd(this.round);
     g.hud.roundEnd(this.round);
+    g.levels?.round(this.round);
     g.net?.event('round', { n: this.round, phase: 'break' });
   }
 }

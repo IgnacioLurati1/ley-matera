@@ -388,7 +388,8 @@ export default class Intro {
     if (g.stats) g.stats.time = 0;
     const Z = ZONES[START_ZONE];
     g.hud.location(Z.name, Z.sub || '');
-    if (g.vida?.active) g.hud.subtitle('Gaucho life: con clic le tirás electricidad a las máquinas. Mantené F para volver a tu cuerpo.', 6);
+    // (el mismo de GauchoLife.startRun: las teclas ya están en su cartel)
+    if (g.vida?.active) g.hud.subtitle('Gaucho life: tu rayo prende las máquinas.', 4);
     else g.hud.subtitle('Aguantá lo que puedas.', 4);
     if (!g.input.locked) g.menus.showClick(true);
   }

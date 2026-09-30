@@ -207,4 +207,54 @@ PERKS.cherry = {
   },
 };
 
+// Solo en el Challenge de la torre: Dying Wish (el de Black Ops 4,
+// entities/dyingWish.js). El golpe que te iba a tirar no te tira: 5 segundos
+// inmortal, con la adrenalina a mil; después tarda en volver.
+// La yerba: Unión, la de Las Marías ("Extremaunión": los santos óleos del que se va).
+PERKS.wish = {
+  name: 'Dying Wish',
+  cost: 4000,
+  color: '#a3123a',
+  glyph: '✟',
+  desc: 'El golpe que te iba a tirar no te tira: 5 segundos inmortal. Tarda 3 minutos en volver.',
+  label: {
+    brand: 'Extremaunión',
+    tagline: 'SUAVE HASTA EL ÚLTIMO MATE',
+    bg: '#f4c21c',
+    band: '#161214',
+    bandText: '#f4c21c',
+    accent: '#c8102e',
+    leaf: 'rgba(200,16,46,0.14)',
+    text: '#1d3c8f',
+    brandColor: '#1d3c8f',
+    brandSize: 62,
+    stroke: 'rgba(255,248,220,0.9)',
+  },
+};
+
+// Solo en La Tapera (y en el Challenge de la torre): el Maizaster
+// (entities/maizaster.js). De vez en cuando, el muerto que tirás deja una mata
+// de pasto alto y seco: adentro, los zombies no te ven.
+// La yerba: Nobleza Gaucha, la del gaucho en el paquete ("Maleza Gaucha").
+PERKS.maiz = {
+  name: 'Maizaster',
+  cost: 3000,
+  color: '#b8923a',
+  glyph: '⌇',
+  desc: 'A veces, el que matás deja una mata de pasto alto y seco. Adentro, los zombies no te ven.',
+  label: {
+    brand: 'Maleza Gaucha',
+    tagline: 'NI LOS MUERTOS TE VEN',
+    bg: '#e3c566',
+    band: '#4a3214',
+    bandText: '#f3e2a0',
+    accent: '#7a2a12',
+    leaf: 'rgba(90,60,20,0.18)',
+    text: '#3a2408',
+    brandColor: '#7a2a12',
+    brandSize: 56,
+    stroke: 'rgba(255,245,210,0.9)',
+  },
+};
+
 export const PERK_ORDER = ['jugg', 'revive', 'speed', 'doubletap', 'mule', 'deadshot'];

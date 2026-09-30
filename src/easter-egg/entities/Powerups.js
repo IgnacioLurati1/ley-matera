@@ -134,7 +134,8 @@ export default class Powerups {
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0x40ff60, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.7 }));
     glow.scale.setScalar(1.6);
     mesh.add(glow);
-    this.items.push({ id: m.id, type: m.type, mesh, t: 0, pos: new THREE.Vector3(m.x, m.y || 0, m.z) });
+    // (age: el que entra tarde lo recibe con los segundos que ya lleva en el piso)
+    this.items.push({ id: m.id, type: m.type, mesh, t: Number.isFinite(m.age) ? m.age : 0, pos: new THREE.Vector3(m.x, m.y || 0, m.z) });
     g.audio.powerupSpawn(mesh.position);
   }
 

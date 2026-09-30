@@ -57,3 +57,9 @@ export const isKnight = () => (!!import.meta.env.DEV && eggTest()) || eggsDone()
 
 // El mate con el que se arranca.
 export const startMate = () => (isKnight() ? 'caballero' : 'porongo');
+
+// El Mate Supremo (weapons/Supremo.js): sale en la caja para el que ganó el
+// super easter egg, salvo que lo apague en Opciones (settings.supremo).
+export const supremoOn = (settings) => isKnight() && settings?.supremo !== false;
+// La pregunta de la primera partida con los seis (ui/SupremoAsk.js).
+export const supremoAsk = (settings) => isKnight() && !settings?.supremoAsked;

@@ -12,9 +12,12 @@ import PenalLift from './PenalLift';
 import SongEgg from '../world/SongEgg';
 import Cuchillo, { buildCleaver, knifeName } from '../weapons/Cuchillo';
 import PenalGhosts from './PenalGhosts';
+import PenalPlane from '../world/penalPlane';
 import { keyLabel } from '../core/controls';
 import { fireflies } from '../fx/Fireflies';
 import { reachableSpot } from './reach';
+import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
+import PenalForge from './penalForge';
 
 // Easter egg del penal: "Los Tres Gauchos". En tres celdas hay tres gauchos
 // presos (Anacleto en el pabellón, Cirilo en los calabozos, Benito en la
@@ -163,6 +166,8 @@ export default class PenalEgg {
     this.M = game.world.M;
     this.root = new THREE.Group();
     game.scene.add(this.root);
+    // el avión que cruza el cielo de lejos cada tanto (world/penalPlane.js)
+    this.plane = new PenalPlane(game, this.root);
     this.fight = false;
     // 0 nadie habló, 1 perros, 2 Anacleto libre, 3 ácido/alcaide, 4 Cirilo libre, 5 silla, 6 Benito libre, 7 altar
     this.step = 0;
@@ -250,7 +255,7 @@ export default class PenalEgg {
       ...Object.values(this.tableParts),
       ...Object.values(this.keyObjs).flatMap((k) => [k.g, k.glow]),
       this.kitObj, this.encRing, this.chairGlow, this.safeDoor, this.mateObj,
-      this.altarMate, this.altarYerba, this.altarBomb, this.altarGlow,
+      this.altarMate, this.altarYerba, this.altarBomb, this.altarGlow, this.altarSup,
       this.yerbaObj, this.yerbaGlow, this.beam, this.voz.root,
     ];
     for (const o of dyn) if (o) o.userData.dynamic = true;
@@ -745,6 +750,12 @@ export default class PenalEgg {
     this.altarGlow.position.set(x, y + 1.2, z);
     this.altarGlow.visible = false;
     this.root.add(this.altarGlow);
+    // el mate supremo armado (el mate y la bombilla en la piedra): el Mate
+    // Supremo de verdad (weapons/Supremo.js), con sus reliquias girando
+    this.altarSup = buildSupremoDisplay(this.g.textures, 0.3);
+    this.altarSup.position.set(x, y + 0.92, z);
+    this.altarSup.visible = false;
+    this.root.add(this.altarSup);
   }
 
   // Las llaves (flotan donde aparecen) y la yerba dorada del patio.
@@ -1390,6 +1401,8 @@ export default class PenalEgg {
   sceneCam(dt) {
     const S = this.scene;
     if (!S) return false;
+    // (la del espinillo se maneja sola: entities/penalForge.js)
+    if (S.forge) return S.update(dt);
     const g = this.g;
     S.t += dt;
     const t = S.t;
@@ -1529,11 +1542,28 @@ export default class PenalEgg {
     this.netSync();
     if (Object.values(this.altar).every(Boolean)) {
       this.fight = true;
-      this.announce('El mate supremo está armado en el espinillo... algo se mueve entre las banderas.', 4, true);
-      g.audio.bossArrive();
       this.netSync();
-      g.later(4, () => g.arena.start());
+      // se arma y muestra lo que es: la escena del espinillo (la ven todos);
+      // cuando termina, viene el Gil (endForge)
+      g.net?.event('pee', { scene: 3 });
+      this.playForge();
     }
+  }
+
+  // El Mate Supremo se arma en el espinillo (entities/penalForge.js).
+  playForge() {
+    if (this.scene) return;
+    this.scene = new PenalForge(this, () => this.endForge());
+  }
+
+  endForge() {
+    const g = this.g;
+    this.scene = null;
+    if (g.net?.guest) return;
+    // (termina la de todos)
+    g.net?.event('pee', { scene: 4 });
+    this.announce('Algo se mueve entre las banderas...', 3, true);
+    g.later(1, () => g.arena.start());
   }
 
   // ---------------- ganchos del juego ----------------
@@ -2064,6 +2094,15 @@ export default class PenalEgg {
       g.hud.subtitle('El Pack-a-Pava está ocupado: el cuchillo volvió a tu mano.', 3);
       return;
     }
+    // la escena del espinillo: 3 arranca, 4 terminó la del anfitrión
+    if (m.scene === 3) {
+      this.playForge();
+      return;
+    }
+    if (m.scene === 4) {
+      if (this.scene?.forge) this.scene.out();
+      return;
+    }
     // la escena de la yerba: 1 arranca, 2 terminó la del anfitrión
     if (m.scene === 2) {
       this.sceneOut();
@@ -2153,6 +2192,7 @@ export default class PenalEgg {
     this.boat.update(dt);
     this.lift.update(dt);
     this.song.update(dt);
+    this.plane.update(dt);
     // los gauchos: los libres se paran y miran a quien tengan cerca
     for (const [id, c] of Object.entries(this.cells)) {
       const r = c.npc;
@@ -2276,12 +2316,17 @@ export default class PenalEgg {
     }
     // el altar (en la cinemática del final no: la escena usa sus copias y la
     // Voz se lleva el mate; mostrar los de acá lo dejaba duplicado en la piedra)
-    if (!g.cine) {
-      this.altarMate.visible = this.altar.mate;
+    // (en la escena del espinillo los maneja ella: entities/penalForge.js)
+    if (!g.cine && !this.scene?.forge) {
+      // (armado, el mate y la bombilla son el Mate Supremo)
+      const armed = this.altar.mate && this.altar.yerba && this.altar.bombilla;
+      this.altarMate.visible = this.altar.mate && !armed;
       this.altarYerba.visible = this.altar.yerba;
-      this.altarBomb.visible = this.altar.bombilla;
+      this.altarBomb.visible = this.altar.bombilla && !armed;
+      this.altarSup.visible = armed;
+      if (armed) animateSupremoDisplay(this.altarSup, dt, g.time);
     }
-    this.altarGlow.visible = this.fight && !g.arena?.active;
+    this.altarGlow.visible = this.fight && !g.arena?.active && (!this.scene?.forge || !!this.scene.omenOn);
     // inventario del equipo
     const inv = {
       llave1: this.keys.k1 === 'held',
@@ -2372,6 +2417,7 @@ export default class PenalEgg {
   dispose() {
     this.song?.dispose();
     this.g.hud.setCraftText?.(null);
+    if (this.scene?.forge) this.scene.dispose();
     if (this.scene) window.removeEventListener('keydown', this.scene.onKey);
     this.scene?.el?.remove();
     this.scene = null;

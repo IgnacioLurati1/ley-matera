@@ -27,6 +27,9 @@ const COUNT = { value: 0 };
 const tmpV = new THREE.Vector3();
 // (para las pruebas: qué empuja ahora)
 export const GRASS_PUSH = { push: PUSH, count: COUNT };
+// Lo que empuja en una cinemática (ui/LuisonArrival: los muertos que salen del
+// pajonal): { key, x, y, z, r, loud }, antes que los de la partida.
+export const EXTRA_PUSH = [];
 
 // Lo que va en el shader: después de armar la posición local ("transformed"),
 // cada mata (por su base, así se inclina entera) se corre en el mundo alejándose
@@ -106,6 +109,7 @@ export function makeGrassPush(g, isGrass) {
   };
   return (dt) => {
     n = 0;
+    for (const e of EXTRA_PUSH) add(e.key, e.x, e.y, e.z, e.r, e.loud || 0);
     // el Luisón (el jefe del estero), después uno mismo y los compañeros
     const b = g.zombies?.boss;
     if (b && b.active && !b.dead && b.kind === 'luison') add(b, b.pos.x, b.baseY ?? b.pos.y, b.pos.z, R_BOSS * Math.min(1.3, b.scale || 1), 1);

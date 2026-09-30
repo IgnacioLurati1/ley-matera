@@ -4,6 +4,7 @@ import { WEAPONS } from '../config/weapons';
 import './elementalModels';
 import ElemVm from './elementalFx';
 import ElemSounds from './elementalSounds';
+import ElemHud from './elementalHud';
 
 // Los cuatro mates de la luz del castillo del Mateendrache, en uso: cómo
 // tiran, el tiro cargado de los templados, lo que dejan en el mundo, cómo se
@@ -22,8 +23,9 @@ import ElemSounds from './elementalSounds';
 // le avisa al anfitrión; los demás ven el tiro de cada uno como un "fantasma"
 // (ghost): los mismos efectos y sonidos, sin daño ni easter egg.
 // La recarga y la inspección de cada uno (la mano izquierda, las chispas, los
-// rayitos) están en weapons/elementalFx.js; los sonidos, en
-// weapons/elementalSounds.js.
+// rayitos) y lo que se junta en el mate mientras carga están en
+// weapons/elementalFx.js; el aro de carga alrededor de la mira, en
+// weapons/elementalHud.js; los sonidos, en weapons/elementalSounds.js.
 
 const HEX = { fuego: 0xff6a1a, viento: 0x9affc8, rayo: 0xffe45a, hielo: 0x9adcff };
 const RGB = { fuego: [1, 0.5, 0.15], viento: [0.7, 1, 0.82], rayo: [1, 0.92, 0.5], hielo: [0.66, 0.88, 1] };
@@ -53,9 +55,13 @@ export default class Elementales {
     this.armT = 0;
     this.held = false;
     this.charged = false;
+    // full: la carga ya se llenó (fullAt: cuándo); low: mantenido sin cargas suficientes
+    this.full = false;
+    this.fullAt = -9;
+    this.low = false;
     this.lastT = 0;
     this.buildFx();
-    this.buildHud();
+    this.hud = new ElemHud(this.g);
     this.snd = new ElemSounds(this.g);
     this.vm = new ElemVm(this);
   }
@@ -78,25 +84,6 @@ export default class Elementales {
       cone: new THREE.ConeGeometry(1, 1, 12, 1, true),
       spike: new THREE.ConeGeometry(0.22, 1, 5).translate(0, 0.5, 0),
     };
-  }
-
-  // El aro de carga alrededor de la mira.
-  buildHud() {
-    const el = document.createElement('div');
-    el.style.cssText = 'position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;pointer-events:none;opacity:0;transition:opacity .15s;z-index:3';
-    el.innerHTML = '<svg viewBox="0 0 64 64" width="64" height="64"><circle cx="32" cy="32" r="26" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="5"/><circle class="k" cx="32" cy="32" r="26" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="163.4" stroke-dashoffset="163.4" transform="rotate(-90 32 32)"/></svg>';
-    this.g.hud?.root?.appendChild(el);
-    this.hudEl = el;
-    this.hudArc = el.querySelector('.k');
-  }
-
-  setHud(k, element) {
-    if (!this.hudEl) return;
-    const on = k != null;
-    this.hudEl.style.opacity = on ? '1' : '0';
-    if (!on) return;
-    this.hudArc.setAttribute('stroke-dashoffset', String(163.4 * (1 - k)));
-    this.hudArc.setAttribute('stroke', k >= 1 ? '#ffffff' : `#${HEX[element].toString(16).padStart(6, '0')}`);
   }
 
   // Daño de un mate de la luz: una parte de la vida del muerto (así siguen
@@ -122,6 +109,8 @@ export default class Elementales {
     const now = g.time;
     const dt = Math.min(0.1, Math.max(0, now - this.lastT));
     this.lastT = now;
+    // (si un cuadro no llega acá con el clic mantenido, tick corta la carga)
+    this.inputT = now;
     if (w.state !== 'idle' || p.sprinting) {
       this.cancelCharge();
       return;
@@ -142,23 +131,37 @@ export default class Elementales {
           this.charge = 0;
         }
         this.armT += dt;
-        if (this.armT >= ARM && s.mag >= st.charge.cost) {
-          if (!this.charging) {
-            this.charging = true;
-            this.chargeSnd = this.snd.charge(st.element, true, st.charge.time);
+        if (this.armT >= ARM) {
+          if (s.mag >= st.charge.cost) {
+            if (!this.charging) {
+              this.charging = true;
+              this.chargeSnd = this.snd.charge(st.element, true, st.charge.time);
+              this.hud.start(st.element);
+            }
+            this.charge = Math.min(1, this.charge + dt / st.charge.time);
+            if (this.charge >= 1 && !this.full) {
+              // lista: el aviso, el aro que se clava y el golpe en el mate
+              this.full = true;
+              this.fullAt = now;
+              this.chargeSnd?.full();
+              this.hud.full();
+              this.vm.chargeBurst(st.element, 'full');
+            }
+          } else if (!this.low) {
+            this.low = true;
+            this.hud.start(st.element, true);
           }
-          this.charge = Math.min(1, this.charge + dt / st.charge.time);
-          if (this.charge >= 1) this.chargeSnd?.full();
-          this.setHud(this.charge, st.element);
         }
         return;
       }
       if (!this.held) return;
       const full = this.charging && this.charge >= 1;
+      if (this.charging || this.low) this.hud.release(full);
       this.cancelCharge();
       this.charged = full;
       w.fire(st);
       this.charged = false;
+      if (full) this.vm.chargeBurst(st.element, 'release');
       return;
     }
     const trigger = input.mouse.leftPressed || (w.buffered && input.mouse.left);
@@ -178,7 +181,9 @@ export default class Elementales {
     this.charging = false;
     this.charge = 0;
     this.armT = 0;
-    this.setHud(null);
+    this.full = false;
+    this.low = false;
+    this.hud.cancel();
     if (this.chargeSnd) {
       this.chargeSnd.stop();
       this.chargeSnd = null;
@@ -304,7 +309,7 @@ export default class Elementales {
       const feet = ghost ? new THREE.Vector3(origin.x, origin.y - 1.6, origin.z) : g.player.pos;
       const start = feet.clone().addScaledVector(dir, 2.5);
       start.y = g.world.floorAt(start.x, start.z, feet.y + 0.5);
-      this.zones.push({ kind: 'remolino', pos: start, dir, r: 3.3, t: 0, life: 5.5, tick: 0, st, mesh: this.tornadoMesh(start), hits: new Set(), ghost });
+      this.zones.push({ kind: 'remolino', pos: start, dir, r: 3.3, t: 0, life: 5.5, tick: 0, st, mesh: this.tornadoMesh(start), hits: new Set(), ghost, snd: this.snd.zoneLoop('viento', start.clone().setY(start.y + 1)) });
       this.shotSound('viento', st, muzzle, true, ghost);
       g.fx.blastCone(muzzle, fwd, 6);
       return;
@@ -389,7 +394,7 @@ export default class Elementales {
       const halo = new THREE.Mesh(this.geo.ball, this.mats.frost);
       halo.scale.setScalar(0.7);
       mesh.add(core, halo);
-      this.spawn({ kind: 'tormenta', st, charged: true, pos: muzzle.clone(), vel: vel.clone(), gravity: 0, mesh, life: 5, zapT: 0, ghost });
+      this.spawn({ kind: 'tormenta', st, charged: true, pos: muzzle.clone(), vel: vel.clone(), gravity: 0, mesh, life: 5, zapT: 0, ghost, snd: this.snd.zoneLoop('rayo', muzzle) });
       this.shotSound('rayo', st, muzzle, true, ghost);
       return;
     }
@@ -488,9 +493,10 @@ export default class Elementales {
     }
     g.scene.add(grp);
     if (!ghost) g.ee?.onElemental?.('hielo', point, true);
-    this.zones.push({ kind: 'ventisca', pos: new THREE.Vector3(point.x, y, point.z), r: 5, t: 0, life: 4.5, tick: 0, st, mesh: grp, spikes, ghost });
+    // (la ventisca grabada se repite mientras dura: snd.blizzard la devuelve)
+    const snd = this.snd.blizzard(point);
+    this.zones.push({ kind: 'ventisca', pos: new THREE.Vector3(point.x, y, point.z), r: 5, t: 0, life: 4.5, tick: 0, st, mesh: grp, spikes, ghost, snd });
     g.fx.frost(new THREE.Vector3(point.x, y, point.z), 30);
-    this.snd.blizzard(point);
   }
 
   // ---------------- proyectiles y zonas ----------------
@@ -504,11 +510,13 @@ export default class Elementales {
 
   remove(p) {
     p.mesh?.removeFromParent();
+    p.snd?.stop(0.3);
   }
 
   update(dt) {
     const g = this.g;
     this.tick();
+    this.hud.update(dt, this.charging ? this.charge : 0);
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const p = this.shots[i];
       p.t += dt;
@@ -535,7 +543,10 @@ export default class Elementales {
         if (Math.random() < 0.5) g.fx.sparkle(p.pos, RGB.fuego, 1, 0.1);
       } else if (p.kind === 'hielo') {
         if (Math.random() < 0.7) g.fx.sparkle(p.pos, RGB.hielo, 1, 0.05);
-      } else if (p.kind === 'tormenta') this.stormTick(p, dt);
+      } else if (p.kind === 'tormenta') {
+        this.stormTick(p, dt);
+        p.snd?.move(p.pos);
+      }
     }
     for (let i = this.zones.length - 1; i >= 0; i--) {
       const z = this.zones[i];
@@ -543,6 +554,14 @@ export default class Elementales {
       if (z.kind === 'erupcion') this.tickEruption(z, dt);
       else if (z.kind === 'remolino') this.tickTornado(z, dt);
       else this.tickBlizzard(z, dt);
+      // su sonido se apaga con ella (un poco antes: que termine junto)
+      if (z.snd) {
+        if (z.kind === 'remolino') z.snd.move(tmpV.copy(z.pos).setY(z.pos.y + 1));
+        if (z.t > z.life - 0.7) {
+          z.snd.stop(0.7);
+          z.snd = null;
+        }
+      }
       if (z.t >= z.life) {
         z.mesh?.removeFromParent();
         this.zones.splice(i, 1);
@@ -727,10 +746,14 @@ export default class Elementales {
 
   clear() {
     for (const p of this.shots) this.remove(p);
-    for (const z of this.zones) z.mesh?.removeFromParent();
+    for (const z of this.zones) {
+      z.mesh?.removeFromParent();
+      z.snd?.stop(0.2);
+    }
     this.shots = [];
     this.zones = [];
     this.cancelCharge();
+    this.hud.hide();
     this.vm?.clear();
   }
 
@@ -749,26 +772,64 @@ export default class Elementales {
     return this.vm.inspectPose(st, ik);
   }
 
-  // Cargando: la levanta un poco y tiembla cada vez más.
+  // Cargando: la trae al medio, la levanta y la acerca, cada mate a su manera
+  // (el Pillán late como un corazón, el Zonda se mece en círculos, el Illapa
+  // zumba a los saltos, el Penitente se pone duro y tirita). Al llenarse, un
+  // golpe seco de "lista" y queda vibrando hasta que se suelta.
   chargePose(t) {
     const o = [0, 0, 0, 0, 0, 0, 0];
     const k = this.charging ? this.charge : 0;
     this.chargeK = (this.chargeK || 0) + (k - (this.chargeK || 0)) * 0.25;
     const c = this.chargeK;
-    o[1] += c * 0.03;
+    const since = this.g.time - this.fullAt;
+    if (c < 0.001 && since > 0.6) return o;
+    const c2 = c * c;
+    const el = this.w.stats?.element;
+    o[0] -= c * 0.012;
+    o[1] += c * 0.026;
     o[2] += c * 0.03;
-    o[0] += Math.sin(t * 57) * 0.004 * c;
-    o[1] += Math.cos(t * 49) * 0.004 * c;
     o[3] += c * 0.1;
+    if (el === 'fuego') {
+      const beat = Math.pow(Math.max(0, Math.sin(t * (5 + c * 5))), 12) * c;
+      o[1] += beat * 0.004;
+      o[2] += beat * 0.009;
+      o[3] += beat * 0.035;
+    } else if (el === 'viento') {
+      const a = t * (4 + c * 8);
+      o[0] += Math.cos(a) * 0.006 * c;
+      o[1] += Math.sin(a) * 0.004 * c;
+      o[5] += Math.sin(a) * 0.06 * c;
+    } else if (el === 'rayo') {
+      const j = 0.006 * c2;
+      o[0] += (Math.random() - 0.5) * j;
+      o[1] += (Math.random() - 0.5) * j;
+      o[5] += (Math.random() - 0.5) * j * 8;
+    } else {
+      o[0] += Math.sin(t * 83) * 0.0014 * c2;
+      o[1] += Math.cos(t * 71) * 0.0012 * c2;
+      o[3] += c * 0.05;
+    }
+    // el golpe de "lista": un resorte que se apaga solo
+    if (since >= 0 && since < 0.6) {
+      const s = Math.exp(-since * 9) * Math.sin(since * 38);
+      o[2] -= s * 0.012;
+      o[3] -= s * 0.06;
+    }
+    if (this.full && this.charging) {
+      o[0] += Math.sin(t * 61) * 0.0016;
+      o[1] += Math.cos(t * 53) * 0.0014;
+    }
     return o;
   }
 
-  // Cada cuadro, lo de la mano que no es pose: el ruido al sacarlo y el fin
-  // de la inspección.
+  // Cada cuadro, lo de la mano que no es pose: el ruido al sacarlo, el fin
+  // de la inspección y la carga que quedó colgada (cambió de arma, se cayó,
+  // abrió un menú: el gatillo no pasó por input este cuadro).
   tick() {
     const w = this.w;
     const st = w.stats;
     const elem = st?.kind === 'elemental';
+    if (this.held && this.inputT !== this.g.time) this.cancelCharge();
     if (elem && w.state === 'raise' && (this.lastState !== 'raise' || this.lastModel !== w.model)) this.snd.equip(st.element, !!st.charge);
     if (elem && w.state === 'inspect' && w.stateT > this.vm.inspectLen(st)) w.state = 'idle';
     this.lastState = w.state;

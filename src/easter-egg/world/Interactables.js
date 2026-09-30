@@ -5,10 +5,13 @@ import { PERKS } from '../config/perks';
 import { LOCK_COST } from '../config/rules';
 import { chalkTexture, perkLabel, toTexture } from '../core/textures';
 import { buildMate, buildKnife, buildGrenade, getMats } from '../weapons/viewmodels';
+import { camoFor } from '../weapons/camos';
+import { supremoOn } from '../core/eggs';
 import { mesh, boxGeo, cylGeo, mergeByMaterial } from './props';
 import { buildBoxSkin } from './BoxSkins';
 import { buildPerkMachine, MACHINE } from './perkMachines';
 import { cherryFx } from '../fx/cherryFx';
+import { maizal } from '../entities/maizaster';
 
 // Palanca de la luz: ángulo apagada (para abajo) y prendida (para arriba).
 const LEVER_OFF = Math.PI - 0.6;
@@ -384,7 +387,8 @@ export default class Interactables {
             return true;
           }
           if (g.weapons.has(wb.weapon)) return g.weapons.refillAmmo(wb.weapon);
-          g.weapons.give(wb.weapon);
+          // (De la Pared, una empanada: sale mejorado)
+          g.weapons.give(wb.weapon, g.emp?.upFor('wall', wb.weapon) || 0);
           show();
           return true;
         },
@@ -425,6 +429,8 @@ export default class Interactables {
       const machine = { perk: spot.perk, group, sign, bulbs, front, anim: built.anim, gone: false, powered: false, jingleT: 20 + Math.random() * 40 };
       // (Electric Cherry: sus rayos se arman ya, así el shader se compila en la carga)
       if (spot.perk === 'cherry') cherryFx(g);
+      // (el Maizaster: sus matas, también armadas ya)
+      if (spot.perk === 'maiz') maizal(g);
       this.perkMachines.push(machine);
       const it = this.add({
         kind: 'perk',
@@ -665,7 +671,8 @@ export default class Interactables {
         if (g.activities) g.activities.freePap = false;
         pap.state = 'working';
         pap.t = 0;
-        pap.model = buildMate(pap.entry.id, pap.entry.up, g.textures).root;
+        // (entra con el camuflaje de la armería; sale con el del Pack-a-Pava)
+        pap.model = buildMate(pap.entry.id, pap.entry.up, g.textures, 'R', pap.entry.up ? null : camoFor(pap.entry.id)).root;
         pap.model.scale.setScalar(2.4);
         pap.model.position.copy(slotPos);
         pap.model.rotation.y = a.rot + Math.PI / 2;
@@ -828,7 +835,8 @@ export default class Interactables {
       use: () => {
         if (box.state === 'closed') return this.openBox();
         if (box.state === 'offer') {
-          g.weapons.give(box.offer);
+          // (Cajón Bendito, una empanada: sale mejorado)
+          g.weapons.give(box.offer, g.emp?.upFor('box', box.offer) || 0);
           this.takeBoxWeapon();
           return true;
         }
@@ -909,7 +917,7 @@ export default class Interactables {
           if (!group.visible) return false;
           if (sale.state === 'closed') return this.openBox(sale);
           if (sale.state === 'offer') {
-            g.weapons.give(sale.offer);
+            g.weapons.give(sale.offer, g.emp?.upFor('box', sale.offer) || 0);
             this.takeBoxWeapon(sale);
             return true;
           }
@@ -1108,7 +1116,7 @@ export default class Interactables {
     return e.remote === undefined || (e.remote === this.g.net?.id && !!this.g.net?.guest);
   }
 
-  // have: los mates del invitado que la abrió ({ w: ids, tac }); si no, los de esta compu
+  // have: los mates del invitado que la abrió ({ w: ids, tac, supremo }); si no, los de esta compu
   openBox(box = this.box, have = null) {
     const g = this.g;
     box.state = 'spinning';
@@ -1123,7 +1131,9 @@ export default class Interactables {
     // salteaban los mates del anfitrión y al invitado le salía uno que ya tenía)
     const owns = have ? (id) => have.w.includes(id) : (id) => g.weapons.has(id);
     const tac = have ? have.tac : g.weapons.tactical?.id;
-    const pool = BOX_POOL.filter((w) => inBox(w) && !owns(w.id) && !(w.id === 'pava' && tac === 'pava') && !(w.id === 'gut' && owns('gutacida')));
+    // (el Mate Supremo, solo para el que ganó el super easter egg y lo tiene prendido)
+    const sup = have ? !!have.supremo : supremoOn(g.settings);
+    const pool = BOX_POOL.filter((w) => inBox(w) && !owns(w.id) && !(w.id === 'pava' && tac === 'pava') && !(w.id === 'gut' && owns('gutacida')) && (!WEAPONS[w.id].egg || sup));
     // el easter egg puede pedir más de algún mate (el Tronador para el barbacuá)
     const weight = (w) => boxWeight(w, MAP_ID) * (g.ee?.boxBoost?.(w.id) || 1);
     let total = pool.reduce((s, w) => s + weight(w), 0);
@@ -1313,7 +1323,10 @@ export default class Interactables {
         cost: () => 0,
         use: () => {
           if (g.barriers.count(w.i) >= 6) return false;
-          if (g.barriers.repair(w.i)) g.addPoints(10, null, false, 'board');
+          if (g.barriers.repair(w.i)) {
+            g.addPoints(10, null, false, 'board');
+            g.levels?.bought({ kind: 'repair' });
+          }
           return true;
         },
       });
@@ -1417,6 +1430,17 @@ export default class Interactables {
     }
     // levantar a un compañero caído tiene prioridad
     if (g.net && this.reviveCheck(dt, input)) return;
+    // recién lo levantaste: hasta soltar la F no se toca nada más (seguir
+    // apretando, que es lo normal, le convidaba 500 sin querer)
+    if (this.fLock) {
+      if (input.key('KeyF')) {
+        this.setCurrent(null);
+        this.holdT = 0;
+        g.hud.setHold(null);
+        return;
+      }
+      this.fLock = false;
+    }
     // qué hay adelante del jugador
     const cam = g.camera;
     const fwd = tmpV.set(0, 0, -1).applyQuaternion(cam.quaternion);
@@ -1479,6 +1503,7 @@ export default class Interactables {
             if (best.use() !== false) {
               g.spend(cost);
               g.audio.purchase();
+              g.levels?.bought(best);
             }
           } else best.use();
         }
@@ -1506,12 +1531,14 @@ export default class Interactables {
           return;
         }
         const box = best.kind === 'box' || best.kind === 'salebox';
-        g.net.requestUse(best.index, best.kind === 'pap' ? { w: g.weapons.slot?.id, up: tierOf(g.weapons.slot?.up) } : box ? { have: g.weapons.slots.map((s) => s.id), tac: g.weapons.tactical?.id || null } : {});
+        g.net.requestUse(best.index, best.kind === 'pap' ? { w: g.weapons.slot?.id, up: tierOf(g.weapons.slot?.up) } : box ? { have: g.weapons.slots.map((s) => s.id), tac: g.weapons.tactical?.id || null, supremo: supremoOn(g.settings) ? 1 : 0 } : {});
         return;
       }
       if (typeof pr === 'object' && pr?.noCost && cost === 0) {
-        if (best.use()) g.audio.purchase();
-        else g.audio.deny();
+        if (best.use()) {
+          g.audio.purchase();
+          g.levels?.bought(best);
+        } else g.audio.deny();
         return;
       }
       if (typeof pr === 'object' && pr?.noCost && cost !== 0) {
@@ -1526,6 +1553,7 @@ export default class Interactables {
       if (best.use() !== false) {
         g.spend(cost);
         if (cost > 0) g.audio.purchase();
+        g.levels?.bought(best);
       } else g.audio.deny();
     }
   }
@@ -1596,14 +1624,18 @@ export default class Interactables {
     this.current = null;
     // con Rosamorte se levanta al doble de rápido (como en el original)
     const need = g.player.perks.has('revive') ? 1.75 : 3.5;
-    if (input.key('KeyF')) {
+    // (fLock: la F que quedó apretada del anterior no arranca otro)
+    if (!input.key('KeyF')) this.fLock = false;
+    if (input.key('KeyF') && !this.fLock) {
       this.reviveT = (this.reviveT || 0) + dt;
       g.hud.setHold(Math.min(1, this.reviveT / need));
       if (this.reviveT >= need) {
         this.reviveT = 0;
+        this.fLock = true;
         g.hud.setHold(null);
         g.net.net.send({ t: 'revive', id: best.id });
         g.net.credit(g.net.id, 'revives');
+        g.levels?.revive();
         best.downed = false;
         g.audio.powerupGrab();
       }

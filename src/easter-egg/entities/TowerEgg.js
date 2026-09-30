@@ -1,12 +1,18 @@
 import * as THREE from 'three';
 import { EE, TOWER } from '../config/map';
-import { zombieHealth, maxAlive } from '../config/rules';
 import { mesh, boxGeo, cylGeo } from '../world/props';
 import { toTexture } from '../core/textures';
 import Avatars from '../net/Avatars';
 import SongEgg from '../world/SongEgg';
 import { TRACKS } from '../core/music';
 import { fireflies } from '../fx/Fireflies';
+import { TowerFlyers, sndWindLoop } from './towerKit';
+import TowerWind from './towerWind';
+import TowerNoche from './towerNoche';
+import TowerBells from './towerBells';
+import TowerMk3Quest from './towerMk3Quest';
+import TowerShutters from '../world/towerShutters';
+import TowerDebris from '../world/towerDebris';
 
 // Easter egg de la torre: "Las Revelaciones". Lo guía el ánima de Martín
 // Fierro (el que en el molino se hacía pasar por el Abuelo), que espera junto
@@ -14,16 +20,23 @@ import { fireflies } from '../fx/Fireflies';
 // siempre el objetivo que sigue, una luz marca dónde ir y Fierro lo repite si
 // pasa mucho sin avanzar.
 //  1. Las tres piezas del cañón de la Vuelta de Obligado:
-//     · el caño, tirado en el secadero (piso 3);
+//     · el caño, trabado en el fogón del barbacuá del secadero (piso 3): se
+//       suelta con fuego, y el fuego es una brasa del fogón de Fierro, que se
+//       apaga si se tarda mucho en llevarla;
 //     · la rueda, colgada de tres cadenas arriba del agujero del piso 8: se
 //       rompen los candados a tiros y cae hasta la plaza del piso 5;
 //     · la mecha, sellada bajo la plaza del piso 10: el sello solo se rompe si
 //       alguien le cae encima desde algún piso de arriba con la PhD Flopper.
 //  2. Se arma el cañón en la cima (piso 15).
-//  3. El encierro: las rejas del penal rodean el cañón y hay que liquidar
-//     muertos adentro hasta llenarlo de almas.
-//  4. La Voz, enojada, manda un alma pesada (un jefe): bajándolo, el cañón
-//     queda cargado.
+//  3. Las Campanas de las Ánimas (entities/towerBells.js): la de la cima, la
+//     del 10 y la del 5, en orden: un tiro a cada una, corriendo para abajo
+//     antes de que se callen, mientras el remolino trae muertos volando.
+//  4. La Voz, enojada, manda un alma pesada (un jefe) a la plaza del 5:
+//     bajándolo, el cañón queda cargado.
+// Aparte (todo de la torre, modo historia): las ráfagas (towerWind), los
+// Postigos (world/towerShutters), los escombros que se abren de otra forma
+// (world/towerDebris), la Noche del Remolino (towerNoche) y el Mark III del
+// pararrayos (towerMk3Quest); los que vuelan, en towerKit.
 //  5. Se prende la mecha: cañonazo al ojo de la tormenta (escena en el
 //     juego). La Voz queda herida y baja una escalera de oro... trabada.
 //  6. "Buyable ending": la escalera se paga en la pared dorada de la cima:
@@ -39,13 +52,13 @@ const FIERRO = {
     'Tranquilo, paisano, que no muerdo. Soy el alma de Martín Fierro... el mismo que en el molino se hacía pasar por abuelo.',
     'La Voz que los guió no es un ángel. Se quedó con el mate supremo y vive arriba de todo, en el ojo del remolino.',
     'Para bajarla hace falta el cañón de la Vuelta de Obligado, en la cima. Le faltan tres piezas.',
-    'El caño quedó en el secadero, en el piso 3. La rueda cuelga sobre el agujero del piso 8, con candados.',
-    'Y la mecha está sellada bajo la plaza del piso 10. Ese sello solo cede si alguien le cae encima... con Flopa en el cuerpo.',
+    'El caño quedó trabado en el barbacuá del secadero, piso 3. Con fuego se suelta: llévenle una brasa de este fogón.',
+    'La rueda cuelga sobre el agujero del piso 8, con candados. Y la mecha está sellada bajo la plaza del piso 10: ese sello solo cede si alguien le cae encima... con Flopa en el cuerpo.',
   ],
   parts: 'Ya tienen las tres piezas. Suban a la cima, que los espero al lado del cañón.',
   built: [
-    'El cañón está armado, pero no tiene pólvora. La pólvora de este cañón son almas.',
-    'Armen el encierro con las rejas del penal y llénenlo. Liquiden muertos adentro.',
+    'El cañón está armado, pero no tiene pólvora. La pólvora de este cañón es el repique de las ánimas.',
+    'Toquen las tres campanas, de arriba para abajo: la de la cima, la del diez y la del cinco. Un golpe a cada una, y corran, que se callan.',
   ],
   heavy: '¡Esa alma pesada es la bala! Bájenlo y el cañón queda cargado.',
   loaded: 'Cargado. Ahora sí, prendan la mecha y apunten al ojo de la tormenta.',
@@ -61,9 +74,11 @@ const VOZ = {
   cano: 'Ese caño viejo no les va a servir de nada.',
   rueda: '¿Rompiendo candados? Qué falta de respeto.',
   sello: 'Mi sello... ¿quién les enseñó eso?',
-  encierro: 'Almas, almas... todas terminan siendo mías.',
-  heavy: '¿Almas quieren? Les mando una bien pesada.',
+  campanas: '¿Campanas? Mis ánimas no se despiertan con ruido.',
+  heavy: '¿Tanto ruido? Les mando una bien pesada.',
 };
+// las campanas, para los avisos
+const BELL_NAME = ['la campana de la cima', 'la campana del patio del 10', 'la campana de la plaza del 5'];
 const CANNON_LINES = [
   [2.2, 'entidad', '¿Un cañón? ¿A mí? No me hagan reír.'],
   [6.4, 'entidad', '¡AAAAH! ¡Malditos gauchos!'],
@@ -90,9 +105,16 @@ const INV = [
   ['cano', 'Caño de bronce', '▬'],
   ['rueda', 'Rueda de la cureña', '◎'],
   ['mecha', 'Mecha', '〰'],
+  ['brasa', 'Brasa', '✹'],
+  ['calabaza', 'Mate de calabaza', '◖'],
+  ['porongo', 'Porongo', '◗'],
 ];
 const PART_NAME = { cano: 'el caño de bronce', rueda: 'la rueda de la cureña', mecha: 'la mecha' };
 const GOLD = 0xffc84a;
+// el barbacuá prendido: cuándo salta el caño, cuándo se enfría y cuándo se apaga
+const POP = 5.5;
+const COOL = POP + 1.8;
+const BURN_END = 16;
 const tmpV = new THREE.Vector3();
 
 export default class TowerEgg {
@@ -105,13 +127,16 @@ export default class TowerEgg {
     // easter egg musical: tres amplificadores en la torre (world/SongEgg.js)
     this.song = new SongEgg(game, 'torre');
     this.fight = false;
-    // 0 hablar con Fierro, 1 piezas, 2 armar, 3 encierro por armar, 4 almas,
-    // 5 alma pesada, 6 prender la mecha, 7 pagar, 8 subir, 9 la pelea
+    // 0 hablar con Fierro, 1 piezas, 2 armar, 3 las campanas, 4 (la Voz
+    // contesta), 5 alma pesada, 6 prender la mecha, 7 pagar, 8 subir, 9 la pelea
     this.step = 0;
-    this.parts = { cano: 'none', rueda: 'hanging', mecha: 'sealed' };
+    // el caño: 'stuck' (trabado en el barbacuá), 'none' (suelto, para agarrar), 'held', 'placed'
+    this.parts = { cano: 'stuck', rueda: 'hanging', mecha: 'sealed' };
     this.placed = { cano: false, rueda: false, mecha: false };
     this.locks = [true, true, true];
-    this.enc = null;
+    // la brasa del fogón: quién la lleva y cuánto le queda; el barbacuá prendido
+    this.brasa = null;
+    this.burnT = -1;
     this.bank = 0;
     this.voiceT = 90;
     this.startT = 22;
@@ -126,6 +151,15 @@ export default class TowerEgg {
     this.buildBeam();
     this.buildObjective();
     this.register();
+    // lo del remolino (después de register: los índices de las interacciones
+    // tienen que ser los mismos en todas las compus)
+    this.flyers = new TowerFlyers(game);
+    this.wind = new TowerWind(this);
+    this.shutters = new TowerShutters(this);
+    this.debris = new TowerDebris(this);
+    this.noche = new TowerNoche(this);
+    this.bells = new TowerBells(this);
+    this.mk3q = new TowerMk3Quest(this);
   }
 
   // ---------------- lo que se ve ----------------
@@ -227,18 +261,36 @@ export default class TowerEgg {
     return g;
   }
 
+  // El caño de bronce, trabado entre las brasas apagadas del barbacuá del
+  // secadero (piso 3): una punta sale de la ceniza. Con fuego se suelta, salta
+  // al piso al rojo vivo y se enfría.
   buildCano() {
     const [x, z] = EE.cano.pos;
     const y = EE.cano.y;
     const g = this.cannonBarrel(0.8);
-    g.rotation.set(Math.PI / 2 - 0.08, 0.6, 0);
-    g.position.set(x, y + 0.22, z);
+    // (su propio bronce: se pone al rojo)
+    this.canoMat = this.M.brass.clone();
+    g.traverse((o) => {
+      if (o.isMesh) o.material = this.canoMat;
+    });
+    g.rotation.set(0.15, 0.2, Math.PI / 2 - 0.2);
+    g.position.set(x + 0.6, y + 0.13, z);
     this.root.add(g);
     this.canoObj = g;
+    this.canoStuck = g.position.clone();
+    this.canoStuckRot = g.rotation.clone();
+    // la ceniza fría tapa las brasas del fogón del barbacuá
+    this.ashObj = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.1).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2c2824, roughness: 1 }));
+    this.ashObj.position.set(x, y + 0.11, z);
+    this.ashObj.receiveShadow = true;
+    this.root.add(this.ashObj);
+    this.barbPos = new THREE.Vector3(x, y + 0.3, z);
+    // adonde salta cuando se suelta
+    this.canoLand = new THREE.Vector3(x + 2.7, y + 0.2, z - 2.8);
     this.canoGlow = fireflies(this.g, GOLD, 1.4);
-    this.canoGlow.position.set(x, y + 0.5, z);
+    this.canoGlow.position.copy(this.canoLand).setY(y + 0.5);
     this.root.add(this.canoGlow);
-    this.canoPos = new THREE.Vector3(x, y + 0.6, z);
+    this.canoPos = this.canoLand.clone().setY(y + 0.6);
   }
 
   // La rueda colgada arriba del agujero del piso 8 (tres cadenas con candado).
@@ -346,7 +398,7 @@ export default class TowerEgg {
     this.mechaPos = new THREE.Vector3(x, y + 0.8, z);
   }
 
-  // El cañón de la cima y el encierro (las rejas) alrededor.
+  // El cañón de la cima.
   buildCannon() {
     const M = this.M;
     const [x, z] = EE.canon.pos;
@@ -387,31 +439,6 @@ export default class TowerEgg {
     this.root.add(g);
     this.g.world.addBox([x - 0.9, y, z - 1.1, x + 0.9, y + 1.3, z + 1.1], { kind: 'prop' });
     this.cannon = { group: g, barrel, wheel: w1, fuse, pos: new THREE.Vector3(x, y + 1.2, z), mouth: new THREE.Vector3() };
-    // las rejas del encierro (salen del piso cuando se arma)
-    this.cage = new THREE.Group();
-    const R = EE.canon.cage;
-    const bars = [];
-    this.cageBoxes = [];
-    for (let i = 0; i < 48; i++) {
-      const a = (i / 48) * Math.PI * 2;
-      // cuatro entradas (norte, sur, este y oeste)
-      const gap = [0, Math.PI / 2, Math.PI, Math.PI * 1.5].some((c) => Math.abs(((a - c + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.2);
-      if (gap) continue;
-      const bx = x + Math.cos(a) * R;
-      const bz = z + Math.sin(a) * R;
-      bars.push(mesh(cylGeo(0.035, 0.035, 2.6, 6), M.bars || M.iron, bx, 1.3, bz));
-      this.cageBoxes.push(this.g.world.addBox([bx - 0.12, y, bz - 0.12, bx + 0.12, y + 2.6, bz + 0.12], { kind: 'prop', shoot: false }));
-    }
-    for (const b of bars) this.cage.add(b);
-    // anillos de arriba y de abajo
-    this.cage.add(mesh(new THREE.TorusGeometry(R, 0.04, 5, 64), M.bars || M.iron, x, 2.55, z, Math.PI / 2, 0, 0));
-    this.cage.add(mesh(new THREE.TorusGeometry(R, 0.05, 5, 64), M.bars || M.iron, x, 0.1, z, Math.PI / 2, 0, 0));
-    this.cage.position.y = y - 2.7;
-    this.cage.visible = false;
-    this.root.add(this.cage);
-    for (const b of this.cageBoxes) b.active = false;
-    this.cageK = 0;
-    this.encRing = this.makeRing(x, y, z, R, 0x9a6aff);
   }
 
   // La pared dorada del "buyable ending".
@@ -539,11 +566,48 @@ export default class TowerEgg {
       kind: 'ee',
       pos: this.canoPos,
       radius: 2,
-      prompt: () => (this.parts.cano === 'none' ? { text: 'agarrar el caño de bronce', noCost: true } : null),
+      prompt: () => (this.parts.cano === 'none' && this.canoCool() ? { text: 'agarrar el caño de bronce', noCost: true } : null),
       cost: () => 0,
       use: () => {
-        if (this.parts.cano !== 'none') return false;
+        if (this.parts.cano !== 'none' || !this.canoCool()) return false;
         this.take('cano');
+        return true;
+      },
+    });
+    // una brasa del fogón de Fierro, para el barbacuá
+    I.add({
+      kind: 'ee',
+      pos: this.fogonPos.clone().setY(0.6),
+      radius: 2.2,
+      prompt: () => (this.step >= 1 && this.parts.cano === 'stuck' && !this.brasa && this.burnT < 0 ? { text: 'agarrar una brasa', noCost: true } : null),
+      cost: () => 0,
+      use: () => {
+        if (this.step < 1 || this.parts.cano !== 'stuck' || this.brasa || this.burnT >= 0) return false;
+        this.brasa = { by: g.net?.useFrom ?? this.myId(), t: EE.brasa || 80, warned: false };
+        g.hud.toast('Brasa');
+        g.audio.sting();
+        this.announce('Llevala al barbacuá del piso 3, antes de que se apague', 4);
+        this.netSync();
+        return true;
+      },
+    });
+    // el barbacuá: con la brasa se prende
+    I.add({
+      kind: 'ee',
+      pos: this.barbPos.clone().add(new THREE.Vector3(0.5, 0.6, -1.4)),
+      radius: 2.5,
+      prompt: () => {
+        if (this.parts.cano !== 'stuck' || this.burnT >= 0) return null;
+        const mine = this.brasa && this.brasa.by === this.myId();
+        if (mine) return { text: 'prender el barbacuá', noCost: true };
+        return { text: 'El caño está trabado. Necesita fuego', noCost: true, info: true };
+      },
+      cost: () => 0,
+      use: () => {
+        const by = g.net?.useFrom ?? this.myId();
+        if (this.parts.cano !== 'stuck' || this.burnT >= 0 || !this.brasa || this.brasa.by !== by) return false;
+        this.brasa = null;
+        this.light();
         return true;
       },
     });
@@ -575,7 +639,7 @@ export default class TowerEgg {
         return true;
       },
     });
-    // el cañón: poner piezas, armar el encierro, prender la mecha
+    // el cañón: poner piezas y prender la mecha
     I.add({
       kind: 'ee',
       pos: this.cannon.pos,
@@ -586,9 +650,8 @@ export default class TowerEgg {
         if (next) return { text: `poner ${PART_NAME[next]} en el cañón`, noCost: true };
         const miss = ['cano', 'rueda', 'mecha'].filter((k) => !this.placed[k]);
         if (miss.length) return { text: `El cañón de la Vuelta de Obligado: falta ${miss.map((k) => PART_NAME[k]).join(', ')}`, noCost: true, info: true };
-        if (this.step === 3) return { text: 'armar el encierro (las rejas alrededor del cañón)', noCost: true };
-        if (this.step === 4) return { text: `El encierro: ${this.enc?.souls || 0} de ${this.enc?.need || 0} almas`, noCost: true, info: true };
-        if (this.step === 5) return { text: 'Falta la bala: el alma pesada que mandó la Voz', noCost: true, info: true };
+        if (this.step === 3) return { text: 'Falta la pólvora: las campanas', noCost: true, info: true };
+        if (this.step === 4 || this.step === 5) return { text: 'Falta la bala: el alma pesada', noCost: true, info: true };
         if (this.step === 6) return { text: 'prender la mecha y disparar', noCost: true };
         return null;
       },
@@ -598,10 +661,6 @@ export default class TowerEgg {
         const next = ['cano', 'rueda', 'mecha'].find((k) => this.parts[k] === 'held' && !this.placed[k]);
         if (next) {
           this.place(next);
-          return true;
-        }
-        if (this.step === 3) {
-          this.startEncierro();
           return true;
         }
         if (this.step === 6) {
@@ -690,16 +749,16 @@ export default class TowerEgg {
   remind() {
     const p = this.parts;
     if (this.step <= 1) {
-      if (p.cano === 'none') return 'El caño, paisano. En el secadero, en el piso 3.';
+      if (p.cano === 'stuck') return this.brasa ? 'La brasa, al barbacuá del piso 3. ¡Rápido, que se apaga!' : 'El caño está trabado en el barbacuá del piso 3. Llevale una brasa de mi fogón.';
+      if (p.cano === 'none') return 'El caño se soltó. Está al lado del barbacuá, en el piso 3.';
       if (p.rueda === 'hanging') return 'La rueda cuelga arriba del agujero del piso 8. Tres candados, a tiros.';
       if (p.rueda === 'ground') return 'La rueda se cayó hasta la plaza del piso 5. Andá a buscarla.';
       if (p.mecha === 'sealed') return 'El sello del piso 10 cede si le caés encima desde arriba, con la Flopa Hermanos en el cuerpo.';
       if (p.mecha === 'ground') return 'La mecha quedó en la plaza del piso 10.';
     }
     if (this.step === 2) return 'Las piezas van al cañón de la cima, en el piso 15.';
-    if (this.step === 3) return 'Armen el encierro alrededor del cañón.';
-    if (this.step === 4) return 'Almas, muchachos. Liquiden muertos adentro de las rejas.';
-    if (this.step === 5) return 'El alma pesada... bájenlo, que esa es la bala.';
+    if (this.step === 3) return `Ahora ${BELL_NAME[this.bells.idx] || 'las campanas'}. Un tiro y corran a la que sigue, antes que se callen.`;
+    if (this.step === 4 || this.step === 5) return 'El alma pesada, en la plaza del cinco... bájenlo, que esa es la bala.';
     if (this.step === 6) return 'Prendan la mecha. Al ojo de la tormenta.';
     if (this.step === 7) return `La pared dorada, en la cima. ${this.costWords()}${this.players() > 1 ? ' entre todos. Si alguno anda corto, convídenle plata.' : '.'}`;
     if (this.step === 8) return 'Suban la escalera. Todos juntos.';
@@ -717,6 +776,13 @@ export default class TowerEgg {
       this.say('fierro', FIERRO.parts, 2);
       g.later(4, () => this.moveFierro('top'));
     }
+    this.netSync();
+  }
+
+  // (anfitrión) La brasa prende el barbacuá: arde, y el caño salta suelto.
+  light() {
+    this.burnT = 0;
+    this.announce('¡Prendió!', 2);
     this.netSync();
   }
 
@@ -738,58 +804,58 @@ export default class TowerEgg {
       this.step = 3;
       this.toastAll('El cañón de la Vuelta de Obligado está armado');
       this.lines('fierro', FIERRO.built, 1);
+      this.say('entidad', VOZ.campanas, 12);
+      this.bells.show();
+      g.later(3, () => this.announce('Tirale a la campana de la cima', 4, true));
     }
     this.netSync();
   }
 
-  startEncierro() {
+  // (anfitrión) Una campana quedó de oro: la que sigue.
+  bellNext(i) {
+    this.announce(`¡Rápido, ${BELL_NAME[i]}!`, 4, true);
+  }
+
+  // (anfitrión) Las tres campanas: la Voz manda el alma pesada a la plaza del 5.
+  bellsDone() {
     const g = this.g;
-    if (this.step !== 3) return;
     this.step = 4;
-    this.enc = { souls: 0, need: EE.canon.souls + 8 * (this.players() - 1), spawnT: 2 };
-    for (const b of this.cageBoxes) b.active = true;
-    g.world.computeNavBlock();
-    g.audio.door(this.cannon.pos, false);
-    g.audio.bossArrive();
-    this.announce(`El encierro. Liquidá muertos adentro de las rejas (${this.enc.need} almas).`, 4, true);
-    this.say('entidad', VOZ.encierro, 2);
+    this.toastAll('Sonaron las tres campanas');
+    this.say('entidad', VOZ.heavy, 1);
+    this.say('fierro', FIERRO.heavy, 5);
+    g.later(3.5, () => {
+      if (this.step !== 4) return;
+      this.step = 5;
+      this.sendHeavy();
+      this.netSync();
+    });
     this.netSync();
   }
 
-  finishEncierro() {
-    const g = this.g;
-    this.step = 5;
-    this.enc = null;
-    this.toastAll('El encierro se llenó de almas');
-    this.say('entidad', VOZ.heavy, 0.8);
-    this.say('fierro', FIERRO.heavy, 4.5);
-    g.later(3, () => this.sendHeavy());
-    this.netSync();
-  }
-
-  // La Voz manda un jefe a la cima: es la bala del cañón.
+  // La Voz manda un jefe: es la bala del cañón. Sale en la plaza de la última
+  // campana (piso 5), del lado contrario al jugador.
   sendHeavy() {
     const g = this.g;
     if (this.step !== 5 || (this.heavy && !this.heavy.dead && g.zombies.boss === this.heavy)) return;
     // también el cadáver de un jefe de ronda recién muerto (si no, spawnBoss lo devuelve a él)
     if (g.zombies.boss) g.zombies.removeBoss();
-    // adentro de las rejas del encierro (antes salía afuera, del otro lado),
-    // lejos del cañón y del lado contrario al jugador
-    const [x, z] = EE.canon.pos;
-    const y = EE.canon.y;
+    const last = EE.campanas?.[EE.campanas.length - 1];
+    const [x, z] = last ? last.pos : EE.canon.pos;
+    const y = last ? this.T.yOf(last.n - 1) : EE.canon.y;
     const pp = g.player.pos;
     const away = Math.atan2(z - pp.z, x - pp.x);
     let at = null;
     for (let i = 0; i < 13 && !at; i++) {
       const a = away + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 0.5;
-      const px = x + Math.cos(a) * 5;
-      const pz = z + Math.sin(a) * 5;
+      const px = x + Math.cos(a) * 6;
+      const pz = z + Math.sin(a) * 6;
       if (!g.nav.blocked(Math.floor(px), Math.floor(pz), y)) at = new THREE.Vector3(px, y, pz);
     }
-    at ||= new THREE.Vector3(x + 4, y, z + 4);
+    at ||= new THREE.Vector3(x + 5, y, z + 5);
     const kind = Math.random() < 0.5 ? 'capataz' : 'alcaide';
     this.heavy = g.zombies.spawnBoss(Math.max(10, g.rounds.round), { kind, at });
-    g.hud.subtitle('¡El alma pesada! Bajalo en la cima.', 3, 'boss');
+    this.heavyAt = at.clone();
+    this.announce('¡El alma pesada! Bajalo en la plaza del 5', 3.5, true);
   }
 
   fire() {
@@ -906,6 +972,9 @@ export default class TowerEgg {
       this.g.arena?.onShot?.(o, d, maxT);
       return;
     }
+    // los escombros de soga y de pólvora, y las campanas
+    this.debris?.onShot(o, d, maxT);
+    if (this.step === 3) this.bells?.onShot(o, d, maxT);
     if (this.parts.rueda !== 'hanging') return;
     this.lockObjs.forEach((L, i) => {
       if (!this.locks[i]) return;
@@ -919,6 +988,8 @@ export default class TowerEgg {
       this.g.arena?.onExplosion?.(pos, radius);
       return;
     }
+    this.debris?.onExplosion(pos, radius);
+    if (this.step === 3) this.bells?.onExplosion(pos, radius);
     if (this.parts.rueda !== 'hanging') return;
     this.lockObjs.forEach((L, i) => {
       if (this.locks[i] && L.pos.distanceTo(pos) < radius * 0.6) this.hitLock(i);
@@ -971,25 +1042,25 @@ export default class TowerEgg {
   onKill(z) {
     const g = this.g;
     if (g.net?.guest) return;
+    this.noche.onKill(z);
+    this.debris.onKill(z);
     // el alma pesada
     if (z.boss && this.step === 5 && z === this.heavy) {
       this.heavy = null;
       this.step = 6;
-      g.fx.soul(z.pos.clone().setY(z.pos.y + 1.5), this.cannon.pos.clone());
+      // el alma sube por el hueco hasta el cañón
+      const from = z.pos.clone().setY((z.baseY || z.pos.y) + 1.5);
+      for (let k = 0; k < 4; k++) g.later(k * 0.4, () => g.fx.soul(from, this.cannon.pos.clone(), [1, 0.55, 0.25]));
+      g.net?.event('pee', { hsoul: [+from.x.toFixed(1), +from.y.toFixed(1), +from.z.toFixed(1)] });
       this.toastAll('El alma pesada cargó el cañón');
       this.say('fierro', FIERRO.loaded, 1.5);
       this.netSync();
-      return;
     }
-    if (z.boss || !this.enc || this.step !== 4) return;
-    const p = z.pos;
-    const [x, zz] = EE.canon.pos;
-    if (Math.abs(p.y - EE.canon.y) > 1.5 || Math.hypot(p.x - x, p.z - zz) > EE.canon.cage + 0.5) return;
-    g.fx.soul(p.clone().setY(p.y + 1), this.cannon.pos);
-    g.net?.event('pee', { esoul: [+p.x.toFixed(1), +(p.y + 1).toFixed(1), +p.z.toFixed(1)] });
-    this.enc.souls++;
-    if (this.enc.souls >= this.enc.need) this.finishEncierro();
-    else if (this.enc.souls % 3 === 0) this.netSync();
+  }
+
+  // (Rounds.nextRound, anfitrión) La Noche del Remolino.
+  tuneRound(R) {
+    this.noche.tuneRound(R);
   }
 
   // El remolino del Mark III: lo ven todos y el anfitrión arrastra a los muertos.
@@ -1011,6 +1082,8 @@ export default class TowerEgg {
     else if (m.a === 'seal') this.breakSeal();
     else if (m.a === 'lock') this.breakLock(m.i | 0);
     else if (m.a === 'inf') this.g.arena?.onGuestHit?.(m);
+    else if (m.a === 'deb') this.debris.onGuest(m);
+    else if (m.a === 'bell') this.bells.ring(m.i | 0);
   }
 
   // ---------------- escenas (adentro del juego) ----------------
@@ -1025,6 +1098,19 @@ export default class TowerEgg {
     // la escena ocupa la pantalla: sin HUD ni barra de jefe
     g.hud.setBossBar(null);
     g.hud.show(false);
+    // (anfitrión) la escena frena la partida: los muertos que quedaban (y los
+    // que venían volando) no se quedan congelados en cuadro. En el cañonazo
+    // vuelven a la cuenta de la ronda; en la caída empieza la pelea final.
+    if (!g.net?.guest) {
+      let n = 0;
+      for (const z of g.zombies.pool) {
+        if (!z.active) continue;
+        if (!z.dead) n++;
+        g.zombies.free(z);
+      }
+      if (g.zombies.boss) g.zombies.removeBoss();
+      if (kind === 'cannon' && n && g.rounds.state === 'active') g.rounds.toSpawn += n;
+    }
     if (kind === 'cannon') {
       // el cielo arranca cerrado: se abre recién cuando pega la bala
       this.T.skyOpenK = 0;
@@ -1226,7 +1312,12 @@ export default class TowerEgg {
       parts: this.parts,
       placed: this.placed,
       locks: this.locks,
-      enc: this.enc ? [this.enc.souls, this.enc.need] : null,
+      brasa: this.brasa ? [this.brasa.by, +this.brasa.t.toFixed(1)] : null,
+      burn: +this.burnT.toFixed(2),
+      bells: this.bells?.fullState(),
+      debs: this.debris?.fullState(),
+      nocheOn: this.noche?.fullState(),
+      mk3full: this.mk3q?.fullState(),
       bank: this.bank,
       cost: this.endingCost(),
       fierro: this.fierroSpot,
@@ -1263,16 +1354,22 @@ export default class TowerEgg {
       g.arena?.onNet?.(m.inf);
       return;
     }
-    if (m.esoul) {
-      g.fx.soul(new THREE.Vector3(...m.esoul), this.cannon.pos);
-      if (this.enc) this.enc.souls++;
+    // el alma pesada sube al cañón
+    if (m.hsoul) {
+      const from = new THREE.Vector3(...m.hsoul);
+      for (let k = 0; k < 4; k++) g.later(k * 0.4, () => g.fx.soul(from, this.cannon.pos.clone(), [1, 0.55, 0.25]));
       return;
     }
+    // lo del remolino: ráfagas, postigos, escombros, la Noche, campanas y el Mark III
+    if (m.gust) return this.wind.applyRemote(m);
+    if (m.post) return this.shutters.applyRemote(m);
+    if (m.deb) return this.debris.applyRemote(m);
+    if (m.noche) return this.noche.applyRemote(m);
+    if (m.bell) return this.bells.applyRemote(m);
+    if (m.mk3 || m.mk3o || m.mk3c != null || m.mk3f != null) return this.mk3q.applyRemote(m);
     if (m.step !== undefined) {
-      if (m.step >= 4 && this.step < 4) {
-        for (const b of this.cageBoxes) b.active = true;
-        g.world.computeNavBlock();
-      }
+      // (las campanas bajan cuando se arma el cañón)
+      if (m.step >= 3 && this.step < 3) this.bells.show();
       if (m.step >= 8 && this.step < 8) {
         this.T.setSky('open');
         this.addStairBoxes();
@@ -1284,7 +1381,16 @@ export default class TowerEgg {
     if (m.parts) this.parts = { ...m.parts };
     if (m.placed) this.placed = { ...m.placed };
     if (m.locks) this.locks = [...m.locks];
-    if (m.enc !== undefined) this.enc = m.enc ? { souls: m.enc[0], need: m.enc[1] } : null;
+    if (m.brasa !== undefined) this.brasa = m.brasa ? { by: m.brasa[0], t: m.brasa[1] } : null;
+    if (m.burn !== undefined && m.burn >= 0 && this.burnT < 0) this.burnT = m.burn;
+    if (m.bells) this.bells.applyState(m.bells);
+    if (m.debs) this.debris.applyState(m.debs);
+    if (m.nocheOn && !this.noche.on) this.noche.start(m.nocheOn);
+    if (m.mk3full && !this.mk3Joined) {
+      // (una sola vez, al entrar: después llega todo por 'pee')
+      this.mk3Joined = true;
+      this.mk3q.applyState(m.mk3full);
+    }
     if (m.bank !== undefined) this.bank = m.bank;
     if (m.cost) this.costNet = m.cost;
     if (m.fierro) this.fierroSpot = m.fierro;
@@ -1297,7 +1403,8 @@ export default class TowerEgg {
     this.parts = { cano: 'placed', rueda: 'placed', mecha: 'placed' };
     this.placed = { cano: true, rueda: true, mecha: true };
     this.locks = [false, false, false];
-    this.enc = null;
+    this.brasa = null;
+    this.bells.finish();
     this.step = 7;
     this.fierroSpot = 'top';
     this.T.skyOpenK = 1;
@@ -1349,11 +1456,8 @@ export default class TowerEgg {
     // fogón
     if (Math.random() < 0.8) g.fx.fire(this.fogonPos, 0.25, 1);
     this.fogonLight.intensity = 12 + Math.sin(t * 13) * 2 + Math.random() * 2;
-    // el caño
-    const canoOn = this.parts.cano === 'none';
-    this.canoObj.visible = canoOn;
-    this.canoGlow.visible = canoOn;
-    this.canoGlow.material.opacity = 0.4 + Math.sin(t * 3) * 0.15;
+    // el caño (trabado, soltándose o suelto) y la brasa
+    this.updateCano(dt, t);
     // la rueda: colgada, cayendo o en la plaza
     const R = this.parts.rueda;
     this.ruedaObj.visible = R === 'hanging' || R === 'falling' || R === 'ground';
@@ -1399,19 +1503,6 @@ export default class TowerEgg {
     this.cannon.barrel.visible = this.placed.cano;
     this.cannon.wheel.visible = this.placed.rueda;
     this.cannon.fuse.visible = this.placed.mecha;
-    // las rejas del encierro suben (y bajan después del cañonazo)
-    const cageUp = this.step >= 4 && this.step <= 6;
-    this.cageK += ((cageUp ? 1 : 0) - this.cageK) * Math.min(1, dt * 1.2);
-    this.cage.visible = this.cageK > 0.01;
-    this.cage.position.y = EE.canon.y - 2.7 * (1 - this.cageK);
-    if (!cageUp && this.cageBoxes[0].active) {
-      for (const b of this.cageBoxes) b.active = false;
-      g.world.computeNavBlock();
-    }
-    const ritual = this.step === 4;
-    this.encRing.visible = ritual;
-    this.encRing.material.opacity = ritual ? 0.45 + Math.sin(t * 6) * 0.15 : 0;
-    if (ritual && !g.net?.guest && this.enc) this.encierroSpawns(dt);
     const cost = this.endingCost();
     if (cost !== this.drawnCost) {
       this.drawEnding(cost);
@@ -1436,6 +1527,14 @@ export default class TowerEgg {
       this.heavy = null;
       g.later(2, () => this.sendHeavy());
     }
+    // lo del remolino
+    this.flyers.update(dt);
+    this.wind.update(dt);
+    this.shutters.update(dt);
+    this.debris.update(dt);
+    this.noche.update(dt);
+    this.bells.update(dt);
+    this.mk3q.update(dt);
     this.updateHud();
     this.updateBeam();
     // Fierro recuerda lo que falta
@@ -1452,25 +1551,104 @@ export default class TowerEgg {
     }
   }
 
-  // Muertos que salen en la cima mientras dura el encierro.
-  encierroSpawns(dt) {
+  // ¿El caño ya se enfrió (se puede agarrar)?
+  canoCool() {
+    return this.burnT < 0 || this.burnT >= COOL;
+  }
+
+  // El caño trabado en la ceniza; con la brasa el barbacuá arde, el caño salta
+  // al piso al rojo vivo y se enfría. Y la brasa se va apagando en la mano.
+  updateCano(dt, t) {
     const g = this.g;
-    const E = this.enc;
-    E.spawnT -= dt;
-    if (E.spawnT > 0) return;
-    E.spawnT = 1.7 / Math.sqrt(this.players());
-    if (g.zombies.alive >= maxAlive(this.players())) return;
-    const [cx, cz] = EE.canon.pos;
-    for (let i = 0; i < 8; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = EE.canon.cage + 2 + Math.random() * 2.5;
-      const x = cx + Math.cos(a) * r;
-      const z = cz + Math.sin(a) * r;
-      const y = EE.canon.y;
-      if (g.nav.blocked(Math.floor(x), Math.floor(z), y)) continue;
-      const round = Math.max(5, g.rounds.round);
-      g.zombies.spawn(round, zombieHealth(round), new THREE.Vector3(x, y, z));
-      break;
+    const host = !g.net?.guest;
+    const c = this.parts.cano;
+    this.canoObj.visible = c === 'stuck' || c === 'none';
+    this.ashObj.visible = this.burnT < 0;
+    const B = this.burnT;
+    if (B >= 0 && B < BURN_END) {
+      const prev = B;
+      this.burnT += dt;
+      const k = Math.min(1, this.burnT / 1.5) * Math.min(1, (BURN_END - this.burnT) / 3);
+      if (prev === 0 || !this.fireSnd) {
+        this.fireSnd?.stop(0.1);
+        this.fireSnd = sndWindLoop(g, this.barbPos, 0.55, { whistle: 380 });
+        g.audio.explosion?.(this.barbPos, 0.4);
+        g.fx.flash(this.barbPos, 0xff7a2a, 40, 0.5, 12);
+      }
+      const [bx, bz] = EE.cano.pos;
+      for (let i = 0; i < 4; i++) if (Math.random() < k) g.fx.fire(new THREE.Vector3(bx + (Math.random() - 0.5) * 1.5, this.barbPos.y - 0.1, bz + (Math.random() - 0.5) * 0.9), 0.4, 1);
+      if (Math.random() < k * 0.5) g.fx.alpha.spawn(bx + (Math.random() - 0.5), this.barbPos.y + 1.4, bz + (Math.random() - 0.5), (Math.random() - 0.5) * 0.4, 1.2, (Math.random() - 0.5) * 0.4, { color: [0.16, 0.14, 0.13], size: 0.3, size1: 0.9, life: 2.5, alpha: 0.45 });
+      if (Math.random() < dt * 5 * k) g.fx.flash(this.barbPos.clone().setY(this.barbPos.y + 0.6), 0xff8a3a, 18 * k, 0.25, 9);
+      // el caño se sacude y se pone al rojo, hasta que salta
+      if (this.burnT < POP) {
+        const hot = Math.min(1, this.burnT / POP);
+        this.canoObj.position.copy(this.canoStuck).add(new THREE.Vector3((Math.random() - 0.5) * 0.03 * hot, Math.random() * 0.02 * hot, (Math.random() - 0.5) * 0.03 * hot));
+        this.canoMat.emissive.setHex(0xff3a10);
+        this.canoMat.emissiveIntensity = hot * 1.4;
+      } else {
+        const j = Math.min(1, (this.burnT - POP) / 0.6);
+        if (prev < POP) {
+          g.fx.sparks(this.canoStuck.clone().setY(this.canoStuck.y + 0.3), 2, { x: 0, y: 1, z: 0 }, [1, 0.6, 0.2]);
+          g.audio.chain?.(this.barbPos);
+          if (host && this.parts.cano === 'stuck') {
+            this.parts.cano = 'none';
+            this.announce('¡El caño se soltó!', 2.5);
+            this.netSync();
+          }
+        }
+        this.canoObj.position.lerpVectors(this.canoStuck, this.canoLand, j);
+        this.canoObj.position.y += Math.sin(j * Math.PI) * 1.3;
+        this.canoObj.rotation.set(this.canoStuckRot.x + (Math.PI / 2 - 0.08 - this.canoStuckRot.x) * j, this.canoStuckRot.y + (0.6 - this.canoStuckRot.y) * j + j * Math.PI * 2, this.canoStuckRot.z * (1 - j));
+        if (j >= 1 && prev < POP + 0.6) {
+          g.fx.dust(this.canoLand.clone(), { x: 0, y: 1, z: 0 }, [0.4, 0.36, 0.32], 10);
+          g.audio.bossSlam?.(this.canoLand);
+        }
+        // se enfría echando vapor
+        const cool = Math.min(1, (this.burnT - POP) / (COOL - POP));
+        this.canoMat.emissiveIntensity = 1.4 * (1 - cool);
+        if (cool < 1 && Math.random() < 0.4) g.fx.steam(this.canoLand.clone().setY(this.canoLand.y + 0.2), 1, 0.3);
+      }
+      if (this.burnT >= BURN_END) {
+        this.fireSnd?.stop(2);
+        this.fireSnd = null;
+      }
+    } else if (B < 0 && c === 'stuck') {
+      this.canoObj.position.copy(this.canoStuck);
+    }
+    if (B >= BURN_END || (c === 'none' && B < 0)) {
+      // suelto en el piso (también el que entra tarde)
+      this.canoObj.position.copy(this.canoLand);
+      this.canoObj.rotation.set(Math.PI / 2 - 0.08, 0.6, 0);
+      this.canoMat.emissiveIntensity = 0;
+    }
+    const canoOn = c === 'none' && this.canoCool();
+    this.canoGlow.visible = canoOn;
+    this.canoGlow.material.opacity = 0.4 + Math.sin(t * 3) * 0.15;
+    // la brasa: chispitas donde va y se apaga de a poco
+    const br = this.brasa;
+    if (br) {
+      br.t -= dt;
+      const mine = br.by === this.myId();
+      if (mine) {
+        if (Math.random() < 0.7) {
+          const p = new THREE.Vector3(0.22 + (Math.random() - 0.5) * 0.05, -0.28, -0.6).applyMatrix4(g.camera.matrixWorld);
+          g.fx.add.spawn(p.x, p.y, p.z, (Math.random() - 0.5) * 0.3, 0.4 + Math.random() * 0.4, (Math.random() - 0.5) * 0.3, { color: [1, 0.45 + Math.random() * 0.2, 0.1], size: 0.02, size1: 0, life: 0.5 });
+        }
+      } else {
+        const rp = g.net?.remote.get(br.by)?.pos;
+        if (rp && Math.random() < 0.6) g.fx.add.spawn(rp.x + (Math.random() - 0.5) * 0.3, rp.y + 1.1, rp.z + (Math.random() - 0.5) * 0.3, 0, 0.6, 0, { color: [1, 0.5, 0.15], size: 0.05, size1: 0, life: 0.6 });
+      }
+      if (host) {
+        if (br.t <= 20 && !br.warned) {
+          br.warned = true;
+          this.announce('La brasa se apaga', 2.5);
+        }
+        if (br.t <= 0) {
+          this.brasa = null;
+          this.announce('Se apagó la brasa. Hay otra en el fogón', 3.5);
+          this.netSync();
+        }
+      }
     }
   }
 
@@ -1489,15 +1667,22 @@ export default class TowerEgg {
       o = {
         main: 'Juntá las piezas del cañón',
         list: [
-          p.cano === 'none' ? ['Caño', `piso 3${go(3)}`] : ['Caño', '', true],
+          this.canoLine(p.cano, go),
           p.rueda === 'hanging' ? ['Rueda', `piso 8, rompé los 3 candados${go(8)}`] : p.rueda === 'falling' || p.rueda === 'ground' ? ['Rueda', 'cayó al piso 5'] : ['Rueda', '', true],
           p.mecha === 'sealed' ? ['Mecha', `piso 10, caé encima con PhD${go(11)}`] : p.mecha === 'ground' ? ['Mecha', 'quedó en el piso 10'] : ['Mecha', '', true],
         ],
       };
     } else if (this.step === 2) o = { main: 'Llevá las piezas al cañón', sub: `Piso 15, la cima${go(15)}` };
-    else if (this.step === 3) o = { main: 'Armá el encierro del cañón', sub: 'Piso 15' };
-    else if (this.step === 4) o = { main: 'Llená el encierro de almas', sub: 'Matá muertos adentro de las rejas', count: `${this.enc?.souls || 0} / ${this.enc?.need || 0}` };
-    else if (this.step === 5) o = { main: 'Bajá al alma pesada', sub: 'El jefe que mandó la Voz, en la cima' };
+    else if (this.step === 3) {
+      const bi = this.bells.idx;
+      const where = [['Campana de la cima', 'piso 15'], ['Campana del patio', 'piso 10'], ['Campana de la plaza', 'piso 5']];
+      o = {
+        main: 'Hacé sonar las campanas',
+        sub: 'Un tiro y rápido a la que sigue',
+        count: this.bells.racing() ? `${Math.ceil(this.bells.left)} s` : '',
+        list: where.map(([name, w], i) => (i < bi ? [name, '', true] : [name, i === bi ? `${w}${go(i === 0 ? 15 : i === 1 ? 10 : 5)}` : w])),
+      };
+    } else if (this.step === 4 || this.step === 5) o = { main: 'Bajá al alma pesada', sub: 'Plaza de las Ánimas, piso 5' };
     else if (this.step === 6) o = { main: 'Prendé la mecha del cañón', sub: 'Piso 15' };
     else if (this.step === 7) o = { main: 'Pagá la escalera divina', sub: 'En la pared dorada de la cima', count: `${this.bank.toLocaleString('es-AR')} / ${this.endingCost().toLocaleString('es-AR')}` };
     else if (this.step === 8) o = { main: 'Subí la escalera divina', sub: 'Todos juntos' };
@@ -1513,7 +1698,7 @@ export default class TowerEgg {
       this.objTop = top;
       this.objEl.style.top = `${top}px`;
     }
-    const inv = { cano: p.cano === 'held', rueda: p.rueda === 'held', mecha: p.mecha === 'held' };
+    const inv = { cano: p.cano === 'held', rueda: p.rueda === 'held', mecha: p.mecha === 'held', brasa: !!this.brasa, ...this.mk3q.inv() };
     const key = Object.values(inv).map((x) => (x ? 1 : 0)).join('') + (this.fight ? 'f' : '');
     if (key !== this.invKey) {
       this.invKey = key;
@@ -1531,14 +1716,18 @@ export default class TowerEgg {
     else if (this.step === 1) {
       // lo que falta en el piso más cercano al jugador
       const opts = [];
+      // el caño: la brasa del fogón, el barbacuá (con la brasa) o el caño suelto
       if (p.cano === 'none') opts.push(this.canoPos);
+      else if (p.cano === 'stuck' && this.burnT < 0) opts.push(this.brasa ? this.barbPos : this.fogonPos);
       if (p.rueda === 'hanging') opts.push(new THREE.Vector3(EE.rueda.pos[0], EE.rueda.y, EE.rueda.pos[1]));
       if (p.rueda === 'ground') opts.push(this.ruedaLand);
       if (p.mecha === 'sealed' || p.mecha === 'ground') opts.push(this.sealPos);
       const py = g.player.pos.y;
       opts.sort((a, b) => Math.abs(a.y - py) - Math.abs(b.y - py));
       at = opts[0] || null;
-    } else if (this.step >= 2 && this.step <= 6) at = this.cannon.pos;
+    } else if (this.step === 3) at = this.bells.list[this.bells.idx]?.pos.clone().setY(this.T.yOf(this.bells.list[this.bells.idx].def.n - 1) + 0.5) || null;
+    else if (this.step === 4 || this.step === 5) at = this.heavy && !this.heavy.dead ? this.heavy.pos : this.heavyAt || null;
+    else if (this.step === 2 || this.step === 6) at = this.cannon.pos;
     else if (this.step === 7) at = this.endingPos;
     const b = this.beam;
     b.visible = !!at;
@@ -1548,7 +1737,18 @@ export default class TowerEgg {
     b.material.opacity = 0.07 + Math.sin(g.time * 1.5) * 0.03;
   }
 
+  // La línea del caño en el objetivo.
+  canoLine(c, go) {
+    if (c === 'held' || c === 'placed') return ['Caño', '', true];
+    if (c === 'none') return ['Caño', `se soltó, piso 3${go(3)}`];
+    if (this.burnT >= 0) return ['Caño', 'el barbacuá está prendido'];
+    if (this.brasa) return ['Caño', `llevá la brasa al barbacuá, piso 3 · ${Math.max(0, Math.ceil(this.brasa.t))} s${go(3)}`];
+    return ['Caño', `trabado en el barbacuá del piso 3: una brasa del fogón${go(3)}`];
+  }
+
   dispose() {
+    for (const k of ['wind', 'shutters', 'debris', 'noche', 'bells', 'mk3q']) this[k]?.dispose?.();
+    this.fireSnd?.stop(0.1);
     this.song?.dispose();
     this.g.hud.setInventory(null);
     this.objEl?.remove();

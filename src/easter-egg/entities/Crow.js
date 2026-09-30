@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { POINTS, bossHealth, bossScale, zombieHealth } from '../config/rules';
-import { MAP_W, MAP_H } from '../config/map';
+import { MAP_W, MAP_H, SKY } from '../config/map';
 
 // El Cuervo: el jefe de la granja (lo que es el Capataz en el molino). Llega
 // cada cinco rondas volando desde el maizal, da vueltas arriba de los
@@ -166,7 +166,7 @@ export default class Crow {
     z.dead = false;
     // aparece lejos, del lado del maizal, alto
     const a = Math.random() * Math.PI * 2;
-    z.pos.set(MAP_W / 2 + Math.cos(a) * 60, 22, MAP_H / 2 + Math.sin(a) * 60);
+    z.pos.set((SKY.center?.[0] ?? MAP_W / 2) + Math.cos(a) * 60, 22, (SKY.center?.[1] ?? MAP_H / 2) + Math.sin(a) * 60);
     this.vel.set(0, 0, 0);
     this.setState('arrive');
     this.shootCd = 3;

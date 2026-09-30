@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { makePose, solvePose, PART_COUNT } from '../entities/skeleton';
 import { swimPose } from '../entities/zombieGaits';
 import { shieldModel } from '../world/shieldModels';
+import { CAMO_BY_ID, camoable } from '../weapons/camos';
+import { VM } from '../weapons/viewmodels';
 
 // Los otros jugadores: un gaucho con sombrero, cara con bigote, poncho de
 // color que se bambolea al moverse y su mate en la mano, animado con el mismo
@@ -17,6 +19,8 @@ const tmpEul = new THREE.Euler();
 const tmpP = new THREE.Vector3();
 const tmpD = new THREE.Vector3();
 const SHIELD_TILT = new THREE.Matrix4().makeRotationX(0.12).multiply(new THREE.Matrix4().makeRotationY(Math.PI));
+// adelante (Z: weapons/shieldHand): delante del pecho, del lado izquierdo, con la cara para afuera
+const SHIELD_FRONT = new THREE.Matrix4().makeRotationX(-0.1).multiply(new THREE.Matrix4().makeRotationY(-0.15));
 // El mate de verdad de cada compañero (el que tiene en la mano, mejorado o el
 // potenciador): en la mano derecha, apuntando adonde mira. GUN_OFF: de la
 // mano al origen del modelo (en el marco de la mirada: +x derecha, -z adelante).
@@ -180,16 +184,27 @@ export default class Avatars {
   // El escudo armado colgado en la espalda (del torso, mirando para atrás,
   // con la parte de abajo un poco separada por el poncho). Se arma la primera
   // vez que hace falta; si se rompe, se esconde.
-  backShield(a, on) {
+  // up: el mejorado (world/ShieldUpgrade); front: puesto adelante. Se rearma
+  // cuando cambia alguna de las dos.
+  backShield(a, on, up = false, front = false) {
     a.shieldOn = on;
+    const key = on ? `${up ? 1 : 0}${front ? 1 : 0}` : '';
+    if (key !== (a.shieldKey || '') && a.shield) {
+      a.shield.removeFromParent();
+      a.extras = a.extras.filter((e) => e.obj !== a.shield);
+      a.shield = null;
+    }
+    a.shieldKey = key;
     if (on && !a.shield) {
-      const s = shieldModel(this.g.world.M, this.g.mapId);
+      const s = shieldModel(this.g.world.M, this.g.mapId, up);
       s.traverse((o) => {
         o.castShadow = false;
       });
       s.matrixAutoUpdate = false;
       a.group.add(s);
-      const off = new THREE.Matrix4().makeTranslation(0, -0.02, -0.2 - s.userData.back * 0.9).multiply(SHIELD_TILT).multiply(new THREE.Matrix4().makeScale(0.9, 0.9, 0.9));
+      const off = front
+        ? new THREE.Matrix4().makeTranslation(0.08, 0.02, 0.36 + s.userData.back * 0.5).multiply(SHIELD_FRONT).multiply(new THREE.Matrix4().makeScale(0.9, 0.9, 0.9))
+        : new THREE.Matrix4().makeTranslation(0, -0.02, -0.2 - s.userData.back * 0.9).multiply(SHIELD_TILT).multiply(new THREE.Matrix4().makeScale(0.9, 0.9, 0.9));
       a.extras.push({ obj: s, part: 1, off });
       s.matrix.multiplyMatrices(a.mats[1], off);
       a.shield = s;
@@ -201,17 +216,25 @@ export default class Avatars {
   // Es una copia del que ya está armado en weapons.models (mismas mallas y
   // materiales, ya compilados en la carga: no traba). Sin eso, el gauchito
   // lleva el mate de siempre.
-  setGun(a, w, u) {
+  // c: el camuflaje de la armería que lleva (weapons/camos.js; solo sin
+  // mejorar). Ese sí se arma acá si todavía no estaba.
+  setGun(a, w, u, c) {
     a.gun?.removeFromParent();
     a.gun = null;
     const W = this.g.weapons;
-    const src = w && (W?.models?.get(`${w}|${u}`) || W?.models?.get(`${w}|0`));
+    const camo = !u && c && CAMO_BY_ID[c] && camoable(w) ? c : null;
+    const src = w && ((camo && W?.modelOf?.(w, 0, camo)) || W?.models?.get(`${w}|${u}`) || W?.models?.get(`${w}|0`));
     if (!src?.root) return;
     const gun = src.root.clone();
-    // (el fogonazo de la mano propia no viaja con la copia)
+    // (el fogonazo de la mano propia no viaja con la copia, ni la mano y el
+    // brazo de primera persona: el muñeco ya tiene los suyos. Las manos van
+    // marcadas en weapons/viewmodels.js; las hechas aparte, por el material)
+    const M = W.T ? VM.mats(W.T) : null;
+    const handMats = M ? new Set([M.skin, M.nail, M.sleeve, M.cuff]) : new Set();
     const drop = [];
     gun.traverse((o) => {
       if (W.flash && o.material === W.flash.material) drop.push(o);
+      else if (o.userData.hand || (o.isMesh && handMats.has(o.material))) drop.push(o);
       o.castShadow = false;
     });
     for (const o of drop) o.removeFromParent();
@@ -349,10 +372,10 @@ export default class Avatars {
       if (!a.group.visible) continue;
       // el mate que tiene en la mano (Session 'wpn')
       const wp = this.team ? this.s.wpn?.get(r.id) : null;
-      const wkey = wp?.w ? `${wp.w}|${wp.u | 0}` : '';
+      const wkey = wp?.w ? `${wp.w}|${wp.u | 0}|${wp.c || ''}` : '';
       if (wkey !== (a.wkey || '')) {
         a.wkey = wkey;
-        this.setGun(a, wp?.w, wp?.u | 0);
+        this.setGun(a, wp?.w, wp?.u | 0, wp?.c);
       }
       // pose: caminando, quieto o caído
       if (r.downed || r.dead || r.corpse) {
@@ -388,7 +411,15 @@ export default class Avatars {
         P.elR = -1.25;
         P.shLp = -0.25 + (r.moving ? Math.sin(a.fake.phase) * 0.35 : 0);
         P.elL = -0.35;
-        if (a.gun) {
+        if (r.shieldFront && r.shield && !r.ghost) {
+          // con el escudo adelante: el brazo izquierdo lo sostiene contra el pecho
+          P.shLp = -1.15;
+          P.shLr = 0.25;
+          P.elL = -1.45;
+          P.shRp = -0.9;
+          P.shRr = -0.2;
+          P.elR = -1.1;
+        } else if (a.gun) {
           // con su mate de verdad: los dos brazos adelante, apuntando adonde mira
           const up = Math.max(-1, Math.min(1, r.pitch || 0));
           P.shRp = -1.35 - up;
@@ -427,12 +458,17 @@ export default class Avatars {
         if (e.obj === a.poncho) e.obj.matrix.multiply(tmpRot.makeRotationFromEuler(tmpEul.set(a.sway.x, 0, a.sway.y)));
         e.obj.matrixWorldNeedsUpdate = true;
       }
+      // el escudazo de un compañero (world/ShieldUpgrade 'bash'): el escudo sale para adelante
+      const bk = a.bashT ? Math.max(0, 1 - (g.time - a.bashT) / 0.4) : 0;
+      if (bk > 0 && a.shield && a.shieldKey?.[1] === '1') a.shield.matrix.multiply(tmpRot.makeTranslation(0, 0, Math.sin(bk * Math.PI) * 0.3));
       const armed = !r.downed && !r.dead && !r.corpse && !r.ghost;
-      a.hand.visible = armed && !a.gun;
+      // (con el escudo adelante, el mate no está en la mano)
+      const front = !!r.shieldFront && !!r.shield && armed;
+      a.hand.visible = armed && !a.gun && !front;
       if (a.gun) {
         // en la mano derecha (el brazo va adelante), girado con la mirada
         // (yaw y pitch, como la cámara)
-        a.gun.visible = armed && (r.swim || 0) < 2;
+        a.gun.visible = armed && (r.swim || 0) < 2 && !front;
         if (a.gun.visible) {
           tmpE.set(Math.max(-1.2, Math.min(1.2, r.pitch || 0)), r.yaw, 0, 'YXZ');
           tmpQ.setFromEuler(tmpE);
@@ -445,7 +481,8 @@ export default class Avatars {
       }
       // (el alma de gaucho life no lo lleva)
       const shield = !!r.shield && !r.ghost;
-      if (shield !== !!a.shieldOn) this.backShield(a, shield);
+      const skey = shield ? `${r.shieldUp ? 1 : 0}${front ? 1 : 0}` : '';
+      if (shield !== !!a.shieldOn || skey !== (a.shieldKey || '')) this.backShield(a, shield, !!r.shieldUp, front);
       // en gaucho life el compañero se ve como un alma azul
       if (!!r.ghost !== !!a.ghost) {
         a.ghost = !!r.ghost;

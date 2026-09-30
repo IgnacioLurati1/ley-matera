@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mesh, boxGeo, cylGeo } from './props';
+import { yacare, upgradeShield } from './shieldUpModels';
 
 // El escudo armable de cada mapa, hecho con las tres piezas que se juntan
 // (config/maps/*: ACT.parts y ACT.shield). Mide unos 0,7 m; la cara mira a +z,
@@ -140,6 +141,8 @@ function caballero(M) {
   const rim = geo('knRim', () => new THREE.ExtrudeGeometry(heaterShape(1.07), { depth: 0.02, bevelEnabled: false, curveSegments: 10 }).translate(0, 0, -0.035));
   g.add(mesh(face, M.woodDark, 0, 0, 0));
   g.add(mesh(rim, M.brass, 0, 0, 0));
+  // el respaldo de madera (de atrás se veía el bronce del borde, liso)
+  g.add(mesh(face, M.woodDark, 0, 0, -0.032));
   g.add(mesh(dome('knBoss', 0.085), M.brass, 0, 0.03, 0.023));
   // los clavos de bronce en las esquinas y la punta
   for (const [x, y] of [[-0.22, 0.28], [0.22, 0.28], [-0.2, -0.05], [0.2, -0.05], [0, -0.3]]) g.add(mesh(dome('knNail', 0.014), M.brass, x, y, 0.023));
@@ -148,10 +151,12 @@ function caballero(M) {
   return g;
 }
 
-const BUILD = { molino: tranquera, granja: paja, penal: barrotes, torre: tapaPava, castillo: caballero };
+const BUILD = { molino: tranquera, granja: paja, penal: barrotes, esteros: yacare, torre: tapaPava, castillo: caballero };
 
-export function shieldModel(M, mapId) {
+// up: el escudo mejorado de ese mapa (world/shieldUpModels, world/ShieldUpgrade)
+export function shieldModel(M, mapId, up = false) {
   const g = (BUILD[mapId] || tranquera)(M);
+  if (up) upgradeShield(g, M, mapId);
   g.name = 'escudo';
   return g;
 }

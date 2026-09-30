@@ -96,7 +96,8 @@ export const WALL_BUYS = [
 ];
 
 export const PERK_SPOTS = [
-  { perk: 'revive', cell: [23, 32], face: [0, 1] },
+  // (en el galpón, a la izquierda de la puerta al patio: lo pidió el usuario 2026-09-28)
+  { perk: 'revive', cell: [9, 32], face: [0, 1] },
   { perk: 'jugg', cell: [31, 28], face: [1, 0] },
   { perk: 'speed', cell: [56, 35], face: [-1, 0] },
   { perk: 'doubletap', cell: [34, 3], face: [0, 1] },
@@ -289,7 +290,7 @@ export const ACT = {
   radios: RADIOS,
   parts: PARTS,
   bench: BENCH,
-  shield: { name: 'Escudo de tranquera', hp: 900, where: 'la mesa de trabajo del patio', plan: 'ESCUDO: tapa + cuero + tientos' },
+  shield: { name: 'Escudo de tranquera', hp: 900, where: 'la mesa de trabajo del patio', plan: 'ESCUDO: tapa + cuero + tientos', up: { name: 'Escudo de tranquera remachado', hp: 1450, prop: 'push', kind: 'press', pos: [40.5, 12.5], rot: 0, secs: 40 } },
   radioAch: ['Oyente de Radio Misiones', 'Escuchaste las tres transmisiones'],
 };
 
@@ -325,3 +326,10 @@ export const TEXT = {
 };
 // Cielo: siempre de noche.
 export const SKY = { daylight: 0 };
+
+// Los hornos de barro de las empanadas (entities/Empanadas): pared y hacia dónde mira.
+export const HORNO_SPOTS = [
+  { cell: [24, 32], face: [0, -1] },
+  { cell: [46, 21], face: [-1, 0] },
+  { cell: [56, 14], face: [-1, 0] },
+];

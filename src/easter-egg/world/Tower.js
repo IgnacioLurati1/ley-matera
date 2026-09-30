@@ -218,6 +218,19 @@ export default class Tower {
     return h;
   }
 
+  // El techo arriba de (x, z) para algo a la altura y: la cara de abajo de la
+  // losa (o la escalera) del piso siguiente; Infinity si ahí no hay (el
+  // agujero, el hueco de la escalera, afuera). Lo usa el nado en la torre
+  // inundada (entities/swim.js).
+  ceilAt(x, z, y) {
+    const cx = Math.floor(x);
+    const cz = Math.floor(z);
+    if (cx < 0 || cz < 0 || cx >= this.W || cz >= this.H) return Infinity;
+    const l = this.levelOf(y) + 1;
+    if (l >= this.L || !this.kind[l * this.WH + cz * this.W + cx]) return Infinity;
+    return this.yOf(l) - this.T.slab;
+  }
+
   // Piso (0..14) de algo a la altura y.
   levelOf(y) {
     return Math.max(0, Math.min(this.L - 1, Math.floor(((y || 0) + 0.7) / this.FH)));

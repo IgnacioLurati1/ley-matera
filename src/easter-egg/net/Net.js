@@ -61,7 +61,16 @@ export default class Net {
     const early = this.early?.filter((e) => e.msg.t === type);
     if (!early?.length) return;
     this.early = this.early.filter((e) => e.msg.t !== type);
-    for (const e of early) fn(e.msg, e.from);
+    // (uno por uno: si uno falla, los demás igual llegan. Si no, un aviso viejo
+    // que tirara un error cortaba el enganche y el que entraba con la partida
+    // empezada se quedaba en el título para siempre)
+    for (const e of early) {
+      try {
+        fn(e.msg, e.from);
+      } catch (err) {
+        console.error(err);
+      }
+    }
   }
 
   status(text) {

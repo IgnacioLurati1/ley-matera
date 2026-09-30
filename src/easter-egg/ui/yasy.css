@@ -1,0 +1,44 @@
+/* Un Yasy en la cara (entities/Yasy.js; el bicho es el modelo, en la escena
+   de la mano): los bordes oscuros, los arañazos y la tecla para sacárselo. */
+.mdu-yasy {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+  background: radial-gradient(ellipse at 50% 70%, rgba(0, 0, 0, 0) 35%, rgba(30, 10, 4, 0.6) 100%);
+}
+.mdu-yasy.on { opacity: 1; }
+.mdu-yasy-scratch {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transform-origin: 50% 50%;
+}
+.mdu-yasy-scratch.go { animation: mdu-yasy-cut 0.7s ease-out; }
+.mdu-yasy-key {
+  position: absolute;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+  min-width: 1.8em;
+  padding: 0.15em 0.45em;
+  border: 2px solid rgba(255, 240, 200, 0.85);
+  border-radius: 0.3em;
+  font: 700 1.6rem/1.2 sans-serif;
+  color: #fff4d8;
+  text-align: center;
+  background: rgba(20, 10, 4, 0.55);
+  animation: mdu-yasy-key 0.5s ease-in-out infinite alternate;
+}
+@keyframes mdu-yasy-cut {
+  0% { opacity: 0; }
+  12% { opacity: 0.95; }
+  100% { opacity: 0; }
+}
+@keyframes mdu-yasy-key {
+  from { transform: translateX(-50%) scale(1); }
+  to { transform: translateX(-50%) scale(1.12); }
+}

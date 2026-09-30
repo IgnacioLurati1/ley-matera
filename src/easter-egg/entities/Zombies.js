@@ -17,9 +17,10 @@ import { SILL_Y } from '../world/HighWindows';
 import { RISERS, FEATURES, MAP_ID, WATER_Y } from '../config/map';
 import { ATTIC, SKYLIGHTS, STAIR_BOTTOM, STAIR_TOP, STAIR_TURN, UP_Y, atticNavWorld, inAtticRect, inStair, levelOf, stairY } from '../world/Attic';
 import { walkLine } from '../world/Levels';
-import { SPEEDS, rollSpeed, rollSpeedHold, walkPace, runShare, ZOMBIE_DAMAGE, BOSS_DAMAGE, PUP_LUISON, POINTS, bossHealth, bossScale } from '../config/rules';
+import { SPEEDS, rollSpeed, rollSpeedHold, walkPace, runShare, ZOMBIE_DAMAGE, DOG_DAMAGE, BOSS_DAMAGE, PUP_LUISON, POINTS, bossHealth, bossScale } from '../config/rules';
 import { rng } from '../core/noise';
 import BossMoves from './bossMoves';
+import { reelStep, reelPose } from './zombieReel';
 
 // Zombies por rondas: aparición (ventanas y tierra), IA, animación procedural,
 // render instanciado (una llamada de dibujo por tipo de parte) y daño.
@@ -159,6 +160,8 @@ const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpC = new THREE.Color();
 const dirOut = { x: 0, z: 0 };
+// cuándo baja la mano el zarpazo (en tiempo de ataque: z.attackT, que corre con z.fury)
+const ATTACK_HIT = 0.42;
 // (el Luisón atraviesa el pajonal: la caja de la paja no lo frena)
 const SKIP_CORN = { skip: 'corn' };
 // el Luisón: lo chico del piso no lo frena (Zombies.bossColl; lowProp se pone al usar)
@@ -249,6 +252,9 @@ export default class Zombies {
     // la torre: carpinchos y caballos mezclados entre los muertos (cada uno con su cuerpo)
     this.horseRig = FEATURES.special === 'mixed' ? new HorseRig(game, MAX, this.eyeMat, true) : null;
     if (this.horseRig) this.dogRig.mixed = true;
+    // y en el Challenge, yacarés con la inundación (entities/challengeFlood.js elige dónde salen)
+    this.yacRig = FEATURES.special === 'mixed' && FEATURES.egg === 'reto' ? new YacareRig(game, MAX, true) : null;
+    if (this.yacRig) this.yacRig.spot = () => game.ee?.flood?.spot() ?? null;
     this.tele = this.buildTelegraphs();
     // lo nuevo de los jefes: a quién va, la cadena, la tercerola, las plagas...
     this.moves = new BossMoves(game, this);
@@ -454,6 +460,20 @@ export default class Zombies {
     }
   }
 
+  // El cuerpo (y la voz) de cada bicho: en la torre van mezclados los
+  // carpinchos, los caballos y, en el Challenge, los yacarés.
+  rigOf(z) {
+    return z.yac && this.yacRig ? this.yacRig : z.horse && this.horseRig ? this.horseRig : this.dogRig;
+  }
+
+  // Lo que saca un golpe de este bicho: los carpinchos y los pumas muerden
+  // menos (DOG_DAMAGE); caballos, yacarés y zombies, lo de siempre.
+  biteOf(z) {
+    if (!z.dog || this.isHorse(z) || z.yac) return ZOMBIE_DAMAGE;
+    const rig = this.rigOf(z);
+    return rig instanceof DogRig || rig instanceof PumaRig ? DOG_DAMAGE : ZOMBIE_DAMAGE;
+  }
+
   // ¿Es un caballo? (en la granja todos los especiales; en la torre, algunos)
   isHorse(z) {
     return this.horses || !!z.horse;
@@ -526,9 +546,11 @@ export default class Zombies {
       const d = nav.distAt(w.int.x, w.int.z);
       list.push({ kind: 'window', w, d });
     }
+    // la inundación del Challenge de la torre: nadie sale abajo del agua
+    const low = g.ee?.spawnFloor?.() ?? -Infinity;
     if (allowRisers) {
       for (const r of RISERS) {
-        if (!zones.has(r.zone)) continue;
+        if (!zones.has(r.zone) || (r.y ?? 0) < low) continue;
         const dx = r.pos[0] - player.x;
         const dz = r.pos[1] - player.z;
         const dy = r.y != null ? r.y - player.y : 0;
@@ -735,7 +757,8 @@ export default class Zombies {
   spawnDog(health, kind = null) {
     const g = this.g;
     // (el yacaré elige su lugar: en el agua)
-    const at = this.dogRig.spot?.() || this.dogSpot();
+    const yac = kind === 'yacare' && !!this.yacRig;
+    const at = yac ? this.yacRig.spot() : this.dogRig.spot?.() || this.dogSpot();
     if (!at) return false;
     const z = this.freeSlot();
     if (!z) return false;
@@ -746,6 +769,7 @@ export default class Zombies {
       dead: false,
       dog: true,
       horse: !!this.horseRig && horse,
+      yac,
       level: 0,
       baseY: at.y || 0,
       id: ++this.idc,
@@ -786,10 +810,11 @@ export default class Zombies {
     z.P.rootY = 0;
     const ay = at.y || 0;
     z.pos.set(at.x, ay, at.z);
-    this.dogRig.onSpawn?.(z);
+    const rig = this.rigOf(z);
+    rig.onSpawn?.(z);
     // el puma no cae con un rayo: baja de un salto desde lo alto
-    if (this.dogRig.spawnFx && !z.horse) {
-      this.dogRig.spawnFx(z);
+    if (rig.spawnFx) {
+      rig.spawnFx(z);
       return true;
     }
     // en la torre el rayo no atraviesa los pisos: baja desde el techo
@@ -1025,12 +1050,15 @@ export default class Zombies {
       if (g.audio.sfxBuf?.['jefe-sargento']) g.audio.bossSfx('sargento');
       else g.audio.bugle?.(at.clone().setY(at.y + 2));
     } else if (z.kind === 'luison') {
-      // sale del monte entre el vaho podrido, aullando
-      g.fx.dust(at, { x: 0, y: 1, z: 0 }, [0.2, 0.22, 0.14], 30);
-      g.fx.flash(at, 0x9aff5a, 60, 0.8, 18);
-      // (con la canción el aullido ya arrancó desde acá, con su resuello: EsterosEgg.luisonMusic)
-      if (!this.luisonPreHowled()) g.audio.luisonHowl?.(at.clone().setY(at.y + 3));
-      g.fx.addShake(0.4);
+      // sale del monte entre el vaho podrido, aullando (quiet: ya estaba ahí,
+      // en la escena de la llegada, ui/LuisonArrival)
+      if (!opts.quiet) {
+        g.fx.dust(at, { x: 0, y: 1, z: 0 }, [0.2, 0.22, 0.14], 30);
+        g.fx.flash(at, 0x9aff5a, 60, 0.8, 18);
+        // (con la canción el aullido ya arrancó desde acá, con su resuello: EsterosEgg.luisonMusic)
+        if (!this.luisonPreHowled()) g.audio.luisonHowl?.(at.clone().setY(at.y + 3));
+        g.fx.addShake(0.4);
+      }
     } else {
       g.fx.explosion(at, 2.5, [0.6, 0.8, 1]);
       g.fx.flash(at, 0x9ac8ff, 90, 0.6, 20);
@@ -1113,6 +1141,7 @@ export default class Zombies {
     }
     zz.dog = !!f.dog;
     zz.horse = !!f.horse;
+    zz.yac = !!f.yac;
     zz.level = f.level ? 1 : 0;
     if (zz.dog) zz.hidden = ALL_PARTS;
     zz.speedType = f.speedType;
@@ -1133,20 +1162,21 @@ export default class Zombies {
     const x = z.pos.x;
     const y = z.baseY || 0;
     const horse = z.dog && this.isHorse(z);
-    const voiced = z.dog && this.dogRig.voice && !horse;
+    const rig = this.rigOf(z);
+    const voiced = z.dog && rig.voice && !horse;
     if (state === 'dogspawn' && was == null) {
-      if (voiced && this.dogRig.spawnFx) this.dogRig.spawnFx(z);
+      if (voiced && rig.spawnFx) rig.spawnFx(z);
       else if (horse) g.audio.neigh(tmpV.set(x, y + 1.8, z.pos.z), 1, 'spawn');
       else g.audio.howl(tmpV.set(x, y + 0.8, z.pos.z));
     } else if (was == null) {
       // (recién visto: ya estaba así; no suena)
     } else if (state === 'attack') {
-      if (voiced) this.dogRig.voice(z, 'attack');
+      if (voiced) rig.voice(z, 'attack');
       else if (horse) g.audio.neigh(tmpV.set(x, y + 1.8, z.pos.z), 0.6, 'attack');
       else if (z.dog) g.audio.bark(tmpV.set(x, y + 0.7, z.pos.z), 'attack');
       else g.audio.growl(tmpV.set(x, y + 1.5, z.pos.z), 'attack');
     } else if (state === 'dead') {
-      if (voiced) this.dogRig.voice(z, 'die');
+      if (voiced) rig.voice(z, 'die');
       else if (horse) g.audio.neigh(tmpV.set(x, y + 1.5, z.pos.z), 1.3);
       else if (z.dog) g.audio.yelp(tmpV.set(x, y + 0.6, z.pos.z));
       else if (was !== 'frozen') g.audio.growl(tmpV.set(x, y + 1.6, z.pos.z), 'death');
@@ -1259,7 +1289,8 @@ export default class Zombies {
       if (this.g.world.tower) {
         // la torre: el piso debajo de la altura que manda el anfitrión (y la caída por el agujero)
         const ny = z.ny ?? z.baseY ?? 0;
-        z.baseY = this.g.world.floorAt(z.pos.x, z.pos.z, ny);
+        // (el que el remolino se lleva volando por un arco va a la altura que manda: towerKit)
+        z.baseY = z.state === 'flung' && !this.g.world.tower.inFoot(z.pos.x, z.pos.z) ? ny : this.g.world.floorAt(z.pos.x, z.pos.z, ny);
         z.pos.y = z.state === 'fall' ? ny : z.baseY;
       } else if (this.g.world.levels) {
         // en el penal la altura es la del piso donde está (o la del bote en el que viene por el río,
@@ -1314,6 +1345,10 @@ export default class Zombies {
           break;
         case 'shocked':
           this.poseShock(z, t);
+          break;
+        case 'reel':
+        case 'zapped':
+          reelPose(this, z, t);
           break;
         case 'drop': {
           // la misma caída que calcula el anfitrión, a partir del tiempo
@@ -1387,7 +1422,7 @@ export default class Zombies {
           z.growlT = 2.5 + Math.random() * 5;
           const d = Math.hypot(z.pos.x - this.g.player.pos.x, z.pos.z - this.g.player.pos.z);
           // (los bichos con voz propia, como el puma o el yacaré, suenan a ellos mismos)
-          if (d < 24 && z.dog && this.dogRig.voice && !z.horse) this.dogRig.voice(z, 'growl');
+          if (d < 24 && z.dog && this.rigOf(z).voice) this.rigOf(z).voice(z, 'growl');
           else if (d < 24) this.g.audio.growl(tmpV.set(z.pos.x, (z.baseY || 0) + 1.6, z.pos.z), z.crawler ? 'crawl' : z.speedType === 'sprint' ? 'scream' : 'idle');
         }
       }
@@ -1415,9 +1450,13 @@ export default class Zombies {
     const share = challenge || !R.total ? 0 : runShare(R.round, 1 - left / R.total);
     // lo hondo cuesta más en el campo de flujo (y la inundación lo cambia)
     updateNavCost(g);
+    // las empanadas: Tiempo Muerto (quietos) y Paso de Tortuga (caminan todos)
+    const freeze = !!g.emp?.frozen();
+    const slow = !!g.emp?.slowAll();
     for (const z of this.pool) {
       if (!z.active) continue;
-      if (!z.dead && z.speedType === 'walk' && (lastAlive || (z.runU != null && z.runU < share))) {
+      if (freeze && !z.dead && !z.boss) continue;
+      if (!z.dead && !slow && z.speedType === 'walk' && (lastAlive || (z.runU != null && z.runU < share))) {
         z.speedType = 'run';
         z.speed = SPEEDS.run * (0.92 + Math.random() * 0.16);
       }
@@ -1753,6 +1792,11 @@ export default class Zombies {
         this.meltStep(z);
         if (z.stateT > MELT_T) this.free(z);
         break;
+      // el escudo lo hizo tambalear o lo electrocutó (entities/zombieReel.js)
+      case 'reel':
+      case 'zapped':
+        reelStep(this, z, dt, t);
+        break;
       default:
         break;
     }
@@ -1766,17 +1810,17 @@ export default class Zombies {
       return;
     }
     if (z.state === 'dogspawn') {
-      if (Math.random() < 0.6 && !(this.dogRig.spawnFx && !z.horse)) g.fx.fire(tmpV.set(z.pos.x, (z.baseY || 0) + 0.25, z.pos.z), 0.7, 1);
+      if (Math.random() < 0.6 && !this.rigOf(z).spawnFx) g.fx.fire(tmpV.set(z.pos.x, (z.baseY || 0) + 0.25, z.pos.z), 0.7, 1);
       if (z.stateT > 0.6) {
         this.setState(z, 'chase');
         // (el puma ya gritó al saltar)
-        if (this.dogRig.voice && !z.horse) return;
+        if (this.rigOf(z).voice) return;
         if (this.isHorse(z)) g.audio.neigh(tmpV.set(z.pos.x, (z.baseY || 0) + 1.8, z.pos.z), 1, 'spawn');
         else g.audio.howl(tmpV.set(z.pos.x, (z.baseY || 0) + 0.8, z.pos.z));
       }
       return;
     }
-    if (z.dead && this.dogRig.sinks) {
+    if (z.dead && this.rigOf(z).sinks) {
       // el yacaré queda panza arriba y se hunde (Yacares.js lo dibuja)
       z.corpseT += dt;
       if (z.stateT > 3.2) this.free(z);
@@ -1802,7 +1846,7 @@ export default class Zombies {
     if (z.growlT <= 0) {
       z.growlT = 1.2 + Math.random() * 2.5;
       if (Math.hypot(player.pos.x - z.pos.x, player.pos.z - z.pos.z) < 22) {
-        if (this.dogRig.voice && !z.horse) this.dogRig.voice(z, 'growl');
+        if (this.rigOf(z).voice) this.rigOf(z).voice(z, 'growl');
         else if (this.isHorse(z)) g.audio.snort(tmpV.set(z.pos.x, (z.baseY || 0) + 1.8, z.pos.z));
         else g.audio.bark(tmpV.set(z.pos.x, (z.baseY || 0) + 0.7, z.pos.z));
       }
@@ -1844,7 +1888,7 @@ export default class Zombies {
     const lure = this.lure;
     // va por el jugador de pie más cercano: a los tirados no los buscan (ni al
     // sumergido: solo los yacarés, que lo siguen abajo del agua pero no lo muerden)
-    const target = g.nearestPlayer(z.pos.x, z.pos.z, z.pos.y, z.dog && !z.horse && !!this.dogRig.sinks);
+    const target = g.nearestPlayer(z.pos.x, z.pos.z, z.pos.y, z.dog && !!this.rigOf(z).sinks);
     if (target && target !== player) {
       distP = Math.hypot(target.pos.x - z.pos.x, target.pos.z - z.pos.z);
       player = target;
@@ -1853,7 +1897,7 @@ export default class Zombies {
     let tz = player.pos.z;
     // el yacaré con el jugador sumergido: no se le pone encima, lo rodea (cada
     // uno en su lugar del círculo, que va girando despacio)
-    const ring = !!target && z.dog && !z.horse && !!this.dogRig.sinks && submerged(player);
+    const ring = !!target && z.dog && !!this.rigOf(z).sinks && submerged(player);
     if (ring) {
       const a = z.slot * 2.39996 + t * 0.25;
       tx = player.pos.x + Math.cos(a) * 2.6;
@@ -1960,8 +2004,10 @@ export default class Zombies {
     if (z.navT > 0) z.navT -= dt;
 
     // (el agua frena: vadeando un poco, nadando bastante; entities/swim.js)
-    const wet = z.dog ? this.dogRig.waterSpeed?.(z) ?? 1 : zombieWaterSpeed(z);
-    const speed = (z.crawler ? 0.75 : z.speed) * (z.slowT > 0 ? 0.4 : 1) * (wander ? 0.55 : 1) * wet;
+    const wet = z.dog ? this.rigOf(z).waterSpeed?.(z) ?? 1 : zombieWaterSpeed(z);
+    const slow = !z.boss && !z.dog && this.g.emp?.slowAll();
+    // (z.chainT: el grillete del escudo del penal, world/ShieldUpgrade)
+    const speed = (z.crawler ? 0.75 : slow ? Math.min(z.speed, SPEEDS.walk * 1.1) : z.speed) * (z.slowT > 0 ? 0.4 : z.chainT > 0 ? 0.45 : 1) * (wander ? 0.55 : 1) * wet;
     const attacking = z.state === 'attack';
     // pasos arrastrados cuando andan cerca
     if (distP < 7) {
@@ -2009,13 +2055,29 @@ export default class Zombies {
       z.pos.z += (pdz / pd) * (keep - pd);
     }
 
+    // la prueba del pasillo: al que pasa corriendo al lado se le adelanta el
+    // zarpazo. Cuánto se acerca el jugador por su cuenta (m/s, suavizado; sin
+    // lo que camina el zombie, que al pegar frena): si en lo que tarda el golpe
+    // va a quedar a tiro, arranca ya (antes esperaba al metro y pico y, para
+    // cuando bajaba la mano, el que corría ya había pasado: no pegaba ni a 30 cm)
+    const fresh = z.lastTgt === player && g.time - (z.reachT ?? -9) < 0.1 && z.lastReach < 90 && reach < 90;
+    const inst = fresh ? (z.lastReach - reach) / Math.max(dt, 1e-3) : 0;
+    z.closeV = fresh ? (z.closeV || 0) + (inst - (z.closeV || 0)) * (1 - Math.exp(-dt * 12)) : 0;
+    z.lastReach = reach;
+    z.lastTgt = player;
+    z.reachT = g.time;
     if (!attacking) {
       if (z.crawler) this.poseCrawl(z, dt);
       else this.poseGait(z, dt, sp * align, t);
-      if (reach < 1.3 && (plot || ((player.canBeHit ? player.canBeHit() : !player.downed && !player.dead) && !submerged(player))) && !lure) {
+      const own = z.closeV - sp * align;
+      const soon = !plot && own > 1.5 && reach < 5 && reach - ((own + speed * 0.25) * ATTACK_HIT) / (z.fury || 1) < 1.2;
+      // (al escondido en una mata del Maizaster no lo ven: no le tiran el zarpazo)
+      if ((reach < 1.3 || soon) && (plot || ((player.canBeHit ? player.canBeHit() : !player.downed && !player.dead) && !submerged(player) && !player.maizIn)) && !lure) {
         this.setState(z, 'attack');
         z.attackHit = false;
-        if (z.dog && this.dogRig.voice && !z.horse) this.dogRig.voice(z, 'attack');
+        z.attackNear = 99;
+        z.attackTgt = player;
+        if (z.dog && this.rigOf(z).voice) this.rigOf(z).voice(z, 'attack');
         else if (z.dog && this.isHorse(z)) g.audio.neigh(tmpV.set(z.pos.x, (z.baseY || 0) + 1.8, z.pos.z), 0.6, 'attack');
         else if (z.dog) g.audio.bark(tmpV.set(z.pos.x, (z.baseY || 0) + 0.7, z.pos.z), 'attack');
         else g.audio.growl(tmpV.set(z.pos.x, (z.baseY || 0) + 1.5, z.pos.z), 'attack');
@@ -2024,12 +2086,15 @@ export default class Zombies {
       z.attackT += dt * (z.fury || 1);
       if (z.crawler) this.poseCrawl(z, dt);
       else this.poseAttack(z, t);
-      if (!z.attackHit && z.attackT > 0.42) {
+      // lo más cerca que pasó mientras bajaba la mano (el que cruzó por
+      // adelante justo antes del golpe también cobra)
+      if (z.attackT > 0.2 && player === z.attackTgt) z.attackNear = Math.min(z.attackNear ?? 99, reach);
+      if (!z.attackHit && z.attackT > ATTACK_HIT) {
         z.attackHit = true;
-        if (reach < 1.65) {
+        if (reach < 1.65 || (!plot && player === z.attackTgt && z.attackNear < 1.4)) {
           if (plot) g.defense.zombieHit(plot);
           // (se sumergió a tiempo: no lo alcanza)
-          else if (!submerged(player)) g.damagePlayer(player, ZOMBIE_DAMAGE, z.pos);
+          else if (!submerged(player)) g.damagePlayer(player, this.biteOf(z), z.pos);
         }
       }
       if (z.attackT > 0.95) this.setState(z, 'chase');
@@ -2078,6 +2143,14 @@ export default class Zombies {
       }
       case 'chase': {
         z.fromGrass = false;
+        // recién llegado (la llegada del Luisón: cayó de la loma), un rato
+        // quieto mirándolos antes de atacar
+        if (z.holdT > 0) {
+          z.holdT -= dt;
+          this.turn(z, Math.atan2(dxp, dzp), 3, dt);
+          this.poseIdle(z, t);
+          break;
+        }
         if (nobody) {
           // (antes seguía encima del caído, rugiéndole y tirando golpes al aire)
           if (distP < 7) this.moveBoss(z, -dxp / (distP || 1), -dzp / (distP || 1), z.speed * 0.6, dt, t);
@@ -2166,7 +2239,7 @@ export default class Zombies {
           break;
         }
         // (la cadena del Alcaide llega más lejos que el rebenque)
-        const ready = (z.whipCd <= 0 && distP > 3.2 && distP < (z.kind === 'alcaide' ? 14 : 8.5)) || (z.chargeCd <= 0 && distP > 7 && distP < 18);
+        const ready = (z.whipCd <= 0 && distP > 3.2 && distP < (z.kind === 'alcaide' || z.kind === 'gil' ? 14 : 8.5)) || (z.chargeCd <= 0 && distP > 7 && distP < 18);
         const flat = !g.world.levels || (Math.abs((pp.y || 0) - (z.baseY || 0)) < 1 && walkLine(g.world, z.pos.x, z.pos.z, pp.x, pp.z, z.baseY));
         if (ready && flat && player.canBeHit?.() !== false && g.world.clear(tmpV.set(z.pos.x, (z.baseY || 0) + 1.4, z.pos.z), tmpV2.set(pp.x, (pp.y || 0) + 1.4, pp.z))) {
           if (z.chargeCd <= 0 && distP > 7) {
@@ -2277,8 +2350,9 @@ export default class Zombies {
           this.setState(z, 'whip');
           // el Sargento, en vez del rebenque, se tira adelante con el sable
           if (z.kind === 'sargento' || z.kind === 'luison') this.saberStart(z);
-          // el Alcaide tira la cadena y al que agarra lo trae
-          else if (z.kind === 'alcaide') this.moves.chainThrow(z);
+          // el Alcaide tira la cadena y al que agarra lo trae (el Gil del cerro, igual:
+          // juega con las cadenas, sin rebenque)
+          else if (z.kind === 'alcaide' || z.kind === 'gil') this.moves.chainThrow(z);
           else this.whipHit(z);
         }
         break;
@@ -3351,9 +3425,13 @@ export default class Zombies {
     for (const M of this.meshes) M.im.instanceMatrix.needsUpdate = true;
     this.dogRig.update(this.pool);
     this.horseRig?.update(this.pool);
+    this.yacRig?.update(this.pool);
     this.telegraph();
     const b = this.boss;
     if (b) {
+      // una escena que lo tiene agarrado le pone su pose encima de la de
+      // siempre (world/gilHeld.js: el Gil en manos de las almas)
+      if (this.bossPose) this.bossPose(b, b.P, dt);
       // el Luisón en el pajonal va agazapado (las cañas lo tapan: se ve moverse
       // el pasto); por dónde está, anfitrión e invitado
       let P = b.P;
@@ -3408,7 +3486,7 @@ export default class Zombies {
       if (!z.active || z.dead || z.monte) return;
       if (z.dog) {
         if (z.state === 'dogspawn') return;
-        const h = (z.horse && this.horseRig ? HorseRig : this.dogRig.constructor).raycast(z, o, d, maxT);
+        const h = (z.yac && this.yacRig ? YacareRig : z.horse && this.horseRig ? HorseRig : this.dogRig.constructor).raycast(z, o, d, maxT);
         if (h) hits.push({ z, t: h.t, zone: h.zone });
         return;
       }
@@ -3430,6 +3508,8 @@ export default class Zombies {
     if (pb) hits.push(pb);
     const cr = this.g.crow?.hitTest(o, d, maxT);
     if (cr) hits.push(cr);
+    // los Yasy del matorral de La Tapera (entities/Yasy.js)
+    this.g.yasy?.hitTest(o, d, maxT, hits);
     // la estaca de Gil
     const st = this.moves.hitTest(o, d, maxT);
     if (st) hits.push(st);
@@ -3453,7 +3533,37 @@ export default class Zombies {
     if (this.boss) check(this.boss);
     if (this.g.pombero && this.g.pombero.state !== 'appear') check(this.g.pombero.z);
     if (this.g.crow?.z.active) check(this.g.crow.z);
+    this.g.yasy?.inRadius(check);
     return out;
+  }
+
+  // (anfitrión) El Juicio del Mate Supremo: el jefe (o el Pombero, o el
+  // Cuervo) se muere ya, sin escudo, tope ni fase que valga. Muere por el
+  // camino de siempre (kill), así el easter egg sigue como si lo hubieran
+  // bajado a tiros. (En el traslado a la Cárcel de las Almas espera a que
+  // lleguen: muerto a mitad de camino, la escena quedaba a medias.)
+  annihilate(z, info = {}) {
+    const g = this.g;
+    if (!z?.active || z.dead) return false;
+    const how = { ...info, type: 'explosive', zone: 'torso' };
+    if (z.pombero) {
+      z.hp = 0;
+      g.pombero.kill(how);
+      return true;
+    }
+    if (z.yasy) return g.yasy.damage(z, 1e9, { ...how, type: 'knife' });
+    if (z.crow) {
+      z.hp = 0;
+      g.crow.kill(how);
+      return true;
+    }
+    if (z.mandinga && g.arena?.stage === 'shift') {
+      g.later(0.6, () => this.annihilate(z, info));
+      return true;
+    }
+    z.hp = 0;
+    this.kill(z, how);
+    return true;
   }
 
   // info: { zone, type, dir, point, weapon, noPoints }
@@ -3462,11 +3572,18 @@ export default class Zombies {
     const g = this.g;
     // la estaca de Gil (entities/bossMoves.js)
     if (z.stake) return this.moves.hitStake(z, amount, info);
+    // el Juicio del Mate Supremo (weapons/Supremo.js): cualquier jefe cae al
+    // toque, con escudo, bajo tierra o en la fase que sea (lo decide el anfitrión)
+    if (info.type === 'juicio') {
+      if (!g.net?.guest) return this.annihilate(z, info);
+      g.net.reportHit(z, amount, info);
+      return true;
+    }
     // el Espantapájaros bajo tierra
     if (z.boss && this.moves.immune(z)) return false;
     // de invitado, el daño lo aplica el anfitrión: acá solo se ve la sangre
     if (g.net?.guest) {
-      if (info.point && !['freeze', 'chain', 'blast'].includes(info.type)) {
+      if (info.point && !['freeze', 'chain', 'blast', 'luz'].includes(info.type)) {
         g.fx.blood(info.point, info.dir ? tmpV2.copy(info.dir).multiplyScalar(0.6) : { x: 0, y: 0.5, z: 0 }, info.zone === 'head' ? 14 : 8);
       }
       g.net.reportHit(z, amount, info);
@@ -3477,6 +3594,7 @@ export default class Zombies {
     const pupK = info.pup ? info.pup * (z.kind === 'luison' ? PUP_LUISON : 1) : 1;
     if (z.pombero) return g.pombero.damage(amount * pupK, info);
     if (z.crow) return g.crow.damage(amount * pupK, info);
+    if (z.yasy) return g.yasy.damage(z, amount, info);
     // el penal: un frasco de ácido en el Alcaide le derrite el llavero
     if (z.boss && info.type === 'acid') g.ee.onBossAcid?.(z);
     // el Mandinga envuelto en fuego no recibe daño hasta que caigan los peones
@@ -3514,7 +3632,8 @@ export default class Zombies {
         }
       }
       // el Mandinga no se deja voltear de un par de tiros de oro
-      if (z.mandinga) dmg = Math.min(dmg, info.zone === 'head' ? 1300 : 900);
+      // (info.cap: la medialuna de la hoz de oro le pega más: entities/Yasy.js hozBaston)
+      if (z.mandinga) dmg = Math.min(dmg, info.cap || (info.zone === 'head' ? 1300 : 900));
       // atontado contra la pared: es el momento de darle
       // (en las arenas, x1,5: stunK)
       if (z.state === 'stunned') dmg *= z.stunK || 2;
@@ -3606,11 +3725,13 @@ export default class Zombies {
     if (type !== 'nuke' && !info.noPoints) g.addPoints(pts, info.point);
     if (info.by != null && g.net?.host && info.by !== g.net.id) {
       // lo liquidó un compañero: va a su cuenta, no a la del anfitrión
-      g.net.creditKill(info.by, type, info.zone);
+      g.net.creditKill(info.by, type, info.zone, z);
     } else {
       g.stats.kills++;
       if (info.zone === 'head' && ['bullet', 'knife'].includes(type)) g.stats.headshots++;
       if (type === 'knife') g.stats.knifeKills++;
+      // la experiencia (ui/Levels: vale menos en las rondas con más zombies)
+      g.levels?.kill(z, type, info.zone);
     }
     // dirección de caída
     if (info.dir) {
@@ -3630,7 +3751,7 @@ export default class Zombies {
       z.state = 'dead';
       z.stateT = 0;
       z.burst = false;
-      if (this.dogRig.voice && !z.horse) this.dogRig.voice(z, 'die');
+      if (this.rigOf(z).voice) this.rigOf(z).voice(z, 'die');
       else if (this.isHorse(z)) g.audio.neigh(tmpV.set(z.pos.x, (z.baseY || 0) + 1.5, z.pos.z), 1.3);
       else g.audio.yelp(tmpV.set(z.pos.x, (z.baseY || 0) + 0.6, z.pos.z));
       if (info.point) g.fx.blood(info.point, info.dir || { x: 0, y: 0.5, z: 0 }, 14);
@@ -3715,8 +3836,9 @@ export default class Zombies {
       z.steamT = 3;
       this.paint(z, 0x4a6a2a);
       g.fx.steam(tmpV.set(z.pos.x, (z.baseY || 0) + 1, z.pos.z), 8, 0.5);
-    } else if (type === 'yerba') {
-      g.fx.yerbaPuff(z.pos);
+    } else if (type === 'yerba' || type === 'luz') {
+      // (luz: el Mate Supremo lo deshace; sus chispas las pone weapons/Supremo.js)
+      if (type === 'yerba') g.fx.yerbaPuff(z.pos);
       if (!z.boss) this.free(z);
       else {
         z.state = 'dead';
@@ -3751,8 +3873,8 @@ export default class Zombies {
       }
     }
     // (el derretido deja su charco de barro, no sangre)
-    if (type !== 'melt') g.fx.decal(1, { x: z.pos.x + (Math.random() - 0.5) * 0.6, y: (z.baseY || 0) + 0.02, z: z.pos.z + (Math.random() - 0.5) * 0.6 }, { x: 0, y: 1, z: 0 }, 0.8 + Math.random() * 0.6);
-    if (type !== 'freeze' && type !== 'yerba') g.audio.growl(neck.clone(), 'death');
+    if (type !== 'melt' && type !== 'luz') g.fx.decal(1, { x: z.pos.x + (Math.random() - 0.5) * 0.6, y: (z.baseY || 0) + 0.02, z: z.pos.z + (Math.random() - 0.5) * 0.6 }, { x: 0, y: 1, z: 0 }, 0.8 + Math.random() * 0.6);
+    if (type !== 'freeze' && type !== 'yerba' && type !== 'luz') g.audio.growl(neck.clone(), 'death');
     // el easter egg se entera de cualquier jefe que cae (el Sargento suelta la llave del Coronel)
     // (lo que suelta queda donde se llega caminando: no afuera del mapa ni del
     // otro lado de una baranda; entities/reach.js)
@@ -3770,16 +3892,25 @@ export default class Zombies {
     } else if (type !== 'nuke' && !z.dog) g.powerups.onKill(spot);
     g.rounds.onKill(z);
     g.ee.onKill(z, info);
-    if (!z.boss && type !== 'nuke') g.activities?.onKill(z);
+    if (!z.boss && type !== 'nuke') g.activities?.onKill(z, info);
+    // el Maizaster: a veces el muerto deja una mata de pasto alto (entities/maizaster.js)
+    if (!z.boss && type !== 'nuke') g.fx.maiz?.onKill(z, info, spot);
     return true;
   }
 
-  // Kaboom: mata a todos (menos al Capataz) sin dar puntos por cada uno.
+  // Kaboom: mata a todos (menos al Capataz) sin dar puntos por cada uno,
+  // también a los que están saliendo, y por 3 s no sale nadie más
+  // (Rounds.holdSpawns: así ninguno aparece mientras van cayendo).
   nuke() {
     const list = this.pool.filter((z) => z.active && !z.dead);
+    // (con muchos, caen igual en poco más de un segundo)
+    const step = Math.min(0.06, 1 / Math.max(1, list.length));
+    this.g.rounds?.holdSpawns(3);
     list.forEach((z, i) => {
-      this.g.later(0.15 + i * 0.06 + Math.random() * 0.2, () => {
-        if (!z.active || z.dead) return;
+      const id = z.id;
+      this.g.later(0.15 + i * step + Math.random() * 0.2, () => {
+        // (si ya cayó y el lugar lo tomó otro, a ese no)
+        if (!z.active || z.dead || z.id !== id) return;
         this.paint(z, 0x2a1a10);
         this.g.fx.fire(tmpV.set(z.pos.x, (z.baseY || 0) + 1, z.pos.z), 0.5, 6);
         this.kill(z, { type: 'nuke' });

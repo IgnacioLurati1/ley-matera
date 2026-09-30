@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MAP_W, MAP_H, DOORS, PERK_SPOTS, WALL_BUYS, BOX_SPOTS, POWER, PAP, RISERS } from '../config/map';
-import { WATER_Y, DECOR, ZONES } from '../config/maps/esteros';
+import { WATER_Y, DECOR, ZONES, PROPS, SKY } from '../config/maps/esteros';
 import { rng } from '../core/noise';
 import { coverageMips } from '../core/textures';
 import { leafCrownGeometry, evenFoliage } from './esterosGrass';
@@ -343,12 +343,26 @@ export function buildDecor(w) {
       qq.push(j);
     }
   }
+  // (la loma del Luisón se ve desde el algarrobo con la luna atrás: ni
+  // árboles arriba ni en el camino de la mirada, adelante y atrás de la loma;
+  // ui/LuisonArrival)
+  const lomas = PROPS.filter((o) => o.type === 'loma');
+  const md = SKY.moon?.dir || [0, 0, 1];
+  const ml = Math.hypot(md[0], md[2]) || 1;
+  const view = (x, z) =>
+    lomas.some((o) => {
+      const dx = x - o.pos[0];
+      const dz = z - o.pos[1];
+      const along = (dx * md[0] + dz * md[2]) / ml;
+      const side = Math.abs(dx * md[2] - dz * md[0]) / ml;
+      return along > -14 && along < 18 && side < 4.5 + Math.max(0, along) * 0.3;
+    });
   const monte = [];
   for (let k = 0; k < 900 && monte.length < DECOR.monte; k++) {
     const x = r() * MAP_W;
     const z = r() * MAP_H;
     const i = w.idx(Math.floor(x), Math.floor(z));
-    if (dist[i] < 3 || dist[i] > 9 || wet(x, z) > 0.2) continue;
+    if (dist[i] < 3 || dist[i] > 9 || wet(x, z) > 0.2 || view(x, z)) continue;
     if (monte.some(([x2, z2]) => Math.hypot(x - x2, z - z2) < 4)) continue;
     monte.push([x, z, 4 + r() * 4, r() < 0.25 ? 'ceibo' : 'monte']);
   }

@@ -3,6 +3,7 @@ import Avatars from '../net/Avatars';
 import { makePose, solvePose } from '../entities/skeleton';
 import { PLAYER_START } from '../config/map';
 import { buildChiqui, chiquiGiggle } from '../world/Chiqui';
+import { crewIds } from './cineCrew';
 
 // Los guiones de las cinemáticas de entrada (ui/Intro.js), uno por mapa.
 // Cada guion arma lo suyo (escondido) y devuelve:
@@ -267,9 +268,9 @@ function molino(g, I) {
     }
   };
 
-  // el color del poncho de cada uno (el de la partida)
+  // el color del poncho de cada uno (el de la partida; siempre cuatro)
   const dress = () => {
-    st.ids = g.net ? [g.net.id, ...g.net.remote.keys()].sort((x, y) => x - y) : [0];
+    st.ids = crewIds(g);
     st.me = g.net ? g.net.id : 0;
     st.ids.forEach((id, i) => {
       const own = people.materials(id);

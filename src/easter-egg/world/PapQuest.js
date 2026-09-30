@@ -423,7 +423,7 @@ export default class PapQuest {
     obj.scale.setScalar(1.25);
     this.root.add(obj);
     // una zona al azar de la planta baja (ni la del arranque, ni el prado del final)
-    const zones = Object.keys(ZONES).filter((k) => k !== START_ZONE && ZONES[k].rects && !ZONES[k].circle && !ZONES[k].with && !ZONES[k].y);
+    const zones = Object.keys(ZONES).filter((k) => k !== START_ZONE && ZONES[k].rects && !ZONES[k].circle && !ZONES[k].with && !ZONES[k].y && !ZONES[k].wild);
     this.henZone = zones[Math.floor(Math.random() * zones.length)] || START_ZONE;
     const spot = this.henSpot(this.henZone);
     const y = g.world.floorAt(spot[0], spot[1]);

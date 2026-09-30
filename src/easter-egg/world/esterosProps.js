@@ -280,7 +280,10 @@ const BUILDERS = {
     const top = [0.3 * s, 2.2 * s, 0.1 * s];
     for (let k = 0; k < 4; k++) {
       const a = (k / 4) * Math.PI * 2 + 0.4;
-      const d = [Math.cos(a) * 0.85, 0.5, Math.sin(a) * 0.85];
+      // (o.alza[k]: cuánto más empinada sale cada rama; el mismo largo)
+      const up = 0.5 + (o.alza?.[k] || 0);
+      const n = Math.hypot(0.85, up) / Math.hypot(0.85, 0.5);
+      const d = [(Math.cos(a) * 0.85) / n, up / n, (Math.sin(a) * 0.85) / n];
       branch(top, d, (k === 0 ? 4.2 : 3) * s, 0.36 * s, 2);
     }
     const crown = leafCrownGeometry();
@@ -376,6 +379,52 @@ const BUILDERS = {
     return { obj: g, boxes: [[-0.7, 0, -0.7, 0.7, 0.7, 0.7], [-0.2, 0.7, -0.2, 0.2, 3.9, 0.2]] };
   },
 
+  // La loma del Luisón: un lomo de pasto que asoma por arriba del pajonal,
+  // entre el algarrobo y la reducción, del lado de la luna. Ahí aparece en la
+  // llegada (ui/LuisonArrival): recortado contra la luna llena, parado en las
+  // piedras de la cresta. Sin cajas: queda afuera de lo que se camina.
+  loma(M, o, r) {
+    const g = new THREE.Group();
+    const rx = o.rx || 3.5;
+    const rz = o.rz || 2.5;
+    const N = 44;
+    const W = rx + 1.2;
+    const D = rz + 1.2;
+    const geo = new THREE.PlaneGeometry(W * 2, D * 2, N, N).rotateX(-Math.PI / 2);
+    const p = geo.attributes.position;
+    const uv = geo.attributes.uv;
+    const col = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i);
+      const z = p.getZ(i);
+      const y = lomaY(o, x, z);
+      p.setY(i, y);
+      uv.setXY(i, x / 3, z / 3);
+      // pasto abajo (como el suelo del estero) y tierra pelada arriba
+      const n = Math.sin(x * 0.7 + z * 0.3) * 0.5 + Math.sin(x * 0.21 - z * 0.63) * 0.5;
+      const top = Math.max(0, Math.min(1, (y / (o.h || 5) - 0.45) * 2.2));
+      col[i * 3] = 0.55 + n * 0.08 + (0.32 - 0.55) * top;
+      col[i * 3 + 1] = 0.6 + n * 0.1 + (0.27 - 0.6) * top;
+      col[i * 3 + 2] = 0.4 + (0.2 - 0.4) * top;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.computeVertexNormals();
+    g.add(new THREE.Mesh(geo, M.ground));
+    // la losa de la cresta (ahí se para: su altura es la de lomaTop) y
+    // piedras sueltas alrededor
+    const slab = mesh(keep('rockGeo', () => new THREE.DodecahedronGeometry(1, 0)), M.stone, 0, lomaY(o, 0, 0) - 0.05, 0, 0, r() * 3, 0);
+    slab.scale.set(1.15, SLAB_H, 0.95);
+    g.add(slab);
+    for (let k = 0; k < 5; k++) {
+      const a = r() * Math.PI * 2;
+      const d = 1.0 + r() * 0.8;
+      const x = Math.cos(a) * d;
+      const z = Math.sin(a) * d * 0.7;
+      rock(g, M.stone, x, lomaY(o, x, z) - 0.05, z, 0.3 + r() * 0.3, r);
+    }
+    return { obj: g, boxes: [] };
+  },
+
   // Piedras caídas de la reducción: bloques de arenisca roja sueltos.
   escombroRojo(M, o, r) {
     const g = new THREE.Group();
@@ -421,6 +470,28 @@ const BUILDERS = {
     return { obj: g, boxes: [[-len / 2, 0, -0.1, len / 2, 1.9, 0.1]] };
   },
 };
+
+// Lo alto de la losa de la cresta (sobre el piso): donde apoya los pies.
+const SLAB_H = 0.3;
+let dodeTop = 0;
+export function lomaTop(o) {
+  if (!dodeTop) {
+    const geo = new THREE.DodecahedronGeometry(1, 0);
+    geo.computeBoundingBox();
+    dodeTop = geo.boundingBox.max.y;
+    geo.dispose();
+  }
+  return lomaY(o, 0, 0) - 0.05 + dodeTop * SLAB_H;
+}
+
+// La altura de la loma (sobre el piso) en (x, z) locales. Afuera, un poco
+// abajo del piso (el borde queda tapado).
+export function lomaY(o, x, z) {
+  const u = Math.hypot(x / (o.rx || 3.5), z / (o.rz || 2.5));
+  if (u >= 1) return -0.4;
+  const n = Math.sin(x * 1.7 + z * 0.9) * 0.5 + Math.sin(x * 0.6 - z * 2.1) * 0.5;
+  return (o.h || 5) * Math.pow(1 - u * u, 1.5) + n * 0.18 * (1 - u);
+}
 
 let registered = false;
 export function registerEsterosProps() {

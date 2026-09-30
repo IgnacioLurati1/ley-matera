@@ -3,6 +3,7 @@ import CastleCine, { smooth, lerp } from './castleCine';
 import Avatars from '../net/Avatars';
 import { EE } from '../config/map';
 import { warmScene } from './cineWarm';
+import { prefetchTrack } from '../core/music';
 
 // El final de "Mate no Numa" (El Pacto): cayó el Luisón y los cuatro quedan
 // al pie del Algarrobo de los Colgados. La voz le habla a Gil (solo él la oye:
@@ -22,6 +23,8 @@ import { warmScene } from './cineWarm';
 // hacen es una pose que se mezcla de a poco (pose/anim), nunca un salto.
 
 const CHOOSE_SECS = 30;
+// dónde arranca a sonar la canción de la traición (antes, 0,38 s de nada)
+const TRAICION_AT = 0.36;
 const MATES = [
   { id: 901, key: 'anacleto', name: 'Anacleto', color: 0x3a6a2a },
   { id: 902, key: 'cirilo', name: 'Cirilo', color: 0x2a3a7a },
@@ -114,6 +117,8 @@ export default class EsterosEnding extends CastleCine {
     // en segundo plano (el relieve de Surfaces primero, si no se recompila)
     g.post?.sweep?.();
     warmScene(g);
+    // (la canción de la traición entra justo con la puñalada: ya bajada)
+    prefetchTrack('cine-esteros-traicion');
     return this.script0();
   }
 
@@ -377,6 +382,8 @@ export default class EsterosEnding extends CastleCine {
     const dir = tmpW.copy(r.pos).sub(G.pos).setY(0.2).normalize();
     g.fx.blood?.(chest, dir, 20, 1.4);
     g.audio.knife?.(true);
+    // la canción de la traición entra con la primera puñalada (no al elegir)
+    this.betrayalSong();
     this.flash = 1;
     this.shake = 0.45;
     // el golpe lo dobla: la mano al pecho y se le cae el mate
@@ -691,8 +698,6 @@ export default class EsterosEnding extends CastleCine {
     this.waiting = false;
     this.choiceEl.hidden = true;
     const rest = this.choice === 'kill' ? this.scriptKill() : this.scriptSpare();
-    // sellar el pacto: la canción de la traición (core/music.js), que sigue en la pantalla del final
-    if (this.choice === 'kill') this.g.music?.play('cine-esteros-traicion', { while: (G) => G.state === 'won' || !!G.ee?.scene });
     this.script = this.script.slice(0, this.step).concat(rest);
     this.next = this.t;
   }
@@ -715,10 +720,24 @@ export default class EsterosEnding extends CastleCine {
     this.finish();
   }
 
+  // Sellar el pacto: la canción de la traición (core/music.js), que sigue en
+  // la pantalla del final. Arranca justo en la puñalada a Cirilo: su primer
+  // golpe suena a los TRAICION_AT s (lo de antes es silencio).
+  betrayalSong() {
+    if (this.songOn || this.choice !== 'kill') return;
+    this.songOn = true;
+    this.g.music?.play('cine-esteros-traicion', { at: TRAICION_AT, while: (G) => G.state === 'won' || !!G.ee?.scene });
+  }
+
   finish() {
     if (this.done) return;
     // (si se corta antes de elegir, vale el canónico)
     const choice = this.choice || 'kill';
+    // (salteada antes de la puñalada: igual suena en la pantalla del final)
+    if (choice === 'kill') {
+      this.choice = 'kill';
+      this.betrayalSong();
+    }
     const cb = this.onDone;
     this.onDone = () => cb?.(choice);
     super.finish();

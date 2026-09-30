@@ -20,6 +20,11 @@ const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 // lo que dura el rugido del Mate Dragón al agarrarlo
 const ROAR = 1.8;
+// El Mate Dragón suena con los grabados del dragón grande (el chorro y el
+// rugido: fx/DragonFire.js) y las bolas de fuego del Pillán (core/weaponSfx.js),
+// mucho más bajos que en el dragón (ese se oye de lejos). Si no bajaron, los
+// sintetizados.
+const DRAGON_SFX = { breath: 0.66, ball: 1.09, roar: 0.87 };
 const tmpO = new THREE.Vector3();
 const hitTmp = {};
 const near = [];
@@ -688,8 +693,12 @@ export default class Especiales {
     const muzzle = w.muzzleWorld(new THREE.Vector3());
     const wall = g.world.raycast(origin, fwd, B.range, hitTmp);
     const reach = Math.min(B.range, wall);
-    // la llamarada arranca con un bufido
-    if (!this.wasBreathing) this.sndIgnite(muzzle);
+    // la llamarada arranca con un bufido (el chorro grabado ya lo trae)
+    if (!this.wasBreathing) {
+      this.breathSnd?.stop(0.2);
+      this.breathSnd = this.breathLoop(null);
+      if (!this.breathSnd) this.sndIgnite(muzzle);
+    }
     this.flames(muzzle, fwd, reach, dt);
     // donde pega, el piso o la pared se prende y queda quemado
     if (wall < B.range && hitTmp.point) {
@@ -724,7 +733,7 @@ export default class Especiales {
     }
     w.recoilKick = Math.min(0.5, w.recoilKick + dt * 3);
     this.sndT -= dt;
-    if (this.sndT <= 0) {
+    if (this.sndT <= 0 && !this.breathSnd) {
       this.sndT = 0.13;
       this.sndBreath(muzzle);
     }
@@ -822,7 +831,8 @@ export default class Especiales {
     mesh.position.copy(pos);
     g.scene.add(mesh);
     this.balls.push({ mesh, pos: mesh.position, prev: pos.clone(), vel: vel.clone(), F: st.fireball, t: 0, ghost, lightT: 0 });
-    this.sndFireball(pos);
+    // (la bola grabada del Pillán, una u otra; la mía sin lugar)
+    if (!this.g.audio.guns?.play(Math.random() < 0.5 ? 'fuego-1' : 'fuego-2', { pos: ghost ? pos : null, gain: DRAGON_SFX.ball, rate: 0.82 + Math.random() * 0.06 })) this.sndFireball(pos);
     g.fx.fire(pos, 0.1, 6);
   }
 
@@ -947,6 +957,10 @@ export default class Especiales {
     if (st?.id === 'dragon' && this.breathing && g.time - this.inputT < 0.15 && w.state === 'idle') this.breathe(st, dt);
     else this.breathing = false;
     this.wasBreathing = this.breathing;
+    if (!this.breathing && this.breathSnd) {
+      this.breathSnd.stop(0.35);
+      this.breathSnd = null;
+    }
     // lo que revienta después (las explosiones chicas de la bola)
     for (let i = this.after.length - 1; i >= 0; i--) {
       const a = this.after[i];
@@ -991,12 +1005,14 @@ export default class Especiales {
       const r = this.remote[i];
       r.t -= dt;
       if (r.t <= 0) {
+        r.loop?.stop(0.35);
         this.remote.splice(i, 1);
         continue;
       }
       this.flames(r.m, r.f, r.r, dt * 0.7);
+      r.loop?.move(r.m);
       r.snd -= dt;
-      if (r.snd <= 0) {
+      if (r.snd <= 0 && !r.loop) {
         r.snd = 0.2;
         this.sndBreath(r.m);
       }
@@ -1083,7 +1099,10 @@ export default class Especiales {
       const old = this.remote.find((r) => r.m.distanceToSquared(at) < 4);
       const r = old || { snd: 0 };
       Object.assign(r, { m: at, f: V(m.f).normalize(), r: m.r || 9, t: 0.25 });
-      if (!old) this.remote.push(r);
+      if (!old) {
+        r.loop = this.breathLoop(at);
+        this.remote.push(r);
+      }
     }
   }
 
@@ -1102,8 +1121,11 @@ export default class Especiales {
     this.chunks.length = 0;
     this.balls.length = 0;
     this.patches.length = 0;
+    for (const r of this.remote) r.loop?.stop(0.2);
     this.remote.length = 0;
     this.breathing = false;
+    this.breathSnd?.stop(0.2);
+    this.breathSnd = null;
   }
 
   // ---------------- lo que se escucha ----------------
@@ -1222,10 +1244,26 @@ export default class Especiales {
     }
   }
 
-  // El rugido al agarrarlo (pos null: el tuyo, sin lugar).
+  // El chorro grabado del dragón grande (dragon-fuego-1/2, una y una): arranca
+  // con la prendida y da vueltas por el medio parejo. null si no bajó.
+  breathLoop(pos) {
+    const a = this.g.audio;
+    this.take = this.take === 1 ? 2 : 1;
+    const buf = a.sfxBuf?.['dragon-fuego-' + this.take];
+    if (!buf || !a.guns || buf.duration < 3) return null;
+    return a.guns.loopBuf(buf, pos, { gain: DRAGON_SFX.breath * (pos ? 1.4 : 1), reverb: 0.35, ref: 4, fadeIn: 0.05, from: 1, to: buf.duration - 1.3 });
+  }
+
+  // El rugido al agarrarlo (pos null: el tuyo, sin lugar): el del dragón
+  // grande grabado, más bajo; si no bajó, el sintetizado.
   sndRoar(pos) {
     const a = this.g.audio;
     if (!a.ctx) return;
+    const rec = a.sfxBuf?.['dragon-rugido'];
+    if (rec) {
+      a.guns?.withCat(() => a.playBuffer(rec, { pos, gain: DRAGON_SFX.roar * (pos ? 1.6 : 1), reverb: 0.6, ref: 6 }));
+      return;
+    }
     const t = a.now;
     const o = a.out({ pos, reverb: 0.7, gain: pos ? 1.8 : 1.1, ref: 6 });
     this.growl(o, t, ROAR, 1);

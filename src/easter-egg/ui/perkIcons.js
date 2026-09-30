@@ -12,6 +12,8 @@
 //  · Baldragón (Aliento Dragónico): la cabeza del dragón largando fuego.
 //  · Nadadito (Acuanauta): la escafandra con burbujas sobre las olas.
 //  · Chisporé (Electric Cherry): las dos cerezas con el rayo atrás.
+//  · Extremaunión (Dying Wish): el corazón con la aureola y el latido que vuelve.
+//  · Maleza Gaucha (Maizaster): los ojos que espían entre la paja seca.
 // Los usan el medallón del HUD (perkIconURL), el emblema del paquete de la
 // máquina (core/textures perkLabel) y la faja del mate (weapons/perkMates).
 // Todo en unidades del radio: el símbolo cabe en un círculo de radio ~0.66.
@@ -334,6 +336,57 @@ const SYMBOLS = {
       b.arc(x, y, r, 0, Math.PI * 2);
       line(ctx, b, 0.035);
     }
+  },
+  wish(ctx, T) {
+    // la aureola del que ya se iba
+    const halo = new Path2D();
+    halo.ellipse(0, -0.5, 0.3, 0.09, 0, 0, Math.PI * 2);
+    line(ctx, halo, 0.06, BRASS);
+    // el corazón
+    const heart = new Path2D();
+    heart.moveTo(0, 0.5);
+    heart.bezierCurveTo(-0.2, 0.34, -0.52, 0.12, -0.5, -0.1);
+    heart.bezierCurveTo(-0.48, -0.32, -0.18, -0.36, 0, -0.16);
+    heart.bezierCurveTo(0.18, -0.36, 0.48, -0.32, 0.5, -0.1);
+    heart.bezierCurveTo(0.52, 0.12, 0.2, 0.34, 0, 0.5);
+    heart.closePath();
+    solid(ctx, heart, FG, 0.07);
+    // el latido que vuelve: la línea chata que de golpe pega el salto
+    const ecg = poly([[-0.66, 0.06], [-0.3, 0.06], [-0.2, -0.02], [-0.12, 0.06], [-0.04, 0.06], [0.04, -0.46], [0.14, 0.4], [0.22, 0.06], [0.66, 0.06]], false);
+    line(ctx, ecg, 0.08, T.base);
+  },
+  maiz(ctx, T) {
+    // los ojos que espían desde el pastizal...
+    for (const x of [-0.21, 0.21]) {
+      const e = new Path2D();
+      e.moveTo(x - 0.18, -0.12);
+      e.quadraticCurveTo(x, -0.3, x + 0.18, -0.12);
+      e.quadraticCurveTo(x, 0.04, x - 0.18, -0.12);
+      e.closePath();
+      solid(ctx, e, FG, 0.06);
+      ctx.fillStyle = '#1a1008';
+      ctx.beginPath();
+      ctx.arc(x + 0.04, -0.13, 0.07, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // ...tapados a medias por las hojas de paja seca (siluetas con filo claro)
+    ctx.lineJoin = 'round';
+    for (const [x, lean, h, w] of [[-0.56, -0.12, 0.92, 0.07], [-0.36, 0.04, 1.22, 0.085], [-0.02, -0.07, 0.86, 0.09], [0.27, 0.16, 1.26, 0.085], [0.5, 0.05, 0.94, 0.07]]) {
+      const b = new Path2D();
+      b.moveTo(x - w, 0.68);
+      b.quadraticCurveTo(x - w * 0.5 + lean * 0.3, 0.68 - h * 0.55, x + lean, 0.68 - h);
+      b.quadraticCurveTo(x + w * 0.5 + lean * 0.3, 0.68 - h * 0.55, x + w, 0.68);
+      b.closePath();
+      ctx.lineWidth = 0.05;
+      ctx.strokeStyle = FG;
+      ctx.stroke(b);
+      ctx.fillStyle = T.dark;
+      ctx.fill(b);
+    }
+    // el penacho de la cortadera en la punta de la más alta
+    const pl = new Path2D();
+    pl.ellipse(0.43, -0.6, 0.07, 0.17, 0.2, 0, Math.PI * 2);
+    solid(ctx, pl, FG, 0.04);
   },
 };
 

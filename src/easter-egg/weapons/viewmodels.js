@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { weaponStats, ELEM_INFO } from '../config/weapons';
 import { mk3Skin } from './mk3Skin';
+import { camoMaterial, papMaterial } from './camos';
+import { upgradeBaseMats } from './baseSkins';
 
 // Modelos 3D de los mates-arma, armados con geometría procedural.
 // Se construyen parados (eje y) con la bombilla saliendo hacia arriba y luego
@@ -79,16 +81,13 @@ function mats(T) {
     whet: std({ color: 0x7c8084, roughness: 0.9 }),
     whetWet: std({ color: 0x4e5256, roughness: 0.35 }),
   };
-  // Camuflaje del Pack-a-Pava: fluorescente y animado.
-  MATS.camo = new THREE.MeshStandardMaterial({ map: T.camo, emissiveMap: T.camo, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.3, metalness: 0.3 });
-  // segunda mejora: el mismo camuflaje teñido del color del elemento
-  for (const [k, e] of Object.entries(ELEM_INFO)) {
-    MATS[`camo_${k}`] = MATS.camo.clone();
-    MATS[`camo_${k}`].color.set(e.color).lerp(new THREE.Color(0xffffff), 0.35);
-    MATS[`camo_${k}`].emissive.set(e.color);
-    MATS[`camo_${k}`].emissiveIntensity = 1.2;
-  }
-  for (const k of Object.keys(MATS)) if (k.startsWith('camo')) MATS[k].side = THREE.DoubleSide;
+  // las caras de siempre, con relieve y brillo por partes (weapons/baseSkins.js)
+  upgradeBaseMats(MATS, T);
+  // Camuflaje del Pack-a-Pava: el de cada mapa, animado (weapons/camos.js; el
+  // mapa lo pone Weapons.reset con setPapMap). Segunda mejora: el mismo,
+  // teñido del color del elemento.
+  MATS.camo = papMaterial(T);
+  for (const k of Object.keys(ELEM_INFO)) MATS[`camo_${k}`] = papMaterial(T, k);
   return MATS;
 }
 
@@ -321,7 +320,7 @@ function cupHand(M, rAt, top) {
   g.add(nail(t3, new THREE.Vector3().subVectors(t3, w2.q).normalize(), new THREE.Vector3(Math.cos(ta), 0, Math.sin(ta)), tr * 0.9, M));
   // muñeca y manga hacia abajo, a la derecha y hacia la cámara
   forearm(g, M, new THREE.Vector3(0.03, -0.03, 0.04), new THREE.Vector3(0.5, -0.66, 0.56));
-  return bake(g);
+  return handMark(bake(g));
 }
 
 // Mano que envuelve un cilindro vertical (termo, mango del facón).
@@ -351,7 +350,15 @@ function wrapHand(M, { radius, y0 = 0, side = Math.PI, dir = 1, arm = new THREE.
   const tp = [ring(side - dir * 0.2, rr + 0.012 * scale).setY(ty - 0.02 * scale), ...[0.5, 1.3, 2.0].map((k) => ring(side - dir * k * (0.026 / rr) * scale, rr).setY(ty))];
   for (let j = 0; j < 3; j++) g.add(limb(tp[j], tp[j + 1], tr * (1 - j * 0.06), M.skin));
   forearm(g, M, palm.position.clone().addScaledVector(out, 0.004).setY(y0 + 0.004), arm);
-  return bake(g);
+  return handMark(bake(g));
+}
+
+// La mano y el brazo de primera persona: marcados, para que la copia que
+// llevan los compañeros en la mano (net/Avatars.js setGun) los saque (ellos
+// ya tienen sus manos).
+function handMark(g) {
+  g.userData.hand = true;
+  return g;
 }
 
 // Cuerno curvo (guampa / asta): anillos a lo largo de una curva con radio creciente.
@@ -364,6 +371,7 @@ function hornGeo(r0, r1, len, curve = 0.5, seg = 20, rs = 14) {
   const path = new THREE.CatmullRomCurve3(pts);
   const frames = path.computeFrenetFrames(seg, false);
   const pos = [];
+  const uv = [];
   const idx = [];
   for (let i = 0; i <= seg; i++) {
     const t = i / seg;
@@ -373,6 +381,8 @@ function hornGeo(r0, r1, len, curve = 0.5, seg = 20, rs = 14) {
       const a = (j / rs) * Math.PI * 2;
       const n = frames.normals[i].clone().multiplyScalar(Math.cos(a)).add(frames.binormals[i].clone().multiplyScalar(Math.sin(a)));
       pos.push(c.x + n.x * r, c.y + n.y * r, c.z + n.z * r);
+      // (como el torno: u alrededor, v a lo largo; sin esto los camuflajes salían de un solo color)
+      uv.push(j / rs, t);
     }
   }
   for (let i = 0; i < seg; i++) {
@@ -384,6 +394,7 @@ function hornGeo(r0, r1, len, curve = 0.5, seg = 20, rs = 14) {
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
   return { geo: g, top: path.getPointAt(1), r1 };
@@ -491,12 +502,15 @@ export function registerMate(id, build) {
   EXTRA[id] = build;
 }
 
-export function buildMate(id, upgraded, T, hand = 'R') {
+// camoId: el camuflaje elegido en la armería (weapons/camos.js). Solo va sin
+// mejorar: al pasar por el Pack-a-Pava lo reemplaza el del mapa.
+export function buildMate(id, upgraded, T, hand = 'R', camoId = null) {
   if (EXTRA[id]) return EXTRA[id](upgraded, T, hand);
-  if (id === 'hoz') return buildHoz(upgraded, T);
+  if (id === 'hoz') return buildHoz(upgraded, T, camoId === 'oro');
   if (id === 'bombillon') return buildBombillon(T);
-  if (id === 'gut' || id === 'gutacida') return buildGut(upgraded, id === 'gutacida', T);
   const M = mats(T);
+  const skin = !upgraded && camoId ? camoMaterial(camoId) : null;
+  if (id === 'gut' || id === 'gutacida') return buildGut(upgraded, id === 'gutacida', T, skin);
   const mate = new THREE.Group();
   const anim = { spin: [], glow: [], wobble: null };
   let bodyMat = M.gourd;
@@ -507,7 +521,7 @@ export function buildMate(id, upgraded, T, hand = 'R') {
   const st = weaponStats(id, upgraded);
   const camoMat = st.elem ? M[`camo_${st.elem}`] : M.camo;
   // (la Luz Mala mejorada no lleva el camuflaje: tiene su propia cara)
-  const camo = (m) => (upgraded && id !== 'luzmala' ? camoMat : m);
+  const camo = (m) => (upgraded && id !== 'luzmala' ? camoMat : skin || m);
 
   // radio del cuerpo a cada altura (para que los dedos lo abracen)
   let rAt = (y) => profileRadius(PROFILES.calabaza, y);
@@ -734,7 +748,7 @@ export function buildMate(id, upgraded, T, hand = 'R') {
       break;
     case 'vidrio': {
       addBody('cup', M.glass);
-      body.material = upgraded ? camoMat : M.glass;
+      body.material = camo(M.glass);
       const inner = lathe([[0, 0.003], [0.027, 0.003], [0.037, 0.085]], M.yerba);
       mate.add(inner);
       addVirola(M.silver, 0.012);
@@ -970,7 +984,8 @@ export function buildMate(id, upgraded, T, hand = 'R') {
     }
     case 'campanario': {
       // bronce de campana: boca ancha, dos fajas oscuras, el tambor de balas al
-      // costado, la manija de soga y el badajo colgando abajo
+      // costado y el badajo colgando abajo (la manija de cuero de atrás se
+      // sacó: de la mano se veía como un arco suelto que no se entendía)
       addBody('camionero', M.bronze);
       scaleBody(1.05, 1.05);
       for (const y of [0.02, 0.085]) {
@@ -989,10 +1004,6 @@ export function buildMate(id, upgraded, T, hand = 'R') {
       drum.rotation.z = Math.PI / 2;
       drum.position.set(-rAt(0.045) - 0.02, 0.045, 0);
       mate.add(drum);
-      const loop = tor(0.022, 0.0035, M.leather, 6, 16, Math.PI);
-      loop.position.set(rAt(0.07) + 0.004, 0.07, 0);
-      loop.rotation.set(0, Math.PI / 2, Math.PI / 2);
-      mate.add(loop);
       const clapper = sph(0.012, M.bronze);
       clapper.position.y = -0.022;
       mate.add(clapper);
@@ -1162,40 +1173,45 @@ function sickleGeo(R, width, arc, thick) {
 
 // La Hoz: mango con virola y la hoja curva. La de la Muerte: hoja negra con
 // el filo verde que brilla, mango de hueso con tientos negros y runas violetas.
-function buildHoz(upgraded, T) {
+// gold: la hoz de oro (el bastón del Yasy dorado, entities/Yasy.js): el mango
+// es el bastón, hoja de oro con el filo encendido y tachas que brillan.
+let GLOW_GOLD = null;
+function buildHoz(upgraded, T, gold = false) {
   const M = mats(T);
   const g = new THREE.Group();
   const death = !!upgraded;
+  GLOW_GOLD ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc84a).multiplyScalar(2.6), toneMapped: false });
+  const glowMat = gold ? GLOW_GOLD : M.glowDeath;
   const anim = { spin: [], glow: [], wobble: null };
-  const handle = cyl(0.015, 0.018, 0.22, death ? M.bone : M.wood, 10);
+  const handle = cyl(0.015, 0.018, 0.22, gold ? M.gold : death ? M.bone : M.wood, 10);
   handle.position.y = -0.03;
   g.add(handle);
   for (const y of [-0.1, -0.05, 0, 0.05]) {
-    const wrap = tor(0.0175, 0.0032, death ? M.dark : M.leather, 6, 16);
+    const wrap = tor(0.0175, 0.0032, gold ? M.bronze : death ? M.dark : M.leather, 6, 16);
     wrap.rotation.x = Math.PI / 2;
     wrap.position.y = y;
     g.add(wrap);
   }
-  if (death) {
-    const rune = tor(0.0182, 0.0022, M.glowPurple, 6, 16);
+  if (death || gold) {
+    const rune = tor(0.0182, 0.0022, gold ? GLOW_GOLD : M.glowPurple, 6, 16);
     rune.rotation.x = Math.PI / 2;
     rune.position.y = 0.025;
     g.add(rune);
   }
-  const ferrule = cyl(0.02, 0.019, 0.035, death ? M.bladeDark : M.bronze, 12);
+  const ferrule = cyl(0.02, 0.019, 0.035, gold ? M.gold : death ? M.bladeDark : M.bronze, 12);
   ferrule.position.y = 0.09;
   g.add(ferrule);
   // la hoja (en el plano x-y del shape; se gira para que quede en (z, y))
   const R = 0.15;
   const arc = 3.3;
   const s = sickleGeo(R, 0.0375, arc, 0.0048);
-  const blade = new THREE.Mesh(s.geo, death ? M.bladeDark : M.blade);
+  const blade = new THREE.Mesh(s.geo, gold ? M.gold : death ? M.bladeDark : M.blade);
   const holder = new THREE.Group();
   holder.position.y = 0.1;
   holder.rotation.y = Math.PI / 2;
   holder.add(blade);
   // el filo: el borde de adentro, fino y brillante (verde en la de la Muerte)
-  const edge = new THREE.Mesh(sickleGeo(R, 0.05, arc, 0.003).geo, death ? M.glowDeath : M.silver);
+  const edge = new THREE.Mesh(sickleGeo(R, 0.05, arc, 0.003).geo, gold ? GLOW_GOLD : death ? M.glowDeath : M.silver);
   holder.add(edge);
   g.add(holder);
   const muzzle = new THREE.Object3D();
@@ -1211,11 +1227,20 @@ function buildHoz(upgraded, T) {
   const mid = new THREE.Object3D();
   edgeAt(0.5, mid.position);
   holder.add(mid);
-  if (death) {
-    const ember = sph(0.01, M.glowDeath);
+  if (death || gold) {
+    const ember = sph(gold ? 0.013 : 0.01, glowMat);
     ember.position.copy(s.tip);
     holder.add(ember);
     anim.glow.push(ember);
+  }
+  // la de oro: tachas encendidas por el lomo de la hoja
+  if (gold) {
+    for (const e of [0.15, 0.32, 0.5, 0.68, 0.85]) {
+      const a = e * arc;
+      const stud = sph(0.0055, GLOW_GOLD);
+      stud.position.set(Math.cos(a) * (R + 0.002) - R + 0.025, Math.sin(a) * (R + 0.002), 0);
+      holder.add(stud);
+    }
   }
   g.add(wrapHand(M, { radius: 0.018, y0: -0.12, side: Math.PI / 2, dir: 1, arm: new THREE.Vector3(0.2, -0.9, 0.4), scale: 0.95 }));
   // en la mano: el mango casi derecho y la hoja arriba, curvada hacia el centro
@@ -1228,7 +1253,7 @@ function buildHoz(upgraded, T) {
   const tip = new THREE.Vector3();
   muzzle.getWorldPosition(tip);
   // wrist: girar g sobre su eje y (el del mango) es girar la muñeca
-  return { root: tilt, muzzle, anim, upgraded, tip, mouth: null, mate: g, bombGroup: null, yerba: null, hoz: { wrist: g, baseRot: g.rotation.clone(), blade: holder, mid, edgeAt, glow: death ? M.glowDeath : null } };
+  return { root: tilt, muzzle, anim, upgraded, tip, mouth: null, mate: g, bombGroup: null, yerba: null, hoz: { wrist: g, baseRot: g.rotation.clone(), blade: holder, mid, edgeAt, glow: death || gold ? glowMat : null } };
 }
 
 // Piedra de asentar en la mano izquierda (la recarga de la Hoz de la Muerte).
@@ -1321,13 +1346,13 @@ function buildBombillon(T) {
 // Bombilla Gut (el penal): un trabuco con una calabaza de culata, un atado de
 // bombillas de alpaca de caño y boca de campana. Con el kit de ácido lleva un
 // frasco verde arriba con caños de cobre que bajan a las bombillas.
-function buildGut(upgraded, acid, T) {
+function buildGut(upgraded, acid, T, skin = null) {
   const M = mats(T);
   const g = new THREE.Group();
   const anim = { spin: [], glow: [], wobble: null };
   const accent = upgraded ? M.glowPurple : M.gold;
-  // la culata: una calabaza acostada
-  const stock = lathe([[0, 0], [0.04, 0.01], [0.062, 0.05], [0.066, 0.09], [0.055, 0.13], [0.034, 0.155], [0.02, 0.16]], upgraded ? M.gourdDark : M.gourd, 20);
+  // la culata: una calabaza acostada (con el camuflaje de la armería, si tiene)
+  const stock = lathe([[0, 0], [0.04, 0.01], [0.062, 0.05], [0.066, 0.09], [0.055, 0.13], [0.034, 0.155], [0.02, 0.16]], upgraded ? M.gourdDark : skin || M.gourd, 20);
   stock.rotation.x = -Math.PI / 2;
   stock.position.z = 0.2;
   g.add(stock);
@@ -1443,7 +1468,10 @@ function buildGut(upgraded, acid, T) {
 export function buildTermo(T) {
   const M = mats(T);
   const g = new THREE.Group();
-  g.add(lathe([[0, 0], [0.029, 0], [0.032, 0.005], [0.032, 0.196], [0.03, 0.204]], M.termo, 28));
+  // (el cuerpo con su propio material: Weapons.tintTermo lo pinta según el
+  // mate que se ceba: verde el de balas, azul el especial, rojo el explosivo)
+  const body = lathe([[0, 0], [0.029, 0], [0.032, 0.005], [0.032, 0.196], [0.03, 0.204]], M.termo.clone(), 28);
+  g.add(body);
   for (const [y0, y1] of [[0.012, 0.022], [0.176, 0.186]]) g.add(lathe([[0.0328, y0], [0.0328, y1]], M.steel, 28));
   g.add(lathe([[0.03, 0.203], [0.031, 0.21], [0.026, 0.224], [0.018, 0.236], [0.017, 0.246]], M.steel, 28));
   // tapón cebador con el pico hacia +x
@@ -1467,7 +1495,7 @@ export function buildTermo(T) {
   const streamGeo = new THREE.CylinderGeometry(0.0026, 0.0034, 1, 8, 1, true).translate(0, -0.5, 0);
   const stream = new THREE.Mesh(streamGeo, M.water);
   stream.visible = false;
-  return { root: g, stream, spoutTip };
+  return { root: g, stream, spoutTip, body };
 }
 
 // Facón para el cuchillo.

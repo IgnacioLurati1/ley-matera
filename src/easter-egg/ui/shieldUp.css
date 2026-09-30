@@ -1,0 +1,34 @@
+/* El escudo mejorado (world/ShieldUpgrade) en el HUD: el mismo dibujo del
+   mapa con un aro que late, el nombre más vivo y la barra dorada. Al rojo
+   (el penal, el castillo): el dibujo se calienta y abajo, el tiempo. */
+.mdu-shield.is-up .mdu-shield__icon {
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 9px var(--sh-glow)) drop-shadow(0 0 3px rgba(255, 236, 170, 0.9));
+}
+.mdu-shield.is-up .mdu-shield__icon::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 226, 140, 0.55);
+  box-shadow: 0 0 10px rgba(255, 210, 110, 0.5), inset 0 0 8px rgba(255, 210, 110, 0.35);
+  animation: mdu-shup 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+.mdu-shield.is-up .mdu-shield__name { color: #ffe7a6; text-shadow: 0 0 8px rgba(255, 200, 90, 0.55); }
+.mdu-shield.is-up .mdu-shield__bar s { background: linear-gradient(90deg, #8a5a14, #e8b848 55%, #fff0b8); }
+@keyframes mdu-shup {
+  50% { transform: scale(1.06); opacity: 0.55; }
+}
+.mdu-shield__tag {
+  display: none;
+  font-style: normal;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: #ffb070;
+  text-shadow: 0 0 6px rgba(255, 90, 20, 0.8);
+}
+.mdu-shield.is-hot .mdu-shield__tag { display: block; }
+.mdu-shield.is-hot .mdu-shield__full { filter: sepia(1) saturate(6) hue-rotate(-25deg) brightness(1.25); animation: mdu-shhot 0.6s ease-in-out infinite; }
+@keyframes mdu-shhot {
+  50% { filter: sepia(1) saturate(4) hue-rotate(-30deg) brightness(0.95); }
+}

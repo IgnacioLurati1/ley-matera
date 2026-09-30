@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import GeoBuilder from './GeoBuilder';
 import { mesh, boxGeo, cylGeo } from './props';
 import { rng } from '../core/noise';
-import { MAP_W, MAP_H, WALL_H, ZONES, PROPS } from '../config/map';
+import { MAP_W, MAP_H, WALL_H, ZONES, PROPS, SKY } from '../config/map';
 
 // La granja: alambrados, el maíz de los bordes y todo lo de afuera (el
 // maizal que la rodea, el camino de entrada con su cartel, postes de luz y el
@@ -135,18 +135,35 @@ function mergeTwo(a, b) {
   return g;
 }
 
+// ¿Hay algo de la grilla (una zona o su borde) a menos de R m?
+function nearZone(world, x, z, R = 10) {
+  const cx = Math.floor(x);
+  const cz = Math.floor(z);
+  for (let dz = -R; dz <= R; dz += 2) {
+    for (let dx = -R; dx <= R; dx += 2) {
+      const nx = cx + dx;
+      const nz = cz + dz;
+      if (world.inside(nx, nz) && world.grid[world.idx(nx, nz)] !== CELL_OUT) return true;
+    }
+  }
+  return false;
+}
+
 // Afuera de la chacra: pasto, maizal, camino, cartel, postes y el monte.
 export function buildFarmOutside(world) {
   const M = world.M;
   const T = world.T;
   T.grass.repeat.set(1, 1);
+  // (de 130 m al norte de la chacra hasta pasando el monte del sur)
   const size = 260;
-  const g = new THREE.PlaneGeometry(size, size);
+  const z0 = (SKY.center?.[1] ?? MAP_H / 2) - size / 2;
+  const z1 = Math.max(z0 + size, MAP_H + 60);
+  const g = new THREE.PlaneGeometry(size, z1 - z0);
   const uv = g.attributes.uv;
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * size) / 3, (uv.getY(i) * size) / 3);
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * size) / 3, (uv.getY(i) * (z1 - z0)) / 3);
   const ground = new THREE.Mesh(g, M.grass);
   ground.rotation.x = -Math.PI / 2;
-  ground.position.set(MAP_W / 2, -0.01, MAP_H / 2);
+  ground.position.set(MAP_W / 2, -0.01, (z0 + z1) / 2);
   ground.receiveShadow = true;
   world.root.add(ground);
 
@@ -249,12 +266,17 @@ export function buildFarmOutside(world) {
   const p = new THREE.Vector3();
   let n = 0;
   let k = 0;
+  // (alrededor de la chacra, SKY.center; ninguno adentro del matorral ni pegado
+  // a su borde, y la última parte del monte, al sur, pasando el matorral)
+  const [ox, oz] = SKY.center || [W / 2, H / 2];
+  const south = Math.floor(count * 0.3);
   while (n < count) {
     const a = r() * Math.PI * 2;
     const d = 62 + r() * 40;
-    const x = W / 2 + Math.cos(a) * d;
-    const z = H / 2 + Math.sin(a) * d;
+    const x = n < count - south ? ox + Math.cos(a) * d : -30 + r() * (W + 60);
+    const z = n < count - south ? oz + Math.sin(a) * d : H + 12 + r() * 30;
     if (Math.abs(x - (ROAD.x0 + ROAD.x1) / 2) < 6 && z < 0) continue;
+    if (nearZone(world, x, z)) continue;
     const h = 6 + r() * 8;
     p.set(x, h / 2, z);
     s.set(1 + r(), h, 1 + r());

@@ -52,8 +52,12 @@ const VOICE = {
   velasOut: 'Se apagaron todos... la mitad de las almas se fue.',
   luz: 'El círculo no se queda quieto. Sigan la luz.',
   almas: 'Acá arriba las almas no suben solas. Vayan a buscarlas antes de que se apaguen.',
-  papDone: 'La Hoz de la Muerte. Ahora vayan a los tablones y corten las cinco plantas que brillan. Solo esas.',
-  harvest: 'Cinco ramas. Pero verde no se muele... al barbacuá de los tablones, con fuego abajo.',
+  papDone: 'La Hoz de la Muerte. Corten tres plantas de los tablones.',
+  // (con la defensa del yerbal por venir: no se corta nada hasta que termine)
+  papWait: 'La Hoz de la Muerte. Todavía no corten nada... algo viene por el yerbal.',
+  cosecha: 'Ahora sí. Corten tres plantas de los tablones.',
+  madre: 'Falta la Yerba Madre. Está escondida en el matorral, atrás de la atahona.',
+  harvest: 'Ya está. Pero verde no se muele... al barbacuá de los tablones, con fuego abajo.',
   spread: 'Así, bien tendida. Ahora el fuego, que la boca está abajo.',
   lit: 'Que no se queme. Quédense arriba dándola vuelta y apaguen las llamaradas... el humo me gusta.',
   dried: 'Sapecada. Ahora sí, a la atahona, a molerla.',
@@ -67,13 +71,21 @@ const VOICE = {
     'La morsa del galpón. Ahí se arma.',
     'La hoja está seca. Corten muertos con la hoz, que tome sangre.',
     'El Pack-a-Pava, en el establo. Ahí se forja la hoja.',
-    'Cinco plantas, en los tablones. Las que brillan.',
+    'Tres plantas de los tablones. Córtenlas con la Hoz de la Muerte.',
     'El barbacuá, en los tablones. La yerba verde no se muele.',
     'La atahona. Muelan la yerba.',
     'La mesa del galpón. Empaquétenla.',
     'El prado. Los estoy esperando.',
   ],
 };
+
+// Las plantas que hay que cortar: las cinco de los tablones (EE.plants, cada
+// una con su parcela en la defensa del yerbal) y la Yerba Madre, en el claro
+// del campamento del fondo del matorral (entities/Matorral.js). Cortarla prende el matorral.
+const allPlants = () => (EE.matorral ? [...EE.plants, EE.matorral.plant] : EE.plants);
+// De las de los tablones alcanzan tres: si la defensa rompe una, no se pierde
+// el paso. La Yerba Madre va sí o sí (el usuario, 2026-09-29).
+const NEED_TABLONES = 3;
 
 const PIECE_NAMES = { hoja: 'Hoja de la hoz', mango: 'Mango de la hoz', virola: 'Virola de la hoz' };
 const INV = [
@@ -128,7 +140,7 @@ export default class FarmEgg {
     const [rx, rz, ry] = EE.papRitual.roof;
     this.roof = { i: 'techo', x: rx, z: rz, y: ry };
     this.papRitual = 'off';
-    this.harvested = EE.plants.map(() => false);
+    this.harvested = allPlants().map(() => false);
     this.dryState = 'off';
     this.dry = 0;
     this.flare = null;
@@ -205,7 +217,50 @@ export default class FarmEgg {
 
   get progress() {
     const taken = Object.values(this.pieces).filter((s) => s === 'taken').length;
-    return taken + (this.hozBuilt ? 1 : 0) + (this.bloodOk ? 1 : 0) + (this.papDone ? 1 : 0) + (this.harvested.every(Boolean) ? 1 : 0) + (this.dryState === 'done' ? 1 : 0) + (this.milled ? 1 : 0) + (this.packed ? 1 : 0);
+    return taken + (this.hozBuilt ? 1 : 0) + (this.bloodOk ? 1 : 0) + (this.papDone ? 1 : 0) + (this.harvestDone() ? 1 : 0) + (this.dryState === 'done' ? 1 : 0) + (this.milled ? 1 : 0) + (this.packed ? 1 : 0);
+  }
+
+  // ---------------- la cosecha ----------------
+  cutTablones() {
+    let n = 0;
+    for (const p of this.plants) if (!p.madre && this.harvested[p.i]) n++;
+    return n;
+  }
+
+  get needTablones() {
+    return Math.min(NEED_TABLONES, EE.plants.length);
+  }
+
+  // ¿Esta planta todavía hace falta? (de los tablones, hasta tener tres; la Madre, siempre)
+  needed(p) {
+    if (this.harvested[p.i]) return false;
+    return p.madre || this.cutTablones() < this.needTablones;
+  }
+
+  harvestDone() {
+    return !!this.plants && this.plants.every((p) => !this.needed(p));
+  }
+
+  // Cuántas van y cuántas hacen falta (para el cartel).
+  harvestCount() {
+    const madres = this.plants.filter((p) => p.madre);
+    const got = Math.min(this.cutTablones(), this.needTablones) + madres.filter((p) => this.harvested[p.i]).length;
+    return [got, this.needTablones + madres.length];
+  }
+
+  // (anfitrión) Terminó una defensa del yerbal: si estaban en la cosecha, ahora sí se corta.
+  defenseOver() {
+    if (!this.papDone || this.harvestDone() || this.fight) return;
+    this.voiceT = 90;
+    if (this.harvestWaiting()) this.voice(VOICE.regrow, 5);
+    else this.voice(this.cutTablones() >= this.needTablones ? VOICE.madre : VOICE.cosecha, 5);
+  }
+
+  // Solo quedan plantas de los tablones rotas (volviendo a crecer): hay que esperar.
+  harvestWaiting() {
+    if (this.cutTablones() >= this.needTablones) return false;
+    const up = this.plants.filter((p) => !p.madre && !this.harvested[p.i] && !this.defense.down(p.i)).length;
+    return this.cutTablones() + up < this.needTablones;
   }
 
   // ---------------- modelos ----------------
@@ -395,13 +450,26 @@ export default class FarmEgg {
     this.benchPos = new THREE.Vector3(x, 1.1, z);
   }
 
-  // Las cinco plantas de yerba que hay que cortar (brillan cuando corresponde).
+  // Las seis plantas de yerba que hay que cortar (brillan cuando corresponde).
+  // La Yerba Madre (la del matorral) es más grande y tiene las florcitas blancas.
   buildPlants() {
     const M = this.M;
     this.glowLeaf = new THREE.MeshStandardMaterial({ color: 0x3a7a3a, emissive: 0x3aff7a, emissiveIntensity: 0.9, roughness: 0.8, flatShading: true });
-    this.plants = EE.plants.map(([x, z], i) => {
+    this.plants = allPlants().map(([x, z], i) => {
+      const madre = i >= EE.plants.length;
       const g = new THREE.Group();
       g.position.set(x, 0, z);
+      let fl = null;
+      if (madre) {
+        g.scale.setScalar(1.9);
+        this.flowerMat ||= new THREE.MeshStandardMaterial({ color: 0xf4f0e0, emissive: 0xfff6d0, emissiveIntensity: 0.35, roughness: 0.6 });
+        fl = new THREE.Group();
+        for (let k = 0; k < 14; k++) {
+          const a = k * 2.4;
+          fl.add(mesh(new THREE.IcosahedronGeometry(0.035, 0), this.flowerMat, Math.cos(a) * (0.2 + (k % 3) * 0.08), 0.9 + (k % 4) * 0.13, Math.sin(a) * (0.2 + (k % 3) * 0.08)));
+        }
+        g.add(fl);
+      }
       g.add(mesh(cylGeo(0.05, 0.08, 0.6, 6), M.bark, 0, 0.3, 0));
       const leaves = [];
       for (let k = 0; k < 7; k++) {
@@ -415,11 +483,11 @@ export default class FarmEgg {
       stump.visible = false;
       g.add(stump);
       this.root.add(g);
-      const glow = this.glowSprite(0x6aff9a, 1.6);
-      glow.position.set(x, 1, z);
+      const glow = this.glowSprite(0x6aff9a, madre ? 3 : 1.6);
+      glow.position.set(x, madre ? 1.8 : 1, z);
       glow.visible = false;
       this.root.add(glow);
-      return { i, g, leaves, stump, glow, pos: new THREE.Vector3(x, 0, z) };
+      return { i, g, leaves, stump, glow, madre, fl, pos: new THREE.Vector3(x, 0, z) };
     });
   }
 
@@ -641,7 +709,8 @@ export default class FarmEgg {
         pos: new THREE.Vector3(p.pos.x, 1, p.pos.z),
         radius: 2.4,
         prompt: () => {
-          if (!this.papDone || this.harvested[p.i]) return null;
+          if (!this.papDone || !this.needed(p)) return null;
+          if (this.defense.harvestLock()) return { text: 'Primero, la defensa del yerbal', noCost: true, info: true };
           if (this.defense.down(p.i)) return { text: `La rompieron: está volviendo a crecer (${this.defense.plots[p.i].regrow} ${this.defense.plots[p.i].regrow === 1 ? 'ronda' : 'rondas'})`, noCost: true, info: true };
           const s = g.weapons.slot;
           if (s?.id === 'hoz' && s.up) return { text: 'Cortala con la Hoz de la Muerte (clic izquierdo)', noCost: true, info: true };
@@ -658,14 +727,14 @@ export default class FarmEgg {
         pos: this.deckPos,
         radius: 3.2,
         prompt: () => {
-          if (!this.harvested.every(Boolean) || this.dryState === 'done') return null;
+          if (!this.harvestDone() || this.dryState === 'done') return null;
           if (this.dryState === 'off') return { text: 'tender la yerba en el barbacuá', noCost: true };
           if (this.dryState === 'spread') return { text: 'La yerba está tendida: el fuego se prende en la boca de abajo', noCost: true, info: true };
           return { text: `Secando la yerba: ${Math.round(this.dry * 100)}% (quedate arriba dándola vuelta)`, noCost: true, info: true };
         },
         cost: () => 0,
         use: () => {
-          if (!this.harvested.every(Boolean) || this.dryState !== 'off') return false;
+          if (!this.harvestDone() || this.dryState !== 'off') return false;
           this.spreadYerba();
           return true;
         },
@@ -676,7 +745,7 @@ export default class FarmEgg {
         pos: this.mouthPos,
         radius: 1.9,
         prompt: () => {
-          if (!this.harvested.every(Boolean) || this.dryState === 'on' || this.dryState === 'done') return null;
+          if (!this.harvestDone() || this.dryState === 'on' || this.dryState === 'done') return null;
           if (this.dryState === 'off') return { text: 'La boca del barbacuá: primero tiendan la yerba arriba', noCost: true, info: true };
           return { text: 'prender el fuego del barbacuá', noCost: true };
         },
@@ -848,9 +917,11 @@ export default class FarmEgg {
       g.hud.achievement('La Hoz de la Muerte', 'La hoja tomó sangre en el Pack-a-Pava');
       // la hoz de un invitado vuelve a sus manos
       if (g.net?.host && this.papBy != null && this.papBy !== g.net.id) g.net.net.to(this.papBy, { t: 'hozup' });
-      this.voice(VOICE.papDone, 1);
-      // la cosecha: si todavía no hubo defensa del yerbal, viene ahora (después de la voz)
-      if (!g.net?.guest) g.later(8, () => this.defense.forceEarly());
+      // la cosecha: si todavía no hubo defensa del yerbal, viene ahora (después
+      // de la voz) y no se corta nada hasta que termine (defense.harvestLock)
+      const wait = this.defense.expectEarly();
+      this.voice(wait ? VOICE.papWait : VOICE.papDone, 1);
+      if (!g.net?.guest) g.later(6, () => this.defense.forceEarly());
     } else {
       this.pieces[R.id] = 'ready';
       g.fx.sparkle(this.altars[R.id].pos, [1, 0.6, 0.3], 30, 0.5);
@@ -1136,6 +1207,15 @@ export default class FarmEgg {
   // Cortar una planta con la Hoz de la Muerte (lo pide cualquiera; decide el anfitrión).
   onScythe(pos, fwd, st, crescent = false) {
     const g = this.g;
+    // durante la defensa del yerbal (o con la del paso de la cosecha por venir) no se corta
+    if (this.papDone && this.defense.harvestLock()) {
+      if ((this.lockSaidT || 0) > g.time) return;
+      if (this.plants.some((p) => this.needed(p) && Math.hypot(p.pos.x - pos.x, p.pos.z - pos.z) < 2.9)) {
+        this.lockSaidT = g.time + 6;
+        g.hud.subtitle('Primero, la defensa del yerbal.', 2.5);
+      }
+      return;
+    }
     if (!this.papDone || !st?.upgraded) {
       if (!this.papDone || this.saidNotYet) return;
       // con la hoz común no corta: una vez se avisa
@@ -1149,7 +1229,7 @@ export default class FarmEgg {
       return;
     }
     for (const p of this.plants) {
-      if (this.harvested[p.i] || this.defense.down(p.i)) continue;
+      if (!this.needed(p) || this.defense.down(p.i)) continue;
       const dx = p.pos.x - pos.x;
       const dz = p.pos.z - pos.z;
       const d = Math.hypot(dx, dz);
@@ -1166,13 +1246,14 @@ export default class FarmEgg {
 
   harvest(i) {
     const g = this.g;
-    if (!this.papDone || this.harvested[i] || this.defense.down(i)) return;
-    this.harvested[i] = true;
     const p = this.plants[i];
+    if (!this.papDone || !p || !this.needed(p) || this.defense.down(i) || this.defense.harvestLock()) return;
+    const hadTablones = this.cutTablones() >= this.needTablones;
+    this.harvested[i] = true;
     this.cutFx(i);
     g.net?.event('ee', { cut: i });
-    const n = this.harvested.filter(Boolean).length;
-    this.toastAll(`Yerba cosechada: ${n} de ${this.harvested.length}`);
+    const [n, of] = this.harvestCount();
+    this.toastAll(`Yerba cosechada: ${n} de ${of}`);
     // cortarla despierta a los de abajo
     const round = Math.max(3, g.rounds.round);
     for (let k = 0; k < 2; k++) {
@@ -1180,14 +1261,19 @@ export default class FarmEgg {
       const at = new THREE.Vector3(p.pos.x + Math.cos(a) * 3, 0, p.pos.z + Math.sin(a) * 3);
       if (!g.nav.blocked(Math.floor(at.x), Math.floor(at.z))) g.later(0.6 + k * 0.5, () => g.zombies.spawn(round, zombieHealth(round), at));
     }
-    if (n >= this.harvested.length) this.voice(VOICE.harvest, 1.5);
+    if (this.harvestDone()) this.voice(VOICE.harvest, 1.5);
+    // las de los tablones ya están: la voz manda al matorral
+    else if (!hadTablones && this.cutTablones() >= this.needTablones) this.voice(VOICE.madre, 1.5);
     this.netSync();
+    // la Yerba Madre: cortarla prende el matorral (entities/Matorral.js)
+    if (p.madre) g.matorral?.ignite();
   }
 
   cutFx(i) {
     const g = this.g;
     const p = this.plants[i];
     for (const l of p.leaves) l.visible = false;
+    if (p.fl) p.fl.visible = false;
     p.stump.visible = true;
     p.glow.visible = false;
     g.fx.yerbaPuff?.(p.pos);
@@ -1619,7 +1705,7 @@ export default class FarmEgg {
     this.benchHoz.visible = this.hozBuilt;
     // las plantas brillan cuando ya hay Hoz de la Muerte
     for (const p of this.plants) {
-      const lit = this.papDone && !this.harvested[p.i] && !this.defense.down(p.i);
+      const lit = this.papDone && this.needed(p) && !this.defense.down(p.i);
       p.glow.visible = lit;
       if (lit) {
         p.glow.material.opacity = 0.5 + Math.sin(t * 3 + p.i) * 0.25;
@@ -1669,7 +1755,7 @@ export default class FarmEgg {
         hoz: this.hozBuilt,
         sangre: this.bloodOk && !this.papDone,
         muerte: this.papDone,
-        yerba: this.harvested.every(Boolean) && this.dryState !== 'done',
+        yerba: this.harvestDone() && this.dryState !== 'done',
         seca: this.dryState === 'done' && !this.milled,
         molida: this.milled,
         paquete: this.packed,
@@ -1698,7 +1784,10 @@ export default class FarmEgg {
       if (this.voiceT <= 0) {
         this.voiceT = 90;
         const step = this.nextStep();
-        if (step >= 0) this.voice(step === 4 && this.defense.waiting() ? VOICE.regrow : VOICE.remind[step]);
+        if (step === 4) {
+          // (durante la defensa no; después, lo que falta: los tablones o la Madre)
+          if (!this.defense.harvestLock()) this.voice(this.harvestWaiting() ? VOICE.regrow : this.cutTablones() >= this.needTablones ? VOICE.madre : VOICE.remind[4]);
+        } else if (step >= 0) this.voice(VOICE.remind[step]);
       }
     }
   }
@@ -1771,7 +1860,7 @@ export default class FarmEgg {
     if (!this.hozBuilt) return 1;
     if (!this.bloodOk && !this.papDone) return 2;
     if (!this.papDone) return 3;
-    if (!this.harvested.every(Boolean)) return 4;
+    if (!this.harvestDone()) return 4;
     if (this.deck && this.dryState !== 'done') return 5;
     if (!this.milled) return 6;
     if (!this.packed) return 7;
@@ -1790,7 +1879,8 @@ export default class FarmEgg {
       if (next) at = tmpV.set(next.pos[0], 0, next.pos[1]);
     } else if (step === 1) at = this.benchPos;
     else if (step === 3) at = g.interact.pap.slotPos;
-    else if (step === 4) at = this.plants.find((p) => !this.harvested[p.i] && !this.defense.down(p.i))?.pos;
+    // (a la Yerba Madre no: dónde está es secreto, el usuario 2026-09-29)
+    else if (step === 4) at = this.plants.find((p) => !p.madre && this.needed(p) && !this.defense.down(p.i))?.pos;
     else if (step === 5) at = this.flare ? this.flarePos : this.dryState === 'spread' ? this.mouthPos : this.deckPos;
     else if (step === 6) at = this.millPos;
     else if (step === 7) at = this.packPos;

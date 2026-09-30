@@ -201,6 +201,11 @@ function busyByFloor(tower) {
   const lv = (y) => Math.max(0, Math.min(L - 1, Math.round((y || 0) / tower.FH)));
   const spot = (s, rad = 1.6) => s?.cell && out[lv(s.y)].push([s.cell[0] + 0.5 + s.face[0] * 0.9, s.cell[1] + 0.5 + s.face[1] * 0.9, rad]);
   for (const s of [...WALL_BUYS, ...PERK_SPOTS, ...BOX_SPOTS, POWER, EE?.ending, EE?.altar, ...(ACT?.jars || [])]) spot(s);
+  // lo de la historia: las palancas de los postigos, el pararrayos del Mark III
+  // y los dos mates (entities/towerMk3Quest.js)
+  for (const t of EE?.postigos || []) spot(t.lever);
+  if (EE?.pararrayos) spot(EE.pararrayos, 1.9);
+  for (const k of ['calabaza', 'porongo']) if (EE?.[k]) out[lv(EE[k].y)].push([EE[k].pos[0], EE[k].pos[1], 1.1]);
   if (PAP) spot(PAP, 2.4);
   for (const k of RISERS) out[lv(k.y)].push([k.pos[0], k.pos[1], 1.6]);
   for (const p of PROPS) out[lv(p.y)].push([p.pos[0], p.pos[1], 1.25]);
@@ -448,6 +453,8 @@ function buildShutters(tower, r) {
       const side = Math.floor(r() * 4);
       const s = Math.floor(r() * spans.length);
       if (used.has(side * 10 + s)) continue;
+      // (los lados con postigos de verdad, la trampa: world/towerShutters.js)
+      if ((EE?.postigos || []).some((t) => t.n === l + 1 && t.side === side)) continue;
       used.add(side * 10 + s);
       const [a0, a1] = spans[s];
       // el lado: a lo largo, hacia afuera y dónde está la cara de afuera

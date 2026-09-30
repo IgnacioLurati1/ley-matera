@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { MODE } from '../config/map';
 import { weaponStats } from '../config/weapons';
 import { VM, VM_POSE, registerMate } from './viewmodels';
 import NovaFx, { galaxyTexture } from './novaFx';
@@ -24,8 +23,9 @@ import NovaFx, { galaxyTexture } from './novaFx';
 // (input), cada cuadro (update) y el final (clear).
 // En línea: el daño lo pone cada uno (los invitados se lo pasan al anfitrión
 // como cualquier tiro) y los demás solo ven: un mensaje por tiro ('nova').
-// Los golpes de luz reciclables (weapons/novaFx.js) y las olas se arman solo en
-// el Challenge: en los otros mapas no hay Supernova y no se compila nada de más.
+// Los golpes de luz reciclables (weapons/novaFx.js) y las olas se arman de
+// entrada (las armas duran entre mapas: se puede llegar al Challenge después
+// de otro mapa).
 
 const PAL = [
   { a: 0x6a3cff, b: 0x22e6ff, star: 0xfff1c8, hot: 0x9a7aff, beams: [0x7a5cff, 0x33e8ff, 0xff5ad8, 0xfff0a0] },
@@ -436,19 +436,20 @@ export default class Supernova {
     this.beamN = 0;
     this.chargeK = 0;
     // las olas del Big Bang: armadas de entrada en el grupo escondido de los
-    // mates (la carga compila sus shaders: el primer Big Bang no traba)
+    // mates (la carga compila sus shaders: el primer Big Bang no traba).
+    // (siempre, no solo si el primer mapa es el Challenge: las armas se arman
+    // una vez y duran entre mapas, así que entrando al Challenge después de
+    // otro mapa la Supernova se quedaba sin olas ni golpes de luz)
     this.bangs = [];
     this.fx = null;
-    if (MODE === 'challenge') {
-      for (let i = 0; i < BANGS; i++) {
-        for (const up of [0, 1]) {
-          const b = bangSet(up);
-          weapons.warm?.add(b.group);
-          this.bangs.push(b);
-        }
+    for (let i = 0; i < BANGS; i++) {
+      for (const up of [0, 1]) {
+        const b = bangSet(up);
+        weapons.warm?.add(b.group);
+        this.bangs.push(b);
       }
-      if (weapons.warm) this.fx = new NovaFx(weapons.warm, flareTexture(), weapons.T.dot, weapons.g.scene);
     }
+    if (weapons.warm) this.fx = new NovaFx(weapons.warm, flareTexture(), weapons.T.dot, weapons.g);
     this.live = [];
     this.overlay = null;
     this.crackT = 0;
@@ -685,7 +686,8 @@ export default class Supernova {
       if (!this.live.includes(set)) this.live.push(set);
     }
     g.fx.flash(c, C.hot, 60, 0.7, R * 2.2);
-    this.fx?.burst(c, up, up ? 3.4 : 2.8);
+    // (sin la nova grande de novaFx acá: centrada en el que tira tapaba la
+    // pantalla entera y no se veían ni la ola ni los rayos; pedido del usuario)
     // rayos que bajan del cielo sobre el que la tiró
     for (let i = 0; i < 5; i++) {
       const top = new THREE.Vector3(c.x + rnd() * 10, c.y + 12 + Math.random() * 6, c.z + rnd() * 10);

@@ -233,6 +233,8 @@ export default class ElemSounds {
     const t = a.now;
     const k = up ? 1.2 : 1;
     if (el === 'fuego') {
+      // las bolas de fuego grabadas (una u otra: core/weaponSfx.js)
+      if (a.guns?.play(Math.random() < 0.5 ? 'fuego-1' : 'fuego-2', { pos, gain: k, rate: (up ? 0.94 : 1) * (0.96 + Math.random() * 0.08) })) return;
       const o = a.out({ pos, reverb: 0.35, gain: 0.8 * k });
       this.whoosh(o, t, 0.38, 500, 2600, 0.8, 0.8);
       this.roar(o, t, 0.45, 1400, 180, 0.7);
@@ -279,6 +281,8 @@ export default class ElemSounds {
     const t = a.now;
     const k = up ? 1.1 : 1;
     if (el === 'fuego') {
+      // la erupción grabada
+      if (a.guns?.play('fuego-cargado', { pos, gain: k })) return;
       const o = a.out({ pos, reverb: 0.5, gain: 1.15 * k });
       this.roar(o, t, 1.1, 2400, 90, 1, 0.02);
       this.thump(o, t, 95, 26, 1, 0.8);
@@ -481,14 +485,36 @@ export default class ElemSounds {
     this.crack(o, a.now, 0.3);
   }
 
+  // La ventisca: si está el grabado, se repite mientras dura (devuelve el
+  // loop; Elementales lo apaga) y suena el golpe del hielo; si no, la sintetizada.
   blizzard(pos) {
     const a = this.a;
+    const h = this.zoneLoop('hielo', pos);
+    if (h) {
+      this.iceHit(pos);
+      return h;
+    }
     const t = a.now;
     const o = a.out({ pos, reverb: 0.7, gain: 1 });
     a.noise(o, { t, dur: 3.8, type: 'bandpass', freq: 600, freqEnd: 1600, q: 0.6, gain: 0.6, brown: true, attack: 0.3 });
     this.whoosh(this.swirl(o, t, 3.5, 0.7), t + 0.2, 3.4, 2600, 1200, 0.25, 2);
     this.shatter(o, t, 0.6, 10);
     for (let i = 0; i < 10; i++) this.chime(o, t + 0.3 + Math.random() * 3, 1800 + Math.random() * 3000, 0.02, 0.8);
+  }
+
+  // Lo que suena mientras dura el tiro cargado (core/weaponSfx.js): el
+  // remolino del Zonda, la ventisca del Penitente, la bola de rayos de Illapa.
+  // Devuelve { move(pos), stop(secs) } o null si el grabado no bajó.
+  zoneLoop(el, pos) {
+    const G = this.a?.guns;
+    if (!G) return null;
+    if (el === 'viento') {
+      // dos vueltas del mismo viento, una más grave: no se oye que se repite
+      const hs = [G.loop('viento-loop', pos, { gain: 0.8 }), G.loop('viento-loop', pos, { gain: 0.55, rate: 0.79, fadeIn: 0.5 })].filter(Boolean);
+      if (!hs.length) return null;
+      return { move: (p) => hs.forEach((h) => h.move(p)), stop: (s) => hs.forEach((h) => h.stop(s)) };
+    }
+    return G.loop(el === 'hielo' ? 'hielo-loop' : 'rayo-bola-loop', pos, { fadeIn: el === 'hielo' ? 0.15 : 0.3 });
   }
 
   // ---------------- la mano ----------------

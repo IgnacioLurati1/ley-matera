@@ -314,7 +314,9 @@ export const BOX_SPOTS = [
   { cell: [41, 32], face: [0, 1], zone: 'A' },
   { cell: [50, 17], face: [0, -1], zone: 'B' },
   { cell: [70, 49], face: [0, -1], zone: 'C' },
-  { cell: [10, 48], face: [1, 0], zone: 'E' },
+  // (en la 48 flotaba: el piso baja hacia el sur; en la 10 quedaba encima de
+  // la pared de la cripta, con los irupés del agua de adentro: acá es parejo)
+  { cell: [13, 45], face: [1, 0], zone: 'E' },
   { cell: [16, 2], face: [0, 1], zone: 'G' },
   { cell: [80, 15], face: [-1, 0], zone: 'H' },
 ];
@@ -415,12 +417,16 @@ export const PROPS = [
   { type: 'pew', pos: [8, 38.9], rot: 0.15 },
   { type: 'escombroRojo', pos: [11, 39.6], n: 3 },
   // ---- el algarrobo de los colgados ----
-  { type: 'algarrobo', pos: [12.6, 10.4], s: 1.25 },
+  // (la rama que va hacia la loma, empinada: en la llegada del Luisón tapaba
+  // la cresta desde la toma larga)
+  { type: 'algarrobo', pos: [12.6, 10.4], s: 1.25, alza: [0, 0.8, 0, 0] },
   { type: 'cruzCinta', pos: [13.6, 14.3], rot: 0.2 },
   { type: 'cruzCinta', pos: [16.4, 4.4], rot: 0.6 },
   { type: 'cruzCinta', pos: [19.6, 12.4], rot: -0.5, h: 1.1 },
   { type: 'cruzCinta', pos: [5.6, 17.6], rot: 1.1, vela: false },
   { type: 'arbolMonte', pos: [20.6, 6.6], h: 6 },
+  // la loma del Luisón (entre el algarrobo y la reducción, del lado de la luna)
+  { type: 'loma', pos: [16.5, 21.8], rx: 3.6, rz: 2.5, h: 5 },
   // ---- la casona del coronel ----
   { type: 'farolPoste', pos: [70.5, 15.5] },
   { type: 'carreta', pos: [69.5, 18.5], rot: 1.2 },
@@ -458,7 +464,7 @@ export const ACT = {
   radios: [],
   parts: PARTS,
   bench: BENCH,
-  shield: { name: 'Escudo de cuero de yacaré', hp: 1000, where: 'la mesa del fogón', plan: 'ESCUDO: cuero + correas + tabla' },
+  shield: { name: 'Escudo de cuero de yacaré', hp: 1000, where: 'la mesa del fogón', plan: 'ESCUDO: cuero + correas + tabla', up: { name: 'Escudo de yacaré dentado', hp: 1600, prop: 'bite', kind: 'skull', pos: [70, 36], rot: 0, r: 10, need: 8 } },
 };
 export const CRITTERS = { flocks: [], rats: [] };
 export const FIRES = [
@@ -511,3 +517,10 @@ export const SKY = {
     },
   },
 };
+
+// Los hornos de barro de las empanadas (entities/Empanadas): pared y hacia dónde mira.
+export const HORNO_SPOTS = [
+  { cell: [42, 20], face: [-1, 0] },
+  { cell: [46, 11], face: [0, -1] },
+  { cell: [14, 41], face: [-1, 0] },
+];

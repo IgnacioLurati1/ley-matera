@@ -77,6 +77,10 @@ export function renderVoice(segs, P, rand = Math.random) {
   let ampS = 0;
   let noiseAmpS = 0;
   const tiltK = P.tilt ?? 0.35;
+  // susurro: la voz se apaga y queda el aire (un alma, un fantasma)
+  const wh = P.whisper ?? 0;
+  // temblor de volumen (la voz que tiembla de nervios o de locura)
+  const trem = P.trem;
   for (idx = 0; idx < n; idx++) {
     const s = segs[Math.min(segI, segs.length - 1)];
     const done = segI >= segs.length;
@@ -142,7 +146,8 @@ export function renderVoice(segs, P, rand = Math.random) {
     // (con aire: al final de la frase la voz se apaga soplando)
     const by = done ? 0 : s.breathy || 0;
     const breath = (rand() * 2 - 1) * (P.breath ?? 0.08) * (0.35 + 0.65 * flow) * (1 + by * 3);
-    let x = (tilt * 18 * growl * (1 - by * 0.4) + breath) * voicedS;
+    const asp = wh ? (rand() * 2 - 1) * wh * 0.5 : 0;
+    let x = (tilt * 18 * growl * (1 - by * 0.4) * (1 - wh * 0.85) + breath + asp) * voicedS;
 
     // ---- tracto vocal ----
     for (let i = 0; i < 4; i++) {
@@ -160,7 +165,7 @@ export function renderVoice(segs, P, rand = Math.random) {
       nb1 = y;
       fr = y * noiseAmpS * (P.noiseGain ?? 2.5);
     }
-    out[idx] = (x + fr) * ampS;
+    out[idx] = (x + fr) * ampS * (trem ? 1 - trem.depth * (0.5 + 0.5 * Math.sin(idx * T * trem.rate * Math.PI * 2)) : 1);
     segT += T;
     if (!done && segT >= s.dur) {
       segT -= s.dur;
@@ -264,7 +269,11 @@ export function zombieSound(kind, r = Math.random) {
 // ---------------- murmullos con forma de habla ----------------
 // Cada personaje con su voz: altura (f0), velocidad, cuánto sube y baja la
 // melodía (range), el largo del tracto (shift: más chico = más grande el que
-// habla), aire, temblor, aspereza y la nasalidad (bwMul).
+// habla), aire, temblor, aspereza y la nasalidad (bwMul). Además: whisper
+// (susurro), trem (temblor de volumen), jump (cada palabra a otra altura),
+// rateVar (cuánto cambia la velocidad), pauseK (pausas) y drawl (el final
+// de la frase arrastrado). Los gauchos del penal y del estero tienen que
+// reconocerse sin leer el nombre (lo pidió el usuario, que juega con murmullos).
 export const SPEAKERS = {
   // el Abuelo: viejo, lento y temblón
   abuelo: { f0: 112, rate: 0.8, range: 1.1, jitter: 0.04, shimmer: 0.12, breath: 0.26, vib: { rate: 5.8, depth: 0.045 }, tilt: 0.48, shift: 0.97, oq: 0.66, level: 0.8 },
@@ -280,21 +289,28 @@ export const SPEAKERS = {
   espantapajaros: { f0: 118, rate: 0.9, range: 1.4, jitter: 0.06, shimmer: 0.16, breath: 0.4, growl: 0.35, roughRate: 70, tilt: 0.28, shift: 1.08, drive: 1.8, oq: 0.48, level: 0.85 },
   // el Alcaide: porteño, rápido, agudo y nasal (la melodía sube y baja mucho)
   alcaide: { f0: 134, rate: 1.22, range: 1.6, jitter: 0.018, shimmer: 0.06, breath: 0.06, growl: 0.1, roughRate: 40, tilt: 0.2, shift: 1.07, bwMul: 1.5, drive: 1.3, oq: 0.45, level: 0.9 },
-  // el Gauchito Gil: grave, firme y con algo de santo
-  gil: { f0: 76, rate: 0.8, range: 0.9, jitter: 0.015, shimmer: 0.06, breath: 0.18, sub: 0.32, vib: { rate: 4, depth: 0.02 }, growl: 0.2, roughRate: 35, tilt: 0.44, shift: 0.87, drive: 1.3, oq: 0.64, level: 0.9 },
-  // los presos: Anacleto (viejo y ronco), Cirilo (joven y ligero), Benito (medio loco: la voz le baila)
-  anacleto: { f0: 94, rate: 0.8, range: 1, jitter: 0.045, shimmer: 0.13, breath: 0.34, growl: 0.36, roughRate: 30, tilt: 0.5, shift: 0.93, oq: 0.64, level: 0.8 },
-  cirilo: { f0: 156, rate: 1.1, range: 1.5, jitter: 0.02, shimmer: 0.06, breath: 0.12, tilt: 0.3, shift: 1.06, oq: 0.52, level: 0.8 },
-  benito: { f0: 104, rate: 1, range: 1.9, jitter: 0.05, shimmer: 0.1, breath: 0.26, vib: { rate: 7.5, depth: 0.06 }, sub: 0.1, tilt: 0.42, shift: 0.98, oq: 0.6, level: 0.8 },
+  // el Gauchito Gil: el más grave, liso y firme (nada de aspereza), pausado, con algo de santo
+  gil: { f0: 70, rate: 0.78, range: 0.8, jitter: 0.012, shimmer: 0.05, breath: 0.14, sub: 0.36, vib: { rate: 4, depth: 0.02 }, growl: 0.08, roughRate: 35, tilt: 0.44, shift: 0.85, drive: 1.2, oq: 0.66, drawl: 1.15, pauseK: 1.25, level: 0.9 },
+  // los presos:
+  //  · Anacleto, el carnicero: grandote y viejo, ronco de ripio (gruñido lento y
+  //    carraspera), oscuro, lento, con pausas largas y el final arrastrado
+  //  · Cirilo: joven, agudo y brillante, habla de corrido y casi sin pausas
+  //  · Benito, medio loco: nasal, la voz le tiembla (vibrato y volumen), cada
+  //    palabra salta a otra altura y se apura y se frena de golpe
+  anacleto: { f0: 92, rate: 0.86, range: 0.9, jitter: 0.05, shimmer: 0.16, breath: 0.3, growl: 0.6, roughRate: 26, fry: 0.14, creak: 0.7, tilt: 0.55, shift: 0.89, oq: 0.66, drive: 1.7, pauseK: 1.5, drawl: 1.2, level: 0.85 },
+  cirilo: { f0: 178, rate: 1.32, range: 1.6, rateVar: 0.2, jitter: 0.02, shimmer: 0.06, breath: 0.1, tilt: 0.22, shift: 1.13, oq: 0.5, pauseK: 0.6, level: 0.8 },
+  benito: { f0: 124, rate: 1.05, rateVar: 0.45, range: 2.1, jump: 0.22, jitter: 0.05, shimmer: 0.12, breath: 0.2, vib: { rate: 7.5, depth: 0.07 }, trem: { rate: 5.2, depth: 0.35 }, tilt: 0.38, shift: 1, bwMul: 1.6, oq: 0.56, level: 0.8 },
   // Nicanor, el compañero de celda de Cirilo (muerto hace cien años, solo le
-  // habla al alma): casi un susurro, lento, con un vaivén lento de fantasma
-  nicanor: { f0: 138, rate: 0.74, range: 0.85, jitter: 0.03, shimmer: 0.1, breath: 0.58, vib: { rate: 2.2, depth: 0.05 }, tilt: 0.6, shift: 1.04, bwMul: 1.3, oq: 0.8, level: 0.85 },
+  // habla al alma): un susurro (casi sin voz, puro aire), lento, con pausas
+  // largas y un vaivén lento de fantasma
+  nicanor: { f0: 118, rate: 0.7, range: 0.7, whisper: 0.7, jitter: 0.03, shimmer: 0.1, breath: 0.5, vib: { rate: 2.2, depth: 0.05 }, tilt: 0.6, shift: 1.04, bwMul: 1.3, oq: 0.8, pauseK: 1.6, drawl: 1.3, level: 0.85 },
   // la torre: Martín Fierro (la misma voz del Abuelo, más firme) y Francisco (la Voz, ya hombre)
   fierro: { f0: 102, rate: 0.84, range: 1, jitter: 0.025, shimmer: 0.08, breath: 0.2, vib: { rate: 5, depth: 0.03 }, tilt: 0.42, shift: 0.94, oq: 0.64, level: 0.85 },
   francisco: { f0: 90, rate: 0.9, range: 0.75, jitter: 0.015, shimmer: 0.06, breath: 0.18, sub: 0.22, vib: { rate: 3.6, depth: 0.018 }, tilt: 0.4, shift: 0.9, oq: 0.6, level: 0.9 },
   // los cuatro caballeros del castillo, fantasmas de antes: cada uno con su elemento
-  // Fuego: caliente y rasposo (crepita), el más apurado de los cuatro
-  caballeroFuego: { f0: 98, rate: 1.1, range: 1.4, jitter: 0.04, shimmer: 0.14, breath: 0.18, growl: 0.7, roughRate: 64, fry: 0.16, tilt: 0.24, shift: 0.97, drive: 2.6, oq: 0.5, level: 0.9 },
+  // Fuego: caliente y rasposo (crepita), con ímpetu pero sin apurarse (a 1.1
+  // hablaba muy rápido en las palabras del final: pedido del usuario)
+  caballeroFuego: { f0: 98, rate: 0.92, pauseK: 1.2, range: 1.4, jitter: 0.04, shimmer: 0.14, breath: 0.18, growl: 0.7, roughRate: 64, fry: 0.16, tilt: 0.24, shift: 0.97, drive: 2.6, oq: 0.5, level: 0.9 },
   // Viento: alto, liviano y soplado (mucho aire), con un vaivén lento como una ráfaga
   caballeroViento: { f0: 165, rate: 0.94, range: 1.3, jitter: 0.015, shimmer: 0.06, breath: 0.45, vib: { rate: 3, depth: 0.03 }, tilt: 0.55, shift: 1.1, oq: 0.75, level: 0.8 },
   // Rayo: nítido y brillante, con un temblor rápido como electricidad
@@ -448,13 +464,19 @@ export function speechSegments(text, S, r = Math.random) {
   // cuánto se le quiebra la voz al cerrar una frase (los graves, más)
   const creakK = S.creak ?? (base < 100 ? 0.45 : 0.3);
   let prevPunct = '';
+  // (cut: a la frase la interrumpe otra cosa; la última palabra no se estira
+  // ni cierra con pausa, queda cortada en el aire)
+  let lastBody = -1;
+  if (S.cut) for (let p = 0; p < phrases.length; p += 2) if (phrases[p].trim()) lastBody = p;
   for (let p = 0; p < phrases.length; p += 2) {
     const body = phrases[p].trim();
     const punct = phrases[p + 1] || '';
     if (!body) continue;
     const words = body.split(/\s+/);
     // cada frase a su velocidad (las cortas, más rápido)
-    const rate = (S.rate ?? 1) * (0.93 + r() * 0.14) * (words.length <= 3 ? 1.06 : 1);
+    // (rateVar: cuánto cambia de una frase a otra; el que está medio loco, mucho)
+    const rv = S.rateVar ?? 0.14;
+    const rate = (S.rate ?? 1) * (1 - rv / 2 + r() * rv) * (words.length <= 3 ? 1.06 : 1);
     const sounds = words.map((w) => [...phon(w)]);
     const vowelsTotal = sounds.reduce((n, L) => n + L.filter((c) => VOWELS_RE.test(c)).length, 0) || 1;
     let vi = 0;
@@ -468,7 +490,9 @@ export function speechSegments(text, S, r = Math.random) {
     words.forEach((word, wi) => {
       const letters = sounds[wi];
       const { at, glides } = stressOf(word, letters);
-      const lastWord = wi === words.length - 1;
+      const lastWord = wi === words.length - 1 && p !== lastBody;
+      // jump: cada palabra salta a otra altura (la melodía que se le escapa)
+      const wj = S.jump ? 1 + (r() - 0.5) * 2 * S.jump : 1;
       for (let i = 0; i < letters.length; i++) {
         const c = letters[i];
         const next = letters[i + 1] || '';
@@ -478,13 +502,14 @@ export function speechSegments(text, S, r = Math.random) {
           const stressed = i === at;
           const glide = glides.has(i);
           const lastV = vi === vowelsTotal - 1;
-          let f = base * (1 + (0.08 - prog * 0.22) * R) * (stressed ? 1 + 0.14 * R : 1) * (excl ? 1 + 0.12 * R : 1);
+          let f = base * wj * (1 + (0.08 - prog * 0.22) * R) * (stressed ? 1 + 0.14 * R : 1) * (excl ? 1 + 0.12 * R : 1);
           if (question && prog > 0.7) f *= 1 + (prog - 0.7) * 1.2 * R;
           f *= 1 + (r() - 0.5) * 0.05;
           let dur = (glide ? 0.042 : (stressed ? 0.105 : 0.068) + r() * 0.015) / rate;
           // se frena hacia el final de la frase y la última palabra se estira
           dur *= 1 + prog * 0.12;
-          if (lastWord && !glide) dur *= stressed ? 1.45 : lastV ? 1.35 : 1.1;
+          // (drawl: el que arrastra el final de la frase, bien de campo)
+          if (lastWord && !glide) dur *= (stressed ? 1.45 : lastV ? 1.35 : 1.1) * (S.drawl ?? 1);
           const glideTo = f * (stressed ? 1 - 0.06 * R : 0.98);
           if (lastV && ends && !glide) {
             // la última vocal: se apaga, y al cerrar la frase se quiebra un poco
@@ -522,8 +547,10 @@ export function speechSegments(text, S, r = Math.random) {
         }
       }
     });
+    if (p === lastBody) continue;
     // pausa según la puntuación
-    const pause = punct.includes('…') || punct.includes('...') ? 0.4 : /[.!?]/.test(punct) ? 0.28 : punct ? 0.15 : 0.08;
+    // (pauseK: el que piensa cada palabra, o el que habla de corrido)
+    const pause = (punct.includes('…') || punct.includes('...') ? 0.4 : /[.!?]/.test(punct) ? 0.28 : punct ? 0.15 : 0.08) * (S.pauseK ?? 1);
     segs.push({ dur: pause / rate, f0: [base * 0.8, base * 0.8], v: 'y', amp: [0, 0], voiced: 0, noise: { f: 1200, bw: 1500, amp: 0.02 } });
   }
   return segs;
@@ -531,8 +558,9 @@ export function speechSegments(text, S, r = Math.random) {
 
 // Lo que dice un personaje, listo para renderizar (segmentos y perfil): el
 // audio lo renderiza en un worker para no trabar el juego.
-export function speechPlan(text, speaker = 'abuelo', r = Math.random) {
-  const S = SPEAKERS[speaker] || SPEAKERS.abuelo;
+export function speechPlan(text, speaker = 'abuelo', r = Math.random, { cut = false } = {}) {
+  const S0 = SPEAKERS[speaker] || SPEAKERS.abuelo;
+  const S = cut ? { ...S0, cut: true, tail: 0 } : S0;
   return { segs: speechSegments(text, S, r), P: { ...S, glide: 0.022 } };
 }
 

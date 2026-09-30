@@ -558,6 +558,29 @@ export default class Water {
     this.rise = { from: this.level, to: y, t0: now, dur: Math.max(0.01, secs) };
   }
 
+  // Otro nivel de base (la inundación del Challenge de la torre: cada vez en
+  // otro piso). Rehace el mapa de profundidad con el fondo de ahora (groundAt
+  // se consulta de nuevo) sobre el mismo rectángulo; el agua queda en `now`.
+  rebase(y, now = y) {
+    const D = this.D;
+    const old = this.depthTex;
+    this.base = y;
+    this.level = now;
+    this.rise = null;
+    this.bakeDepth([D.x0, D.z0, D.x0 + (D.nx - 1) * D.res, D.z0 + (D.nz - 1) * D.res], D.res);
+    old.dispose();
+    const u = this.u;
+    u.tDepth.value = this.depthTex;
+    u.uDB.value.set(this.D.x0, this.D.z0, this.D.res, 0);
+    u.uDN.value.set(this.D.nx, this.D.nz);
+    u.uLevel.value = now;
+    u.uLift.value = now - y;
+    if (this.simMat) {
+      this.simMat.uniforms.tDepth.value = this.depthTex;
+      this.simMat.uniforms.uLift.value = now - y;
+    }
+  }
+
   // La superficie en (x, z), con el oleaje (lo mismo que dibuja la placa).
   heightAt(x, z) {
     let h = this.level;

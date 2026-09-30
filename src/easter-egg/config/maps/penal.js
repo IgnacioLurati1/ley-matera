@@ -59,7 +59,7 @@ export const PLAYER_START = { x: 44, z: 35, yaw: Math.PI / 2 };
 export const DOORS = [
   { id: 1, zones: ['A', 'B'], cells: [[40, 41], [41, 41]], cost: 750, kind: 'reja' },
   { id: 2, zones: ['B', 'C'], cells: [[46, 45], [46, 46]], cost: 1000, kind: 'door' },
-  { id: 3, zones: ['C', 'H'], cells: [[57, 45], [57, 46]], cost: 1000, kind: 'reja' },
+  { id: 3, zones: ['C', 'H'], cells: [[57, 45], [57, 46]], cost: 0, kind: 'vida' },
   { id: 4, zones: ['H', 'I'], cells: [[64, 60], [65, 60]], cost: 1250, kind: 'reja' },
   { id: 5, zones: ['I', 'S'], cells: [[51, 65], [51, 66]], cost: 750, kind: 'door' },
   { id: 6, zones: ['I', 'J'], cells: [[58, 74], [59, 74]], cost: 1250, kind: 'reja' },
@@ -217,7 +217,9 @@ export const LIGHTS = [
 ];
 
 // Easter egg "Los Tres Gauchos" (entities/PenalEgg.js).
-export const EE = { gauchos: [{ id: 'g1', name: 'Anacleto', cell: [54.5, 39.4], rot: Math.PI, w: 3, d: 3 }, { id: 'g2', name: 'Cirilo', cell: [19.0, 61.5], rot: Math.PI / 2, w: 5, d: 4 }, { id: 'g3', name: 'Benito', cell: [32.4, 17.5], rot: Math.PI / 2, w: 4, d: 4.8 }], dogs: [{ pos: [70.2, 48.5], rot: -Math.PI / 2, r: 5, need: 5 }, { pos: [74.2, 62.4], rot: -Math.PI / 2, r: 5, need: 5 }, { pos: [51.5, 76.9], rot: 0, r: 5, need: 5 }], safe: { pos: [55.5, 16.4], rot: -Math.PI / 2 }, chair: { pos: [48.5, 23.3], rot: Math.PI }, table: { pos: [37.5, 23.6], rot: 0 }, encierro: { pos: [26.9, 64], r: 2.1, need: 14 }, parts: [{ id: 'frasco', name: 'Frasco de ácido', pos: [31.3, 23.2] }, { id: 'manguera', name: 'Manguera de goma', pos: [28.6, 37.5] }, { id: 'valvula', name: 'Válvula de bronce', pos: [53.2, 43.6] }], yerba: [65.5, 48.5], altar: [82.5, 18.5], arena: { x: 82.5, z: 18.5, r: 7.4, y: 12 } };
+// arena2: la Cárcel de las Almas, adonde Gil arrastra a todos en la segunda
+// fase (world/Cerro.js, world/cerroCarcel.js): colgada en la tormenta, arriba del río.
+export const EE = { gauchos: [{ id: 'g1', name: 'Anacleto', cell: [54.5, 39.4], rot: Math.PI, w: 3, d: 3 }, { id: 'g2', name: 'Cirilo', cell: [19.0, 61.5], rot: Math.PI / 2, w: 5, d: 4 }, { id: 'g3', name: 'Benito', cell: [32.4, 17.5], rot: Math.PI / 2, w: 4, d: 4.8 }], dogs: [{ pos: [70.2, 48.5], rot: -Math.PI / 2, r: 5, need: 5 }, { pos: [74.2, 62.4], rot: -Math.PI / 2, r: 5, need: 5 }, { pos: [51.5, 76.9], rot: 0, r: 5, need: 5 }], safe: { pos: [55.5, 16.4], rot: -Math.PI / 2 }, chair: { pos: [48.5, 23.3], rot: Math.PI }, table: { pos: [37.5, 23.6], rot: 0 }, encierro: { pos: [26.9, 64], r: 2.1, need: 14 }, parts: [{ id: 'frasco', name: 'Frasco de ácido', pos: [31.3, 23.2] }, { id: 'manguera', name: 'Manguera de goma', pos: [28.6, 37.5] }, { id: 'valvula', name: 'Válvula de bronce', pos: [53.2, 43.6] }], yerba: [65.5, 48.5], altar: [82.5, 18.5], arena: { x: 82.5, z: 18.5, r: 7.4, y: 12 }, arena2: { x: 168, z: 44, r: 15.5, y: 58 } };
 
 export const PROPS = [
   { type: 'celdas', pos: [37.5, 39.4], rot: Math.PI, len: 4, n: 2 },
@@ -480,7 +482,7 @@ export const ACT = {
   radios: RADIOS,
   parts: PARTS,
   bench: BENCH,
-  shield: { name: 'Escudo de barrotes', hp: 1000, where: 'la mesa del comedor', plan: 'ESCUDO: barrote + grillete + chapa' },
+  shield: { name: 'Escudo de barrotes', hp: 1000, where: 'la mesa del comedor', plan: 'ESCUDO: barrote + grillete + chapa', up: { name: 'Escudo de barrotes templado', hp: 1600, prop: 'chain', kind: 'temper', trap: 'duchas', pos: [25.5, 33.2], rot: Math.PI, dunk: [31, 87.4], secs: 40 } },
   radioAch: ['Oyente de Radio Nacional', 'Escuchaste las cinco transmisiones del penal'],
 };
 
@@ -497,3 +499,20 @@ export const TEXT = {
 };
 // Noche cerrada, con tormenta sobre el río.
 export const SKY = { daylight: 0 };
+
+// Los hornos de barro de las empanadas (entities/Empanadas): pared y hacia dónde mira.
+export const HORNO_SPOTS = [
+  { cell: [54, 41], face: [0, -1] },
+  { cell: [64, 41], face: [0, 1] },
+  { cell: [44, 22], face: [1, 0] },
+  { cell: [41, 74], face: [0, 1] },
+];
+
+// Los huecos del gaucho life (entities/vidaHuecos.js): las rejas 'vida' se
+// abren pegándole con la electricidad al tablero que está del otro lado de
+// la pared. Solo el alma ve el hueco y lo pasa (los muertos no). cell: la
+// pared; into: hacia la zona cerrada; where: dónde queda, mirando la reja.
+export const HUECOS = [
+  { door: 10, cell: [49, 25], into: [0, -1], panel: { cell: [53, 25], face: [0, -1] }, where: 'a la izquierda de la reja', label: 'OFICINA' },
+  { door: 3, cell: [57, 48], into: [1, 0], panel: { cell: [57, 47], face: [1, 0] }, where: 'a la derecha de la reja', label: 'PATIO' },
+];

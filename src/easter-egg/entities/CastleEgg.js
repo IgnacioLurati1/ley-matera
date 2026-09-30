@@ -322,7 +322,8 @@ export default class CastleEgg {
     this.step = 9;
     this.say('fierro', FIERRO.sworn);
     this.netSync();
-    g.later(4, () => this.startWar());
+    // (antes, la ceremonia de los cuatro caballeros: castle/Juramento.js FINALE)
+    g.later(6.5, () => this.startWar());
   }
 
   // El vuelo a la Gran Guerra (world/GranGuerra.js: el vuelo, el Éter y la pelea).

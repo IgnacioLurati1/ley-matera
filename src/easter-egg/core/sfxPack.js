@@ -105,10 +105,13 @@ export default class SfxPack {
 
   // Al cambiar de mapa: los bichos de su ronda especial y su especial de fondo.
   sync() {
-    if (this.map === MAP_ID) return;
-    this.map = MAP_ID;
+    // (con el modo: la torre del Challenge carga más que la de la historia)
+    const key = `${MAP_ID}:${FEATURES?.egg || ''}`;
+    if (this.map === key) return;
+    this.map = key;
     const sp = FEATURES?.special;
-    const kinds = sp === 'mixed' ? ['capybara', 'horse'] : sp ? [sp] : [];
+    // (el Challenge de la torre suma los yacarés de la inundación: entities/challengeFlood.js)
+    const kinds = sp === 'mixed' ? ['capybara', 'horse', ...(FEATURES.egg === 'reto' ? ['yacare'] : [])] : sp ? [sp] : [];
     const extra = this.specialIds().map((s) => s.id);
     if (MAP_ID === SAPUCAY.map) extra.push(SAPUCAY.id);
     this.load(Object.keys(GROUPS).filter((k) => kinds.includes(k.split('.')[0])), extra);

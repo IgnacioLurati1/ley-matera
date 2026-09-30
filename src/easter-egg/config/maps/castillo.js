@@ -509,7 +509,7 @@ export const ACT = {
   radios: [],
   parts: PARTS,
   bench: BENCH,
-  shield: { name: 'Escudo de Caballero', hp: 1200, where: 'la herrería', plan: 'ESCUDO: tabla + umbo + correas' },
+  shield: { name: 'Escudo de Caballero', hp: 1200, where: 'la herrería', plan: 'ESCUDO: tabla + umbo + correas', up: { name: 'Escudo del Dragón', hp: 1900, prop: 'blazon', kind: 'forge', trap: 'liza', anvil: [22.3, 49.6], secs: 25 } },
   radioAch: ['Cronista del Castillo', 'Leíste las crónicas de la Gran Guerra'],
 };
 
@@ -535,3 +535,10 @@ export const TEXT = {
 };
 // Noche cerrada y despejada sobre la cordillera.
 export const SKY = { daylight: 0 };
+
+// Los hornos de barro de las empanadas (entities/Empanadas): pared y hacia dónde mira.
+export const HORNO_SPOTS = [
+  { cell: [41, 51], face: [-1, 0] },
+  { cell: [58, 45], face: [0, -1] },
+  { cell: [70, 57], face: [0, -1] },
+];

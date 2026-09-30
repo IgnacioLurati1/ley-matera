@@ -20,6 +20,9 @@ const SOUL = [0.58, 1, 0.82];
 const GOLD = [1, 0.82, 0.35];
 const MAX_MOTES = 360;
 const MAX_GHOSTS = 28;
+// el grabado del alma que sale ('alma', core/weaponSfx.js): a los cuántos
+// segundos suena más fuerte (ahí entra al farol)
+const ALMA_PEAK = 1.1;
 const UP = new THREE.Vector3(0, 1, 0);
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
@@ -323,6 +326,7 @@ export default class Potenciadores {
     this.w.muzzleWorld(this.lamp);
     if (!this.holding) {
       this.drain.clear();
+      this.almaCut();
       return;
     }
     const eye = g.camera.position;
@@ -363,8 +367,19 @@ export default class Potenciadores {
           this.hurtBoss(z, e.acc);
           e.acc = 0;
         }
+        // (al jefe no se le termina de salir: el alma suena una y otra vez)
+        e.sndT -= dt;
+        if (e.sndT <= 0) {
+          e.sndT = 1.8;
+          this.almaStart(0.9);
+        }
       } else {
-        e.k += dt / (D.time * (z.dog || z.crawler ? 0.6 : 1));
+        const T = D.time * (z.dog || z.crawler ? 0.6 : 1);
+        if (!e.snd) {
+          e.snd = true;
+          this.almaStart(T * (1 - e.k));
+        }
+        e.k += dt / T;
         if (e.k >= 1) this.reap(z);
       }
     }
@@ -407,7 +422,7 @@ export default class Potenciadores {
     cands.sort((a, b) => a.d - b.d);
     const keep = new Set(cands.slice(0, D.targets).map((c) => c.z));
     for (const z of [...this.drain.keys()]) if (!keep.has(z)) this.drain.delete(z);
-    for (const z of keep) if (!this.drain.has(z)) this.drain.set(z, { k: 0, acc: 0, moteT: Math.random() * 0.03 });
+    for (const z of keep) if (!this.drain.has(z)) this.drain.set(z, { k: 0, acc: 0, moteT: Math.random() * 0.03, snd: false, sndT: 0 });
   }
 
   // Vaciado: cae y su ánima entra al farol.
@@ -424,7 +439,8 @@ export default class Potenciadores {
     this.souls++;
     this.flare = Math.max(this.flare, 0.6);
     this.pend.vx += (Math.random() - 0.5) * 0.9;
-    this.wail(at);
+    // (con el grabado, el alma ya viene sonando desde que empezó a salir)
+    if (!this.g.audio?.guns?.has('alma')) this.wail(at);
     g.hud.hitmarker(false);
     if (g.net) g.net.share('pot', { k: this.r(at), o: this.r(this.lamp) });
   }
@@ -597,8 +613,9 @@ export default class Potenciadores {
     }
     if (m.k) {
       const at = V(m.k);
-      this.ghost(at.setY(at.y - 0.4), o);
-      this.wail(at);
+      this.ghost(at.clone().setY(at.y - 0.4), o);
+      // (el de otro: llega cuando ya salió, suena desde casi lo más fuerte)
+      if (!this.almaStart(0.25, at)) this.wail(at);
       return;
     }
     if (m.zs) {
@@ -649,6 +666,41 @@ export default class Potenciadores {
     a.noise(o, { dur: 0.5, type: 'bandpass', freq: 520, freqEnd: 900, q: 3, gain: 0.22, attack: 0.15 });
     a.tone(o, { dur: 0.5, freq: 196, freqEnd: 207, gain: 0.05, attack: 0.15 });
     a.tone(o, { dur: 0.5, freq: 294, gain: 0.03, attack: 0.2, detune: 8 });
+  }
+
+  // El alma que le arranca a un muerto: el grabado 'alma' (core/weaponSfx.js),
+  // arrancado de modo que lo más fuerte caiga cuando entra al farol, en `left`
+  // s. Varias que salen juntas suenan como una. pos: el de otro jugador (el
+  // propio suena sin lugar, como los tiros). false si el grabado no bajó.
+  almaStart(left, pos = null) {
+    const a = this.g.audio;
+    const G = a?.guns;
+    if (!G?.has('alma')) return false;
+    if (a.now - (this.almaT ?? -9) < 0.3) return true;
+    this.almaT = a.now;
+    const offset = Math.max(0, ALMA_PEAK - left);
+    const src = G.play('alma', { pos: pos && pos.clone(), offset, rate: 0.96 + Math.random() * 0.08 });
+    if (!src) return false;
+    const L = (this.almas ||= []);
+    const it = { src, peak: a.now + ALMA_PEAK - offset, mine: !pos };
+    L.push(it);
+    src.onended = () => {
+      const i = L.indexOf(it);
+      if (i >= 0) L.splice(i, 1);
+    };
+    return true;
+  }
+
+  // Soltó el clic antes de que el alma saliera: se apaga de a poco.
+  almaCut() {
+    const L = this.almas;
+    if (!L?.length) return;
+    const a = this.g.audio;
+    for (let i = L.length - 1; i >= 0; i--) {
+      if (!L[i].mine || a.now >= L[i].peak - 0.05) continue;
+      a.guns.fadeOut(L[i].src, 0.25);
+      L.splice(i, 1);
+    }
   }
 
   // El lamento del alma que se va.

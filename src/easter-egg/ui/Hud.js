@@ -328,8 +328,9 @@ export default class Hud {
   // escudo del mapa (ui/hudIcons): se vacía de arriba hacia abajo, se raja a los
   // dos tercios y al tercio, y tiembla con cada golpe. La barra va en tramos de
   // 100 de aguante.
-  setShield(k) {
-    this.set('shield', k == null ? null : Math.round(k * 50), () => {
+  // up: el mejorado (world/ShieldUpgrade): otro nombre, más tramos y su brillo.
+  setShield(k, up = false) {
+    this.set('shield', k == null ? null : Math.round(k * 50) + (up ? 1000 : 0), () => {
       const s = this.shield;
       const prev = this.shieldK;
       s.classList.toggle('is-on', k != null);
@@ -338,7 +339,7 @@ export default class Hud {
         s.classList.remove('is-hit', 'is-new');
         return;
       }
-      if (s.dataset.theme !== this.shieldTheme()) this.buildShield();
+      if (s.dataset.theme !== this.shieldTheme() || s.dataset.up !== (up ? '1' : '')) this.buildShield(up);
       const kk = Math.max(0, Math.min(1, k));
       s.style.setProperty('--k', kk.toFixed(3));
       s.dataset.crack = kk < 0.34 ? '2' : kk < 0.67 ? '1' : '0';
@@ -359,14 +360,27 @@ export default class Hud {
     return SHIELD_ICONS[this.theme] ? this.theme : 'molino';
   }
 
-  buildShield() {
+  buildShield(up = false) {
     const id = this.shieldTheme();
     const s = this.shield;
     const icon = SHIELD_ICONS[id];
     const box = 'viewBox="0 0 40 46" aria-hidden="true"';
+    const U = up ? ACT?.shield?.up : null;
     s.dataset.theme = id;
-    s.style.setProperty('--seg', String(Math.max(4, Math.round((ACT?.shield?.hp || 1000) / 100))));
-    s.innerHTML = `<div class="mdu-shield__icon"><svg class="mdu-shield__base" ${box}>${icon}</svg><svg class="mdu-shield__full" ${box}>${icon}</svg><svg class="mdu-shield__cracks" ${box}>${SHIELD_CRACKS}</svg></div><div class="mdu-shield__info"><span class="mdu-shield__name">${esc(ACT?.shield?.name || 'Escudo')}</span><b class="mdu-shield__bar"><s></s></b><small class="mdu-shield__hp"></small></div>`;
+    s.dataset.up = U ? '1' : '';
+    s.classList.toggle('is-up', !!U);
+    s.style.setProperty('--seg', String(Math.max(4, Math.round((U?.hp || ACT?.shield?.hp || 1000) / 100))));
+    s.innerHTML = `<div class="mdu-shield__icon"><svg class="mdu-shield__base" ${box}>${icon}</svg><svg class="mdu-shield__full" ${box}>${icon}</svg><svg class="mdu-shield__cracks" ${box}>${SHIELD_CRACKS}</svg></div><div class="mdu-shield__info"><span class="mdu-shield__name">${esc(U?.name || ACT?.shield?.name || 'Escudo')}</span><b class="mdu-shield__bar"><s></s></b><small class="mdu-shield__hp"></small><em class="mdu-shield__tag"></em></div>`;
+    this.shieldTagText = null;
+  }
+
+  // Un aviso chiquito debajo del escudo (el tiempo que le queda al rojo).
+  setShieldTag(text) {
+    if (text === this.shieldTagText) return;
+    this.shieldTagText = text;
+    const t = this.shield.querySelector('.mdu-shield__tag');
+    if (t) t.textContent = text || '';
+    this.shield.classList.toggle('is-hot', !!text);
   }
 
   // Piezas del escudo juntadas (arriba a la derecha, debajo del inventario).
@@ -724,6 +738,22 @@ export default class Hud {
   // columna de la derecha (la tarjeta del escudo, las piezas, el cartel del
   // objetivo), y el "Mantené [F]..." sube cuando los subtítulos llegan hasta él.
   layout() {
+    // la fila de perks se parte en filas de cuatro cuando, entera, llegaría
+    // hasta los subtítulos (seis o más a 1280/1366 de ancho: los últimos
+    // medallones tapaban el arranque de los renglones). Se decide con la
+    // cuenta y el ancho, no con que haya un renglón a la vista: así no salta
+    // cada vez que alguien habla.
+    const pk0 = this.perks.children;
+    let wrap = false;
+    if (pk0.length > 4) {
+      const a = pk0[0].getBoundingClientRect();
+      const step = pk0[1].getBoundingClientRect().left - a.left;
+      wrap = a.left + (pk0.length - 1) * step + a.width + 8 > this.subs.getBoundingClientRect().left;
+    }
+    if (wrap !== !!this.perkWrap) {
+      this.perkWrap = wrap;
+      this.root.classList.toggle('is-perkwrap', wrap);
+    }
     if (this.team.firstChild) {
       let top = 156;
       for (const e of this.root.querySelectorAll('.mdu-plan, .mdu-craft, .mdu-obj')) {

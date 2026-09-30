@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EE } from '../../config/map';
 import { buildChiqui, chiquiGiggle } from '../../world/Chiqui';
 import { myId, isHost, announce, players } from './common';
+import Juramento from './Juramento';
 
 // Los dos pasos del final antes de la Gran Guerra:
 //  · La vanguardia: el Chiquitijuein (chiquito, en la muralla del patio)
@@ -11,6 +12,7 @@ import { myId, isHost, announce, players } from './common';
 //  · El juramento: el dragón baja a la cumbre, entre las tumbas de los
 //    caballeros viejos. Cada uno se para al lado de la cabeza y jura
 //    (mantener F). Cuando juraron todos, el dragón los lleva a la Gran Guerra.
+//    La ceremonia (la luz, los caballeros de antes, el coro): Juramento.js.
 
 const NAMES = ['de la Sequía', 'de la Helada', 'del Granizo', 'de la Langosta'];
 const CHIQUI = [
@@ -128,7 +130,7 @@ export default class Vanguardia {
     const who = id === myId(g) ? 'Juraste' : `${g.net?.nameOf(id) || 'Alguien'} juró`;
     const left = players(g).filter((p) => !this.sworn.has(p.id)).length;
     announce(g, `${who} como Caballero de la Luz.${left ? ` Faltan ${left}.` : ''}`, 3, true);
-    g.fx.sparkle(this.oathIt.pos, [1, 0.9, 0.5], 30, 1);
+    this.juramento().sworn(id);
     this.egg.netSync();
     if (!left) this.egg.onSworn?.();
     return true;
@@ -145,13 +147,25 @@ export default class Vanguardia {
       return;
     }
     this.dead = s.d | 0;
-    if (s.s) this.sworn = new Set(s.s);
+    if (s.s) {
+      // (los que juraron recién: la ceremonia en esta compu también)
+      const prev = this.sworn;
+      this.sworn = new Set(s.s);
+      for (const id of this.sworn) if (!prev.has(id)) this.juramento().sworn(id);
+    }
+  }
+
+  juramento() {
+    if (!this.jura) this.jura = new Juramento(this);
+    return this.jura;
   }
 
   // ---------------- cada cuadro ----------------
   update(dt) {
     const g = this.g;
     const t = g.time;
+    // la cumbre del juramento se arma cuando el dragón baja (paso 8)
+    if (this.egg.step >= 8 && this.egg.dragon) this.juramento().update(dt);
     if (this.chiqui.visible) {
       // se balancea y mira al que tenga más cerca
       const p = g.player.pos;
@@ -167,6 +181,7 @@ export default class Vanguardia {
   }
 
   dispose() {
+    this.jura?.dispose();
     this.root.removeFromParent();
   }
 }

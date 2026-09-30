@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { TOWER } from '../config/map';
 import { VM } from '../weapons/viewmodels';
+import { supremoBodyMaterial, supremoTime } from '../weapons/Supremo';
+import { SIX } from '../weapons/supremoFx';
 
 // El final del Challenge de la torre: el Cielo de los Mates. Se paga la
 // escalera al cielo (entities/TowerChallenge.js), suben todos y la cámara se
@@ -327,7 +329,9 @@ export default class ChallengeHeaven {
   }
 
   // El Mate Supremo: una calabaza enorme con su yerba, la bombilla de oro, la
-  // aureola y los rayos de sol atrás.
+  // aureola y los rayos de sol atrás. Es el Mate Supremo de verdad
+  // (weapons/Supremo.js): perla con vetas de oro vivo, la corona de puntas y
+  // las seis reliquias de los easter eggs girando alrededor.
   buildSupremo() {
     const M = this.M;
     const g = new THREE.Group();
@@ -336,12 +340,37 @@ export default class ChallengeHeaven {
     const prof = VM.PROFILES.calabaza;
     const S = 150;
     const top = VM.topOf(prof);
-    const mate = VM.lathe(prof, M.gourd, 40);
+    const mate = VM.lathe(prof, supremoBodyMaterial(), 40);
     mate.scale.setScalar(S);
     g.add(mate);
     const vir = new THREE.Mesh(new THREE.TorusGeometry(top.r * S + 0.1, 0.45, 12, 60).rotateX(Math.PI / 2), M.gold);
     vir.position.y = top.y * S;
     g.add(vir);
+    // la corona de doce puntas de oro
+    const spike = new THREE.ConeGeometry(0.42, 2.4, 6);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const s = new THREE.Mesh(spike, M.gold);
+      s.position.set(Math.cos(a) * (top.r * S + 0.2), top.y * S + 1.1, Math.sin(a) * (top.r * S + 0.2));
+      s.rotation.set(Math.sin(a) * 0.3, 0, -Math.cos(a) * 0.3);
+      g.add(s);
+    }
+    // las seis reliquias en órbita (una por mapa) y su hilo de luz
+    this.relicTilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.38, 0, 0.18));
+    const orbit = new THREE.Mesh(new THREE.TorusGeometry(10.5, 0.1, 6, 120).rotateX(Math.PI / 2), M.halo);
+    orbit.quaternion.copy(this.relicTilt);
+    orbit.position.y = 7.5;
+    g.add(orbit);
+    const gem = new THREE.IcosahedronGeometry(1.05, 0);
+    this.relics = SIX.map((c) => {
+      const r = new THREE.Group();
+      r.add(new THREE.Mesh(gem, new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(1.8), toneMapped: false, fog: false })));
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.g.textures?.dot, color: new THREE.Color(c).multiplyScalar(0.9), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, toneMapped: false, fog: false, opacity: 0.55 }));
+      glow.scale.setScalar(2.4);
+      r.add(glow);
+      g.add(r);
+      return r;
+    });
     const yerba = new THREE.Mesh(new THREE.CircleGeometry(top.r * S - 0.2, 40).rotateX(-Math.PI / 2), M.yerba);
     yerba.position.y = top.y * S - 0.5;
     g.add(yerba);
@@ -611,6 +640,14 @@ export default class ChallengeHeaven {
 
   animate(dt, t) {
     this.gateHalo.rotation.y += dt * 0.8;
+    // el Mate Supremo: las vetas se mueven y las reliquias giran
+    supremoTime(this.g.time);
+    this.relics.forEach((r, i) => {
+      const a = t * 0.35 + (i / 6) * Math.PI * 2;
+      r.position.set(Math.cos(a) * 10.5, Math.sin(t * 1.3 + i) * 0.4, Math.sin(a) * 10.5).applyQuaternion(this.relicTilt);
+      r.position.y += 7.5;
+      r.rotation.set(t * 0.7 + i, t * 1.1 + i, 0);
+    });
     this.bigHalo.rotation.z = Math.sin(t * 0.7) * 0.06;
     this.bigHalo.position.y += Math.sin(t * 1.4) * dt * 0.4;
     this.rays.material.rotation = 0;

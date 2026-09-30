@@ -1,0 +1,120 @@
+/* Dying Wish (entities/dyingWish.js): la adrenalina en la pantalla.
+   --wk: la fuerza del efecto (0 a 1), --wbeat: el latido (0 a 1), --wtime: lo que dura. */
+.mdu-wish {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+  display: none;
+  --wk: 0;
+  --wbeat: 0;
+}
+.mdu-wish.is-on { display: block; }
+
+/* el borde rojo que late */
+.mdu-wish-rim {
+  position: absolute;
+  inset: -4%;
+  opacity: calc(var(--wk) * (0.5 + var(--wbeat) * 0.4));
+  background: radial-gradient(ellipse at center, rgba(120, 0, 10, 0) 46%, rgba(150, 0, 16, 0.5) 72%, rgba(70, 0, 6, 0.92) 100%);
+  transform: scale(calc(1 + var(--wbeat) * 0.025));
+}
+
+/* las venas que entran desde los bordes */
+.mdu-wish-veins {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: calc(var(--wk) * (0.28 + var(--wbeat) * 0.5));
+  filter: drop-shadow(0 0 6px rgba(255, 20, 40, 0.8));
+}
+.mdu-wish-veins path {
+  fill: none;
+  stroke: #6e0010;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* el golpe de entrada: todo rojo y blanco un instante */
+.mdu-wish-flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(circle at center, rgba(255, 235, 235, 0.95), rgba(255, 40, 60, 0.85) 45%, rgba(120, 0, 10, 0.9));
+}
+.mdu-wish.is-on .mdu-wish-flash { animation: mdu-wish-flash 0.75s ease-out forwards; }
+.mdu-wish.is-calm .mdu-wish-flash { display: none; }
+@keyframes mdu-wish-flash {
+  0% { opacity: 1; }
+  25% { opacity: 0.75; }
+  100% { opacity: 0; }
+}
+
+/* lo que queda de los segundos: un aro alrededor de la mira */
+.mdu-wish-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 78px;
+  height: 78px;
+  margin: -39px 0 0 -39px;
+  opacity: calc(var(--wk) * 0.9);
+  transform: rotate(-90deg) scale(calc(1 + var(--wbeat) * 0.08));
+  filter: drop-shadow(0 0 5px rgba(255, 30, 50, 0.9));
+}
+.mdu-wish-ring circle {
+  fill: none;
+  stroke: rgba(80, 0, 10, 0.6);
+  stroke-width: 3;
+}
+.mdu-wish-ring .is-left {
+  stroke: #ff2a44;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: 0;
+}
+.mdu-wish.is-on .mdu-wish-ring .is-left { animation: mdu-wish-left var(--wtime, 5s) linear forwards; }
+@keyframes mdu-wish-left {
+  to { stroke-dashoffset: 100; }
+}
+
+/* el monitor: el trazo del corazón corriendo abajo */
+.mdu-wish-ecg {
+  position: absolute;
+  left: 50%;
+  bottom: 17%;
+  width: min(520px, 60vw);
+  height: 54px;
+  transform: translateX(-50%);
+  opacity: calc(var(--wk) * 0.85);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 25%, #000 75%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 25%, #000 75%, transparent);
+  filter: drop-shadow(0 0 6px rgba(255, 40, 60, 0.95));
+}
+.mdu-wish-ecg path {
+  fill: none;
+  stroke: #ff4a5e;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 60 540;
+  animation: mdu-wish-ecg 0.72s linear infinite;
+}
+@keyframes mdu-wish-ecg {
+  from { stroke-dashoffset: 600; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* al terminar: se apaga de a poco (JS baja --wk) */
+.mdu-wish.is-out .mdu-wish-ring,
+.mdu-wish.is-out .mdu-wish-ecg { transition: opacity 0.4s; opacity: 0; }
+
+/* el medallón del perk late mientras dura */
+.mdu-perk.is-wishing { animation: mdu-wish-medal 0.4s ease-in-out infinite alternate; }
+@keyframes mdu-wish-medal {
+  from { transform: scale(1); filter: drop-shadow(0 0 2px rgba(255, 40, 60, 0.6)); }
+  to { transform: scale(1.18); filter: drop-shadow(0 0 10px rgba(255, 40, 60, 1)) brightness(1.3); }
+}

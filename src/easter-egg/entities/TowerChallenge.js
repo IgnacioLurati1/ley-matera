@@ -100,6 +100,11 @@ export default class TowerChallenge {
     this.buildHud();
     this.register();
     this.hookBossClimb();
+    // la luz, prendida de entrada: en el Challenge no hay palanca que buscar
+    // (pedido del usuario 2026-09-28; el Apagón es otra cosa: challengeEvents.js)
+    game.world.setPower(true);
+    game.interact.setPowerVisuals(true);
+    game.interact.powerLever?.lamp.material.emissive.set(0x20ff40);
   }
 
   // ---------------- el altar de la Supernova ----------------
@@ -896,6 +901,20 @@ export default class TowerChallenge {
       R.bossPending = false;
       this.ev.bossLeft = 0;
     }
+  }
+
+  // La inundación (entities/challengeFlood.js): Zombies le pide dónde sale cada
+  // yacaré (flood.spot) y desde qué altura salen los muertos; Rounds, qué especiales.
+  get flood() {
+    return this.ev.flood;
+  }
+
+  specialKind() {
+    return this.ev.flood.specialKind();
+  }
+
+  spawnFloor() {
+    return this.ev.flood.spawnFloor();
   }
 
   // (anfitrión, Zombies.spawn) Rápidos de entrada y con el zarpazo más ligero.

@@ -58,7 +58,8 @@ export function waterCost(depth) {
 // nivel se mueve más de 10 cm (la inundación): así rodean lo hondo si pueden.
 export function updateNavCost(g) {
   const w = g.world;
-  if (WATER_Y == null || !w.waterDepth) return false;
+  // (la torre inundada no: su campo de flujo es por pisos y no lee costos)
+  if (WATER_Y == null || !w.waterDepth || w.tower) return false;
   const lvl = g.water?.level ?? 0;
   if (w.navCost && Math.abs(lvl - (w.navCostLevel ?? -99)) < 0.1) return false;
   if (w.navCostDry && Math.abs(lvl - (w.navCostLevel ?? -99)) < 0.1) return false;
@@ -171,6 +172,13 @@ export function swimMove(p, dt, input, W, wx, wz, f) {
   if (p.pos.y < floor) {
     p.pos.y = floor;
     if (p.vel.y < 0) p.vel.y = 0;
+  }
+  // la torre inundada (el Challenge): buceando en un piso de abajo, la losa
+  // del de arriba hace de techo (se sale por el agujero o la escalera)
+  const ceil = g.world.tower?.ceilAt(p.pos.x, p.pos.z, p.pos.y) ?? Infinity;
+  if (p.pos.y + 1.75 > ceil) {
+    p.pos.y = Math.max(floor, ceil - 1.75);
+    if (p.vel.y > 0) p.vel.y = 0;
   }
   // salir del agua a una orilla alta (muelle, barranca): nadando contra el borde, se trepa
   if (f > 0 && p.swim === 2 && !p.downed) {

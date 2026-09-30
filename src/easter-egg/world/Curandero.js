@@ -5,6 +5,7 @@ import { zombieHealth } from '../config/rules';
 import { RISERS } from '../config/map';
 import { fireflies } from '../fx/Fireflies';
 import Encierro, { missingIn, missingText } from '../entities/Encierro';
+import { buildMate } from '../weapons/viewmodels';
 
 // La mesa del curandero, arriba en el altillo, y las tres piezas del Mate de
 // la Luz Mala. Cada pieza tiene su prueba (las piezas son del equipo):
@@ -414,29 +415,60 @@ export default class Curandero {
     this.protoGlow.position.y = 0.16;
     this.proto.add(this.protoGlow);
     b.add(this.proto);
+    // el tuyo ya armado, parado en la mesa hasta que lo agarrás (cada uno ve
+    // el suyo; se arma desde ya, escondido, para no trabar al mostrarlo)
+    this.doneMate = buildMate(LUZ_WEAPON, false, g.textures).root;
+    this.doneMate.scale.setScalar(2.2);
+    this.doneMate.position.set(0.05, 0.9, 0.05);
+    this.doneMate.visible = false;
+    b.add(this.doneMate);
     this.root.add(b);
     g.world.addBox([BENCH.x - 0.95, y, BENCH.z - 0.4, BENCH.x + 0.95, y + 0.95, BENCH.z + 0.4], { kind: 'prop' });
+    // (hold va en el aviso: armar se mantiene, agarrar es una F)
     g.interact.add({
       kind: 'lmbench',
       pos: new THREE.Vector3(BENCH.x, y + 1.1, BENCH.z),
       radius: 2.2,
-      hold: true,
       holdTime: CRAFT_TIME,
       prompt: () => {
-        if (this.hasIt(this.myId())) return null;
+        if (this.hasIt(this.myId()) || this.built) return null;
         const missing = PARTS.length - this.got();
         if (missing) return { text: `Mesa del curandero: ${missing === 1 ? 'falta 1 pieza' : `faltan ${missing} piezas`} del Mate de la Luz Mala`, noCost: true, info: true };
         return { text: 'armar tu Mate de la Luz Mala', noCost: true, hold: true };
       },
       cost: () => (this.got() === PARTS.length ? 0 : 1),
       use: () => {
-        if (!this.claimFor(this.myId())) return false;
-        this.craftFx();
-        g.weapons.give(LUZ_WEAPON);
-        g.hud.achievement('Mate de la Luz Mala', 'Lo armaste en la mesa del curandero');
+        if (this.built || !this.claimFor(this.myId())) return false;
+        this.crafted();
         return true;
       },
     });
+    // agarrarlo (lo de cada uno: el invitado no le pregunta al anfitrión)
+    g.interact.add({
+      kind: 'lmtake',
+      local: true,
+      pos: new THREE.Vector3(BENCH.x, y + 1.1, BENCH.z),
+      radius: 2.2,
+      prompt: () => (this.built && !g.weapons.hasLuz?.() ? { text: 'agarrar tu Mate de la Luz Mala', noCost: true } : null),
+      cost: () => 0,
+      use: () => {
+        if (!this.built || g.weapons.hasLuz?.()) return false;
+        this.built = false;
+        this.doneMate.visible = false;
+        g.weapons.give(LUZ_WEAPON);
+        g.audio.powerupGrab();
+        return true;
+      },
+    });
+  }
+
+  // Se armó el mío: queda en la mesa hasta que lo agarro (también al invitado,
+  // cuando el anfitrión le dice que sí).
+  crafted() {
+    this.built = true;
+    this.doneMate.visible = true;
+    this.craftFx();
+    this.g.hud.achievement('Mate de la Luz Mala', 'Lo armaste en la mesa del curandero');
   }
 
   craftFx() {
@@ -545,6 +577,8 @@ export default class Curandero {
     for (const f of this.flames) f.scale.setScalar(0.06 + Math.random() * 0.02);
     // el mate de la mesa brilla más cuantas más piezas hay
     this.protoGlow.scale.setScalar(0.2 + this.got() * 0.18);
+    this.proto.visible = !this.built;
+    if (this.built) this.doneMate.rotation.y += dt * 0.8;
   }
 
   // Lo que muestra el HUD (lo escribe el easter egg, que es el dueño del contador).

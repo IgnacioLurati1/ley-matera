@@ -8,6 +8,8 @@ import { levelOf } from '../world/Attic';
 import { submerged } from '../entities/swim';
 import { dragonBreath } from '../weapons/dragonBreath';
 import { cherryShock } from '../weapons/electricCherry';
+import { killXp } from '../ui/Levels';
+import { camoFor } from '../weapons/camos';
 
 // Sincronización de la partida. El anfitrión simula todo (zombies, rondas,
 // puertas, caja, clima) y manda 15 fotos por segundo con las posiciones; los
@@ -41,6 +43,7 @@ export default class Session {
     this.snapT = 0;
     this.moveT = 0;
     this.pts = new Map();
+    this.xpq = new Map();
     this.ptsT = 0;
     this.buf = new ArrayBuffer(4096);
     this.view = new DataView(this.buf);
@@ -62,6 +65,11 @@ export default class Session {
     this.wpn = new Map();
     this.wpnKey = null;
     this.wpnT = 0;
+    // la partida ya es de esta sesión: al que entra con la partida empezada,
+    // el estado del mundo le llega acá adentro (hookHandlers entrega lo que
+    // esperaba) y todo lo que mira g.net tiene que verlo invitado (si no,
+    // hacía lo del anfitrión: su propia caja, los cartuchos de solo, Fierro...)
+    game.net = this;
     this.hookHandlers();
     if (this.guest) net.send({ t: 'name', name: net.name });
   }
@@ -77,8 +85,10 @@ export default class Session {
   }
 
   // Un invitado liquidó un zombie (el anfitrión lo anota a su nombre).
-  creditKill(id, type, zone) {
+  creditKill(id, type, zone, z) {
     this.credit(id, 'kills');
+    // su experiencia (se le manda con los puntos)
+    this.xpq.set(id, (this.xpq.get(id) || 0) + killXp(this.g.rounds?.round, z, type, zone));
     if (zone === 'head' && (type === 'bullet' || type === 'knife')) this.credit(id, 'heads');
     if (type === 'knife') this.credit(id, 'knife');
   }
@@ -147,10 +157,11 @@ export default class Session {
     // en la torre pesa la diferencia de altura (el de otro piso queda lejos)
     const tower = !!g.world?.tower;
     const far = (p) => (levelOf(p.pos.y) === lv ? 0 : 900) + (tower ? ((p.pos.y || 0) - y) ** 2 * 6 : 0);
-    let best = g.player.canBeHit() && (wet || !submerged(g.player)) ? g.player : null;
+    let best = g.player.canBeHit() && !g.player.maizIn && (wet || !submerged(g.player)) ? g.player : null;
     let bd = best ? (best.pos.x - x) ** 2 + (best.pos.z - z) ** 2 + far(best) : Infinity;
     for (const r of this.remote.values()) {
-      if (r.dead || r.downed || r.ghost || (!wet && submerged(r))) continue;
+      // (unseenT: Ni Me Vieron, una empanada; maizIn: en una mata del Maizaster)
+      if (r.dead || r.downed || r.ghost || r.unseenT > g.time || r.maizIn || (!wet && submerged(r))) continue;
       const d = (r.pos.x - x) ** 2 + (r.pos.z - z) ** 2 + far(r);
       if (d < bd) {
         bd = d;
@@ -186,6 +197,8 @@ export default class Session {
         this.ptsT = 0.25;
         for (const [id, v] of this.pts) if (v) this.net.to(id, { t: 'pts', v });
         this.pts.clear();
+        for (const [id, v] of this.xpq) if (v) this.net.to(id, { t: 'xp', v });
+        this.xpq.clear();
       }
     } else {
       this.moveT -= dt;
@@ -205,7 +218,8 @@ export default class Session {
       if (key !== this.wpnKey || this.wpnT <= 0) {
         this.wpnKey = key;
         this.wpnT = 4;
-        this.share('wpn', { id: this.id, w: s?.id || '', u: s ? tierOf(s.up) : 0 });
+        // (c: el camuflaje de la armería, que se ve hasta el Pack-a-Pava)
+        this.share('wpn', { id: this.id, w: s?.id || '', u: s ? tierOf(s.up) : 0, c: (s && !s.up && camoFor(s.id)) || '' });
       }
     }
     // panel de compañeros
@@ -273,7 +287,8 @@ export default class Session {
     v.setInt8(o + 9, Math.max(-127, Math.min(127, Math.round(p.pitch * 80))));
     v.setUint8(o + 10, this.playerFlags(p));
     // (arriba, el agua: 0 seco, 1 vadea, 2 nada, 3 bucea; entities/swim.js)
-    v.setUint8(o + 11, ((p.weaponIdx ?? 0) & 15) | ((p.swim || 0) << 4));
+    // (y el escudo: 64 adelante, 128 mejorado)
+    v.setUint8(o + 11, ((p.weaponIdx ?? 0) & 15) | ((p.swim || 0) << 4) | (p.shieldFront ? 64 : 0) | (p.shield?.up ? 128 : 0));
     v.setUint8(o + 12, Math.max(0, Math.min(100, Math.round((p.health / (p.maxHealth || 100)) * 100))));
     return o + PLAYER_BYTES;
   }
@@ -298,6 +313,8 @@ export default class Session {
       shield: !!(flags & 128),
       weapon: v.getUint8(o + 11) & 15,
       swim: (v.getUint8(o + 11) >> 4) & 3,
+      shieldFront: !!(v.getUint8(o + 11) & 64),
+      shieldUp: !!(v.getUint8(o + 11) & 128),
       health: v.getUint8(o + 12),
       size: PLAYER_BYTES,
     };
@@ -330,7 +347,7 @@ export default class Session {
       v.setInt16(o + 7, Math.round(n.yaw * 5000), true);
       v.setInt8(o + 9, Math.max(-127, Math.min(127, Math.round(n.pitch * 80))));
       v.setUint8(o + 10, r.flags || 0);
-      v.setUint8(o + 11, ((r.weapon || 0) & 15) | ((r.swim || 0) << 4));
+      v.setUint8(o + 11, ((r.weapon || 0) & 15) | ((r.swim || 0) << 4) | (r.shieldFront ? 64 : 0) | (r.shieldUp ? 128 : 0));
       v.setUint8(o + 12, r.health ?? 100);
       o += PLAYER_BYTES;
     }
@@ -340,7 +357,8 @@ export default class Session {
       v.setInt16(o + 4, Math.round(z.pos.z * 50), true);
       v.setInt16(o + 6, Math.round(z.yaw * 5000), true);
       v.setUint8(o + 8, STATES.indexOf(z.state) + 1);
-      v.setUint8(o + 9, (z.crawler ? 1 : 0) | (z.dead ? 2 : 0) | (SPEEDS.indexOf(z.speedType) << 2) | (z.hidden & (1 << 2) ? 16 : 0) | (z.dog ? 32 : 0) | (z.level ? 64 : 0) | (z.horse ? 128 : 0));
+      // (bit 1 en un bicho: yacaré; los bichos no se arrastran)
+      v.setUint8(o + 9, (z.crawler || (z.dog && z.yac) ? 1 : 0) | (z.dead ? 2 : 0) | (SPEEDS.indexOf(z.speedType) << 2) | (z.hidden & (1 << 2) ? 16 : 0) | (z.dog ? 32 : 0) | (z.level ? 64 : 0) | (z.horse ? 128 : 0));
       v.setInt16(o + 10, packY(z.pos.y), true);
       o += ZOMBIE_BYTES;
     }
@@ -419,7 +437,7 @@ export default class Session {
       const y = v.getInt16(o + 10, true) / 100;
       o += ZOMBIE_BYTES;
       seen.add(id);
-      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', noHead: !!(f & 16), dog: !!(f & 32), level: !!(f & 64), horse: !!(f & 128), y });
+      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1) && !(f & 32), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', noHead: !!(f & 16), dog: !!(f & 32), level: !!(f & 64), horse: !!(f & 128), yac: !!(f & 1) && !!(f & 32), y });
     }
     this.g.zombies.pruneRemote(seen);
     if (hasBoss) {
@@ -465,6 +483,8 @@ export default class Session {
     r.flags = (p.crouch ? 1 : 0) | (p.sprint ? 2 : 0) | (p.downed ? 4 : 0) | (p.dead ? 8 : 0) | (p.moving ? 16 : 0) | (p.hasLuz ? 32 : 0) | (p.ghost ? 64 : 0) | (p.shield ? 128 : 0);
     r.ghost = p.ghost;
     r.shield = p.shield;
+    r.shieldFront = p.shield && p.shieldFront;
+    r.shieldUp = p.shield && p.shieldUp;
     r.hasLuz = p.hasLuz;
     r.downed = p.downed;
     r.dead = p.dead;
@@ -558,6 +578,7 @@ export default class Session {
       g.onHostGone();
     });
     net.on('pts', (m) => g.addPoints(m.v, null, true));
+    net.on('xp', (m) => g.levels?.gain(m.v, 'kills'));
     // la tabla de puntos: la plata de un invitado, y la tabla que reparte el anfitrión
     net.on('score', (m, from) => {
       if (!this.host) return;
@@ -624,7 +645,13 @@ export default class Session {
     net.on('papq', (m, from) => {
       if (this.host) g.papq?.onGuest(m, from);
     });
-    net.on('hurt', (m) => g.player.damage(m.a, tmpV.set(m.x, 1, m.z)));
+    // (zi: el zombie que pegó. El escudo decide con el que ve este jugador,
+    // no con la copia del anfitrión: así cuenta la zona del que se cubre)
+    net.on('hurt', (m) => {
+      const z = m.zi != null ? this.findZombie(m.zi) : null;
+      if (z) g.player.damage(m.a, tmpV.set(z.pos.x, 1, z.pos.z), false, z);
+      else g.player.damage(m.a, tmpV.set(m.x, 1, m.z));
+    });
     // el penal: un invitado dejó (o se llevó) su bombilla en el encierro o en la silla
     net.on('pee', (m, from) => {
       if (this.host) g.ee.onGuest?.(m, from);
@@ -715,15 +742,19 @@ export default class Session {
       locks: g.interact.list.filter((it) => it.locked).map((it) => it.index),
       weather: g.weather.name,
       arena: g.arena.active,
+      // (la etapa de la pelea del final: el cerro o la cárcel, la del Infierno...)
+      astage: g.arena.active ? g.arena.stage ?? null : null,
       ee: g.ee.fullState(),
       papq: g.papq?.fullState(),
       shield: g.activities.shieldBuilt,
+      sup: g.activities.upg?.fullState(),
       parts: Object.values(g.activities.parts || {}).filter((p) => p.taken).map((p) => p.def.id),
       lmparts: Object.values(g.curandero?.parts || {}).filter((p) => p.taken).map((p) => p.def.id),
       // (con la altura: en los mapas con pisos, la torre, se aparece en el mismo piso)
       start: [g.player.pos.x, g.player.pos.z, g.player.pos.y],
-      // los potenciadores que ya están tirados
-      pups: g.powerups.items.map((it) => ({ id: it.id, type: it.type, x: +it.pos.x.toFixed(2), y: +it.pos.y.toFixed(2), z: +it.pos.z.toFixed(2) })),
+      // los potenciadores que ya están tirados (con su edad: si no, al que
+      // entra tarde le duran enteros y le queda uno que ya no existe)
+      pups: g.powerups.items.map((it) => ({ id: it.id, type: it.type, x: +it.pos.x.toFixed(2), y: +it.pos.y.toFixed(2), z: +it.pos.z.toFixed(2), age: +it.t.toFixed(1) })),
       map: g.mapId,
       mode: g.mode,
       // las tablas que le quedan a cada ventana
@@ -756,6 +787,7 @@ export default class Session {
     g.rounds.round = m.round;
     g.hud.setRound(m.round);
     if (m.shield) g.activities.shieldBuilt = true;
+    if (m.sup) g.activities.upg?.applyFull(m.sup);
     for (const id of m.parts || []) g.activities.takePart(id, true);
     for (const id of m.lmparts || []) g.curandero?.takePart(id, true);
     if (m.boards) g.barriers.applyAll(m.boards);
@@ -767,6 +799,19 @@ export default class Session {
     }
     // aparecer cerca del anfitrión (en una partida nueva, cada uno en su lugar)
     if (!m.restart) g.player.pos.set(m.start[0], g.world.floorAt(m.start[0], m.start[1], (m.start[2] ?? 0) + 0.5), m.start[1]);
+    // la pelea del final ya empezó: el que entra (o vuelve) también está en la
+    // arena, en la etapa del anfitrión (si no, quedaba afuera; y en el penal,
+    // con el traslado a la cárcel, en negro para siempre)
+    // (después de que la partida engancha esta sesión: el estado llega adentro
+    // del constructor, con g.net sin poner, y start() haría lo del anfitrión:
+    // su propio jefe, la ronda, sacar a los muertos)
+    if (m.arena) {
+      setTimeout(() => {
+        if (g.net !== this || g.arena.active) return;
+        g.arena.start();
+        g.arena.lateJoin?.(m.astage);
+      }, 0);
+    }
     for (const pu of m.pups || []) if (!g.powerups.items.some((x) => x.id === pu.id)) g.powerups.applyRemote(pu);
     if (m.paused) g.hostPause(true);
   }
@@ -810,6 +855,8 @@ export default class Session {
       dc: info.decap ? 1 : 0,
       // (un potenciador especial: el anfitrión le baja el daño a los jefes)
       pu: info.pup || undefined,
+      // (el tope al jefe final de la medialuna de la hoz de oro)
+      cp: info.cap || undefined,
     });
   }
 
@@ -827,6 +874,7 @@ export default class Session {
       zap: !!m.zp,
       decap: !!m.dc,
       pup: m.pu,
+      cap: m.cp,
       point: new THREE.Vector3(m.x, m.y, m.w),
       dir: new THREE.Vector3(m.dx, 0, m.dz),
       noPoints: true,
@@ -843,6 +891,8 @@ export default class Session {
     if (id === POMBERO_ID) return pb?.active ? pb : null;
     if (id === CROW_ID) return this.g.crow?.z.active ? this.g.crow.z : null;
     if (id === STAKE_ID) return this.g.zombies.moves?.bound ? this.g.zombies.moves.stakeZ : null;
+    const ya = this.g.yasy?.byId(id);
+    if (ya) return ya;
     for (const z of this.g.zombies.pool) if (z.active && (z.id & 0xffff) === id) return z;
     if (this.g.zombies.boss && (this.g.zombies.boss.id & 0xffff) === id) return this.g.zombies.boss;
     return null;
@@ -891,7 +941,7 @@ export default class Session {
       if (!box || (sale && !box.group.visible)) return reply(false);
       if (box.state === 'closed') {
         // (lo que sale se sortea sin los mates que ya tiene el invitado)
-        g.interact.openBox(box, Array.isArray(m.have) ? { w: m.have, tac: m.tac } : null);
+        g.interact.openBox(box, Array.isArray(m.have) ? { w: m.have, tac: m.tac, supremo: !!m.supremo } : null);
         box.taker = from;
         return reply(true, { open: true });
       }
@@ -923,9 +973,10 @@ export default class Session {
       return reply(true, { gift });
     }
     if (kind === 'lmbench') {
-      // el Mate de la Luz Mala: uno solo a la vez (lo decide el anfitrión)
+      // el Mate de la Luz Mala: uno por jugador (lo decide el anfitrión);
+      // armado queda en la mesa, el invitado lo agarra solo (lmtake)
       const ok = g.curandero.claimFor(from);
-      return reply(ok, ok ? { w: 'luzmala' } : {});
+      return reply(ok, ok ? { lm: 1 } : {});
     }
     if (kind === 'luzmala') {
       // cavó un invitado: el anfitrión decide qué sale y se lo manda
@@ -939,8 +990,9 @@ export default class Session {
       return reply(true, { board: g.barriers.repair(w.i) ? 1 : 0 });
     }
     if (kind === 'bench') {
+      // (recién armado queda en la mesa: se agarra con otra F)
       const res = g.activities.benchUse(true);
-      return reply(!!res, { shield: true, built: res });
+      return reply(!!res, res === 'built' ? { built: 1 } : { shield: true });
     }
     // el resto (puertas, luz, trampas, radios, barreras, easter egg) es del mapa
     // (useFrom: quién lo pidió, para lo del easter egg que es de cada uno)
@@ -960,10 +1012,12 @@ export default class Session {
     const cost = it && !m.free ? it.cost() : 0;
     if (m.board != null) {
       if (m.board) g.addPoints(10, null, false, 'board');
+      if (m.board) g.levels?.bought({ kind: 'repair' });
       return;
     }
     if (cost > 0) g.spend(cost);
     else g.audio.purchase();
+    g.levels?.bought(it);
     if (m.ritual) g.ee.papGiven?.();
     // su mate quedó en el Pack-a-Pava (y el regalo de las ánimas, si lo tenía, se gastó)
     if (m.pin) {
@@ -974,7 +1028,9 @@ export default class Session {
       W.take();
       if (g.activities) g.activities.freePap = false;
     }
-    if (m.w) g.weapons.give(m.w, m.up || 0);
+    // (la caja o la pared con la empanada que la mejora: Cajón Bendito, De la Pared)
+    const empUp = !m.up && m.w && it ? g.emp?.upFor(it.kind === 'wallbuy' ? 'wall' : it.kind === 'box' || it.kind === 'salebox' ? 'box' : '', m.w) : 0;
+    if (m.w) g.weapons.give(m.w, m.up || empUp || 0);
     if (m.nade) {
       g.weapons.grenades = GRENADE.max;
       g.weapons.updateHud();
@@ -986,6 +1042,7 @@ export default class Session {
     if (m.gift) g.activities.applyGift(m.gift);
     if (m.shield) g.activities.equipShield();
     if (m.luz) g.luz.applyReward(m.luz);
+    if (m.lm) g.curandero?.crafted();
   }
 
   // El anfitrión avisa un cambio del mundo.
@@ -1003,6 +1060,21 @@ export default class Session {
   applyEvent(m) {
     const g = this.g;
     switch (m.e) {
+      // las empanadas (entities/Empanadas)
+      case 'emp':
+        g.emp?.onEvent(m);
+        break;
+      // el Maizaster: brota una mata, quién tiene el perk, quién está escondido
+      case 'maiz':
+        g.fx?.maiz?.onEvent(m);
+        break;
+      // el matorral de La Tapera (entities/Matorral.js) y sus Yasy (entities/Yasy.js)
+      case 'mato':
+        g.matorral?.onEvent(m);
+        break;
+      case 'yasy':
+        g.yasy?.onEvent(m);
+        break;
       case 'door': {
         const it = g.interact.list.find((x) => x.kind === 'door' && x.door.index === m.i);
         if (it && !it.door.open) g.interact.openDoor(it.door);
@@ -1038,6 +1110,10 @@ export default class Session {
       case 'nova':
         g.weapons?.nova?.ghost(m);
         break;
+      // el Mate Supremo de otro jugador: el rayo del sol o el Juicio (solo se ve)
+      case 'supremo':
+        g.weapons?.supremo?.ghost(m);
+        break;
       // el Aliento Dragónico de otro jugador (solo se ve: el daño lo reporta él)
       case 'drag':
         if (m.id !== this.id && m.p) dragonBreath(g, new THREE.Vector3().fromArray(m.p), false);
@@ -1067,7 +1143,7 @@ export default class Session {
         break;
       // el mate que tiene en la mano un compañero (net/Avatars lo dibuja)
       case 'wpn':
-        if (m.id !== this.id) this.wpn.set(m.id, { w: m.w || '', u: m.u | 0 });
+        if (m.id !== this.id) this.wpn.set(m.id, { w: m.w || '', u: m.u | 0, c: typeof m.c === 'string' ? m.c.slice(0, 24) : '' });
         break;
       // los candados de los minijefes (los pone el anfitrión, los saca cualquiera)
       case 'lock': {
@@ -1116,6 +1192,10 @@ export default class Session {
       case 'shield':
         g.activities.shieldBuilt = true;
         break;
+      // la mejora del escudo (world/ShieldUpgrade)
+      case 'sup':
+        g.activities.upg?.onEvent(m);
+        break;
       case 'part':
         g.activities.takePart(m.id, true);
         break;
@@ -1142,6 +1222,10 @@ export default class Session {
         break;
       case 'ward':
         g.arena.setWard(!!m.on);
+        break;
+      // el maizal del Prado: crece/se seca (anfitrión) y los cortes de cada uno
+      case 'pasto':
+        g.arena?.onPasto?.(m);
         break;
       case 'fireball':
         g.arena.spawnFireball(new THREE.Vector3(m.x, m.y, m.z), new THREE.Vector3(m.vx, m.vy, m.vz));
@@ -1214,5 +1298,5 @@ export default class Session {
   }
 }
 
-export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn', 'whipWind', 'whip', 'chargeWind', 'charge', 'stunned', 'enrage', 'summon', 'stairs', 'fall', 'boat', 'boatHit', 'howl', 'melting', 'aim', 'shoot', 'burrow', 'emerge'];
+export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn', 'whipWind', 'whip', 'chargeWind', 'charge', 'stunned', 'enrage', 'summon', 'stairs', 'fall', 'boat', 'boatHit', 'howl', 'melting', 'aim', 'shoot', 'burrow', 'emerge', 'reel', 'zapped', 'lurk', 'lurkIn'];
 export const SPEEDS = ['walk', 'run', 'sprint'];

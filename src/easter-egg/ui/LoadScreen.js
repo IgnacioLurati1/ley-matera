@@ -38,7 +38,10 @@ export default class LoadScreen {
         </div>
       </div>
       <div class="mdu-arrive__foot">
-        <p class="mdu-arrive__status"></p>
+        <div class="mdu-arrive__line">
+          <p class="mdu-arrive__status"></p>
+          <a class="mdu-arrive__credit" href="https://www.instagram.com/nacho_lurati/" target="_blank" rel="noopener noreferrer">Made by <b>El Luta</b></a>
+        </div>
         <div class="mdu-arrive__bar"><i></i></div>
       </div>
       <div class="mdu-arrive__black"></div>

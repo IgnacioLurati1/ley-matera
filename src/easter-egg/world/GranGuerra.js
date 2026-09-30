@@ -63,7 +63,8 @@ const MINE_R = 1.2;
 const ALTAR_R = 2.3;
 // (con 3 s se prendía de pasada: hay que plantarse en el círculo con el caos encima)
 const ALTAR_SECS = 8;
-const FINAL_HP = 3600;
+// (+50%: pedido del usuario, que dure un poco más el placer de recagarlo a tiros)
+const FINAL_HP = 5400;
 const FLIGHT = { up: 12, white: 13.4, land: 21.5, end: 22.8 };
 // el temazo de la Gran Guerra: arranca cuando el dragón sale de la tormenta al Éter
 const SONG = { url: '/assets/sotano/guerra-castillo.mp3', name: 'Not Ready To Die' };
@@ -1061,9 +1062,20 @@ export default class GranGuerra extends Arena {
     this.skyFlash = 0;
     g.hud.location(this.name, this.sub);
     if (this.song) g.hud.toast(`♪ ${SONG.name}`);
-    announce(g, '¡El Chiquitijuein en su forma verdadera! Rompan las gemas del poncho de a una: solo se rompe la que brilla, con el mate de la luz de su color.', 6, true);
+    // (lo dice el anfitrión y les llega a todos: el que entra tarde, en el
+    // caos, no tiene que leer lo de las gemas)
+    if (isHost(g)) announce(g, '¡El Chiquitijuein en su forma verdadera! Rompan las gemas del poncho de a una: solo se rompe la que brilla, con el mate de la luz de su color.', 6, true);
     chiquiGiggle(g.audio, { pos: this.col.root.position.clone().setY(this.A.y + 15), gain: 2.2, ref: 40, pitch: 0.55 });
+    // (el invitado que llega tarde o termina el vuelo después: le pide al
+    // anfitrión cómo va la pelea, que no la manda sola cada tanto)
+    if (!isHost(g)) g.net?.net.send({ t: 'pee', a: 'gg', k: 'sync' });
     return undefined;
+  }
+
+  // El que entra con la pelea empezada (net/Session.applyFullState): la etapa
+  // del anfitrión ya; lo demás (gemas, vida, altares) llega con el 'st'.
+  lateJoin(stage) {
+    if (stage && stage !== this.stage) this.setStage(stage);
   }
 
   // (lo usa la base: acá el jefe es el coloso, no un muerto)
@@ -1334,6 +1346,9 @@ export default class GranGuerra extends Arena {
 
   // Lo que manda el anfitrión (CastleEgg.applyRemote le pasa todo lo 'gg').
   onNet(m) {
+    // (el que todavía no está en la pelea, entrando a la sala o en el vuelo,
+    // no tiene la isla armada: lo de la pelea le llega con el 'st' al arrancar)
+    if (!this.active && m.gg !== 'begin') return;
     switch (m.gg) {
       case 'begin':
         this.flightStart();
@@ -1342,7 +1357,10 @@ export default class GranGuerra extends Arena {
         // (el que entró con la pelea empezada: la canción por donde va)
         if (m.sg != null && !this.songCued && this.active) this.playSong(m.sg + 0.3);
         m.gems?.forEach((hp, i) => {
-          this.gems[i].hp = hp;
+          const G = this.gems[i];
+          G.hp = hp;
+          // (las que ya se rompieron antes de que entrara)
+          if (hp <= 0 && G.mesh.visible) G.mesh.visible = G.glow.visible = false;
         });
         if (m.go != null) this.gemOn = m.go;
         if (m.stage && m.stage !== this.stage) this.setStage(m.stage);
@@ -1419,6 +1437,20 @@ export default class GranGuerra extends Arena {
     if (m.k === 'gem' && m.i >= 0 && m.i < 4) this.hitGem(m.i, +m.v || 0);
     else if (m.k === 'gn') this.damageGnome(Math.max(0, Math.min(1200, +m.n || 0)));
     else if (m.k === 'fake' && m.i >= 0 && m.i < 4) this.popFakeHost(m.i | 0);
+    else if (m.k === 'kill') this.juicio();
+    else if (m.k === 'sync' && this.active) this.sync();
+  }
+
+  // (anfitrión) El Juicio del Mate Supremo (weapons/Supremo.js): se termina la
+  // guerra de un golpe. Si el duende todavía no salió, sale y cae.
+  juicio() {
+    const g = this.g;
+    if (!isHost(g) || !this.active || this.phase === 'won' || !this.gnome) return false;
+    if (!this.gnome.root.visible) this.gnomeAppear();
+    this.gnome.hp = 0;
+    this.send({ gg: 'dead' });
+    this.gnomeDeath();
+    return true;
   }
 
   setStage(st) {

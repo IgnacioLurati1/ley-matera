@@ -1,4 +1,9 @@
 import Lobby from './Lobby';
+import Profile from './Profile';
+import Pulperia from './Pulperia';
+import Armory from './Armory';
+import { decorateOver } from './overCastle';
+import PlayMenu from './PlayMenu';
 import { mapChip, mapScreen, syncMapUI, wireMapScreen } from './MapSelect';
 import { TEXT } from '../config/map';
 import { ACTIONS, assign, isReserved, keyLabel } from '../core/controls';
@@ -6,6 +11,8 @@ import { SCENES, TRACKS } from '../core/music';
 import { eggsDone, eggsTotal, isKnight, eggTest } from '../core/eggs';
 import { tiersOf } from '../config/quality';
 import './controls.css';
+import './menuKit.css';
+import './credit.css';
 
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const QUALITY_LABEL = { perf: 'Rendimiento', low: 'Baja', medium: 'Media', high: 'Alta', ultra: 'Ultra', epic: 'Épica' };
@@ -33,14 +40,26 @@ export default class Menus {
   constructor(root, game) {
     this.g = game;
     this.root = root;
-    this.loading = h('<div class="mdu-loading"><div><div class="mdu-title" style="font-size:64px">Mate der Untoten</div><p class="mdu-tag" data-l>Preparando el molino…</p><b><i></i></b></div></div>');
+    this.loading = h('<div class="mdu-loading"><div><div class="mdu-title" style="font-size:64px">Mate der Untoten</div><p class="mdu-tag" data-l>Preparando el molino…</p><b><i></i></b></div><a class="mdu-credit" href="https://www.instagram.com/nacho_lurati/" target="_blank" rel="noopener noreferrer">Made by <strong>El Luta</strong></a></div>');
     root.appendChild(this.loading);
     this.screens = {};
+    // lo que agregan otros archivos: acciones (data-act) y avisos al cambiar
+    // de pantalla (ui/Profile, la pulpería, la armería)
+    this.acts = {};
+    this.showHooks = [];
     this.build();
     this.grain = h('<div class="mdu-grain"></div>');
     root.appendChild(this.grain);
     this.click = h('<div class="mdu-click">Hacé clic para seguir jugando</div>');
     root.appendChild(this.click);
+    // la tarjeta del jugador y la pantalla de niveles
+    this.profile = new Profile(this);
+    // la pulpería: los pesos por empanadas, y la canasta
+    this.pulperia = new Pulperia(this);
+    // Jugar: Solo o Con amigos
+    this.play = new PlayMenu(this);
+    // la armería: los camuflajes de los mates (weapons/camos.js)
+    this.armory = new Armory(this);
   }
 
   // Alt+I en el menú del título (Game.onKey): las escenas con música, para ir
@@ -91,12 +110,11 @@ export default class Menus {
        ${mapChip()}
        <div class="mdu-list">
          <button class="mdu-btn" data-act="play">Jugar</button>
-         <button class="mdu-btn" data-act="online">Jugar con amigos</button>
+         <button class="mdu-btn" data-act="armory" hidden>Armería</button>
+         <button class="mdu-btn" data-act="pulperia" hidden>Pulpería</button>
          <button class="mdu-btn" data-act="controls">Controles</button>
          <button class="mdu-btn" data-act="options">Opciones</button>
          <a class="mdu-btn" href="/assets/sotano/guia-easter-eggs.pdf" download="Mate der Untoten - Guia de los easter eggs.pdf" style="text-decoration:none">Guía de los easter eggs (PDF)</a>
-         <button class="mdu-btn mdu-btn--mini" data-act="original">¿Querés probar el original?</button>
-         <button class="mdu-btn" data-act="exit">Volver a la tienda</button>
        </div>
        <p class="mdu-small" data-best></p>
        <div data-gpu></div>`,
@@ -131,6 +149,7 @@ export default class Menus {
          <label class="mdu-field">Campo de visión <input type="range" min="60" max="100" step="1" data-set="fov"><output></output></label>
          <label class="mdu-field">Temblor de cámara <input type="range" min="0" max="1" step="0.05" data-set="shake"><output></output></label>
          <label class="mdu-field">Tamaño de subtítulos <input type="range" min="0.8" max="1.8" step="0.1" data-set="subSize"><output></output></label>
+         <label class="mdu-field" data-supremo hidden>Mate Supremo en la caja <input type="checkbox" data-set="supremo"></label>
        </div>
        <div class="mdu-pane mdu-pane--sound" data-pane="sound" hidden>
          <div class="mdu-custom__cols">
@@ -229,7 +248,7 @@ export default class Menus {
          <button class="mdu-btn" data-act="options">Opciones</button>
          <button class="mdu-btn" data-act="controls">Controles</button>
          <a class="mdu-btn" href="/assets/sotano/guia-easter-eggs.pdf" download="Mate der Untoten - Guia de los easter eggs.pdf" style="text-decoration:none">Guía de los easter eggs (PDF)</a>
-         <button class="mdu-btn" data-act="restart">Empezar de nuevo</button>
+         <button class="mdu-btn" data-act="restart">Fast restart</button>
          <button class="mdu-btn" data-act="toTitle">Volver al menú del juego</button>
          <button class="mdu-btn" data-act="leaveRoom" hidden>Salir de la sala</button>
          <button class="mdu-btn" data-act="exit">Salir a la tienda</button>
@@ -244,6 +263,7 @@ export default class Menus {
        <p class="mdu-small mdu-pause-note" data-wait hidden></p>
        <div class="mdu-list">
          <button class="mdu-btn" data-act="restart">Fast restart</button>
+         <button class="mdu-btn" data-act="endMenu" hidden>Volver al menú</button>
          <button class="mdu-btn" data-act="leaveRoom" hidden>Salir de la sala</button>
          <button class="mdu-btn" data-act="exit">Salir a la tienda</button>
        </div>`,
@@ -395,6 +415,9 @@ export default class Menus {
           ? `Voz: ${name}.`
           : `Voz: ${name}. En Edge o Chrome hay voces que suenan más naturales.`;
     }
+    // el Mate Supremo: solo para el Caballero de la Luz (core/eggs)
+    const sup = this.screens.options.querySelector('[data-supremo]');
+    if (sup) sup.hidden = !isKnight();
     this.screens.options.querySelectorAll('[data-set]').forEach((input) => {
       const v = s[input.dataset.set];
       if (input.type === 'checkbox') input.checked = !!v;
@@ -461,6 +484,7 @@ export default class Menus {
     }
     for (const [k, s] of Object.entries(this.screens)) s.classList.toggle('is-on', k === name);
     this.current = name;
+    for (const f of this.showHooks) f(name);
     if (name === 'title') this.syncEggs();
     this.root.scrollTop = 0;
     this.root.scrollLeft = 0;
@@ -475,7 +499,13 @@ export default class Menus {
   act(a) {
     const g = this.g;
     switch (a) {
+      // Jugar: Solo o Con amigos (ui/PlayMenu)
       case 'play':
+        this.prev = this.current === 'maps' ? this.mapsFrom || 'title' : this.current;
+        this.syncMap();
+        this.show('play');
+        break;
+      case 'solo':
         g.startGame();
         break;
       case 'controls':
@@ -494,7 +524,7 @@ export default class Menus {
       // elegir mapa: desde el título o desde la sala (ahí no se juega solo, se vuelve)
       case 'maps':
         this.mapsFrom = this.current;
-        this.screens.maps.querySelector('[data-mapsplay]').hidden = this.mapsFrom !== 'title';
+        this.screens.maps.querySelector('[data-mapsplay]').hidden = this.mapsFrom !== 'title' && this.mapsFrom !== 'play';
         this.syncMap();
         this.show('maps');
         this.screens.maps.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
@@ -516,6 +546,10 @@ export default class Menus {
         break;
       case 'restart':
         g.restart();
+        break;
+      // (el final del easter egg: de vuelta al menú, en línea también cierra o deja la sala)
+      case 'endMenu':
+        g.toTitle();
         break;
       case 'leaveRoom':
         g.leaveRoom(g.net?.host ? 'Cerraste la sala.' : 'Saliste de la sala.');
@@ -540,6 +574,7 @@ export default class Menus {
         window.location.assign(`${import.meta.env.BASE_URL}sotano-original`);
         break;
       default:
+        this.acts[a]?.();
         break;
     }
   }
@@ -589,7 +624,7 @@ export default class Menus {
     btn('resume').hidden = mode === 'hostPaused';
     btn('resume').textContent = mode === 'guest' ? 'Volver al juego' : 'Continuar';
     btn('restart').hidden = mode === 'guest' || mode === 'hostPaused';
-    btn('restart').textContent = mode === 'host' ? 'Empezar de nuevo (todos)' : 'Empezar de nuevo';
+    btn('restart').textContent = mode === 'host' ? 'Fast restart (todos)' : 'Fast restart';
     btn('leaveRoom').hidden = mode === 'solo';
     btn('leaveRoom').textContent = mode === 'host' ? 'Cerrar la sala' : 'Salir de la sala';
     // en línea "salir de la sala" ya vuelve al menú
@@ -620,7 +655,7 @@ export default class Menus {
       [TEXT.egg, stats.easterEgg ? 'Completada' : 'Pendiente'],
     ];
     // con este, los seis: el super easter egg
-    if (stats.knight) rows.push(['<b style="color:#f2c94c">✦ Caballero de la Luz ✦</b>', 'Completaste los seis easter eggs: desde ahora arrancás con el Porongo del Caballero']);
+    if (stats.knight) rows.push(['<b style="color:#f2c94c">✦ Caballero de la Luz ✦</b>', 'Completaste los seis: el Porongo del Caballero, 100 pesos y el Mate Supremo en la caja']);
     s.querySelector('[data-stats]').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
     // tabla del equipo
     const table = s.querySelector('[data-board]');
@@ -636,12 +671,19 @@ export default class Menus {
     // botones: en línea solo el anfitrión arma otra partida (para todos)
     const btn = (a) => s.querySelector(`[data-act="${a}"]`);
     const wait = s.querySelector('[data-wait]');
-    btn('restart').hidden = role === 'guest' || lost;
+    // (con el easter egg terminado no hay fast restart: se vuelve al menú;
+    // el fast restart queda para cuando te matan)
+    btn('restart').hidden = won || role === 'guest' || lost;
     btn('restart').textContent = role === 'host' ? 'Fast restart (todos)' : 'Fast restart';
-    btn('leaveRoom').hidden = role === 'solo';
+    btn('endMenu').hidden = !won;
+    btn('leaveRoom').hidden = role === 'solo' || won;
     btn('leaveRoom').textContent = role === 'host' ? 'Cerrar la sala' : lost ? 'Volver al título' : 'Salir de la sala';
-    wait.hidden = role !== 'guest' || lost;
+    wait.hidden = role !== 'guest' || lost || won;
     wait.textContent = 'Esperando que el anfitrión arme otra partida…';
+    // la experiencia de la partida (ui/Levels)
+    this.g.levels?.summary(s);
+    // el castillo (el final del juego): su amanecer y sus animaciones (ui/overCastle.js)
+    decorateOver(this.g, s, { won });
     this.show('over');
   }
 

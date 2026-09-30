@@ -1,0 +1,303 @@
+/* El aro de carga de los mates de la luz templados (weapons/elementalHud.js):
+   un aro de segmentos que se llena con el color del mate (con una cabeza que
+   brilla en la punta), las marcas del elemento que se cierran sobre la mira,
+   el nombre del tiro cuando está listo y el borde de la pantalla que se tiñe.
+   --k es la carga (0 a 1); --e, la misma con la curva de las marcas. */
+.mdu-elc {
+  --s: clamp(76px, 8.6vh, 108px);
+  --k: 0;
+  --e: 0;
+  --spin: 0deg;
+  --c: #ffffff;
+  --c2: #ffffff;
+  --deep: #ffffff;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--s);
+  height: var(--s);
+  margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  pointer-events: none;
+  z-index: 3;
+  display: none;
+  text-shadow: none;
+}
+.mdu-elc.is-on { display: block; }
+.mdu-elc[data-el='fuego'] { --c: #ff8124; --c2: #ffe2a6; --deep: #e0290a; }
+.mdu-elc[data-el='viento'] { --c: #6dffbf; --c2: #eafff4; --deep: #12a37a; }
+.mdu-elc[data-el='rayo'] { --c: #ffe04a; --c2: #fffbe6; --deep: #ff9800; }
+.mdu-elc[data-el='hielo'] { --c: #8fd6ff; --c2: #f2fbff; --deep: #2a7bff; }
+.mdu-elc.is-low { --c: #a29a8c; --c2: #e4ddd0; --deep: #4a4540; }
+
+/* entra, sale reventando (cargado) o se apaga para adentro */
+.mdu-elc.is-in { animation: mdu-elc-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.25) both; }
+.mdu-elc.is-out { animation: mdu-elc-out 0.45s cubic-bezier(0.15, 0.7, 0.3, 1) forwards; }
+.mdu-elc.is-fizzle { animation: mdu-elc-fizzle 0.22s ease-in forwards; }
+@keyframes mdu-elc-in {
+  from { opacity: 0; transform: scale(1.45) rotate(-24deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mdu-elc-out {
+  0% { opacity: 1; transform: scale(1); }
+  18% { opacity: 1; transform: scale(0.86); }
+  100% { opacity: 0; transform: scale(2.1); }
+}
+@keyframes mdu-elc-fizzle {
+  to { opacity: 0; transform: scale(0.65) rotate(18deg); }
+}
+
+/* el resplandor: una banda alrededor del aro (el centro de la mira queda limpio) */
+.mdu-elc__glow {
+  position: absolute;
+  inset: -42%;
+  border-radius: 50%;
+  background: radial-gradient(circle closest-side, transparent 42%, var(--c) 58%, transparent 80%);
+  opacity: calc(0.05 + var(--k) * var(--k) * 0.28);
+  mix-blend-mode: screen;
+}
+
+/* el aro: segmentos (la pista apagada y el relleno de color encima) */
+.mdu-elc__seg {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  -webkit-mask:
+    radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px)),
+    repeating-conic-gradient(#000 0 10.2deg, transparent 10.2deg 12deg);
+  -webkit-mask-composite: source-in;
+  mask:
+    radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px)),
+    repeating-conic-gradient(#000 0 10.2deg, transparent 10.2deg 12deg);
+  mask-composite: intersect;
+}
+.mdu-elc__track {
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 20px rgba(0, 0, 0, 0.25);
+}
+.mdu-elc__halo {
+  position: absolute;
+  inset: 0;
+  filter: drop-shadow(0 0 2px var(--c)) drop-shadow(0 0 7px var(--deep));
+}
+.mdu-elc__fill {
+  background: conic-gradient(var(--deep), var(--c) calc(var(--k) * 290deg), var(--c2) calc(var(--k) * 360deg), transparent 0);
+}
+/* (el aro fino de adentro, de guía) */
+.mdu-elc::before {
+  content: '';
+  position: absolute;
+  inset: 11px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, calc(0.08 + var(--k) * 0.14));
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
+}
+
+/* la cabeza: el punto que brilla en la punta del relleno */
+.mdu-elc__head {
+  position: absolute;
+  inset: 0;
+  transform: rotate(calc(var(--k) * 360deg));
+  opacity: clamp(0, calc(var(--k) * 10), 1);
+}
+.mdu-elc__head i {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  margin: -1px 0 0 -3.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 3px 1px var(--c2), 0 0 9px 3px var(--c), 0 0 18px 6px var(--deep);
+}
+
+/* las marcas del elemento: vienen de lejos y se cierran sobre el aro */
+.mdu-elc__marks {
+  position: absolute;
+  inset: 0;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 4px var(--c));
+  opacity: calc(0.1 + var(--e) * 0.9);
+}
+.mdu-elc__marks i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--s) * 0.17);
+  height: calc(var(--s) * 0.2);
+  margin: calc(var(--s) * -0.2) 0 0 calc(var(--s) * -0.085);
+  transform-origin: 50% 100%;
+  transform: rotate(calc(var(--i) * 360deg / var(--n) + var(--spin))) translateY(calc(var(--s) * -0.5 - 4px - (1 - var(--e)) * var(--s) * 0.32));
+  color: var(--c);
+}
+.mdu-elc__marks svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform-origin: 50% 100%;
+}
+/* cada elemento se mueve a su manera: las llamas titilan, los rayos
+   parpadean, el hielo destella (el Zonda gira entero, desde el código) */
+.mdu-elc[data-el='fuego'] .mdu-elc__marks svg {
+  animation: mdu-elc-flick 0.4s ease-in-out infinite alternate;
+  animation-delay: calc(var(--i) * -0.13s);
+}
+.mdu-elc[data-el='rayo'] .mdu-elc__marks svg {
+  animation: mdu-elc-zap 0.34s steps(1) infinite;
+  animation-delay: calc(var(--i) * -0.08s);
+}
+.mdu-elc[data-el='hielo'] .mdu-elc__marks svg {
+  animation: mdu-elc-glint 1.5s ease-in-out infinite;
+  animation-delay: calc(var(--i) * -0.25s);
+}
+@keyframes mdu-elc-flick {
+  from { transform: scale(0.9, 0.86); }
+  to { transform: scale(1.06, 1.2); }
+}
+@keyframes mdu-elc-zap {
+  0% { opacity: 1; }
+  28% { opacity: 0.3; }
+  42% { opacity: 1; }
+  66% { opacity: 0.6; }
+  80% { opacity: 1; }
+}
+@keyframes mdu-elc-glint {
+  0%, 100% { filter: none; }
+  50% { filter: brightness(1.9); }
+}
+
+/* el golpe de onda (cuando se llena y cuando sale) */
+.mdu-elc__ping {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--c2);
+  box-shadow: 0 0 12px var(--c), inset 0 0 12px var(--c);
+  opacity: 0;
+}
+
+/* el nombre del tiro, abajo */
+.mdu-elc__name {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + var(--s) * 0.38);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: clamp(11px, 1.35vh, 16px);
+  font-weight: normal;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  text-transform: uppercase;
+  color: var(--c2);
+  text-shadow: 0 0 6px var(--c), 0 0 16px var(--deep), 0 1px 0 #000;
+  opacity: 0;
+}
+
+/* ---------------- cargado ---------------- */
+.mdu-elc.is-full .mdu-elc__halo { animation: mdu-elc-beat 0.8s ease-in-out infinite; }
+.mdu-elc.is-full .mdu-elc__fill {
+  background: conic-gradient(var(--c2), var(--c), var(--c2), var(--c), var(--c2), var(--c), var(--c2));
+  animation: mdu-elc-turn 2.6s linear infinite;
+}
+.mdu-elc.is-full .mdu-elc__head { opacity: 0; transition: opacity 0.3s; }
+.mdu-elc.is-full .mdu-elc__marks {
+  animation: mdu-elc-lock 0.42s cubic-bezier(0.3, 1.7, 0.5, 1);
+  --c: var(--c2);
+}
+.mdu-elc.is-full .mdu-elc__ping { animation: mdu-elc-ping 0.6s ease-out; }
+.mdu-elc.is-full .mdu-elc__name { animation: mdu-elc-name 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
+.mdu-elc.is-full .mdu-elc__glow { opacity: 0.42; animation: mdu-elc-glow 0.8s ease-in-out infinite; }
+.mdu-elc.is-out .mdu-elc__ping { animation: mdu-elc-ping 0.45s ease-out; }
+.mdu-elc.is-out .mdu-elc__name { opacity: 1; }
+@keyframes mdu-elc-beat {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 2px var(--c)) drop-shadow(0 0 7px var(--deep)); }
+  50% { transform: scale(1.05); filter: drop-shadow(0 0 4px var(--c2)) drop-shadow(0 0 14px var(--c)); }
+}
+@keyframes mdu-elc-turn { to { transform: rotate(360deg); } }
+@keyframes mdu-elc-lock {
+  from { transform: scale(1.3) rotate(-14deg); }
+  to { transform: none; }
+}
+@keyframes mdu-elc-ping {
+  0% { opacity: 1; transform: scale(0.85); }
+  100% { opacity: 0; transform: scale(2.2); border-width: 0.5px; }
+}
+@keyframes mdu-elc-name {
+  from { opacity: 0; letter-spacing: 0.9em; filter: blur(3px); }
+  to { opacity: 1; letter-spacing: 0.34em; filter: none; }
+}
+@keyframes mdu-elc-glow {
+  0%, 100% { opacity: 0.32; }
+  50% { opacity: 0.5; }
+}
+
+/* ---------------- sin cargas: el aro gris y el aviso ---------------- */
+.mdu-elc.is-low .mdu-elc__marks,
+.mdu-elc.is-low .mdu-elc__head,
+.mdu-elc.is-low .mdu-elc__glow,
+.mdu-elc.is-low .mdu-elc__halo { display: none; }
+.mdu-elc.is-low .mdu-elc__track { background: rgba(255, 255, 255, 0.22); }
+.mdu-elc.is-low .mdu-elc__name {
+  opacity: 0.85;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
+  text-shadow: 0 1px 0 #000, 0 0 6px #000;
+}
+
+/* ---------------- el borde de la pantalla ---------------- */
+.mdu-elc-edge {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: none;
+  opacity: calc(var(--k, 0) * var(--k, 0) * var(--fl, 1));
+}
+.mdu-elc-edge.is-on { display: block; }
+/* el Pillán: el calor sube de abajo */
+.mdu-elc-edge[data-el='fuego'] {
+  background:
+    radial-gradient(ellipse 85% 55% at 50% 115%, rgba(255, 96, 16, 0.5), transparent 70%),
+    radial-gradient(ellipse 72% 68% at 50% 50%, transparent 52%, rgba(255, 70, 0, 0.32) 100%);
+}
+/* el Zonda: un aire verde por los costados */
+.mdu-elc-edge[data-el='viento'] {
+  background:
+    radial-gradient(ellipse 40% 90% at 0% 50%, rgba(110, 255, 190, 0.2), transparent 70%),
+    radial-gradient(ellipse 40% 90% at 100% 50%, rgba(110, 255, 190, 0.2), transparent 70%),
+    radial-gradient(ellipse 72% 68% at 50% 50%, transparent 55%, rgba(60, 220, 160, 0.2) 100%);
+}
+/* el Illapa: la luz de tormenta (titila desde el código) */
+.mdu-elc-edge[data-el='rayo'] {
+  background:
+    radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255, 236, 140, 0.35), transparent 70%),
+    radial-gradient(ellipse 72% 68% at 50% 50%, transparent 52%, rgba(255, 210, 60, 0.28) 100%);
+}
+/* el Penitente: la escarcha que entra por las esquinas */
+.mdu-elc-edge[data-el='hielo'] {
+  background:
+    radial-gradient(circle at 0 0, rgba(215, 242, 255, 0.38), transparent 19%),
+    radial-gradient(circle at 100% 0, rgba(215, 242, 255, 0.38), transparent 19%),
+    radial-gradient(circle at 0 100%, rgba(215, 242, 255, 0.38), transparent 19%),
+    radial-gradient(circle at 100% 100%, rgba(215, 242, 255, 0.38), transparent 19%),
+    radial-gradient(ellipse 72% 68% at 50% 50%, transparent 52%, rgba(90, 170, 255, 0.3) 100%);
+}
+.mdu-elc-edge.is-full { animation: mdu-elc-edgebeat 0.8s ease-in-out infinite; }
+.mdu-elc-edge.is-out { animation: mdu-elc-edgeout 0.45s ease-out forwards; }
+.mdu-elc-edge.is-fizzle { animation: mdu-elc-edgefade 0.22s ease-in forwards; }
+@keyframes mdu-elc-edgebeat {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+@keyframes mdu-elc-edgeout {
+  0% { opacity: 1; filter: brightness(1.8); }
+  100% { opacity: 0; filter: none; }
+}
+@keyframes mdu-elc-edgefade { to { opacity: 0; } }
+
+/* la mira se cierra y toma el color del mate mientras carga */
+.mdu-hud.is-elc .mdu-cross { transform: scale(calc(1 - var(--elc-k, 0) * 0.35)); }
+.mdu-hud.is-elc .mdu-cross i {
+  background: var(--elc-c, #fff);
+  box-shadow: 0 0 3px var(--elc-c, #fff), 0 0 2px #000;
+}

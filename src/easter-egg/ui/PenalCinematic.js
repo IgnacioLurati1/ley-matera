@@ -4,14 +4,24 @@ import Avatars from '../net/Avatars';
 import { buildVoz, updateVoz } from './voz';
 import { warmScene } from './cineWarm';
 import { PENAL_PEACE, PENAL_FROM } from '../core/music';
+import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
+import { SIX, flareTexture } from '../weapons/supremoFx';
+import { arm, leg } from '../entities/zombieGaits';
+import { solvePose, PART_COUNT } from '../entities/skeleton';
+import { crewIds, glowFront } from './cineCrew';
 
 // Final del penal, adentro del juego, en el Cerro del Espinillo. El Gauchito
 // Gil queda de rodillas junto al espinillo. Las almas del penal suben al
 // cielo, y los tres presos (ya ánimas) se despiden y se van con ellas. Un
 // paneo por el altar (el mate supremo y la yerba dorada). El Gil levanta la
 // cabeza para avisar quién es la voz que los guió... y un rayo lo parte a
-// mitad de la frase. La Voz de Arriba baja, se lleva el mate supremo,
-// se pone colorada y se va. Se puede saltear con Esc, Espacio o clic.
+// mitad de la frase. La Voz de Arriba baja y se lo roba: su luz violeta
+// agarra el mate, que se resiste, le arranca los seis colores uno por uno
+// (suben en espiral por la luz hasta el ojo) y, apagado, se lo chupa de un
+// tirón. (Lo del despertar, con el sello y el Juicio, es de cuando se arma:
+// entities/penalForge.js.) La Voz se pone colorada y se va. Los cuatro
+// gauchos (siempre cuatro: ui/cineCrew.js) terminan en el río. Se puede
+// saltear con Esc, Espacio o clic.
 
 const ME = 420;
 const ANIMAS = [
@@ -32,12 +42,39 @@ const GIL_POSE = {
   ash: { hipY: 0.45, torsoP: 1.15, torsoR: 0.1, headP: 0.7, shLp: 0.1, shRp: 0.1, shLr: 0.35, shRr: -0.35, elL: -0.2, elR: -0.2 },
 };
 const CHAR = new THREE.Color(0x141110);
+const TAU = Math.PI * 2;
+// el rayo de la Voz al irse los tira del cerro al río: dónde caen (agua honda
+// al este del barranco), de dónde arrancan a nadar y dónde salen (la playita)
+const LAND = [99.2, 16.2];
+const FLY = 1.8;
+const FLY_H = 7.5;
+const SWIM = [98.8, 19.8];
+const SHORE = [95.8, 23.4];
+// la toma de arriba termina mirando el medio del mapa
+const MID = new THREE.Vector3(49, 0, 62);
+// el robo: cuánto se resiste el mate, cada cuánto sale una reliquia, cuánto
+// tarda en subir hasta el ojo y el brillo del mate en la piedra (su tamaño)
+const GRAB = 3;
+const RELIC_GAP = 0.42;
+const RELIC_UP = 0.95;
+const DRAIN = RELIC_GAP * 5 + RELIC_UP;
+const GLOW = 1.4;
+const VIOLET = new THREE.Color(0x9a6aff);
+const GOLD = new THREE.Color(0xffc84a);
+const SIX_RGB = SIX.map((c) => {
+  const x = new THREE.Color(c);
+  return [x.r, x.g, x.b];
+});
 
 const tmpV = new THREE.Vector3();
 const tmpW = new THREE.Vector3();
 const tmpU = new THREE.Vector3();
+const tmpC = new THREE.Color();
+// (la pose de prueba de los que están acostados: lieFit)
+const LIE_MATS = Array.from({ length: PART_COUNT }, () => new THREE.Matrix4());
 const smooth = (u) => u * u * (3 - 2 * u);
 const clamp01 = (u) => Math.max(0, Math.min(1, u));
+const rnd = () => Math.random() - 0.5;
 const faceTo = (from, x, z) => Math.atan2(-(x - from.x), -(z - from.z));
 
 export default class PenalCinematic {
@@ -82,6 +119,10 @@ export default class PenalCinematic {
     this.root = new THREE.Group();
     g.scene.add(this.root);
     this.fov0 = g.camera.fov;
+    // los efectos del Mate Supremo (weapons/supremoFx.js, ya compilados): lo
+    // que quedaba de un Juicio en la mano se apaga, y la escena usa su sol
+    g.weapons?.supremo?.clear?.();
+    this.SF = g.weapons?.supremo?.fx || null;
     // el jefe de verdad se va: en su lugar, el Gil de rodillas
     if (g.zombies.boss) g.zombies.removeBoss();
     g.hud.setBossBar(null);
@@ -93,6 +134,9 @@ export default class PenalCinematic {
     if (g.ee?.altarGlow) g.ee.altarGlow.visible = false;
     if (g.ee?.beam) g.ee.beam.visible = false;
     for (const it of g.powerups?.items || []) it.mesh.visible = false;
+    // ni el haz de la caja (desde arriba del penal quedaba como una barra verde)
+    this.boxBeams = [g.interact?.box, ...(g.interact?.saleBoxes || [])].map((b) => b?.beam).filter((b) => b?.visible);
+    for (const b of this.boxBeams) b.visible = false;
     // dónde está cada uno: el Gil a un costado del altar y los gauchos enfrente
     const gx = ax - 2.3;
     const gz = az + 0.4;
@@ -133,10 +177,10 @@ export default class PenalCinematic {
   }
 
   // ---------------- los que actúan ----------------
-  // Los gauchos: vos y los compañeros, en ronda frente al altar.
+  // Los gauchos: vos y los compañeros (siempre cuatro), en ronda frente al altar.
   buildGauchos() {
     const g = this.g;
-    const ids = g.net ? [g.net.id, ...g.net.remote.keys()].sort((a, b) => a - b) : [0];
+    const ids = crewIds(g);
     this.gauchos = ids.map((id, i) => {
       const s = i - (ids.length - 1) / 2;
       const x = this.C.x + s * 1.15;
@@ -231,20 +275,33 @@ export default class PenalCinematic {
     const A = this.A;
     this.mate = new THREE.Group();
     const base = new THREE.Vector3(A.x, A.y + 1, A.z);
-    for (const o of [src?.altarMate, src?.altarBomb]) {
-      if (!o) continue;
-      const c = o.clone();
-      c.position.sub(base);
-      c.visible = true;
-      this.mate.add(c);
-      o.visible = false;
-    }
+    // el Mate Supremo de verdad (weapons/Supremo.js), donde estaba el del
+    // altar (los de la piedra se esconden)
+    for (const o of [src?.altarMate, src?.altarBomb, src?.altarSup]) if (o) o.visible = false;
+    this.sup = buildSupremoDisplay(g.textures, 0.3);
+    this.sup.position.y = -0.08;
+    this.mate.add(this.sup);
     this.mateGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: g.textures.dot, color: 0xffc84a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.7 }));
-    this.mateGlow.scale.setScalar(1.4);
+    this.mateGlow.scale.setScalar(GLOW);
     this.mate.add(this.mateGlow);
+    this.glowSize = GLOW;
     this.mate.position.copy(base);
     this.mateBase = base.clone();
     this.root.add(this.mate);
+    // las seis luces que la Voz le arranca (una por reliquia): se arman ya,
+    // escondidas, para que se compilen con el resto
+    const spr = (map, c, k) => new THREE.Sprite(new THREE.SpriteMaterial({ map, color: new THREE.Color(c).multiplyScalar(k), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, toneMapped: false, fog: false }));
+    this.comets = SIX.map((c) => {
+      const o = new THREE.Group();
+      const glow = spr(g.textures.dot, c, 2);
+      glow.scale.setScalar(0.9);
+      const star = spr(flareTexture(), c, 2.4);
+      star.scale.setScalar(1.3);
+      o.add(glow, star);
+      o.visible = false;
+      this.root.add(o);
+      return { o, star, from: new THREE.Vector3(), t0: 0, a0: 0, done: false };
+    });
     // la yerba dorada (una copia de la que pusieron en la piedra)
     const y = src?.altarYerba;
     this.yerba = y ? y.clone() : new THREE.Group();
@@ -258,6 +315,7 @@ export default class PenalCinematic {
       y.visible = false;
     } else this.yerba.position.set(A.x - 0.45, A.y + 1.08, A.z);
     this.root.add(this.yerba);
+    this.yerbaBoost = 0;
   }
 
   // ---------------- el guion ----------------
@@ -273,6 +331,8 @@ export default class PenalCinematic {
       // las almas del penal suben al cielo
       [0, () => {
         this.soulsOn = true;
+        // (si las del cerro no se habían soltado, se sueltan ahora)
+        g.arena?.freeSouls?.();
         if (!this.scored) this.soulChord();
         this.shotSouls();
         g.weather?.set?.('drizzle', false);
@@ -298,7 +358,9 @@ export default class PenalCinematic {
         // (con la canción: lo que falta para que se termine, menos lo que tarda el Gil en levantar la cabeza)
         // (por el reloj de la canción: con pocos cuadros el de la escena atrasa)
         const mt = this.scored && g.music.is('cine-penal-final') ? g.music.time() : -1;
-        const d = this.scored ? Math.max(5, PENAL_PEACE - (mt >= 0 ? mt : this.t + PENAL_FROM) - 1.2) : 4.6;
+        // (la mitad de antes: el usuario lo encontró largo; la canción se va
+        // cuando el Gil levanta la cabeza, antes de que termine la calma)
+        const d = (this.scored ? Math.max(5, PENAL_PEACE - (mt >= 0 ? mt : this.t + PENAL_FROM) - 1.2) : 4.6) / 2;
         this.shotYerba(d);
         return d;
       }],
@@ -325,23 +387,61 @@ export default class PenalCinematic {
         return 3;
       }],
       [0, () => this.say('entidad', 'Pobre Gil. Siempre habló de más.')],
+      // el robo: la luz de la Voz se vuelve violeta y agarra el mate, que se resiste
       [0.3, () => {
-        this.mateUp(4.8);
-        this.shotMate();
-        return 0.5;
+        this.grab();
+        this.shotGrab();
+        return GRAB;
       }],
-      [0, () => this.say('entidad', 'Gracias por armarlo, gauchitos. Hacía cien años que lo buscaba.')],
-      [0, () => Math.max(0, this.mateEnd - this.t)],
+      // le arranca los seis colores, uno por uno: suben en espiral hasta el ojo
+      [0, () => {
+        this.drain();
+        this.shotDrain();
+        return DRAIN + 0.5;
+      }],
+      [0, () => this.say('entidad', 'Cien años esperándolo...')],
+      // apagado, sale disparado para arriba
+      [0.2, () => {
+        this.mateUp(1.5);
+        this.shotYank();
+        return 1.5;
+      }],
       [0, () => {
         this.absorb();
         this.shotEye();
         return 1;
       }],
-      [0, () => this.say('entidad', 'El mate supremo es mío. Siempre lo fue.')],
-      [0.4, () => this.say('entidad', 'Ya tengo lo que vine a buscar. No me sigan.')],
-      [0.3, () => {
+      [0, () => this.say('entidad', 'Gracias, gauchos sucios. Gracias por ser tan ignorantes.')],
+      [0.3, () => this.say('entidad', 'El mate supremo es mío.')],
+      // se va y, al irse, larga un rayo que los tira del cerro al río
+      [0.2, () => {
         this.voiceOut();
-        this.shotEnd();
+        this.shotBlast();
+        return 1;
+      }],
+      [0, () => {
+        this.blast();
+        return FLY + 0.4;
+      }],
+      // a duras penas en el agua
+      [0, () => {
+        this.shotStruggle();
+        return 2.8;
+      }],
+      [0, () => {
+        this.black(1, 0.35);
+        return 0.45;
+      }],
+      // y llegan a la orilla, arrastrándose
+      [0, () => {
+        this.toShore();
+        this.black(0, 0.6);
+        this.shotShore();
+        return 7.4;
+      }],
+      // de arriba: el penal entero, y ellos tirados en la playita
+      [0, () => {
+        this.shotAerial();
         return 2.4;
       }],
       [0, () => {
@@ -367,7 +467,7 @@ export default class PenalCinematic {
   // ritmo de la voz y su color. `cut`: el texto se completa justo cuando
   // termina (lo que sigue lo interrumpe).
   say(who, text, { cut = false } = {}) {
-    const d = this.g.audio.say(text, who, { cine: true });
+    const d = this.g.audio.say(text, who, { cine: true, cut });
     this.whoEl.textContent = WHO[who] || '';
     this.span.textContent = '';
     this.textEl.classList.remove('is-on');
@@ -376,7 +476,9 @@ export default class PenalCinematic {
     this.el.classList.toggle('is-gil', who === 'gil');
     this.el.classList.toggle('is-anima', who === 'anacleto' || who === 'benito');
     this.sub = { text, t0: this.t, rev: Math.max(0.5, cut ? d * 0.95 : Math.min(d * 0.85, text.length * 0.045)), k: -1 };
-    return d;
+    // (cortada: lo que sigue entra un pelito antes de que termine, así le
+    // muerde la última sílaba en vez de dejar un silencio)
+    return cut ? Math.max(0.5, d - 0.05) : d;
   }
 
   // El negro de los cortes (fade: segundos para irse o volver; 0 = de golpe).
@@ -468,13 +570,188 @@ export default class PenalCinematic {
     this.look = 'sky';
   }
 
-  // El mate supremo sube desde la piedra hasta el ojo.
+  // ---------------- el robo del mate supremo ----------------
+  // (no es el despertar de cuando se arma, entities/penalForge.js: acá el
+  // mate no muestra nada, se lo sacan)
+  // La luz de la Voz se pone violeta y lo agarra: el mate se levanta a los
+  // tirones, como si no quisiera irse, y lo envuelven hilos de rayo violeta.
+  grab() {
+    const g = this.g;
+    this.steal = { stage: 'grab', t0: this.t, arcT: 0, drained: 0 };
+    this.voz.beamOn = true;
+    this.voz.beam.material.color.copy(VIOLET).multiplyScalar(0.8);
+    this.look = 'mate';
+    this.say('entidad', 'Miren lo que armaron.');
+    // un zumbido que baja, algo que chupa y el metal que cruje
+    const A = g.audio;
+    try {
+      const o = A.out({ pos: this.mate.position.clone(), gain: 0.9, reverb: 0.8, ref: 6 });
+      const t = A.now;
+      A.tone(o, { t, dur: GRAB + DRAIN, type: 'sawtooth', freq: 98, freqEnd: 46, gain: 0.05, attack: 0.8 });
+      A.tone(o, { t, dur: GRAB + DRAIN, freq: 62, freqEnd: 41, gain: 0.22, attack: 0.6 });
+      A.noise(o, { t, dur: GRAB, type: 'bandpass', freq: 2600, freqEnd: 500, q: 1.4, gain: 0.2, attack: 0.5 });
+      for (let i = 0; i < 4; i++) A.tone(o, { t: t + 0.4 + i * 0.62, dur: 0.35, type: 'triangle', freq: 330 - i * 30, freqEnd: 250 - i * 25, gain: 0.05, attack: 0.02 });
+    } catch {
+      /* sin sonido */
+    }
+  }
+
+  // Le arranca los colores: cada reliquia se suelta del mate y sube en
+  // espiral por la luz hasta el ojo (updateSteal).
+  drain() {
+    const S = this.steal;
+    if (!S) return;
+    S.stage = 'drain';
+    S.t1 = this.t;
+    this.textEl.classList.remove('is-on');
+    this.look = 'sky';
+    this.comets.forEach((C, i) => {
+      C.t0 = this.t + i * RELIC_GAP;
+      C.a0 = (i / 6) * TAU;
+      C.done = false;
+      C.out = false;
+    });
+  }
+
+  // Una reliquia se suelta del mate: su luz sale y la reliquia se apaga.
+  relicOut(C, i) {
+    const g = this.g;
+    const rel = this.sup.sup?.relics?.[i];
+    this.mate.updateMatrixWorld(true);
+    if (rel) {
+      rel.getWorldPosition(C.from);
+      rel.visible = false;
+    } else C.from.copy(this.mate.position);
+    C.out = true;
+    C.o.position.copy(C.from);
+    C.o.visible = true;
+    g.fx.sparkle(C.from, SIX_RGB[i], 14, 0.5);
+    // un tirón del mate hacia abajo (todavía se resiste)
+    this.jerk = this.t;
+    try {
+      const A = g.audio;
+      const o = A.out({ pos: C.from.clone(), gain: 0.7, reverb: 0.9, ref: 5 });
+      A.tone(o, { dur: RELIC_UP, type: 'sine', freq: 330 + i * 70, freqEnd: (330 + i * 70) * 2.6, gain: 0.07, attack: 0.05 });
+    } catch {
+      /* sin sonido */
+    }
+  }
+
+  // Llega al ojo: el ojo se prende de ese color.
+  relicIn(C, i) {
+    const g = this.g;
+    const E = this.voz.root.position;
+    C.done = true;
+    C.o.visible = false;
+    this.steal.drained++;
+    g.fx.flash(E, SIX[i], 50, 0.45, 24);
+    g.fx.sparkle(E, SIX_RGB[i], 30, 1.4);
+    this.voz.beam.material.color.set(SIX[i]).multiplyScalar(1.2);
+    try {
+      const A = g.audio;
+      const o = A.out({ gain: 0.6, reverb: 1.1, bus: A.music });
+      A.bell(o, A.now, [74, 76, 79, 81, 83, 86][i], { gain: 0.06, dur: 3 });
+    } catch {
+      /* sin sonido */
+    }
+  }
+
+  // El mate mientras se lo roban (hasta que sale disparado: updateVoz).
+  updateSteal(dt) {
+    const S = this.steal;
+    const g = this.g;
+    const t = this.t;
+    const E = this.voz.root.position;
+    const M = this.mate.position;
+    const B = this.mateBase;
+    const k = S.drained / 6;
+    let lift;
+    let o;
+    if (S.stage === 'grab') {
+      const u = clamp01((t - S.t0) / GRAB);
+      // sube y lo vuelve a tironear para abajo (se resiste)
+      const tug = Math.max(0, Math.sin(t * 5.3)) ** 3;
+      lift = 0.6 * smooth(u) - 0.2 * tug * (1 - u * 0.5);
+      o = { speed: 2 + u * 3, open: 0.3 + u * 0.5, lift: u, kick: 0.5 + tug * 0.8 };
+      if (Math.random() < dt * 5) g.fx.dust(tmpV.set(B.x + rnd() * 0.9, B.y - 0.06, B.z + rnd() * 0.6), { x: 0, y: 1, z: 0 }, [0.5, 0.45, 0.35], 2);
+    } else {
+      // colgado de la luz; cada reliquia que sale es un tirón
+      const j = this.jerk != null ? Math.max(0, 1 - (t - this.jerk) / 0.35) : 0;
+      lift = 0.6 + (1 - k) * Math.sin(t * 2.1) * 0.05 - j * 0.12 + k * 0.25;
+      o = { speed: 5 * (1 - k) + 0.6, open: 0.8 * (1 - k), lift: 1 - k * 0.6, kick: j * 1.2 };
+    }
+    const jit = 0.025 * (1 - k * 0.7);
+    M.set(B.x + rnd() * jit, B.y + lift + rnd() * jit, B.z + rnd() * jit);
+    this.mate.rotation.y += dt * (1.5 + (1 - k) * 2.5);
+    animateSupremoDisplay(this.sup, dt, g.time, o);
+    // el sol de la boca se va apagando con cada color que pierde
+    this.sup.sup?.star?.scale.setScalar(Math.max(0.15, 1 - k * 0.85));
+    // el brillo del oro al violeta, cada vez más chico
+    this.glowSize = GLOW * (1 - k * 0.45) * (0.92 + Math.sin(t * 9) * 0.08);
+    this.mateGlow.material.color.copy(GOLD).lerp(VIOLET, k);
+    this.mateGlow.material.opacity = 0.75 - k * 0.35;
+    // la luz del mate (la misma del Gil, que ya no está)
+    const L = this.warmLight;
+    L.color.copy(GOLD).lerp(VIOLET, k);
+    L.position.copy(M).setY(M.y + 0.3);
+    L.intensity += (6 - k * 3 - L.intensity) * Math.min(1, dt * 3);
+    // hilos de rayo violeta que bajan por la luz y lo envuelven
+    S.arcT -= dt;
+    if (S.arcT <= 0) {
+      S.arcT = 0.08 + Math.random() * 0.1;
+      const h = 1.2 + Math.random() * 2.8;
+      g.fx.lightning(tmpV.set(M.x + rnd() * 0.5, M.y + h, M.z + rnd() * 0.5), tmpW.set(M.x + rnd() * 0.25, M.y + rnd() * 0.2, M.z + rnd() * 0.25), Math.random() < 0.5 ? 0xc8a0ff : 0x8a3aff, 0.22 + Math.random() * 0.12);
+    }
+    if (Math.random() < 0.5) g.fx.sparkle(M, S.stage === 'grab' ? [1, 0.85, 0.4] : [0.7, 0.55, 1], 1, 0.3);
+    // la luz vuelve a violeta después de cada color
+    this.voz.beam.material.color.lerp(tmpC.copy(VIOLET).multiplyScalar(0.8), Math.min(1, dt * 3));
+    // las reliquias que suben: en espiral alrededor de la luz, cada vez más rápido
+    if (S.stage !== 'drain') return;
+    for (const [i, C] of this.comets.entries()) {
+      if (C.done || t < C.t0) continue;
+      if (!C.out) this.relicOut(C, i);
+      const u = clamp01((t - C.t0) / RELIC_UP);
+      const e = u * u * (1.6 - 0.6 * u);
+      const r = 0.7 * (1 - e) + 0.12;
+      const a = C.a0 + e * TAU * 1.6;
+      const p = C.o.position;
+      p.set(C.from.x + (E.x - C.from.x) * e + Math.cos(a) * r, C.from.y + (E.y - 1 - C.from.y) * e, C.from.z + (E.z - C.from.z) * e + Math.sin(a) * r);
+      C.star.material.rotation = t * (i % 2 ? 1.5 : -1.5);
+      g.fx.add.spawn(p.x, p.y, p.z, rnd() * 0.3, -0.4 - Math.random() * 0.4, rnd() * 0.3, { color: SIX_RGB[i], size: 0.22, size1: 0, life: 0.55 });
+      if (u >= 1) this.relicIn(C, i);
+    }
+  }
+
+  // La ceniza del Gil se la lleva el viento del tirón.
+  updateAsh() {
+    if (this.ashGo == null || this.ash.scale.x <= 0.01) return;
+    const g = this.g;
+    const u = clamp01((this.t - this.ashGo) / 1.4);
+    const a = 1 - u;
+    this.ash.scale.set(0.9 * a + 0.001, 0.3 * a + 0.001, 0.75 * a + 0.001);
+    tmpU.set(this.G.x - this.A.x, 0, this.G.z - this.A.z).normalize();
+    if (u < 1) for (let i = 0; i < 3; i++) g.fx.alpha.spawn(this.G.x + rnd(), this.G.y + 0.2 + Math.random() * 0.4, this.G.z + rnd(), tmpU.x * (4 + Math.random() * 3), 0.6 + Math.random(), tmpU.z * (4 + Math.random() * 3), { color: [0.14, 0.13, 0.12], size: 0.4, size1: 1.2, life: 1.8, alpha: 0.5, drag: 0.6 });
+  }
+
+  // Apagado, el mate sale disparado por la luz hasta el ojo: el tirón levanta
+  // viento (los gauchos se cubren y se vuela la ceniza del Gil; el facón queda).
   mateUp(dur) {
+    const g = this.g;
     this.mateT = this.t;
     this.mateDur = dur;
     this.mateEnd = this.t + dur;
+    this.mateBase.copy(this.mate.position);
     this.voz.beamOn = true;
-    this.g.audio.whoosh?.(this.mate.position);
+    g.audio.whoosh?.(this.mate.position);
+    g.audio.thunderCrack?.(null, { dur: 0.8, gain: 0.35 });
+    g.fx.dust(tmpV.copy(this.A).setY(this.A.y + 0.9), { x: 0, y: 1, z: 0 }, [0.5, 0.45, 0.35], 24);
+    g.fx.flash(this.mate.position, 0x9a6aff, 40, 0.4, 16);
+    this.shake = Math.max(this.shake, 0.5);
+    for (const r of this.gauchos) r.crouch = true;
+    this.later(1.4, () => {
+      for (const r of this.gauchos) r.crouch = false;
+    });
+    this.ashGo = this.t;
   }
 
   // Se lo traga: fogonazo, y la Voz se pone colorada.
@@ -485,25 +762,247 @@ export default class PenalCinematic {
     this.mate.visible = false;
     this.voz.beamOn = false;
     this.evilT = this.t;
-    g.post.flash(1.2);
+    g.post.flash(0.6);
     g.fx.sparkle(E, [1, 0.8, 0.4], 70, 2.2);
     g.fx.flash(E, 0xff5a3a, 120, 0.8, 30);
     g.audio.powerupGrab();
     g.audio.bossArrive?.();
     this.voiceLight.color.set(0xff5a6a);
+    // el poder del mate le entra al ojo: un sol, y rayos de los seis colores que se le escapan
+    this.SF?.sun(E, 0, 1.6, false, 0.9);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * TAU + Math.random() * 0.5;
+      g.fx.lightning(E, tmpV.set(E.x + Math.cos(a) * 16, E.y - 5 - Math.random() * 5, E.z + Math.sin(a) * 16), SIX[i], 0.5);
+    }
+    g.audio.thunderCrack?.(null, { dur: 1, gain: 0.55, big: true });
+    this.shake = Math.max(this.shake, 0.6);
   }
 
   voiceOut() {
     const g = this.g;
     this.outT = this.t;
+    this.textEl.classList.remove('is-on');
     g.audio.whoosh?.(this.voz.root.position);
-    this.later(0.9, () => {
-      g.post.flash(0.8);
-      g.audio.thunder?.(this.voz.root.position);
-      if (g.weather) g.weather.flash = 1;
-      g.weather?.set?.('clear', false);
-    });
-    this.look = 'altar';
+    this.look = 'sky';
+  }
+
+  // Al irse, la Voz larga un rayo colorado sobre el cerro: la explosión
+  // levanta a los gauchos y los tira por el barranco al río (updateFall).
+  blast() {
+    const g = this.g;
+    const E = this.voz.root.position;
+    const A = this.A;
+    const n = this.gauchos.length;
+    const c = new THREE.Vector3();
+    for (const r of this.gauchos) c.add(r.pos);
+    c.divideScalar(n || 1);
+    // (del lado de atrás: la explosión los empuja hacia el río)
+    const dir = tmpU.set(LAND[0] - c.x, 0, LAND[1] - c.z).normalize();
+    const hit = new THREE.Vector3(c.x - dir.x * 1.6, A.y + 0.1, c.z - dir.z * 1.6);
+    g.fx.lightning(E, hit, 0xff3a2a, 0.9);
+    g.fx.lightning(tmpV.copy(E).add(tmpW.set(1.5, 0, -1)), hit, 0xff8a6a, 0.7);
+    this.later(0.12, () => g.fx.lightning(E, hit, 0xffffff, 0.5));
+    g.fx.explosion(tmpV.copy(hit).setY(hit.y + 0.6), 3.4, [1, 0.35, 0.2]);
+    g.fx.electric(hit, 40);
+    g.fx.flash(hit, 0xff5a3a, 160, 0.9, 30);
+    g.fx.dust(hit, { x: 0, y: 1, z: 0 }, [0.4, 0.33, 0.25], 30);
+    g.post.flash(0.7);
+    if (g.weather) g.weather.flash = 1;
+    g.audio.thunder?.(hit, true);
+    g.audio.explosion(hit, 1.6);
+    g.audio.bossSlam?.(hit);
+    this.shake = 1.8;
+    const level = g.water ? g.water.level : -0.55;
+    this.fall = {
+      t0: this.t,
+      list: this.gauchos.map((r, i) => {
+        const s = i - (n - 1) / 2;
+        r.crouch = false;
+        return { r, i, s, from: r.pos.clone(), to: new THREE.Vector3(LAND[0] + s * 1.3, level, LAND[1] + s * 0.5), T: FLY + Math.random() * 0.2, delay: i * 0.06, phase: 'fly', spinA: 0 };
+      }),
+    };
+    for (const f of this.fall.list) f.r.poseFn = (P) => this.tumble(f, P);
+    this.later(0.4, () => this.shotFlight());
+  }
+
+  // Volando: una vuelta carnero (alrededor de la cadera) que termina parado,
+  // así caen de pie al agua; braceando con los brazos abiertos y pataleando.
+  // (arm/leg de zombieGaits: `out` positivo es hacia afuera; antes iban
+  // hacia adentro y los brazos se cruzaban a través de la cabeza)
+  tumble(f, P) {
+    const t = this.t;
+    const a = f.spinA;
+    P.rootPitch = a;
+    P.rootRoll = Math.sin(t * 3 + f.i) * 0.15;
+    P.rootFwd = -0.93 * Math.sin(a);
+    P.rootY = f.r.pos.y + 0.93 - 0.93 * Math.cos(a);
+    P.hipY = 0.93;
+    P.torsoP = 0.1;
+    P.torsoR = 0;
+    P.headP = -0.2;
+    const w = t * 7 + f.i * 1.3;
+    arm(P, 0, -1.9 + Math.sin(w) * 0.8, 0.9 + Math.sin(w * 0.7) * 0.25, -0.35 - Math.max(0, Math.sin(w)) * 0.5);
+    arm(P, 1, -1.9 + Math.sin(w + 2.2) * 0.8, 0.9 + Math.cos(w * 0.8) * 0.25, -0.35 - Math.max(0, Math.sin(w + 2.2)) * 0.5);
+    leg(P, 0, -0.45 + Math.sin(w * 1.2) * 0.45, 0.12, 0.5 + Math.max(0, Math.sin(w * 1.2 + 1)) * 0.6);
+    leg(P, 1, -0.45 - Math.sin(w * 1.2) * 0.45, 0.12, 0.5 + Math.max(0, -Math.sin(w * 1.2 + 1)) * 0.6);
+  }
+
+  // En el agua: manotean para arriba y para afuera, de a uno (se agarran del
+  // aire), tragan agua y sacan la cabeza.
+  flail(f, P) {
+    const w = this.t * 6.5 + f.i * 1.7;
+    arm(P, 0, -2.3 + Math.sin(w) * 0.7, 0.55 + Math.sin(w * 0.5) * 0.15, -0.45 - Math.max(0, Math.sin(w)) * 0.6);
+    arm(P, 1, -2.3 + Math.sin(w + 2.4) * 0.7, 0.55 + Math.cos(w * 0.5) * 0.15, -0.45 - Math.max(0, Math.sin(w + 2.4)) * 0.6);
+    P.headP = -0.55;
+  }
+
+  // Acostados (arrastrándose al salir del agua o tirados en la playita): el
+  // cuerpo va a lo largo de la pendiente y nunca abajo del piso. La playa sube
+  // ~23° y tiene escalones: con el cuerpo derecho, las manos y la cabeza
+  // (1,4 m adelante) se metían en la arena. Se mide el piso adelante y atrás
+  // (los pies) y se inclina lo que sube (de a poco: en un escalón la pendiente
+  // salta); después se arma la pose de prueba y se levanta lo justo para que
+  // ninguna parte quede adentro (las piernas del que se arrastra van más bajas
+  // que la cadera). float: no más abajo que eso (en lo bajito, la espalda a
+  // flor de agua).
+  lieFit(f, P, float = null) {
+    const r = f.r;
+    const fx = -Math.sin(r.yaw);
+    const fz = -Math.cos(r.yaw);
+    const h = (d) => this.ground(r.pos.x + fx * d, r.pos.z + fz * d) ?? r.pos.y;
+    const hF = h(1.4);
+    const hB = h(-0.7);
+    const a = Math.atan2(hF - hB, 2.1);
+    f.pa = f.pa == null ? a : f.pa + (a - f.pa) * Math.min(1, (this.dt || 0) * 4);
+    const s = Math.tan(f.pa);
+    const y0 = Math.max(h(0), hB + 0.7 * s, hF - 1.4 * s) + 0.03;
+    P.rootPitch = 1.3 - f.pa;
+    P.rootFwd = 0;
+    P.rootY = y0;
+    solvePose(LIE_MATS, r.pos.x, r.pos.z, r.yaw + Math.PI, 1, P);
+    let need = 0;
+    for (let k = 0; k <= 12; k++) {
+      tmpU.setFromMatrixPosition(LIE_MATS[k]);
+      const gy = this.ground(tmpU.x, tmpU.z);
+      if (gy != null) need = Math.max(need, gy + 0.05 - tmpU.y);
+    }
+    // (sube enseguida; baja despacio, para que no salte con cada brazada)
+    f.lift = need >= (f.lift || 0) ? need : f.lift + (need - f.lift) * Math.min(1, (this.dt || 0) * 3);
+    P.rootY = Math.max(y0 + f.lift, float ?? -Infinity);
+  }
+
+  // El piso de verdad: en el agua, floorAt da la superficie; acá, la arena del fondo.
+  ground(x, z) {
+    const Wa = this.g.water;
+    const d = Wa ? Wa.depthAt(x, z) : 0;
+    if (d > 0) return Wa.level - d;
+    const y = this.g.world.floorAt(x, z);
+    return Number.isFinite(y) ? y : null;
+  }
+
+  // Del corte en negro: ya cerca de la orilla, nadando a lo que da.
+  toShore() {
+    const F = this.fall;
+    if (!F) return;
+    for (const f of F.list) {
+      const r = f.r;
+      f.phase = 'swim';
+      f.ws = this.t + f.i * 0.25;
+      r.pos.set(SWIM[0] + f.s * 1.3, 0, SWIM[1] + f.s * 0.3 - (f.i % 2) * 0.7);
+      f.end = new THREE.Vector3(SHORE[0] + f.s * 1.3, 0, SHORE[1] + f.s * 0.3);
+      r.poseFn = null;
+      r.swim = 3;
+      r.downed = false;
+      r.corpse = false;
+      r.yaw = faceTo(r.pos, f.end.x, f.end.z);
+    }
+    this.g.audio.gasp?.();
+  }
+
+  // Los gauchos después del rayo: vuelan, caen al agua, luchan por no
+  // hundirse, nadan a la orilla y salen arrastrándose.
+  updateFall(dt) {
+    const F = this.fall;
+    if (!F) return;
+    const g = this.g;
+    const t = this.t;
+    const Wa = g.water;
+    const W = g.world;
+    const surf = (x, z) => (Wa ? Wa.heightAt(x, z) : -0.55);
+    for (const f of F.list) {
+      const r = f.r;
+      const p = r.pos;
+      if (f.phase === 'fly') {
+        const u = clamp01((t - F.t0 - f.delay) / f.T);
+        p.lerpVectors(f.from, f.to, u);
+        p.y = f.from.y + (f.to.y - f.from.y) * u + 4 * FLY_H * u * (1 - u);
+        // (el barranco: pasan por arriba del borde, nunca adentro)
+        const fy = W.floorAt(p.x, p.z);
+        if (u < 0.92 && Number.isFinite(fy)) p.y = Math.max(p.y, fy + 0.3);
+        f.spinA = TAU * smooth(u);
+        r.yaw = faceTo(p, f.to.x, f.to.z);
+        if (u >= 1) {
+          f.phase = 'water';
+          f.wt = t;
+          r.swim = 2;
+          r.poseFn = (P) => this.flail(f, P);
+          Wa?.splash(p.x, p.z, 2.4);
+          this.shake = Math.max(this.shake, 0.3);
+        }
+      } else if (f.phase === 'water') {
+        const k = t - f.wt;
+        // se hunden del golpe y salen; después cada tanto se los traga una ola
+        const plunge = k < 0.7 ? (1 - k / 0.7) * 1.6 : 0;
+        const dip = Math.max(0, Math.sin(k * 2.3 + f.i * 1.7)) ** 6 * 0.8;
+        tmpV.set(SHORE[0] - p.x, 0, SHORE[1] - p.z);
+        const d = tmpV.length();
+        if (d > 0.1) p.addScaledVector(tmpV.divideScalar(d), dt * 0.3);
+        p.y = surf(p.x, p.z) - 1.32 - plunge - dip + Math.sin(k * 3 + f.i) * 0.07;
+        r.yaw = faceTo(p, SHORE[0], SHORE[1]);
+        if (k > 0.7 && !f.gasped) {
+          f.gasped = true;
+          if (f.i === 0) g.audio.gasp?.();
+        }
+        if (Math.random() < dt * 3) Wa?.splash(p.x + rnd() * 0.6, p.z + rnd() * 0.6, 0.35, { sound: Math.random() < 0.25 });
+      } else if (f.phase === 'swim') {
+        if (t < f.ws) {
+          p.y = surf(p.x, p.z) - 1.32 + Math.sin(t * 3 + f.i) * 0.08;
+          continue;
+        }
+        tmpV.set(f.end.x - p.x, 0, f.end.z - p.z);
+        const d = tmpV.length();
+        // (brazadas cansadas: a los tirones)
+        const v = 1.1 * (0.55 + 0.45 * Math.max(0, Math.sin(t * 5 + f.i)));
+        if (d > 0.05) p.addScaledVector(tmpV.divideScalar(d), Math.min(d, dt * v));
+        p.y = surf(p.x, p.z) - 1.2 + Math.sin(t * 5 + f.i) * 0.05;
+        r.yaw = faceTo(p, f.end.x, f.end.z);
+        if (Math.random() < dt * 2.5) Wa?.splash(p.x + rnd() * 0.5, p.z + rnd() * 0.5, 0.25, { sound: Math.random() < 0.3 });
+        // hace pie: sale arrastrándose (antes de que las brazadas y las
+        // patadas toquen el fondo: mirando también adelante, que es más bajito)
+        const deep = (x, z) => (Wa ? Wa.depthAt(x, z) : 0);
+        if (deep(p.x, p.z) < 0.9 || deep(p.x - Math.sin(r.yaw), p.z - Math.cos(r.yaw)) < 0.6) {
+          f.phase = 'crawl';
+          r.swim = 0;
+          r.downed = true;
+          r.poseFn = (P) => this.lieFit(f, P, deep(r.pos.x, r.pos.z) > 0 ? surf(r.pos.x, r.pos.z) - 0.3 : null);
+        }
+      } else if (f.phase === 'crawl') {
+        tmpV.set(f.end.x - p.x, 0, f.end.z - p.z);
+        const d = tmpV.length();
+        if (d > 0.05) p.addScaledVector(tmpV.divideScalar(d), Math.min(d, dt * 0.65));
+        p.y = this.ground(p.x, p.z) ?? p.y;
+        if (Math.random() < dt * 2 && (Wa ? Wa.depthAt(p.x, p.z) : 0) > 0.05) Wa?.splash(p.x + rnd() * 0.5, p.z + rnd() * 0.5, 0.2, { sound: Math.random() < 0.3 });
+        if (d <= 0.06) {
+          // y ahí quedan, tirados, respirando fuerte
+          f.phase = 'rest';
+          r.corpse = true;
+          r.poseFn = (P) => {
+            P.torsoP += Math.sin(this.t * 2.6 + f.i) * 0.05;
+            this.lieFit(f, P);
+          };
+        }
+      }
+    }
   }
 
   // ---------------- tomas (dónde está la cámara) ----------------
@@ -541,10 +1040,11 @@ export default class PenalCinematic {
   }
 
   // Paneo lento alrededor del altar, de izquierda a derecha.
-  shotYerba(d = 4.6) {
+  shotYerba(d = 2.3) {
     const A = this.A;
+    // (la segunda mitad del paneo de antes: termina en el mismo cuadro)
     this.shot(d, (u) => {
-      const a = -0.45 + smooth(u) * 1.35;
+      const a = -0.45 + (0.5 + smooth(u) * 0.5) * 1.35;
       tmpV.set(A.x + Math.sin(a) * 2.3, A.y + 1.55 - u * 0.15, A.z + Math.cos(a) * 2.3);
       tmpW.set(A.x - 0.2, A.y + 1.05, A.z);
     }, 50);
@@ -581,13 +1081,38 @@ export default class PenalCinematic {
     });
   }
 
-  shotMate() {
-    this.shot(8, (u, t) => {
-      const m = this.mate.visible ? this.mate.position : this.voz.root.position;
-      const a = 0.8 + t * 0.3;
-      tmpV.set(m.x + Math.sin(a) * 2.6, m.y - 0.5, m.z + Math.cos(a) * 2.6);
-      tmpW.copy(m);
-    });
+  // El robo, de cerca y desde abajo (del lado de los gauchos): el mate se
+  // resiste en la piedra y la luz violeta baja de arriba del cuadro.
+  shotGrab() {
+    const A = this.A;
+    this.shot(GRAB + 0.4, (u) => {
+      const e = smooth(u);
+      const m = this.mate.position;
+      tmpV.set(A.x + 1.25 - e * 0.25, A.y + 0.8 + e * 0.1, A.z + 2.1 - e * 0.4);
+      tmpW.set(m.x, m.y + 0.3 + e * 0.5, m.z);
+    }, 44);
+  }
+
+  // Atrás de los gauchos (que miran para arriba), de lejos: en el mismo
+  // cuadro el mate abajo, la luz y el ojo arriba; los colores suben por la luz.
+  shotDrain() {
+    const A = this.A;
+    const E = this.voz.root.position;
+    // (a ~11 m del ojo: más cerca, los anillos y el halo llenan el cuadro)
+    this.shot(9, (u) => {
+      const e = smooth(u);
+      tmpV.set(A.x + 3.5 - e * 0.5, A.y + 2.6, A.z + 8 - e * 0.6);
+      tmpW.lerpVectors(this.mate.position, E, 0.34);
+    }, 64);
+  }
+
+  // El tirón: la cámara se queda abajo y lo sigue mientras sube hasta el ojo.
+  shotYank() {
+    const A = this.A;
+    this.shot(1.8, () => {
+      tmpV.set(A.x + 1.9, A.y + 1, A.z + 3);
+      tmpW.copy(this.mate.visible ? this.mate.position : this.voz.root.position);
+    }, 55);
   }
 
   shotEye() {
@@ -599,13 +1124,67 @@ export default class PenalCinematic {
     }, 40);
   }
 
-  shotEnd() {
+  // Desde atrás de los gauchos, mirando al barranco y al río: el rayo.
+  shotBlast() {
     const A = this.A;
-    this.shot(10, (u) => {
+    this.shot(3, (u) => {
       const e = smooth(u);
-      tmpV.set(A.x + 2.5 + e * 5, A.y + 2 + e * 9, A.z + 7 + e * 8);
-      tmpW.set(A.x, A.y + 1 + e * 2.5, A.z);
-    });
+      tmpV.set(A.x - 5 - e * 0.5, A.y + 3.4 + e * 0.6, A.z + 10.5 + e * 0.5);
+      tmpW.set(A.x + 5, A.y + 3 - e * 2, A.z + 1);
+    }, 58);
+  }
+
+  // Dónde están los gauchos (el medio de todos, a la altura del pecho).
+  fallCenter(out) {
+    out.set(0, 0, 0);
+    const list = this.fall?.list || [];
+    for (const f of list) out.add(f.r.pos);
+    out.divideScalar(list.length || 1);
+    out.y += 0.9;
+    return out;
+  }
+
+  // Volando por el barranco hasta el agua, desde la costa.
+  shotFlight() {
+    this.shot(FLY + 0.6, (u) => {
+      this.fallCenter(tmpW);
+      tmpV.set(95 - u, 6 - u * 3, 27.5 - u * 1.5);
+    }, 55);
+  }
+
+  // A ras del agua, meciéndose con las olas: tragan agua y manotean.
+  shotStruggle() {
+    const lv = this.g.water ? this.g.water.level : -0.55;
+    this.shot(2.8, (u) => {
+      this.fallCenter(tmpW);
+      tmpW.y = lv + 0.3;
+      tmpV.set(102 - u * 0.4, lv + 0.5 + Math.sin(this.t * 1.7) * 0.08, 19.8 - u * 0.3);
+    }, 50);
+  }
+
+  // De costado, en la playita: vienen nadando y salen arrastrándose.
+  shotShore() {
+    const fy = this.g.world.floorAt(92.2, 21.2);
+    const y0 = Number.isFinite(fy) ? fy : 0;
+    // (sigue a los que vienen: más arriba que los juncos)
+    this.shot(7.4, (u) => {
+      const e = smooth(u);
+      tmpV.set(92.2 + e * 0.3, y0 + 1.6 - e * 0.5, 21.2 + e * 0.5);
+      this.fallCenter(tmpW);
+      tmpW.y = Math.max(-0.3, tmpW.y - 0.6);
+    }, 50);
+  }
+
+  // De arriba: sube desde la playita hasta ver el penal entero, con menos
+  // niebla, y amanece (el día del mundo: world.dayCur).
+  shotAerial() {
+    this.shot(8.2, (u) => {
+      const e = smooth(u);
+      tmpV.set(96 + e * 16, 5 + e * 62, 27 + e * 70);
+      tmpW.set(SHORE[0], -0.3, SHORE[1]).lerp(MID, smooth(clamp01(u * 1.3)));
+      this.fogMul = 1 - e * 0.8;
+      this.dawnK = e * 0.45;
+    }, 55);
   }
 
   setFov(f) {
@@ -620,6 +1199,7 @@ export default class PenalCinematic {
     const g = this.g;
     if (!this.script) return;
     this.t += dt;
+    this.dt = dt;
     g.time += dt;
     g.weapons.vmRoot.visible = false;
     if (g.vida?.hand) g.vida.hand.root.visible = false;
@@ -644,8 +1224,15 @@ export default class PenalCinematic {
     this.updateAnimas(dt);
     this.updateGauchos();
     this.updateGil(dt);
-    this.updateYerba();
+    this.updateYerba(dt);
+    this.updateAsh();
+    this.updateFall(dt);
     this.updateVoz(dt);
+    // los efectos del Mate Supremo (su reloj corre en Weapons, que ahora no anda)
+    this.SF?.update(dt, g.time);
+    // las almas del cerro (world/Cerro.js) siguen subiendo hasta irse: el
+    // cerro ya no se actualiza y quedaban congeladas en el aire toda la escena
+    g.arena?.updateSouls?.(dt);
     for (const p of g.arena?.braziers || []) if (Math.random() < 0.25) g.fx.fire(p, 0.08, 1);
     this.people.update(dt);
     // la cámara de la toma, con el temblor encima (nunca abajo del pasto)
@@ -656,11 +1243,17 @@ export default class PenalCinematic {
       C.fn(clamp01(lt / C.dur), lt);
       const fy = g.world.floorAt(tmpV.x, tmpV.z);
       if (Number.isFinite(fy)) tmpV.y = Math.max(tmpV.y, fy + 0.4);
+      // (ni abajo del agua)
+      const Wa = g.water;
+      if (Wa && Wa.depthAt(tmpV.x, tmpV.z) > 0) tmpV.y = Math.max(tmpV.y, Wa.heightAt(tmpV.x, tmpV.z) + 0.25);
       this.shake = Math.max(0, this.shake - dt * 0.8);
       const s = this.shake * 0.08;
       cam.position.set(tmpV.x + (Math.random() - 0.5) * s, tmpV.y + (Math.random() - 0.5) * s, tmpV.z + (Math.random() - 0.5) * s);
       cam.lookAt(tmpW);
     }
+    // el brillo del mate, del lado de la cámara (centrado en el mate, la
+    // piedra le cortaba la mitad de abajo en línea recta)
+    if (this.mate.visible) glowFront(this.mateGlow, this.mate, cam.position, this.glowSize);
     // el subtítulo, letra por letra
     const sub = this.sub;
     if (sub) {
@@ -674,8 +1267,16 @@ export default class PenalCinematic {
     g.audio.setListener(cam.position, tmpU.set(0, 0, -1).applyQuaternion(cam.quaternion));
     g.zombies.render();
     g.fx.update(dt, cam);
+    // (el amanecer de la toma de arriba)
+    const W = g.world;
+    if (this.dawnK != null && W.updateDay) {
+      W.daylight = W.dayCur = this.dawnK;
+      W.updateDay(0);
+    }
     g.world.update(dt, g.time);
     g.weather?.update?.(dt);
+    // (la toma de arriba: menos niebla, para que se vea el mapa entero)
+    if (this.fogMul < 1 && g.scene.fog) g.scene.fog.density *= this.fogMul;
   }
 
   // Las almas del penal: suben de todo el mapa hacia el cielo.
@@ -718,11 +1319,13 @@ export default class PenalCinematic {
 
   // Los gauchos miran lo que pasa (y para arriba cuando baja la Voz).
   updateGauchos() {
+    // (después del rayo los maneja updateFall)
+    if (this.fall) return;
     const look = this.look;
     const at = look === 'gil' && !this.gilGone ? this.G : look === 'animas' ? tmpU.set(this.A.x + 2.8, 0, this.A.z + 1.2) : this.A;
     for (const r of this.gauchos) {
       r.yaw = faceTo(r.pos, at.x, at.z);
-      const want = look === 'sky' ? 0.9 : look === 'animas' && this.animaT != null ? 0.6 : 0;
+      const want = look === 'sky' ? 0.9 : look === 'mate' ? 0.45 : look === 'animas' && this.animaT != null ? 0.6 : 0;
       r.pitch += (want - r.pitch) * 0.05;
     }
   }
@@ -804,10 +1407,12 @@ export default class PenalCinematic {
   }
 
   // La yerba dorada en la piedra: brilla despacio y suelta alguna chispa.
-  updateYerba() {
+  updateYerba(dt) {
     const t = this.t;
+    // (con el Juicio se enciende y se va apagando)
+    this.yerbaBoost = Math.max(0, this.yerbaBoost - dt * 1.2);
     this.yerba.traverse((m) => {
-      if (m.isMesh && m.material.emissive) m.material.emissiveIntensity = 0.6 + Math.sin(t * 2.5) * 0.25;
+      if (m.isMesh && m.material.emissive) m.material.emissiveIntensity = 0.6 + Math.sin(t * 2.5) * 0.25 + this.yerbaBoost;
     });
     if (Math.random() < 0.15) this.g.fx.sparkle(this.yerba.position, [1, 0.85, 0.4], 1, 0.3);
   }
@@ -837,20 +1442,26 @@ export default class PenalCinematic {
     B.opacity = V.beamOn ? Math.min(0.2, B.opacity + dt * 0.25) : Math.max(0, B.opacity - dt * 0.3);
     // el mate supremo
     if (this.mateT != null) {
+      // (de un tirón: arranca despacio y llega de golpe)
       const u = clamp01((t - this.mateT) / this.mateDur);
-      const s = smooth(u);
+      const s = u * u * u;
       const m = this.mate.position;
       m.lerpVectors(this.mateBase, tmpV.copy(E).setY(E.y - 1.4), s);
-      m.x += Math.sin(u * Math.PI * 4) * 0.35 * (1 - u);
-      m.z += Math.cos(u * Math.PI * 4) * 0.35 * (1 - u);
-      this.mate.rotation.y += dt * (2 + u * 4);
-      if (Math.random() < 0.7) g.fx.sparkle(m, [1, 0.85, 0.4], 2, 0.3);
-      this.warmLight.color.set(0xffc050);
-      this.warmLight.intensity = 5;
-      this.warmLight.position.copy(m).setY(m.y + 0.4);
+      this.mate.rotation.y += dt * (3 + u * 14);
+      animateSupremoDisplay(this.sup, dt, g.time, { speed: 1 + u * 3, open: 0, lift: 0.4 });
+      // la estela violeta
+      for (let i = 0; i < 3; i++) g.fx.add.spawn(m.x + rnd() * 0.2, m.y - Math.random() * 0.4, m.z + rnd() * 0.2, rnd() * 0.4, -1 - Math.random() * 2, rnd() * 0.4, { color: [0.6, 0.42, 1], size: 0.18, size1: 0, life: 0.5 });
+      this.warmLight.color.copy(VIOLET);
+      this.warmLight.intensity = 3;
+      this.warmLight.position.copy(m).setY(m.y + 0.3);
     } else if (this.mate.visible) {
-      this.mate.rotation.y += dt * 0.6;
-      this.mateGlow.material.opacity = 0.55 + Math.sin(t * 3) * 0.15;
+      // (mientras se lo roban: updateSteal)
+      if (this.steal) this.updateSteal(dt);
+      else {
+        this.mate.rotation.y += dt * 0.6;
+        animateSupremoDisplay(this.sup, dt, g.time);
+        this.mateGlow.material.opacity = 0.55 + Math.sin(t * 3) * 0.15;
+      }
     } else if (this.gilGone) this.warmLight.intensity = Math.max(0, this.warmLight.intensity - dt * 4);
   }
 
@@ -871,12 +1482,22 @@ export default class PenalCinematic {
     for (const m of Z.bossMats ? [Z.bossMats.skin, Z.bossMats.cloth, Z.bossMats.poncho] : []) if (m.emissive) m.emissiveIntensity = 0;
     Z.dressBoss?.('gil');
     this.people?.dispose();
+    // los efectos del Supremo que quedaban (si se salteó a la mitad)
+    this.SF?.clear();
+    // (rayos, chispas y haces: sin esto quedan congelados atrás del menú si se saltea)
+    g.fx.clearAll();
+    g.fx.update(0, g.camera);
     this.root?.removeFromParent();
     this.root = null;
+    if (this.dawnK != null && g.world?.updateDay) {
+      g.world.daylight = g.world.dayCur = 0;
+      g.world.updateDay(0);
+    }
     if (this.voiceLight) this.voiceLight.intensity = 0;
     if (this.warmLight) this.warmLight.intensity = 0;
     if (g.net?.avatars) g.net.avatars.root.visible = true;
     if (g.ee?.npc) g.ee.npc.root.visible = true;
+    for (const b of this.boxBeams || []) b.visible = true;
     const cb = this.onDone;
     this.onDone = null;
     cb?.();

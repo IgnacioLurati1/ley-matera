@@ -8,6 +8,7 @@ import { zombieSound, speechPlan, voiceLength, renderVoice, RATE } from './voice
 import { MAP_ID } from '../config/map';
 import { esterosStart, esterosEnd } from '../fx/esterosMusic';
 import SfxPack from './sfxPack';
+import WeaponSfx from './weaponSfx';
 
 const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
 // Audio.out: cuántos sonidos recientes (en LOAD_TAU segundos) aguanta con
@@ -64,6 +65,13 @@ const PERK_TUNES = {
   cherry: { wave: 'sawtooth', bpm: 196, cutoff: 2400, notes: [[52, 0.5], [52, 0.5], [55, 0.5], [57, 0.5], [59, 1], [57, 0.5], [55, 0.5], [52, 1], [64, 0.5], [62, 0.5], [59, 0.5], [57, 0.5], [59, 2]] },
   // el Acuanauta (Nadadito): un chamamecito correntino, que sube y baja como el agua
   aqua: { wave: 'triangle', bpm: 138, cutoff: 2600, notes: [[67, 0.5], [71, 0.5], [74, 1], [72, 0.5], [71, 0.5], [69, 1], [67, 0.5], [69, 0.5], [71, 1.5], [74, 0.5], [76, 1], [74, 0.5], [71, 0.5], [67, 2]] },
+  // Dying Wish (Extremaunión): la marcha fúnebre de Chopin en órgano... que a
+  // último momento se arrepiente y sube de un saltito a mayor (el que no se va)
+  wish: { wave: 'square', bpm: 132, cutoff: 2000, notes: [[58, 1], [58, 0.75], [58, 0.25], [58, 1], [61, 0.75], [60, 0.25], [60, 0.75], [58, 0.25], [58, 0.75], [57, 0.25], [58, 1.5], [65, 0.25], [70, 0.25], [74, 0.25], [77, 0.25], [82, 2]] },
+  // el Maizaster (Maleza Gaucha): una chacarera en puntas de pie, en re menor,
+  // que se escabulle entre el maizal (picadita, con silencios) y se esconde
+  // bajando de a medio tono
+  maiz: { wave: 'triangle', bpm: 168, cutoff: 2600, notes: [[57, 0.25], [0, 0.25], [62, 0.25], [0, 0.25], [65, 0.25], [0, 0.25], [69, 0.5], [67, 0.25], [65, 0.25], [64, 0.5], [0, 0.5], [65, 0.25], [0, 0.25], [67, 0.25], [0, 0.25], [69, 0.25], [0, 0.25], [72, 0.5], [70, 0.25], [69, 0.25], [67, 0.5], [0, 0.25], [64, 0.25], [63, 0.25], [62, 1.5]] },
 };
 
 const BOX_TUNE = [[76, 1], [79, 1], [84, 1], [83, 0.5], [79, 0.5], [76, 1], [74, 1], [77, 1], [81, 1], [79, 2], [72, 1], [76, 2]];
@@ -190,6 +198,8 @@ export default class GameAudio {
     this.thunderReady = this.loadSfx();
     // los grabados de zombies, bichos y especiales de cada mapa (core/sfxPack.js)
     this.pack = new SfxPack(this);
+    // los tiros grabados de las armas y perks (core/weaponSfx.js)
+    this.guns = new WeaponSfx(this);
   }
 
   // Baja los grabados (si uno no baja, ese sigue sintetizado).
@@ -548,6 +558,9 @@ export default class GameAudio {
   shot(kind, pos = null, upgraded = false) {
     // (los mates de la luz del castillo hacen sus propios ruidos)
     if (kind === 'silent') return;
+    // los grabados (core/weaponSfx.js); si no bajó, el sintetizado de ese tipo
+    if (this.guns?.shot(kind, pos, upgraded)) return;
+    kind = this.guns?.alias(kind) ?? kind;
     const t = this.now;
     if (kind === 'ray') return this.rayShot(pos, upgraded);
     if (kind === 'meme') return this.memeShot(pos, upgraded);
@@ -842,9 +855,11 @@ export default class GameAudio {
   }
 
   // Chorro hirviendo: siseo de vapor y burbujeo grave.
+  // (los sintetizados que quedaron: subidos a la par de los tiros grabados,
+  // 2026-09-28; ver core/weaponSfx.js)
   streamShot(pos, up) {
     const t = this.now;
-    const o = this.out({ pos, reverb: 0.2, gain: 0.5 });
+    const o = this.out({ pos, reverb: 0.2, gain: 1.6 });
     this.noise(o, { t, dur: 0.13, type: 'bandpass', freq: up ? 3600 : 3000, freqEnd: 2400, q: 1.2, gain: 0.35 });
     this.tone(o, { t, dur: 0.1, type: 'sine', freq: 90 + Math.random() * 40, freqEnd: 60, gain: 0.25 });
   }
@@ -890,7 +905,7 @@ export default class GameAudio {
 
   rayShot(pos, up) {
     const t = this.now;
-    const o = this.out({ pos, reverb: 0.4, gain: 0.7 });
+    const o = this.out({ pos, reverb: 0.4, gain: 1.8 });
     const base = up ? 1900 : 1500;
     this.tone(o, { t, dur: 0.28, type: 'square', freq: base, freqEnd: 180, gain: 0.25 });
     this.tone(o, { t, dur: 0.22, type: 'sawtooth', freq: base * 1.5, freqEnd: 300, gain: 0.12, detune: 12 });
@@ -1064,12 +1079,14 @@ export default class GameAudio {
 
   boltShot(pos) {
     const t = this.now;
-    const o = this.out({ pos, reverb: 0.2, gain: 0.7 });
+    const o = this.out({ pos, reverb: 0.2, gain: 1.5 });
     this.tone(o, { t, dur: 0.4, type: 'triangle', freq: 320, freqEnd: 140, gain: 0.5 });
     this.noise(o, { t, dur: 0.25, type: 'bandpass', freq: 1800, freqEnd: 500, q: 2, gain: 0.3 });
   }
 
-  explosion(pos, big = 1) {
+  // id: un grabado de core/weaponSfx.js (si bajó, suena ese)
+  explosion(pos, big = 1, id = null) {
+    if (id && this.guns?.play(id, { pos, gain: big })) return;
     const t = this.now;
     const o = this.out({ pos, reverb: 0.7, gain: 1.3 * big });
     this.noise(o, { t, dur: 1.1, freq: 1800, freqEnd: 80, q: 0.5, gain: 1, brown: true });
@@ -1543,6 +1560,19 @@ export default class GameAudio {
         for (let i = 0; i < 6; i++) this.tone(o, { t: t + i * 0.07, dur: 0.06, freq: 400 + i * 90, freqEnd: 900 + i * 140, gain: 0.12 });
         this.noise(o, { t: t + 0.5, dur: 0.35, type: 'bandpass', freq: 1200, freqEnd: 500, q: 1, gain: 0.5 });
         break;
+      case 'wish':
+        // el corazón que se para, el silencio... y vuelve de golpe con una bocanada
+        for (const d of [0, 0.3]) this.tone(o, { t: t + d, dur: 0.14, freq: 64, freqEnd: 40, gain: 0.8, attack: 0.005 });
+        this.tone(o, { t: t + 0.55, dur: 0.5, freq: 1000, gain: 0.06, attack: 0.01 });
+        this.noise(o, { t: t + 1.1, dur: 0.35, type: 'bandpass', freq: 900, freqEnd: 2400, q: 1.2, gain: 0.45, attack: 0.08 });
+        for (const d of [1.2, 1.42, 1.64]) this.tone(o, { t: t + d, dur: 0.12, freq: 78, freqEnd: 46, gain: 0.9, attack: 0.004 });
+        break;
+      case 'maiz':
+        // la paja seca que se abre, un "shhh" y unos granos que saltan (pop, pop)
+        for (let i = 0; i < 5; i++) this.noise(o, { t: t + i * 0.07, dur: 0.12, type: 'bandpass', freq: 2200 + Math.random() * 1800, freqEnd: 1300, q: 0.9, gain: 0.45, attack: 0.01 });
+        this.noise(o, { t: t + 0.45, dur: 0.75, type: 'highpass', freq: 3800, q: 0.5, gain: 0.3, attack: 0.25 });
+        for (const d of [1.25, 1.42, 1.51]) this.tone(o, { t: t + d, dur: 0.05, freq: 900 + Math.random() * 500, freqEnd: 300, gain: 0.25, attack: 0.002 });
+        break;
       default:
         break;
     }
@@ -1637,7 +1667,8 @@ export default class GameAudio {
   // (cuánto, queda en `sayWait`). En una cinemática solo hablan los de la
   // cinemática ({ cine: true }); las demás se callan. Devuelve cuánto dura lo
   // que dice, sin contar la espera.
-  say(text, speaker = 'abuelo', { cine = false } = {}) {
+  // `cut`: a la frase la interrumpe lo que sigue (termina en seco, sin pausa).
+  say(text, speaker = 'abuelo', { cine = false, cut = false } = {}) {
     const pauses = (text.match(/[,.;:!?…]/g) || []).length;
     const talk = (rate) => Math.max(1.6, (text.length * 0.064 + pauses * 0.22) / rate + 0.3);
     this.sayWait = 0;
@@ -1674,7 +1705,7 @@ export default class GameAudio {
           nicanor: { rate: 0.84, pitch: 0.9 },
           fierro: { rate: 0.88, pitch: 0.75 },
           francisco: { rate: 0.92, pitch: 0.45 },
-          caballeroFuego: { rate: 1.02, pitch: 0.75 },
+          caballeroFuego: { rate: 0.9, pitch: 0.75 },
           caballeroViento: { rate: 0.9, pitch: 1.4 },
           caballeroRayo: { rate: 1.08, pitch: 1.15 },
           caballeroHielo: { rate: 0.72, pitch: 0.25 },
@@ -1702,7 +1733,7 @@ export default class GameAudio {
         /* sigue con murmullos */
       }
     }
-    return this.murmur(text, speaker, now + wait);
+    return this.murmur(text, speaker, now + wait, cut);
   }
 
   // Algo de voz para dentro de `secs` (se cancela con hush).
@@ -1757,8 +1788,8 @@ export default class GameAudio {
     for (const job of jobs) job(null);
   }
 
-  murmur(text, speaker, when = 0) {
-    const { segs, P } = speechPlan(text, speaker);
+  murmur(text, speaker, when = 0, cut = false) {
+    const { segs, P } = speechPlan(text, speaker, Math.random, { cut });
     const fx = {
       abuelo: { reverb: 0.55, gain: 1.1 },
       anunciador: { reverb: 1.1, gain: 1.4 },
@@ -1769,12 +1800,13 @@ export default class GameAudio {
       espantapajaros: { reverb: 0.45, gain: 1.2, filter: [{ type: 'highpass', freq: 350 }] },
       // el Alcaide, nasal: un pico en los medios y sin graves
       alcaide: { reverb: 0.35, gain: 1.25, filter: [{ type: 'highpass', freq: 240 }, { type: 'peaking', freq: 1400, q: 1.6, gain: 7 }] },
-      gil: { reverb: 0.8, gain: 1.35, filter: [{ type: 'lowshelf', freq: 250, gain: 4 }] },
-      anacleto: { reverb: 0.5, gain: 1.15, filter: [{ type: 'lowpass', freq: 3000 }] },
-      cirilo: { reverb: 0.5, gain: 1.1, filter: [{ type: 'highpass', freq: 200 }] },
-      benito: { reverb: 0.6, gain: 1.1 },
+      gil: { reverb: 0.9, gain: 1.35, filter: [{ type: 'lowshelf', freq: 250, gain: 5 }] },
+      // los presos: Anacleto oscuro y con pecho, Cirilo brillante, Benito nasal (un pico en los medios, sin graves)
+      anacleto: { reverb: 0.45, gain: 1.25, filter: [{ type: 'lowpass', freq: 2300 }, { type: 'lowshelf', freq: 200, gain: 3 }] },
+      cirilo: { reverb: 0.4, gain: 1.1, filter: [{ type: 'highpass', freq: 240 }, { type: 'highshelf', freq: 3000, gain: 3 }] },
+      benito: { reverb: 0.5, gain: 1.2, filter: [{ type: 'highpass', freq: 300 }, { type: 'peaking', freq: 1100, q: 1.6, gain: 8 }, { type: 'lowpass', freq: 3600 }] },
       // Nicanor, desde el más allá: mucha sala, sin graves ni brillo
-      nicanor: { reverb: 1.2, gain: 1.4, filter: [{ type: 'highpass', freq: 280 }, { type: 'lowpass', freq: 3400 }] },
+      nicanor: { reverb: 1.2, gain: 1.5, filter: [{ type: 'highpass', freq: 280 }, { type: 'lowpass', freq: 3400 }] },
       fierro: { reverb: 0.7, gain: 1.15 },
       francisco: { reverb: 0.9, gain: 1.3, filter: [{ type: 'lowshelf', freq: 220, gain: 3 }] },
       // los caballeros son fantasmas: mucha sala. Fuego con cuerpo y chisporroteo,
@@ -2394,11 +2426,9 @@ export default class GameAudio {
   bossArrive() {
     const t = this.now;
     const o = this.out({ gain: 1, reverb: 0.8 });
-    // silbato del capataz
+    // silbato del capataz y un retumbe grave (la sierra grave que bajaba
+    // sonaba a pedo de 8 bits: el usuario la sacó, 2026-09-28)
     this.tone(o, { t, dur: 0.9, type: 'square', freq: 2600, gain: 0.12 });
-    const lfo = this.ctx.createOscillator();
-    lfo.frequency.value = 28;
-    this.tone(o, { t: t + 1, dur: 1.4, type: 'sawtooth', freq: 70, freqEnd: 45, gain: 0.35 });
     this.noise(o, { t: t + 1, dur: 1.4, freq: 600, freqEnd: 120, gain: 0.5, brown: true });
   }
 

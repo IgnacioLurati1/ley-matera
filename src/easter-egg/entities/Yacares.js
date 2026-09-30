@@ -46,9 +46,14 @@ const SINK = 3.2;
 export const YACARE_DEEP = 0.45;
 
 export default class YacareRig {
-  constructor(game, max) {
+  // mixed: en el Challenge de la torre solo dibuja los especiales marcados como
+  // yacaré (z.yac: la inundación, entities/challengeFlood.js); los demás son de
+  // los carpinchos y los caballos
+  constructor(game, max, mixed = false) {
     this.g = game;
     this.max = max;
+    this.mixed = mixed;
+    this.flag = mixed ? 'yacShown' : 'dogShown';
     this.sinks = true;
     const hide = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, metalness: 0.05, vertexColors: true, map: scaleTex(), bumpMap: scaleTex(), bumpScale: 2.2 });
     const teeth = new THREE.MeshStandardMaterial({ color: 0xe9e2c8, roughness: 0.5 });
@@ -220,19 +225,21 @@ export default class YacareRig {
     const g = this.g;
     const dt = Math.min(0.1, Math.max(0, g.time - this.last));
     this.last = g.time;
-    const any = pool.some((z) => z.dog && z.active);
+    const mine = (z) => z.dog && (!this.mixed || z.yac);
+    const F = this.flag;
+    const any = pool.some((z) => mine(z) && z.active);
     if (!any && !this.on) return;
     this.on = any;
     for (const im of this.all) im.visible = any;
     for (const z of pool) {
-      if (!z.dog || !z.active) {
-        if (z.dogShown) {
+      if (!mine(z) || !z.active) {
+        if (z[F]) {
           this.hide(z.slot);
-          z.dogShown = false;
+          z[F] = false;
         }
         continue;
       }
-      z.dogShown = true;
+      z[F] = true;
       this.pose(z, dt);
     }
     for (const im of this.all) im.instanceMatrix.needsUpdate = true;
