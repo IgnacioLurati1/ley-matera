@@ -1176,12 +1176,18 @@ function sickleGeo(R, width, arc, thick) {
 // gold: la hoz de oro (el bastón del Yasy dorado, entities/Yasy.js): el mango
 // es el bastón, hoja de oro con el filo encendido y tachas que brillan.
 let GLOW_GOLD = null;
+// (los brillos propios de la hoz, más bajos que los de los otros mates: la de
+// la Muerte y la de oro encandilaban; pedido del usuario 2026-10-01)
+let GLOW_HOZ = null;
+let RUNE_HOZ = null;
 function buildHoz(upgraded, T, gold = false) {
   const M = mats(T);
   const g = new THREE.Group();
   const death = !!upgraded;
-  GLOW_GOLD ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc84a).multiplyScalar(2.6), toneMapped: false });
-  const glowMat = gold ? GLOW_GOLD : M.glowDeath;
+  GLOW_GOLD ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc84a).multiplyScalar(1.4), toneMapped: false });
+  GLOW_HOZ ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0x7affb0).multiplyScalar(1.3), toneMapped: false });
+  RUNE_HOZ ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0xb05aff).multiplyScalar(1.2), toneMapped: false });
+  const glowMat = gold ? GLOW_GOLD : GLOW_HOZ;
   const anim = { spin: [], glow: [], wobble: null };
   const handle = cyl(0.015, 0.018, 0.22, gold ? M.gold : death ? M.bone : M.wood, 10);
   handle.position.y = -0.03;
@@ -1193,7 +1199,7 @@ function buildHoz(upgraded, T, gold = false) {
     g.add(wrap);
   }
   if (death || gold) {
-    const rune = tor(0.0182, 0.0022, gold ? GLOW_GOLD : M.glowPurple, 6, 16);
+    const rune = tor(0.0182, 0.0022, gold ? GLOW_GOLD : RUNE_HOZ, 6, 16);
     rune.rotation.x = Math.PI / 2;
     rune.position.y = 0.025;
     g.add(rune);
@@ -1211,7 +1217,7 @@ function buildHoz(upgraded, T, gold = false) {
   holder.rotation.y = Math.PI / 2;
   holder.add(blade);
   // el filo: el borde de adentro, fino y brillante (verde en la de la Muerte)
-  const edge = new THREE.Mesh(sickleGeo(R, 0.05, arc, 0.003).geo, gold ? GLOW_GOLD : death ? M.glowDeath : M.silver);
+  const edge = new THREE.Mesh(sickleGeo(R, 0.05, arc, 0.003).geo, gold ? GLOW_GOLD : death ? GLOW_HOZ : M.silver);
   holder.add(edge);
   g.add(holder);
   const muzzle = new THREE.Object3D();
