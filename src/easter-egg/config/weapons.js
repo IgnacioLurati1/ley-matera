@@ -1055,10 +1055,16 @@ export const BOX_POOL = Object.entries(WEAPONS)
 // casi igual). Pedido del usuario 2026-09-27.
 const BOX_TUNED = ['molino', 'granja', 'penal'];
 const BOX_STRONG = ['imperial', 'camionero', 'torpedo', 'asta', 'mate47', 'gut'];
+// Los especiales de la caja salen un poco más (de ~2% a ~3,4% cada uno), y en
+// el molino el Tronador bastante más (~5,8%). Pedido del usuario 2026-09-30.
+const WONDER_K = 1.75;
+const WONDER_MAP = { molino: { tronador: 3 } };
 export function boxWeight(w, map) {
+  const W = WEAPONS[w.id];
+  if (W.wonder && !W.egg) return w.weight * (WONDER_MAP[map]?.[w.id] ?? WONDER_K);
   if (!BOX_TUNED.includes(map)) return w.weight;
   if (BOX_STRONG.includes(w.id)) return w.weight * 0.5;
-  if (WEAPONS[w.id].wall && !WEAPONS[w.id].box) return w.weight * 1.3;
+  if (W.wall && !W.box) return w.weight * 1.3;
   return w.weight;
 }
 
