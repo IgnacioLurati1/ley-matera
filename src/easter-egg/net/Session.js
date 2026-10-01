@@ -1110,6 +1110,10 @@ export default class Session {
       case 'nova':
         g.weapons?.nova?.ghost(m);
         break;
+      // el rayo de oro de la hoz de otro jugador (weapons/hozBeam.js; solo se ve y se oye)
+      case 'hozr':
+        if (m.id !== this.id) g.weapons?.hozBeam?.ghost(m);
+        break;
       // el Mate Supremo de otro jugador: el rayo del sol o el Juicio (solo se ve)
       case 'supremo':
         g.weapons?.supremo?.ghost(m);

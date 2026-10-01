@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mesh, boxGeo, cylGeo } from './props';
 import { MAP_ID } from '../config/map';
 import { TRACKS } from '../core/music';
+import { preloadBossSkin } from '../entities/bossSkin';
 
 // La canción de la pelea de cada mapa (core/music.js). El castillo tiene la
 // suya en la Gran Guerra.
@@ -492,6 +493,8 @@ export default class Arena {
       if (g.zombies.boss) g.zombies.removeBoss();
     }
     g.lures.length = 0;
+    // (el cuerpo de verdad del jefe, si tiene, se baja desde ya)
+    preloadBossSkin(g.zombies, this.bossOpts().kind || 'mandinga');
     g.post.flash(1.6);
     g.audio.bossArrive();
     const song = SONG[MAP_ID];

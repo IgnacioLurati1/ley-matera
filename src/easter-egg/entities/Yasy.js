@@ -58,7 +58,9 @@ const tmpW = new THREE.Vector3();
 export function hozBaston(st) {
   const melee = st.melee && { ...st.melee, range: st.melee.range * 1.3, cos: st.melee.cos - 0.35, targets: st.melee.targets + 4 };
   const crescent = st.crescent && { ...st.crescent, radius: st.crescent.radius * 1.35, bossCap: 2200 };
-  return { ...st, baston: true, name: st.upgraded ? 'Hoz de Oro de la Muerte' : 'Hoz de Oro', melee, crescent };
+  // (la de la Muerte con el bastón: el derecho, mantenido, es el rayo de oro; weapons/hozBeam.js)
+  const desc = st.upgraded ? 'Clic izquierdo corta todo lo que toca. Clic derecho, mantenido: el rayo de oro.' : st.desc;
+  return { ...st, baston: true, name: st.upgraded ? 'Hoz de Oro de la Muerte' : 'Hoz de Oro', desc, melee, crescent };
 }
 
 // ---------------- el modelo ----------------

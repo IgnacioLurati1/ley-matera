@@ -10,6 +10,7 @@ import Potenciadores from './Potenciadores';
 import Liquidificador from './Liquidificador';
 import Supernova from './Supernova';
 import Supremo from './Supremo';
+import HozBeam from './hozBeam';
 import { memeFx } from './memeMate';
 import { buildPerkMateFor, PERK_MATE_IDS } from './perkMates';
 import Mk3Fx from './mk3Fx';
@@ -412,6 +413,10 @@ export default class Weapons {
     // el Mate Supremo, el premio de los seis easter eggs (weapons/Supremo.js;
     // arma sus soles y columnas en el grupo escondido de prebuild)
     this.supremo = new Supremo(this);
+    // el rayo de oro de la hoz al nivel 3 (weapons/hozBeam.js; sus rayos
+    // también esperan en el grupo escondido)
+    this.hozBeam = new HozBeam(this);
+    this.hozBeamPose = [0, 0, 0, 0, 0, 0, 0];
     this.projectiles = [];
     this.projGeo = new THREE.SphereGeometry(1, 10, 8);
     this.pose = { pos: HIP.clone(), rot: new THREE.Euler() };
@@ -888,6 +893,7 @@ export default class Weapons {
     this.liq.update(dt);
     this.nova.update(dt);
     this.supremo.update(dt);
+    this.hozBeam.update(dt);
     this.shieldHand.update(dt);
     this.updateStuck(dt);
     this.updatePools(dt);
@@ -961,6 +967,8 @@ export default class Weapons {
     // la hoz: izquierdo corta (manteniendo, sigue cortando); la de la Muerte
     // además tira medialunas con el derecho
     if (st.kind === 'melee') {
+      // la de nivel 3 (con el bastón de oro): el derecho, mantenido, es el rayo de oro
+      if (this.hozBeam.input(input, st, p)) return;
       if (this.state !== 'idle' || this.fireCd > 0) return;
       if (st.alt && input.mouse.rightPressed) {
         if (s.mag > 0) this.startToss();
@@ -2231,6 +2239,7 @@ export default class Weapons {
     this.liq?.clear();
     this.nova?.clear();
     this.supremo?.clear();
+    this.hozBeam?.clear();
     for (const p of this.projectiles || []) {
       p.mesh?.removeFromParent();
       p.bubbles?.stop(0.1);
@@ -2749,6 +2758,18 @@ export default class Weapons {
       }
       trailOn = k >= mv.trail[0] && k <= mv.trail[1];
     }
+    // el rayo de oro (weapons/hozBeam.js): la hoz adelante, apuntando a la mira
+    const bk = hoz ? smooth(this.hozBeam.pk) : 0;
+    if (bk > 0) {
+      const o = this.hozBeam.pose(g.time, this.hozBeamPose);
+      target.x += o[0] * bk;
+      target.y += o[1] * bk;
+      target.z += o[2] * bk;
+      rx += o[3] * bk;
+      ry += o[4] * bk;
+      rz += o[5] * bk;
+      roll += o[6] * bk;
+    }
     // al sacarla: la da vuelta en la muñeca y la para
     if (this.state === 'raise' && hoz) {
       const e = 1 - smooth(clamp01(t / 0.35));
@@ -3060,6 +3081,8 @@ export default class Weapons {
         boost = smooth(clamp01(k / 0.35)) * (1 - smooth(clamp01((k - 0.4) / 0.25))) * 1.4;
       }
       if (sharpK !== null) boost = Math.max(boost, clamp01((sharpK - 0.74) / 0.06) * (1 - smooth(clamp01((sharpK - 0.82) / 0.16))) * 2);
+      // con el rayo de oro la hoja arde
+      if (this.hozBeam.k > 0) boost = Math.max(boost, this.hozBeam.k * (1.8 + Math.sin(g.time * 38) * 0.35));
       hoz.glow.color.copy(hoz.glowBase).multiplyScalar(1 + boost);
     }
     // la piedra: entra por abajo, tres pasadas de la virola a la punta y se va

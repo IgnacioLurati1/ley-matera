@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { POINTS, bossHealth, bossScale, zombieHealth } from '../config/rules';
-import { MAP_W, MAP_H, SKY } from '../config/map';
+import { MAP_ID, MAP_W, MAP_H, SKY } from '../config/map';
+import CrowSkin from './crowSkin';
 
 // El Cuervo: el jefe de la granja (lo que es el Capataz en el molino). Llega
 // cada cinco rondas volando desde el maizal, da vueltas arriba de los
@@ -173,6 +174,9 @@ export default class Crow {
     this.diveCd = 8;
     this.divePlot = null;
     this.rig.visible = true;
+    // el cuerpo de verdad (entities/crowSkin.js): baja la primera vez que viene
+    // (por ahora solo en La Tapera: en la torre sigue el de piezas)
+    if (MAP_ID === 'granja') this.skin ||= new CrowSkin(this);
     g.audio.bossSfx('crow');
     return true;
   }
@@ -203,6 +207,12 @@ export default class Crow {
     }
     // (al llegar suena solo el grabado, audio.bossSfx('crow'): el chillido y
     // los graznidos sintetizados de encima sonaban a 8 bits, pedido del usuario)
+  }
+
+  // A qué altura queda el medio del cuerpo posado (el de verdad tiene las patas
+  // más largas que el de piezas: entities/crowSkin.js)
+  perchY() {
+    return this.skin?.perchY || 1.1;
   }
 
   // El jugador de pie más cercano.
@@ -291,7 +301,7 @@ export default class Crow {
           const plot = g.defense.crowPlot();
           if (plot) {
             this.diveCd = (z.hp < z.maxHp * 0.5 ? 7 : 10) + Math.random() * 3;
-            this.diveAt = new THREE.Vector3(plot.x, plot.y + 1.1, plot.z);
+            this.diveAt = new THREE.Vector3(plot.x, plot.y + this.perchY(), plot.z);
             this.divePlot = plot.i;
             this.setState('dive');
             // (en la forja de la hoz va al techo del establo: entities/FarmEgg.js)
@@ -302,7 +312,7 @@ export default class Crow {
         if (this.diveCd <= 0) {
           this.diveCd = (z.hp < z.maxHp * 0.5 ? 7 : 10) + Math.random() * 3;
           this.divePlot = null;
-          this.diveAt = new THREE.Vector3(tgt.pos.x, (tgt.pos.y || 0) + 1.1, tgt.pos.z);
+          this.diveAt = new THREE.Vector3(tgt.pos.x, (tgt.pos.y || 0) + this.perchY(), tgt.pos.z);
           this.setState('dive');
         } else if (this.shootCd <= 0) {
           this.shootCd = (z.hp < z.maxHp * 0.5 ? 3.2 : 4.5) + Math.random() * 1.5;
@@ -591,16 +601,18 @@ export default class Crow {
       roll = 0;
     }
     r.position.y += bob;
+    // (la pose, también para el cuerpo de verdad: entities/crowSkin.js)
+    const open = spread * (0.6 + Math.max(0, down) * 0.5 * (1 - gk) + gk * 0.4);
+    const fan = st === 'dive' ? 0.3 : st === 'perch' ? 0.5 : 1 + gk * 0.4;
+    this.pose = { shoulder, hand, sweep, spread, pitch, roll, open, fan };
     this.body.rotation.set(pitch, 0, roll);
     for (const w of this.wings) {
       // el ala izquierda está espejada: el giro del hombro lleva el signo; el de la mano no
       w.shoulder.rotation.set(0, w.s * sweep * 0.6, w.s * shoulder);
       w.hand.rotation.set(0, sweep * 0.7, hand);
       // las primarias se abren como dedos al bajar el ala
-      const open = spread * (0.6 + Math.max(0, down) * 0.5 * (1 - gk) + gk * 0.4);
       for (const p of w.primaries) p.f.rotation.y = p.base * open;
     }
-    const fan = st === 'dive' ? 0.3 : st === 'perch' ? 0.5 : 1 + gk * 0.4;
     for (const t of this.tailFeathers) t.f.rotation.y = Math.PI / 2 + t.base * fan;
     this.tail.rotation.x = st === 'dive' ? 0.25 : Math.sin(ph * 0.5) * 0.06 + pitch * -0.3;
     // la cabeza mira al que tiene más cerca; el pico se abre al graznar
@@ -615,6 +627,8 @@ export default class Crow {
     // los ojos brillan más al apuntar o antes de tirarse
     const hot = st === 'aim' || (st === 'dive' && this.t < 0.6);
     this.eyeMat.color.setRGB(1, hot ? 0.35 : 0.16, 0.06).multiplyScalar(hot ? 4.5 : 3);
+    // el cuerpo de verdad copia la pose de las piezas (si ya bajó)
+    this.skin?.update(dt);
     // sonido: un aletazo por cada bajada del ala; graznidos de vez en cuando
     if (flying && gk < 0.5) {
       const d = Math.sin(ph) < 0;
@@ -657,6 +671,7 @@ export default class Crow {
       z.pos.set(s.x, s.y, s.z);
       z.yaw = s.yaw;
       this.rig.visible = true;
+      if (MAP_ID === 'granja') this.skin ||= new CrowSkin(this);
       this.state = 'off';
       // (el invitado también lo oye llegar; no si entra con el Cuervo ya peleando)
       if (st === 'arrive') g.audio.bossSfx('crow');

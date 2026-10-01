@@ -37,14 +37,21 @@ function crowPuppet(g) {
   };
 }
 
+// El cuerpo de verdad del Cuervo (entities/crowSkin.js) baja cuando llega: se
+// espera (el que corre las tomas espera el setup), si no salen sus piezas.
+async function crowSkinReady(g) {
+  for (let i = 0; i < 200 && g.crow?.skin && g.crow.skin.state < 2; i++) await new Promise((r) => setTimeout(r, 50));
+}
+
 // ---- 1 · La Tapera: el molino de viento contra el sol, el Cuervo cruza ----
 export const g_reveal = {
   map: 'granja',
   pre: 0.6,
-  setup(c) {
+  async setup(c) {
     const g = c.g;
     bait(g, 40, 30);
     const K = crowPuppet(g);
+    await crowSkinReady(g);
     c.data.K = K;
     // el vuelo: de la derecha a la izquierda, planeando delante del sol
     c.data.path = [new THREE.Vector3(74, 10.5, 66), new THREE.Vector3(70.5, 9.2, 56.5), new THREE.Vector3(64.5, 8.4, 47.5)];
@@ -213,10 +220,11 @@ export const g_horses = {
 export const g_crow = {
   map: 'granja',
   pre: 0.4,
-  setup(c) {
+  async setup(c) {
     const g = c.g;
     bait(g, 20.4, 31.4);
     const K = crowPuppet(g);
+    await crowSkinReady(g);
     c.data.K = K;
     c.data.home = new THREE.Vector3(11.2, 6.4, 26.4);
     c.data.cam = new THREE.Vector3(19.8, 0.55, 31.2);
@@ -267,10 +275,13 @@ export const g_crow = {
 export const g_scarecrow = {
   map: 'granja',
   pre: 0.3,
-  setup(c) {
+  async setup(c) {
     const g = c.g;
     const A = g.arena;
     A.start();
+    // (arena.start empieza a bajar el cuerpo de verdad: se espera, si no sale
+    // el de piezas los primeros cuadros; entities/bossSkin.js)
+    for (let i = 0; i < 200 && window.__bossSkins?.scarecrow?.state !== 2; i++) await new Promise((r) => setTimeout(r, 50));
     g.music?.stop?.(0);
     g.post.flashV = 0;
     c.data.A = A;

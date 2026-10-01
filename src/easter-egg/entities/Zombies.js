@@ -8,6 +8,7 @@ import HorseRig from './Horses';
 import PumaRig from './Pumas';
 import YacareRig from './Yacares';
 import { buildBossRig } from './bossRig';
+import { updateBossSkin } from './bossSkin';
 import { zombieLook, lookGeometries } from './zombieLooks';
 import { gaitOf, gaitPose, idlePose, attackPose } from './zombieGaits';
 import { soak, zombieWaterSpeed, updateNavCost, hasWater, submerged } from './swim';
@@ -3475,6 +3476,8 @@ export default class Zombies {
       this.blobs.setMatrixAt(MAX, b.dead || !this.bossRig.rig.visible ? ZERO : blobM);
     }
     this.blobs.instanceMatrix.needsUpdate = true;
+    // los jefes con cuerpo de verdad siguen a las piezas (entities/bossSkin.js)
+    updateBossSkin(this, dt);
   }
 
   // ---------------- impactos y daño ----------------

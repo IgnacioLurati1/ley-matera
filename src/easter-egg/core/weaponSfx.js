@@ -76,6 +76,10 @@ const LOOPS = {
   'viento-loop': { len: 0.56, gain: 0.9, reverb: 0.5, ref: 5 },
   'hielo-loop': { len: 0.95, gain: 0.7, reverb: 0.6, ref: 5 },
   'rayo-bola-loop': { len: 7.95, gain: 1, reverb: 0.4, ref: 4 },
+  // el rayo de oro de la hoz (weapons/hozBeam.js): el cuerpo de la medialuna
+  // estirado en granos, el zumbido del Rayo Matero y un acorde de oro
+  // (scratchpad hozloop/build.py, 2026-09-30)
+  'hoz-rayo-loop': { len: 3.0, gain: 0.55, reverb: 0.35, ref: 5 },
 };
 
 // a cuánto baja la cola del tiro anterior cuando sale el siguiente del mismo tipo
