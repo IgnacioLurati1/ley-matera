@@ -1639,7 +1639,8 @@ export default class Game {
     const cine = this.state === 'won' || !!this.ee?.scene || !!this.intro?.active;
     const vida = this.state !== 'title' && !cine && this.vida?.active ? 1 : 0;
     const clean = vida || cine;
-    this.post.render(dt, this.time, { hurt: clean ? 0 : hurt * 0.9, down: clean ? 0 : down, crit: this.state === 'title' || clean ? 0 : this.critK || 0, pulse: cine ? 0 : pulse, vida });
+    const hit = p && this.state !== 'title' && !clean ? p.hitK : 0;
+    this.post.render(dt, this.time, { hurt: clean ? 0 : hurt * 0.9, hit, hitX: p?.hitX || 0, hitY: p?.hitY || 0, down: clean ? 0 : down, crit: this.state === 'title' || clean ? 0 : this.critK || 0, pulse: cine ? 0 : pulse, vida });
   }
 
   dispose() {

@@ -3573,6 +3573,10 @@ export default class Zombies {
   damage(z, amount, info = {}) {
     if (!z.active || z.dead) return false;
     const g = this.g;
+    // tumbado no suma: lo que pega o liquida el que está en el piso no da
+    // puntos (el de un compañero lo decide applyRemoteHit; copia: el info puede
+    // ser de un arma que lo reusa)
+    if (g.player.downed && !info.noPoints && (info.by == null || info.by === g.net?.id)) info = { ...info, noPoints: true };
     // la estaca de Gil (entities/bossMoves.js)
     if (z.stake) return this.moves.hitStake(z, amount, info);
     // el Juicio del Mate Supremo (weapons/Supremo.js): cualquier jefe cae al

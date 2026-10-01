@@ -33,6 +33,9 @@ const GradeShader = {
     tDiffuse: { value: null },
     uTime: { value: 0 },
     uHurt: { value: 0 },
+    // el golpe recibido (Player.hitFx): cuánto queda y de qué lado vino (x: derecha, y: adelante)
+    uHit: { value: 0 },
+    uHitDir: { value: new THREE.Vector2() },
     uDown: { value: 0 },
     uFlash: { value: 0 },
     uCrit: { value: 0 },
@@ -49,7 +52,7 @@ const GradeShader = {
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uTime, uHurt, uDown, uFlash, uGrain, uCrit, uPulse, uVida, uUnder, uWish, uWishBeat; uniform vec2 uRes; uniform vec3 uUnderCol;
+    uniform sampler2D tDiffuse; uniform float uTime, uHurt, uHit, uDown, uFlash, uGrain, uCrit, uPulse, uVida, uUnder, uWish, uWishBeat; uniform vec2 uRes, uHitDir; uniform vec3 uUnderCol;
     varying vec2 vUv;
     float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main(){
@@ -59,7 +62,7 @@ const GradeShader = {
       // aberración cromática sutil en los bordes
       float beat = uCrit * uPulse;
       float wb = uWish * uWishBeat;
-      float ca = 0.0018 + uHurt * 0.004 + beat * 0.007 + uWish * 0.004 + wb * 0.009;
+      float ca = 0.0018 + uHurt * 0.004 + uHit * 0.01 + beat * 0.007 + uWish * 0.004 + wb * 0.009;
       // el latido "empuja" la imagen hacia afuera
       uv = 0.5 + c * (1.0 - beat * 0.012 - wb * 0.022);
       // gaucho life: la imagen ondula como vista a través del agua
@@ -82,6 +85,10 @@ const GradeShader = {
       // daño: bordes rojos pulsando
       float edge = smoothstep(0.08, 0.45, r2);
       col = mix(col, vec3(0.45, 0.0, 0.0), edge * uHurt * (0.75 + 0.25 * sin(uTime * 8.0)));
+      // el golpe: un flash rojo, más fuerte del lado de donde vino, y la imagen que se oscurece un instante
+      float hitSide = 0.3 + 0.7 * clamp(dot(normalize(c + vec2(1e-4)), uHitDir) * 0.5 + 0.5, 0.0, 1.0);
+      col = mix(col, vec3(0.6, 0.02, 0.0), smoothstep(0.02, 0.3, r2) * uHit * hitSide * 0.85);
+      col *= 1.0 - uHit * 0.12;
       // a un golpe de caer: casi sin color y con los bordes latiendo en rojo oscuro
       col = mix(col, vec3(dot(col, vec3(0.299, 0.587, 0.114))), uCrit * 0.5);
       col = mix(col, vec3(0.28, 0.0, 0.01), smoothstep(0.04, 0.5, r2) * uCrit * (0.45 + 0.55 * uPulse));
@@ -336,8 +343,11 @@ export default class PostFX {
     this.flashV = Math.max(this.flashV, v);
   }
 
-  render(dt, t, { hurt = 0, down = 0, crit = 0, pulse = 0, vida = 0 } = {}) {
+  render(dt, t, { hurt = 0, hit = 0, hitX = 0, hitY = 0, down = 0, crit = 0, pulse = 0, vida = 0 } = {}) {
     const u = this.grade.uniforms;
+    // (el golpe va derecho, sin suavizar: ya viene con su caída)
+    u.uHit.value = Math.min(1, hit) * (this.game?.settings?.calmFx ? 0.4 : 1);
+    u.uHitDir.value.set(hitX, hitY);
     u.uVida.value += (vida - u.uVida.value) * Math.min(1, dt * 4);
     // abajo del agua (el nado): el color es el del agua del mapa (fx/Water)
     const under = this.game?.player?.underwater && this.game.state !== 'title' ? 1 : 0;

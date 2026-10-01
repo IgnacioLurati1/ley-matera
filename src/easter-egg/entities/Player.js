@@ -50,6 +50,12 @@ export default class Player {
     this.lungeT = 0;
     this.lungeDir = new THREE.Vector3();
     this.hurtT = 0;
+    // el golpe recibido (hitFx): cuánto queda del flash, de qué lado vino
+    // (x: derecha, y: adelante) y el sacudón de la cabeza (lo que falta y lo actual)
+    this.hitK = 0;
+    this.hitX = 0;
+    this.hitY = 0;
+    this.flinch = { p: 0, y: 0, r: 0, cp: 0, cy: 0, cr: 0 };
     this.shield = null;
     this.shieldFront = false;
     this.ghost = false;
@@ -133,14 +139,45 @@ export default class Player {
     g.audio.hurt();
     g.fx.addShake(explosion ? 0.5 : 0.22);
     // de dónde vino el golpe (para el indicador rojo)
+    const k = Math.min(1, 0.45 + amount / 70) * (explosion ? 1.15 : 1);
     if (from) {
       const a = Math.atan2(from.x - this.pos.x, from.z - this.pos.z);
-      g.hud.damageFrom(a - this.yaw);
+      g.hud.damageFrom(a - this.yaw, k);
     }
+    this.hitFx(k, from);
     g.hud.hurt(1 - this.health / this.maxHealth);
     // Aliento Dragónico (la Baldragón): dos golpes seguidos y sale la llamarada
     if (!explosion && this.perks.has('dragon')) this.dragonHit();
     if (this.health <= 0) this.goDown();
+  }
+
+  // Que el golpe se sienta (k: 0,45 a 1,15 según cuánto pegó): flash rojo y
+  // salpicón del lado de donde vino, la cabeza se va para atrás y lejos del
+  // golpe, y un golpe sordo debajo del quejido.
+  hitFx(k, from) {
+    const g = this.g;
+    let sx = 0;
+    let sy = 0;
+    if (from) {
+      const dx = from.x - this.pos.x;
+      const dz = from.z - this.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.05) {
+        sx = (dx * Math.cos(this.yaw) - dz * Math.sin(this.yaw)) / d;
+        sy = (-dx * Math.sin(this.yaw) - dz * Math.cos(this.yaw)) / d;
+      }
+    }
+    this.hitK = Math.min(1.15, Math.max(this.hitK, k));
+    this.hitX = sx;
+    this.hitY = sy;
+    // (la opción de sacudón de cámara y "menos destellos" lo bajan)
+    const sh = (g.settings.shake ?? 1) * (g.settings.calmFx ? 0.4 : 1);
+    const F = this.flinch;
+    F.p += 0.05 * k * sh * (sy > -0.4 ? 1 : -0.6);
+    F.y += sx * 0.03 * k * sh;
+    F.r += sx * 0.07 * k * sh;
+    if (!g.settings.calmFx) g.hud.hitSplat?.(sx, sy, k);
+    g.audio.hitThump?.(k);
   }
 
   // Cuenta los golpes seguidos; al segundo (y ya fría) larga la llamarada,
@@ -392,9 +429,23 @@ export default class Player {
     // vida: se regenera sola si no te pegan un rato
     if (!this.downed && g.time - this.lastHit > PLAYER.regenDelay && this.health < this.maxHealth) {
       this.health = Math.min(this.maxHealth, this.health + PLAYER.regenRate * dt);
-      g.hud.hurt(1 - this.health / this.maxHealth);
     }
+    // la pantalla roja sigue a la vida, la cambie quien la cambie (al
+    // levantarte de caído o con el Juggernog quedaba roja hasta el próximo
+    // golpe; Hud.hurt no toca nada si no cambió)
+    g.hud.hurt(this.downed ? 1 : Math.max(0, 1 - this.health / this.maxHealth));
     this.hurtT = Math.max(0, this.hurtT - dt);
+    // el golpe: el flash se va en ~0,4 s; la cabeza llega rápido y vuelve suave
+    this.hitK = Math.max(0, this.hitK - dt * 2.6);
+    const F = this.flinch;
+    const go = Math.min(1, dt * 28);
+    const back = Math.exp(-dt * 7);
+    F.cp += (F.p - F.cp) * go;
+    F.cy += (F.y - F.cy) * go;
+    F.cr += (F.r - F.cr) * go;
+    F.p *= back;
+    F.y *= back;
+    F.r *= back;
 
     const targetEye = this.downed ? 0.55 : this.crouching ? PLAYER.eyeCrouch : PLAYER.eye;
     this.eye += (targetEye - this.eye) * Math.min(1, dt * 10);
@@ -450,10 +501,11 @@ export default class Player {
     cam.position.set(this.pos.x, this.pos.y + this.eye - bob - this.landKick * 0.08, this.pos.z);
     const sh = g.fx.shake * g.settings.shake;
     const t = g.time;
+    const F = this.flinch;
     cam.rotation.set(
-      this.pitch - (g.weapons?.viewDip || 0) + Math.sin(t * 37) * sh * 0.03,
-      this.yaw + Math.sin(t * 29) * sh * 0.03,
-      (this.moving ? Math.cos(this.bobPhase) * 0.004 : 0) + Math.sin(t * 23) * sh * 0.02 + (this.downed ? 0.3 : 0) + (this.swim >= 2 ? Math.sin(this.bobPhase * 0.5 + t * 0.8) * 0.025 : 0),
+      this.pitch - (g.weapons?.viewDip || 0) + Math.sin(t * 37) * sh * 0.03 + F.cp,
+      this.yaw + Math.sin(t * 29) * sh * 0.03 + F.cy,
+      (this.moving ? Math.cos(this.bobPhase) * 0.004 : 0) + Math.sin(t * 23) * sh * 0.02 + (this.downed ? 0.3 : 0) + (this.swim >= 2 ? Math.sin(this.bobPhase * 0.5 + t * 0.8) * 0.025 : 0) + F.cr,
       'YXZ',
     );
   }

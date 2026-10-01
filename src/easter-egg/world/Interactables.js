@@ -1130,8 +1130,9 @@ export default class Interactables {
     // (no ofrece lo que ya tiene el que la abrió: antes, con un invitado, se
     // salteaban los mates del anfitrión y al invitado le salía uno que ya tenía)
     const owns = have ? (id) => have.w.includes(id) : (id) => g.weapons.has(id);
-    // (la pava vacía no cuenta: la caja te la puede volver a dar)
-    const tac = have ? have.tac : g.weapons.tactical?.count > 0 ? g.weapons.tactical.id : null;
+    // (la pava, aunque esté vacía, no vuelve a salir mientras la tengas: la
+    // llena la munición máxima. Pedido del usuario 2026-09-30)
+    const tac = have ? have.tac : g.weapons.tactical?.id || null;
     // (el Mate Supremo, solo para el que ganó el super easter egg y lo tiene prendido)
     const sup = have ? !!have.supremo : supremoOn(g.settings);
     const pool = BOX_POOL.filter((w) => inBox(w) && !owns(w.id) && !(w.id === 'pava' && tac === 'pava') && !(w.id === 'gut' && owns('gutacida')) && (!WEAPONS[w.id].egg || sup));
@@ -1532,7 +1533,7 @@ export default class Interactables {
           return;
         }
         const box = best.kind === 'box' || best.kind === 'salebox';
-        g.net.requestUse(best.index, best.kind === 'pap' ? { w: g.weapons.slot?.id, up: tierOf(g.weapons.slot?.up) } : box ? { have: g.weapons.slots.map((s) => s.id), tac: (g.weapons.tactical?.count > 0 && g.weapons.tactical.id) || null, supremo: supremoOn(g.settings) ? 1 : 0 } : {});
+        g.net.requestUse(best.index, best.kind === 'pap' ? { w: g.weapons.slot?.id, up: tierOf(g.weapons.slot?.up) } : box ? { have: g.weapons.slots.map((s) => s.id), tac: g.weapons.tactical?.id || null, supremo: supremoOn(g.settings) ? 1 : 0 } : {});
         return;
       }
       if (typeof pr === 'object' && pr?.noCost && cost === 0) {

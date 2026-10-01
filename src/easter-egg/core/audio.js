@@ -1222,6 +1222,18 @@ export default class GameAudio {
     this.tone(o, { t, dur: 0.25, type: 'sawtooth', freq: 160, freqEnd: 110, gain: 0.15 });
   }
 
+  // El golpe en el cuerpo, debajo del quejido (Player.hitFx; k: cuánto pegó):
+  // un golpe sordo grave, el chasquido de la carne y un zumbido corto en los
+  // golpes fuertes.
+  hitThump(k = 1) {
+    const t = this.now;
+    const o = this.out({ gain: 0.55 + 0.45 * Math.min(1, k), reverb: 0.03 });
+    this.tone(o, { t, dur: 0.18, freq: 92, freqEnd: 40, gain: 0.9, attack: 0.003 });
+    this.noise(o, { t, dur: 0.12, freq: 260, freqEnd: 70, gain: 0.7, brown: true, attack: 0.002 });
+    this.noise(o, { t, dur: 0.06, type: 'bandpass', freq: 2400, freqEnd: 800, q: 1.2, gain: 0.5, attack: 0.001 });
+    if (k > 0.85) this.tone(o, { t: t + 0.02, dur: 0.55, freq: 3100, gain: 0.035, attack: 0.02 });
+  }
+
   // Latido "lub-dub": golpe grave con cuerpo, sin pasar por el filtro de los oídos tapados.
   heartbeat() {
     const t = this.now;
@@ -2601,7 +2613,7 @@ const CAT_OF = {
   weapons: ['shot', 'streamShot', 'mech', 'memeShot', 'rayShot', 'tesla', 'zap', 'iceShot', 'shatter', 'launcher', 'boltShot', 'explosion', 'empty', 'shell', 'pour', 'knife', 'swish', 'sharpen'],
   zombies: ['growl', 'squish', 'shuffle', 'boardTear', 'rise', 'bossSfx', 'bossArrive', 'bossSlam', 'chain', 'caw', 'bigCaw', 'crowScreech', 'wingFlap', 'featherFwip', 'howl', 'pombero', 'luisonHowl', 'wolves', 'luisonSynth', 'bugle', 'saber', 'neigh', 'snort', 'gallop', 'bark', 'yelp'],
   world: ['startAmbience', 'updateAmbience', 'startFire', 'fireOn', 'kettle', 'radioTune', 'squeak'],
-  player: ['footstep', 'gasp', 'land', 'hurt', 'heartbeat', 'setCritical', 'shieldHit', 'shieldBreak'],
+  player: ['footstep', 'gasp', 'land', 'hurt', 'hitThump', 'heartbeat', 'setCritical', 'shieldHit', 'shieldBreak'],
   ui: ['hitmarker', 'purchase', 'deny', 'door', 'boardRepair', 'perkJingle', 'perkDrink', 'sip', 'boxOpen', 'laugh', 'whoosh', 'pap', 'powerOn', 'powerupSpawn', 'powerupGrab'],
 };
 for (const [cat, names] of Object.entries(CAT_OF)) {

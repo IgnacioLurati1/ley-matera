@@ -880,7 +880,8 @@ export default class Session {
       noPoints: true,
       by: from,
     });
-    // puntos para el que disparó
+    // puntos para el que disparó (tumbado, ninguno)
+    if (this.remote.get(from)?.downed) return;
     const P = g.zombies.lastPoints || 0;
     if (P) this.pts.set(from, (this.pts.get(from) || 0) + P);
     else if (before > z.hp) this.pts.set(from, (this.pts.get(from) || 0) + 10);

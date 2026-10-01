@@ -47,15 +47,51 @@
   left: 50%;
   top: 50%;
 }
+/* de dónde vino el golpe: un arco rojo alrededor de la mira (--k: cuánto pegó) */
 .mdu-dir {
+  --k: 0.7;
   position: absolute;
-  left: -40px;
-  top: -140px;
-  width: 80px;
-  height: 26px;
-  transform-origin: 40px 140px;
-  background: radial-gradient(ellipse at 50% 100%, rgba(255, 30, 20, 0.85), transparent 70%);
-  animation: mdu-fade 0.9s forwards;
+  left: -75px;
+  top: -165px;
+  width: 150px;
+  height: 40px;
+  transform-origin: 75px 165px;
+  border-top: calc(3px + var(--k) * 4px) solid rgba(255, 46, 30, 0.95);
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  background: radial-gradient(ellipse 60% 90% at 50% 0%, rgba(255, 20, 10, calc(0.25 + var(--k) * 0.35)), transparent 75%);
+  filter: drop-shadow(0 0 6px rgba(255, 20, 10, 0.8));
+  animation: mdu-dir 1.3s ease-out forwards;
+}
+@keyframes mdu-dir {
+  0% { opacity: 0; scale: 1.25; }
+  6% { opacity: 1; scale: 1; }
+  45% { opacity: 0.9; }
+  100% { opacity: 0; scale: 0.96; }
+}
+/* el salpicón del golpe en el borde de la pantalla (Hud.hitSplat) */
+.mdu-hitsplats {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.mdu-hitsplat {
+  --s: 1;
+  --r: 0deg;
+  position: absolute;
+  width: 32vmin;
+  height: 32vmin;
+  margin: -16vmin 0 0 -16vmin;
+  background: center / contain no-repeat;
+  rotate: var(--r);
+  filter: blur(0.4px);
+  animation: mdu-hitsplat 1.6s ease-out forwards;
+}
+@keyframes mdu-hitsplat {
+  0% { opacity: 0; scale: calc(var(--s) * 0.55); }
+  5% { opacity: 0.95; scale: var(--s); }
+  50% { opacity: 0.8; translate: 0 0; }
+  100% { opacity: 0; scale: var(--s); translate: 0 2.2vh; }
 }
 .mdu-cross {
   --gap: 10px;

@@ -949,15 +949,17 @@ export default class Weapons {
       this.switchTo(next);
       return;
     }
-    if (input.hit('KeyV') && !['knife', 'throw', 'drink'].includes(this.state)) {
+    // tumbado: ni cuchillo, ni granada, ni pava (solo el mate en la mano)
+    const down = p.downed;
+    if (input.hit('KeyV') && !down && !['knife', 'throw', 'drink'].includes(this.state)) {
       this.startKnife();
       return;
     }
-    if (input.hit('KeyG') && this.grenades > 0 && !this.busyHard()) {
+    if (input.hit('KeyG') && !down && this.grenades > 0 && !this.busyHard()) {
       this.startThrow('frag');
       return;
     }
-    if ((input.hit('KeyT') || input.hit('Digit4')) && this.tactical?.count > 0 && !this.busyHard()) {
+    if ((input.hit('KeyT') || input.hit('Digit4')) && !down && this.tactical?.count > 0 && !this.busyHard()) {
       this.startThrow(this.tactical.id === 'cuchillo' ? 'cuchillo' : 'pava');
       return;
     }
@@ -969,6 +971,8 @@ export default class Weapons {
     // la hoz: izquierdo corta (manteniendo, sigue cortando); la de la Muerte
     // además tira medialunas con el derecho
     if (st.kind === 'melee') {
+      // (tumbado tampoco corta con la hoz)
+      if (down) return;
       // la de nivel 3 (con el bastón de oro): el derecho, mantenido, es el rayo de oro
       if (this.hozBeam.input(input, st, p)) return;
       if (this.state !== 'idle' || this.fireCd > 0) return;

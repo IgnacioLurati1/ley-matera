@@ -680,10 +680,62 @@ export default class Hud {
     });
   }
 
-  damageFrom(angle) {
+  // k: cuánto pegó (0,45 a 1,15): el arco más grande y más fuerte
+  damageFrom(angle, k = 0.7) {
     const d = el('i', 'mdu-dir', this.dirs);
     d.style.transform = `rotate(${-angle + Math.PI}rad)`;
-    setTimeout(() => d.remove(), 900);
+    d.style.setProperty('--k', k.toFixed(2));
+    // (no más de cuatro a la vez)
+    while (this.dirs.children.length > 4) this.dirs.firstChild.remove();
+    setTimeout(() => d.remove(), 1300);
+  }
+
+  // Salpicón de sangre en el borde del lado de donde vino el golpe (sx:
+  // derecha, sy: adelante, de -1 a 1; sin lado, abajo al costado). Formas
+  // armadas una vez (SVG): gotas alrededor de una mancha y unos chorros.
+  hitSplat(sx, sy, k) {
+    if (!this.splatSvgs) {
+      this.splatSvgs = [];
+      for (let v = 0; v < 6; v++) {
+        let s = '';
+        const R = () => Math.random();
+        s += `<circle cx="50" cy="50" r="${11 + R() * 5}"/>`;
+        for (let i = 0; i < 5; i++) s += `<circle cx="${50 + (R() - 0.5) * 18}" cy="${50 + (R() - 0.5) * 18}" r="${5 + R() * 6}"/>`;
+        for (let i = 0; i < 16; i++) {
+          const a = R() * Math.PI * 2;
+          const d = 16 + R() * 30;
+          const r = Math.max(0.8, 4.2 - d * 0.075 + R() * 1.2);
+          s += `<circle cx="${(50 + Math.cos(a) * d).toFixed(1)}" cy="${(50 + Math.sin(a) * d).toFixed(1)}" r="${r.toFixed(1)}"/>`;
+        }
+        for (let i = 0; i < 4; i++) {
+          const a = R() * Math.PI * 2;
+          const d = 10 + R() * 14;
+          s += `<ellipse cx="${(50 + Math.cos(a) * d).toFixed(1)}" cy="${(50 + Math.sin(a) * d).toFixed(1)}" rx="${(7 + R() * 9).toFixed(1)}" ry="${(1.4 + R() * 1.2).toFixed(1)}" transform="rotate(${((a * 180) / Math.PI).toFixed(0)} ${(50 + Math.cos(a) * d).toFixed(1)} ${(50 + Math.sin(a) * d).toFixed(1)})"/>`;
+        }
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g fill="#6e0303" fill-opacity="0.9">${s}</g><g fill="#a00a06" fill-opacity="0.55" transform="translate(-2 -2)">${s}</g></svg>`;
+        this.splatSvgs.push(`url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`);
+      }
+      this.splats = el('div', 'mdu-hitsplats', this.root);
+      // (debajo de los indicadores y del resto del HUD)
+      this.root.insertBefore(this.splats, this.dirs);
+    }
+    // sin lado conocido: abajo, a un costado
+    let x = sx;
+    let y = sy;
+    if (!x && !y) {
+      x = Math.random() < 0.5 ? -0.7 : 0.7;
+      y = -0.5;
+    }
+    const n = Math.hypot(x, y) || 1;
+    const d = el('i', 'mdu-hitsplat', this.splats);
+    // (en el borde: adelante es arriba)
+    d.style.left = `${50 + (x / n) * 40 + (Math.random() - 0.5) * 10}%`;
+    d.style.top = `${50 - (y / n) * 38 + (Math.random() - 0.5) * 10}%`;
+    d.style.backgroundImage = this.splatSvgs[(Math.random() * this.splatSvgs.length) | 0];
+    d.style.setProperty('--s', (0.75 + k * 0.5).toFixed(2));
+    d.style.setProperty('--r', `${(Math.random() * 360) | 0}deg`);
+    while (this.splats.children.length > 4) this.splats.firstChild.remove();
+    setTimeout(() => d.remove(), 1600);
   }
 
   // Barra de caído: en solitario se llena mientras Rosamorte te levanta; en
