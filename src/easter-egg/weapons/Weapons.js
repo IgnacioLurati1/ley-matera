@@ -648,6 +648,8 @@ export default class Weapons {
       if (WEAPONS[s.id].kind === 'melee') s.mag = weaponStats(s.id, s.up).mag;
     }
     this.grenades = GRENADE.max;
+    // la pava silbadora también se llena (aunque ya las hayas tirado todas)
+    if (this.tactical?.id === 'pava') this.tactical.count = WEAPONS.pava.count;
     this.updateHud();
   }
 
@@ -1157,10 +1159,10 @@ export default class Weapons {
         this.tactical.count = 0;
         g.ee.knife.throw(pos.clone());
       }
-    } else if (this.tactical) {
+    } else if (this.tactical?.count > 0) {
+      // (la pava vacía queda en 0, no se borra: la munición máxima la vuelve a llenar)
       this.tactical.count--;
       this.spawnProjectile({ kind: 'pava', pos, vel: dir.clone().multiplyScalar(11), gravity: 12, fuse: 8, bounce: true, mesh: buildGrenade(this.T, 'pava') });
-      if (this.tactical.count <= 0) this.tactical = null;
     }
     this.updateHud();
   }
@@ -1322,8 +1324,7 @@ export default class Weapons {
     // en línea: los demás ven y escuchan el disparo
     // (la Liquidificador manda su bola aparte: los demás no ven un trazo)
     if (g.net && st.kind !== 'liquid' && st.kind !== 'nova' && st.kind !== 'supremo') {
-      const end = tmpV2.copy(muzzle).addScaledVector(fwd, Math.min(st.range, 40));
-      g.net.sendShot(muzzle, end, st.sound, st.upgraded);
+      g.net.sendShot(muzzle, this.netShotEnd(fwd, Math.min(st.range, 40)), st.sound, st.upgraded);
     }
     // recarga automática al vaciar
     if (s.mag <= 0 && s.reserve > 0) this.g.later(0.2, () => this.state === 'idle' && this.slot === s && this.startReload(this.stats));
@@ -1366,7 +1367,7 @@ export default class Weapons {
     g.audio.whoosh?.(muzzle);
     g.stats.shots++;
     if (g.net) {
-      g.net.sendShot(muzzle, muzzle.clone().addScaledVector(fwd, 12), 'mk3alt', true);
+      g.net.sendShot(muzzle, this.netShotEnd(fwd, 12), 'mk3alt', true);
       // los demás lo ven volar y el anfitrión arrastra a los muertos (TowerEgg lo pasa)
       g.ee?.shareVortex?.({ p: [muzzle.x, muzzle.y, muzzle.z].map((n) => +n.toFixed(2)), v: [fwd.x, fwd.y, fwd.z].map((n) => +n.toFixed(3)), u: st.upgraded ? 1 : 0, id: this.vortexN });
     }
@@ -1606,7 +1607,16 @@ export default class Weapons {
     g.audio.shot('hoz', null, true);
     g.audio.whoosh?.(pos);
     g.stats.shots++;
-    if (g.net) g.net.sendShot(pos, pos.clone().addScaledVector(fwd, 20), 'hoz', true);
+    if (g.net) g.net.sendShot(pos, this.netShotEnd(fwd, 20), 'hoz', true);
+  }
+
+  // Dónde termina el trazo que ven los demás: en la primera pared que cruza la
+  // mira (antes iba derecho 40 m y el anfitrión veía las balas del invitado
+  // atravesar las paredes).
+  netShotEnd(fwd, len) {
+    const from = this.g.camera.position;
+    const t = this.g.world.raycast(from, fwd, len, hitTmp);
+    return tmpV2.copy(from).addScaledVector(fwd, Math.min(t, len));
   }
 
   muzzleWorld(out) {
