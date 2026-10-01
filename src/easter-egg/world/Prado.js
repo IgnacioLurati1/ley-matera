@@ -39,7 +39,8 @@ export default class Prado extends Arena {
     this.name = 'El Prado';
     this.sub = 'Donde la paja aprendió a odiar';
     this.bossName = 'El Espantapájaros';
-    this.bossHp = 200000;
+    // (era 200000: duraba demasiado, pedido del usuario 2026-10-01)
+    this.bossHp = 140000;
     // más lento que el Mandinga: es enorme y es de paja (igual, ya no se lo
     // deja atrás caminando para atrás)
     this.speeds = [3.1, 3.6, 4.1];

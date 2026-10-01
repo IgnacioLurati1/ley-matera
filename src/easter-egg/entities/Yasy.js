@@ -413,7 +413,8 @@ export default class Yasy {
         this.spawnT = 2.5 + Math.random() * 2.5;
         this.spawnNormal(ins);
       }
-      if (!this.goldDone && !this.baston && this.list[GOLD].st === 'off') this.spawnGold(ins);
+      // (ya es de todos: el dorado no vuelve)
+      if (!this.goldDone && !this.baston && !g.player.baston && this.list[GOLD].st === 'off') this.spawnGold(ins);
     } else this.spawnT = Math.min(this.spawnT, 1.2);
     for (const y of this.list) if (y.st !== 'off') this.think(y, dt, ins);
     // la primera vez que alguien se cruza uno
@@ -676,7 +677,13 @@ export default class Yasy {
       if (y.st === 'off') continue;
       y.t += dt;
       const z = y.z;
-      if (y.st === 'dead') continue;
+      if (y.st === 'dead') {
+        // (como en el anfitrión: a los 1,4 s se va. Antes quedaba muerto para
+        // siempre en el invitado, y el próximo Yasy de ese lugar no se veía ni
+        // se lo podía sacar de encima)
+        if (y.t > 1.4) this.setSt(y, 'off');
+        continue;
+      }
       const k = Math.min(1, dt * 12);
       const moved = Math.hypot(y.to.x - z.pos.x, y.to.z - z.pos.z);
       z.pos.lerp(y.to, k);
@@ -720,7 +727,9 @@ export default class Yasy {
           y.z.pos.copy(y.to);
           y.z.yaw = y.toYaw;
         }
-        if (st !== y.st && y.st !== 'dead') this.setSt(y, st);
+        // (uno que el invitado ya dio por muerto vuelve si el anfitrión lo
+        // tiene vivo un rato después: es otro en el mismo lugar)
+        if (st !== y.st && (y.st !== 'dead' || (y.t > 0.6 && st !== 'off'))) this.setSt(y, st);
       }
       for (const y of this.list) if (!seen.has(y.i) && y.st !== 'off' && y.st !== 'dead') this.setSt(y, 'off');
     } else if (m.k === 'die') {
@@ -770,14 +779,13 @@ export default class Yasy {
     g.matorral?.ignite();
   }
 
+  // Uno lo agarra y la hoz de oro es de todos (antes solo del que lo
+  // agarraba; pedido del usuario 2026-10-01).
   took(id) {
     const g = this.g;
     this.hideBaston();
-    if (id !== this.me()) {
-      const r = g.net?.remote.get(id);
-      if (r) r.baston = true;
-      return;
-    }
+    if (g.net) for (const r of g.net.remote.values()) r.baston = true;
+    if (g.player.baston) return;
     g.player.baston = true;
     // la hoz cambia en la mano, al toque
     const W = g.weapons;
