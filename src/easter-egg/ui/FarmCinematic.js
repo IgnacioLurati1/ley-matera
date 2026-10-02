@@ -708,7 +708,13 @@ export default class FarmCinematic {
   update(dt) {
     const g = this.g;
     if (!this.script) return;
-    this.t += dt;
+    // el reloj de la escena es el de verdad, no el dt con tope de Game.loop: en
+    // línea, la compu que se traba no se atrasa de los demás ni de la canción
+    // (un salto de más de 1 s es una pausa)
+    const now = performance.now();
+    const w = (now - (this.wallAt || 0)) / 1000;
+    this.wallAt = now;
+    this.t += w > dt && w < 1 ? w : dt;
     g.time += dt;
     g.weapons.vmRoot.visible = false;
     if (g.ee?.beam) g.ee.beam.visible = false;
