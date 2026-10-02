@@ -19,6 +19,15 @@ const BOSS_IN = 3.2;
 
 export const ARENA = { x: 115, z: 25, r: 15 };
 const BOSS_HP = 180000;
+const MANDINGA_SPEEDS = [2.6, 3.0, 3.4];
+// la bola de fuego del Mandinga: cuánto antes arma el tiro (quieto) y cuánto
+// queda plantado después de soltarla (s)
+const CAST_WIND = 1.2;
+const CAST_AFTER = 1.1;
+// los que se plantan para tirar: [arma, después] (Francisco, más corto: en la
+// tercera fase tira cada 1,9 s y si no nunca persigue; entities/skins/francisco.js)
+// (el Espantapájaros: el zapallo, por arriba de la cabeza; entities/skins/scarecrow.js)
+const CAST = { mandinga: [CAST_WIND, CAST_AFTER], francisco: [1.0, 0.5], scarecrow: [0.9, 0.5] };
 const WARDS = [0.75, 0.5, 0.25]; // se protege y llama peones
 const WARD_MAX = 30; // si no terminan con los peones, igual se le cae el fuego
 const RAIN_R = 1.8;
@@ -705,7 +714,9 @@ export default class Arena {
 
   fireballMesh() {
     this.fireMat ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(this.fireColor).multiplyScalar(3), toneMapped: false });
-    return new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8), this.fireMat);
+    // (una sola para todas: antes cada bola dejaba la suya en la placa)
+    this.fireGeo ||= new THREE.SphereGeometry(0.28, 12, 8);
+    return new THREE.Mesh(this.fireGeo, this.fireMat);
   }
 
   // Las bolas de fuego vuelan igual en todas las compus; cada uno se cuida la suya.
@@ -792,10 +803,21 @@ export default class Arena {
         const left = g.zombies.pool.some((z) => z.active && !z.dead);
         if ((!left && this.t > this.waveUntil) || this.wardT > this.wardMax) this.setWard(false);
       }
-      // cada vez más rápido
-      b.speed = k < 0.25 ? this.speeds[2] : k < 0.5 ? this.speeds[1] : this.speeds[0];
-      // el ataque a distancia (cada arena el suyo: ranged)
+      // cada vez más rápido (el Mandinga camina, nunca corre: más lento, así el
+      // paso le da; entities/skins/mandinga.js)
+      const sp = b.kind === 'mandinga' ? MANDINGA_SPEEDS : this.speeds;
+      b.speed = k < 0.25 ? sp[2] : k < 0.5 ? sp[1] : sp[0];
+      // el ataque a distancia (cada arena el suyo: ranged); castIn: lo que falta
+      // (el cuerpo con piel arma el tiro antes)
       this.fireT -= dt;
+      b.castIn = this.fireT;
+      // tirando se planta: no persigue mientras arma y suelta (si no, parecía
+      // que levitaba con el brazo atrás)
+      const cast = CAST[b.kind];
+      if (cast && this.fireT < cast[0] && !b.castHold && !b.dead && b.state === 'chase') {
+        b.castHold = true;
+        b.holdT = Math.max(b.holdT || 0, this.fireT + cast[1]);
+      }
       if (this.fireT <= 0 && !b.dead && b.state === 'chase') this.ranged(b, k);
       this.fireColTick(dt, k);
       // lluvia de fuego cuando le quedan dos tercios
@@ -824,6 +846,10 @@ export default class Arena {
     this.fireT = k < 0.25 ? 1.9 : k < 0.5 ? 2.4 : 3.6;
     const n = k < 0.25 ? 3 : 1;
     const hand = tmpV.set(b.pos.x + Math.sin(b.yaw) * 0.8, (b.baseY || 0) + 2.6, b.pos.z + Math.cos(b.yaw) * 0.8).clone();
+    // (el cuerpo con piel tira el conjuro con la mano: entities/skins)
+    b.castAt = g.time;
+    b.castHold = false;
+    if (CAST[b.kind]) b.holdT = Math.max(b.holdT || 0, CAST[b.kind][1]);
     this.fireball(hand, n);
     if (k < 0.5) g.later(0.35, () => !b.dead && this.fireball(hand, n));
   }

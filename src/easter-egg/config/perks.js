@@ -257,4 +257,28 @@ PERKS.maiz = {
   },
 };
 
-export const PERK_ORDER = ['jugg', 'revive', 'speed', 'doubletap', 'mule', 'deadshot'];
+// En todos los mapas: Stamin-Up (el de Black Ops). Se anda y se corre un 25%
+// más rápido y se aguanta el doble corriendo (entities/Player.js).
+// La yerba: "Trotadora", como la cinta del gimnasio (la máquina es una).
+PERKS.stamin = {
+  name: 'Stamin-Up',
+  cost: 2000,
+  color: '#f9c823',
+  glyph: '»',
+  desc: 'Corrés un 25% más rápido y aguantás el doble corriendo.',
+  label: {
+    brand: 'Trotadora',
+    tagline: 'LA DEL GALOPE LARGO · DESDE 1958',
+    bg: '#ee7d18',
+    band: '#2a1a10',
+    bandText: '#ffd23a',
+    accent: '#ffd23a',
+    leaf: 'rgba(255,230,120,0.18)',
+    text: '#2a1a10',
+    brandColor: '#fff6e0',
+    brandSize: 82,
+    stroke: 'rgba(70,24,0,0.9)',
+  },
+};
+
+export const PERK_ORDER = ['jugg', 'revive', 'speed', 'doubletap', 'mule', 'deadshot', 'stamin'];

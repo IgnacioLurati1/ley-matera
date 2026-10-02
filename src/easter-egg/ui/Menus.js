@@ -1,5 +1,6 @@
 import Lobby from './Lobby';
 import Profile from './Profile';
+import LogrosMenu from './Logros';
 import Pulperia from './Pulperia';
 import Armory from './Armory';
 import { decorateOver } from './overCastle';
@@ -54,6 +55,8 @@ export default class Menus {
     root.appendChild(this.click);
     // la tarjeta del jugador y la pantalla de niveles
     this.profile = new Profile(this);
+    // los logros: una tarjeta abajo de la del nivel (no un renglón más) y su pantalla
+    this.logros = new LogrosMenu(this);
     // la pulpería: los pesos por empanadas, y la canasta
     this.pulperia = new Pulperia(this);
     // Jugar: Solo o Con amigos

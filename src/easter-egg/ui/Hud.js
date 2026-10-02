@@ -35,6 +35,7 @@ const POWER_ICONS = {
   facon: { label: 'Facón Relámpago', glyph: 'ϟ' },
   infinito: { label: 'Balas infinitas', glyph: '∞' },
   botas: { label: 'Botas de potro', glyph: '»' },
+  clarin: { label: 'Toque de Clarín', glyph: '♫' },
 };
 // (uno que todavía no tiene ícono se ve igual, con una estrella)
 const powerIcon = (k) => POWER_ICONS[k] || { label: k, glyph: '★' };

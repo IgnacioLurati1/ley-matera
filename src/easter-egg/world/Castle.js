@@ -38,6 +38,18 @@ function railStyle(k) {
   return ZONES[k]?.rail || 'almena';
 }
 
+// Un parapeto más bajo en esa celda (ZONES[k].lowRail: { h, rects } con las
+// celdas incluidas; la zona de los cañones del adarve, para ver el valle), o null.
+// (lo que se choca es la celda entera: bajarlo no deja caerse)
+function lowRail(x, z) {
+  for (const k in ZONES) {
+    const L = ZONES[k].lowRail;
+    if (!L) continue;
+    for (const [x0, z0, x1, z1] of L.rects) if (x >= x0 && x <= x1 && z >= z0 && z <= z1) return L.h;
+  }
+  return null;
+}
+
 // La zona a cielo abierto que toca una celda de borde (la de más arriba).
 function railZone(w, x, z) {
   let best = null;
@@ -178,7 +190,7 @@ function almena(w, gb, x, z, i, style) {
     }
   }
   for (let k = 0; k < 4; k++) if (!Number.isFinite(h[k])) h[k] = fy;
-  const H = style === 'puente' ? 0.95 : RAIL_H;
+  const H = lowRail(x, z) ?? (style === 'puente' ? 0.95 : RAIL_H);
   const low = Math.min(...h) - 0.12;
   const P = (k, y) => [C[k][0], y, C[k][1]];
   const walk = (dx, dz) => {

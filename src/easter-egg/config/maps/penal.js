@@ -172,6 +172,9 @@ export const PERK_SPOTS = [
   // Electric Cherry (la Chisporé): en la pared oeste de la capilla, entre los
   // estandartes y la puerta
   { perk: 'cherry', cell: [57, 15], face: [1, 0], y: 8 },
+  // Stamin-Up (la Trotadora), en el comedor: pared norte, entre la reja y la
+  // esquina (en la este tapaba la pizarra del menú)
+  { perk: 'stamin', cell: [44, 41], face: [0, 1] },
 ];
 
 export const POWER = { cell: [21, 29], face: [0, 1] };
@@ -225,7 +228,10 @@ export const PROPS = [
   { type: 'celdas', pos: [37.5, 39.4], rot: Math.PI, len: 4, n: 2 },
   { type: 'celdas', pos: [47, 39.4], rot: Math.PI, len: 10, n: 4 },
   { type: 'celdas', pos: [58, 39.4], rot: Math.PI, len: 3.6, n: 1 },
-  { type: 'celdasFalsas', pos: [46, 30.02], len: 23.5, n: 8, h: 3.9 },
+  // (las de abajo de la pasarela empiezan después del depósito de pertenencias,
+  // que queda atrás del escritorio del guardia: entities/penalMotin.js)
+  { type: 'celdasFalsas', pos: [50.35, 30.02], len: 14.8, n: 5, h: 3.9 },
+  { type: 'pizarra', pos: [36.2, 30.03], text: 'marcas' },
   { type: 'celdasFalsas', pos: [40.5, 26.02], len: 15, n: 5, h: 3.4 },
   { type: 'mesaGuardia', pos: [36.5, 33.2], rot: 0.1 },
   { type: 'barrel', pos: [56.8, 36.6] },
@@ -244,7 +250,7 @@ export const PROPS = [
   { type: 'colchon', pos: [44.5, 28.2], rot: 1.4 },
   { type: 'barrel', pos: [35.5, 27.4] },
   { type: 'papeles', pos: [51, 28], rot: 0.5 },
-  { type: 'cadenas', pos: [39, 30.6], h: 2.2, top: 8 },
+  { type: 'cadenas', pos: [34.7, 30.6], h: 2.2, top: 8 },
   { type: 'cadenas', pos: [53, 30.6], h: 1.6, top: 8 },
   { type: 'balcon', pos: [46, 40.98], rot: Math.PI, len: 28, y: 8.0 },
   { type: 'celdasFalsas', pos: [46, 40.98], rot: Math.PI, len: 27.6, n: 9, h: 3.4, y: 8.0 },
@@ -502,7 +508,8 @@ export const SKY = { daylight: 0 };
 
 // Los hornos de barro de las empanadas (entities/Empanadas): pared y hacia dónde mira.
 export const HORNO_SPOTS = [
-  { cell: [54, 41], face: [0, -1] },
+  // (el del Pabellón B iba en [54, 41], dentro de la celda de Anacleto: se pisaban)
+  { cell: [34, 41], face: [0, -1] },
   { cell: [64, 41], face: [0, 1] },
   { cell: [44, 22], face: [1, 0] },
   { cell: [41, 74], face: [0, 1] },

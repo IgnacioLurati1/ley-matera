@@ -787,6 +787,8 @@ export default class Empanadas {
   rob() {
     const g = this.g;
     if (g.net?.guest) {
+      // (en el descanso o sin muertos no se gasta: el anfitrión la rechaza)
+      if (!g.zombies.pool.some((z) => z.active && !z.dead && !z.boss)) return false;
       g.net.net.send({ t: 'emp', k: 'rob' });
       return true;
     }
@@ -832,10 +834,17 @@ export default class Empanadas {
     g.hud.subtitle(ids.length ? `Todo Incluido: ${ids.map((id) => PERKS[id].name).join(', ')}.` : 'Todo Incluido: ya tenías todos los perks.', 4);
   }
 
+  // (invita a todo el equipo: a cada compañero, uno que no tenía; onEvent 'perk')
   freePerk() {
     const g = this.g;
     const id = this.missingPerks()[0];
-    if (!id) return false;
+    const team = !!g.net?.remote.size;
+    if (!id && !team) return false;
+    if (team) g.net.share('emp', { k: 'perk', by: g.net.id });
+    if (!id) {
+      g.hud.subtitle('Invita la Casa: para los compañeros.', 3);
+      return true;
+    }
     this.giving = true;
     g.weapons.drink(PERKS[id].color, () => {
       g.player.givePerk(id);
@@ -978,6 +987,17 @@ export default class Empanadas {
     else if (m.k === 'unseen') {
       const r = net?.remote.get(m.id);
       if (r) r.unseenT = g.time + Math.min(30, +m.s || 0);
+    } else if (m.k === 'perk') {
+      // Invita la Casa de un compañero: un perk que no tenías, también para vos
+      const p = g.player;
+      const id = m.by !== net?.id && p.alive && !p.downed ? this.missingPerks()[0] : null;
+      if (id) {
+        this.giving = true;
+        p.givePerk(id);
+        this.giving = false;
+        g.audio.perkJingle(id, p.pos);
+        g.hud.subtitle(`Invita la Casa (${net?.nameOf(m.by) || 'un compañero'}): ${PERKS[id].name}.`, 3);
+      }
     } else if (m.k === 'eat') {
       const E = EMPANADA[m.id];
       if (E && m.by !== net?.id) g.hud.subtitle(`${net?.nameOf(m.by) || 'Un compañero'}: ${E.name}.`, 3);

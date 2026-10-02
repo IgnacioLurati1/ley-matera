@@ -22,6 +22,10 @@ const MAP_LOOK = {
     art: `<path class="s l o" d="M60 30C18 22 22 56 62 50C104 44 98 8 58 14C30 18 34 40 60 36"/><path d="M0 72V66Q60 62 120 66V72Z"/><path d="M51 68V14L60 4L69 14V68Z"/><path class="l" d="M55 20h3v3h-3ZM62 28h3v3h-3ZM55 38h3v3h-3ZM62 48h3v3h-3ZM55 56h3v3h-3Z"/>` },
   castillo: { place: 'Cordillera de los Andes', lore: 'Un castillo gaucho enterrado en la nieve. Cuatro mates elementales, un dragón que duerme y la Gran Guerra esperando del otro lado.', n: 'VI', font: "'UnifrakturMaguntia', 'Cinzel', serif", acc: '#a8ccff', sky: '#7090b8, #0e1628 75%',
     art: `<path class="m" d="M0 72L20 36L32 48L54 16L74 42L90 26L120 58V72Z"/><path class="l o" d="M50 22L54 16L58 22L55 21L53 23Z"/><path d="M28 72V52h5v-4h3v4h4v-4h3v4h5V40h-2v-4h3v-3h3v3h3v4h-2v12h5v-4h3v4h4v-4h3v4h5v20Z"/><path d="M26 52V42l4-6l4 6v10ZM80 52V42l4-6l4 6v10Z"/><path d="M78 72V52h12v20Z"/><path class="l" d="M49.5 43h2v3h-2ZM82.5 58h3v4h-3Z"/>` },
+  // el bonus: la silueta del Monumento (la Torre con la proa, el Propileo y el río)
+  // contra la niebla clara del horizonte; nShort: lo que va en la lista ("Bonus" no entra)
+  monumento: { place: 'Rosario · a orillas del Paraná', lore: 'El Monumento a la Bandera de noche, con niebla baja. La Llama Votiva está apagada, algo enorme se mueve en el río y la primera bandera todavía no se izó.', n: 'Bonus', nShort: '★', font: "'Cinzel', 'Special Elite', serif", acc: '#74acdf', sky: '#0b1322, #1c2f4e 38%, #4d6890 66%, #93abc8 82%',
+    art: `<circle class="l o" cx="90" cy="15" r="9"/><circle class="l" cx="90" cy="15" r="5"/><path d="M0 72V62H120V72Z"/><path class="w" d="M92 61Q106 59.5 120 61V72H90Z"/><path class="l o" d="M88 64h5v1h-5ZM86 67h8v1h-8ZM89 70h4v1h-4Z"/><path d="M12 49V45H50V49ZM12 62V59.5H50V62Z"/><path d="M13 59.5V49h2.4v10.5ZM18.4 59.5V49h2.4v10.5ZM23.8 59.5V49h2.4v10.5ZM35.8 59.5V49h2.4v10.5ZM41.2 59.5V49h2.4v10.5ZM46.6 59.5V49h2.4v10.5Z"/><path d="M28 59.5V56h6v3.5Z"/><path class="l o" d="M31 51.6C29.6 53.2 29.8 54.8 31 56C32.2 54.8 32.4 53.2 31 51.6Z"/><path d="M50 62V58h3V56h3V54h3V62Z"/><path d="M58.5 62V50L60.5 48V9L63 5L65.5 9V48L67.5 50V62Z"/><path class="l" d="M61.6 10h2.8v1.6h-2.8ZM61.6 13h2.8v1h-2.8Z"/><path d="M67 62V52.5L90 57.5L93 61L91 62Z"/><path d="M101.2 62V30.5h0.9V62Z"/><path class="l" d="M100.9 30h1.5v1h-1.5Z"/>` },
 };
 
 const lookOf = (id) => MAP_LOOK[id] || { n: '', place: '', lore: '', font: 'inherit', acc: '#ff3b2a', sky: '#222, #000', art: '' };
@@ -48,7 +52,7 @@ export const mapScreen = () =>
    <div class="mdu-mapsel__list" role="group" aria-label="Mapa">${MAP_LIST.map((m) => {
      const L = lookOf(m.id);
      return `<button class="mdu-chap" data-map="${m.id}" aria-pressed="false" style="${vars(L)}">
-       <span class="mdu-chap__n">${L.n}</span>
+       <span class="mdu-chap__n">${L.nShort || L.n}</span>
        <span class="mdu-chap__art">${postcard(L)}</span>
        <span class="mdu-chap__txt"><b>${m.name}</b><small>${L.place}</small></span>
        <span class="mdu-chap__best" data-bestof="${m.id}"></span>

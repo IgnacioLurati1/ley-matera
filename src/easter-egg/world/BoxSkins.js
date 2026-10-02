@@ -10,6 +10,8 @@ import { mesh, boxGeo, rboxGeo, cylGeo, mergeByMaterial } from './props';
 //   torre    → arcón tallado y oscuro con filetes de oro y runas, luz violeta
 //   castillo → cofre de tapa redonda con flejes, cerradura de oro y escarcha, luz de hielo
 //   esteros  → el Baúl del Ahogado: madera empapada, óxido, cadena y camalote, luz verde de luna
+//   monumento → el Cofre del Ejército del Norte (1812): campaña de nogal con
+//               cantoneras de bronce, correas, la escarapela y la bandera enrollada, luz celeste
 //
 // Devuelve { group, lid, inner, qMat, glow, glowHex, beam, glowMats }:
 // lid gira sobre su bisagra (x), inner es la luz de adentro al abrirse, glow el
@@ -22,6 +24,7 @@ const LOOK = {
   torre: { glow: [0.8, 0.58, 1], hex: 0xc79bff, beam: 0xa070ff },
   castillo: { glow: [0.75, 0.95, 1], hex: 0xbff0ff, beam: 0x9ae4ff },
   esteros: { glow: [0.7, 1, 0.8], hex: 0xb4ffd8, beam: 0x6ad8a0 },
+  monumento: { glow: [0.62, 0.84, 1], hex: 0xa8d4ff, beam: 0x74acdf },
 };
 
 // Signo de pregunta blanco (el color lo pone el material de cada mapa).
@@ -312,6 +315,42 @@ const SKINS = {
     }
     sign(lid, qMat, 0.36, -0.02, 0.122, 0.4, -Math.PI / 2);
     // (son muchas piezas chicas: una sola malla por material)
+    mergeByMaterial(group);
+    mergeByMaterial(lid);
+  },
+  // el Cofre del Ejército del Norte: un baúl de campaña de Belgrano (1812)
+  monumento({ group, lid, qMat, T }) {
+    const wood = std({ map: T.planksDark, color: 0x6a4a34, roughness: 0.55 });
+    const brass = std({ color: 0xc89a48, metalness: 0.85, roughness: 0.32 });
+    const leather = std({ map: T.leather, color: 0x5a3220, roughness: 0.7 });
+    const celeste = std({ color: 0x74acdf, roughness: 0.5 });
+    const blanco = std({ color: 0xf2efe6, roughness: 0.5 });
+    const sol = std({ color: 0xf6b40e, roughness: 0.4, metalness: 0.4, emissive: 0x3a2400 });
+    add(group, rboxGeo(1.7, 0.55, 0.8, 0.02), wood, 0, 0.275, 0);
+    // las cantoneras de bronce en las ocho esquinas y el zócalo
+    for (const x of [-0.83, 0.83]) for (const z of [-0.38, 0.38]) for (const y of [0.04, 0.52]) add(group, boxGeo(0.07, 0.07, 0.07), brass, x, y, z);
+    add(group, boxGeo(1.72, 0.05, 0.82), brass, 0, 0.025, 0);
+    // las dos correas de cuero con su hebilla
+    for (const x of [-0.45, 0.45]) {
+      add(group, boxGeo(0.1, 0.57, 0.81), leather, x, 0.285, 0);
+      add(group, boxGeo(0.12, 0.08, 0.02), brass, x, 0.42, 0.408);
+    }
+    // la escarapela al frente (celeste, blanca, celeste) con el sol en el medio
+    add(group, cylGeo(0.13, 0.13, 0.012, 24), celeste, 0, 0.28, 0.402, Math.PI / 2, 0, 0);
+    add(group, cylGeo(0.09, 0.09, 0.014, 24), blanco, 0, 0.28, 0.406, Math.PI / 2, 0, 0);
+    add(group, cylGeo(0.05, 0.05, 0.016, 20), celeste, 0, 0.28, 0.41, Math.PI / 2, 0, 0);
+    add(group, cylGeo(0.022, 0.022, 0.018, 12), sol, 0, 0.28, 0.414, Math.PI / 2, 0, 0);
+    for (const s of [-1, 1]) sign(group, qMat, 0.22, s * 0.68, 0.24, 0.405);
+    // la tapa: combada, con las cantoneras, la bandera enrollada atada arriba
+    add(lid, rboxGeo(1.72, 0.12, 0.82, 0.03), wood, 0, 0.06, 0.4);
+    for (const x of [-0.45, 0.45]) add(lid, boxGeo(0.1, 0.13, 0.83), leather, x, 0.06, 0.4);
+    for (const x of [-0.83, 0.83]) for (const z of [0.02, 0.78]) add(lid, boxGeo(0.07, 0.13, 0.07), brass, x, 0.06, z);
+    const rollC = add(lid, cylGeo(0.07, 0.07, 1.25, 16), celeste, 0, 0.19, 0.4, 0, 0, Math.PI / 2);
+    rollC.scale.set(1, 1, 1);
+    add(lid, cylGeo(0.072, 0.072, 0.4, 16), blanco, 0, 0.19, 0.4, 0, 0, Math.PI / 2);
+    for (const x of [-0.45, 0.45]) add(lid, new THREE.TorusGeometry(0.075, 0.012, 6, 14), leather, x, 0.19, 0.4, 0, Math.PI / 2, 0);
+    sign(lid, qMat, 0.3, 0.62, 0.122, 0.4, -Math.PI / 2);
+    sign(lid, qMat, 0.3, -0.62, 0.122, 0.4, -Math.PI / 2);
     mergeByMaterial(group);
     mergeByMaterial(lid);
   },

@@ -64,10 +64,13 @@ export const AT = {
 };
 // lo que dura el salto de la loma al claro (cae justo al terminar)
 const LEAP = AT.end - AT.leap - 0.1;
-// la trepada: arranca CLIMB_NM antes del grito (asoman las garras) y dura
-// CLIMB_T (después se para y abre los brazos)
-const CLIMB_NM = 0.9;
-const CLIMB_T = 2.0;
+// la subida: arranca CLIMB_NM antes del grito y dura CLIMB_T (después se
+// para arriba); sube caminando parejo la cuesta de atrás de la loma desde
+// CLIMB_FROM metros, donde no asoma nada (medido desde la toma: tapado del todo
+// desde los 5 m); asoma la cabeza de a poco y con el grito se le prenden los ojos
+const CLIMB_NM = 3.2;
+const CLIMB_T = 4.7;
+const CLIMB_FROM = 8.5;
 // los lobos del monte (audio.wolves): [cuándo, cuál, paneo]
 const WOLVES = [
   [22.2, 0, -0.55],
@@ -1221,7 +1224,7 @@ export default class LuisonArrival extends CastleCine {
       g.zombies.dressBoss('luison');
       this.eye0 = g.zombies.bossRig.eyeMat.color.clone();
       g.zombies.bossRig.eyeMat.color.setRGB(0, 0, 0);
-      this.luFrom = this.hillAt(1.5, 0.15);
+      this.luFrom = this.hillAt(CLIMB_FROM, 0.15);
       this.luTop = this.hillAt(0, 0);
       L.pos.copy(this.luFrom);
       L.baseY = this.luFrom.y;
@@ -1257,6 +1260,8 @@ export default class LuisonArrival extends CastleCine {
     this.on(AT.nightmare - CLIMB_NM, () => {
       L.state = 'climb';
       L.stateT = 0;
+      // (lo que dura: el cuerpo de verdad acomoda los últimos pasos para plantarse arriba)
+      L.climbDur = CLIMB_T;
     });
     this.on(AT.nightmare - CLIMB_NM + CLIMB_T, () => {
       L.state = 'pose';
@@ -1272,6 +1277,8 @@ export default class LuisonArrival extends CastleCine {
     this.on(AT.howl, () => {
       L.state = 'howl';
       L.stateT = 0;
+      // (cuándo salta, desde el aullido: antes se agacha)
+      L.leapIn = AT.leap - AT.howl;
       g.audio.luisonHowl?.(this.luTop.clone().setY(this.luTop.y + 3.5), { prep: true });
     });
     this.on(AT.howl + 1.1, () => this.vaho());
@@ -1328,12 +1335,13 @@ export default class LuisonArrival extends CastleCine {
   }
 
   // La altura de la loma en (x, z): arriba de la losa de la cresta, o el pasto.
+  // (la losa, plana arriba y con los bordes en bajada: que suba sin escalón)
   hillY(x, z) {
     if (!this.loma) return this.hillTop;
     const dx = x - this.hill.x;
     const dz = z - this.hill.z;
-    if (Math.hypot(dx / 1.0, dz / 0.8) < 1) return this.hillTop;
-    return this.hill.y + Math.max(lomaY(this.loma, dx, dz), -0.2);
+    const ground = this.hill.y + Math.max(lomaY(this.loma, dx, dz), -0.2);
+    return Math.max(ground, this.hillTop - Math.max(0, Math.hypot(dx / 1.0, dz / 0.8) - 0.7) * 0.75);
   }
 
   // ---------------- la pelea ----------------
@@ -1913,9 +1921,16 @@ export default class LuisonArrival extends CastleCine {
     } else if (L.state === 'climb') {
       // de atrás de la cresta a la cima (climbPose: las garras, la cabeza
       // con el grito, se iza y se para)
-      const c = climbPose(P, st, gt);
-      L.pos.lerpVectors(this.luFrom, this.luTop, c.f);
-      L.baseY = lerp(this.luFrom.y, this.luTop.y, c.rise);
+      climbPose(P, st, gt);
+      // (el cuerpo de verdad sube caminando parejo, con los pies en la loma:
+      // arranca y frena de a poco)
+      const u = clamp01(st / CLIMB_T);
+      const A0 = 0.14;
+      const B0 = 0.2;
+      const vmax = 1 / (1 - A0 / 2 - B0 / 2);
+      const f = u < A0 ? (vmax * u * u) / (2 * A0) : u > 1 - B0 ? 1 - (vmax * (1 - u) * (1 - u)) / (2 * B0) : vmax * (u - A0 / 2);
+      L.pos.lerpVectors(this.luFrom, this.luTop, f);
+      L.baseY = this.hillY(L.pos.x, L.pos.z);
       // los ojos se prenden con el grito (parpadean y quedan fijos)
       const e = st - CLIMB_NM;
       eye = e < 0 ? 0 : clamp01(e / 0.12) * (e < 0.45 ? 1.9 + Math.sin(e * 50) * 0.5 : lerp(1.9, 1.3, clamp01((e - 0.45) / 0.5)));

@@ -91,7 +91,6 @@ export const WALL_BUYS = [
   { weapon: 'vidrio', cell: [31, 20], face: [-1, 0] },
   { weapon: 'lata', cell: [28, 32], face: [0, 1] },
   { weapon: 'algarrobo', cell: [45, 32], face: [0, 1] },
-  { weapon: 'granadas', cell: [42, 32], face: [0, -1] },
   { weapon: 'bowie', cell: [20, 35], face: [1, 0] },
 ];
 
@@ -103,6 +102,10 @@ export const PERK_SPOTS = [
   { perk: 'doubletap', cell: [34, 3], face: [0, 1] },
   { perk: 'deadshot', cell: [45, 17], face: [0, -1] },
   { perk: 'mule', cell: [56, 25], face: [-1, 0] },
+  // Stamin-Up (la Trotadora), en el almacén: pared este, entre el estante de
+  // las botellas y la pizarra de precios (en la norte quedaba encima del cuero
+  // del escudo)
+  { perk: 'stamin', cell: [41, 35], face: [-1, 0] },
 ];
 
 export const POWER = { cell: [43, 3], face: [0, 1] };

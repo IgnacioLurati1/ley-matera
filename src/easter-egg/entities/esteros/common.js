@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mesh, boxGeo } from '../../world/props';
+import { pavaProp } from '../../weapons/Liquidificador';
 
 // Cosas que usan todas las partes de "El Pacto" (el easter egg del estero):
 // materiales propios, el brillo de lo que se puede agarrar y los modelitos.
@@ -76,28 +77,11 @@ export function featherModel() {
   return g;
 }
 
-// La pava negra del fondo de la laguna (lo que va a ser el Liquidificador).
-export function pavaModel(bodyMat = MAT.soot()) {
-  const g = new THREE.Group();
-  const pts = [];
-  for (let k = 0; k <= 10; k++) {
-    const t = k / 10;
-    pts.push(new THREE.Vector2(0.02 + Math.sin(0.25 + t * 2.6) * 0.13 + (t > 0.85 ? -0.03 : 0), t * 0.26));
-  }
-  const body = new THREE.Mesh(new THREE.LatheGeometry(pts, 16), bodyMat);
-  g.add(body);
-  // el pico
-  const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.028, 0.2, 8), bodyMat);
-  spout.position.set(0.16, 0.13, 0);
-  spout.rotation.z = -0.95;
-  g.add(spout);
-  // la tapa y el asa
-  g.add(mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.03, 12), bodyMat, 0, 0.27, 0));
-  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.012, 6, 16, Math.PI), bodyMat);
-  handle.position.set(0, 0.27, 0);
-  g.add(handle);
-  g.userData.body = body;
-  return g;
+// La pava negra del fondo de la laguna (lo que va a ser el Liquidificador):
+// la misma de la mano, de tamaño real (weapons/Liquidificador.js). hot: la del
+// altar, ya embrujada (la luz verde se escapa por las rajaduras).
+export function pavaModel(hot = false) {
+  return pavaProp(hot);
 }
 
 // Nombre corto del lugar de un punto (para los carteles).

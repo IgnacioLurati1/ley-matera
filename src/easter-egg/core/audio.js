@@ -7,6 +7,7 @@
 import { zombieSound, speechPlan, voiceLength, renderVoice, RATE } from './voice';
 import { MAP_ID } from '../config/map';
 import { esterosStart, esterosEnd } from '../fx/esterosMusic';
+import { monumentoStart, monumentoEnd } from '../fx/monumentoMusic';
 import SfxPack from './sfxPack';
 import WeaponSfx from './weaponSfx';
 
@@ -42,7 +43,10 @@ const BOSS_SFX_ID = { capataz: 'jefe-capataz', crow: 'jefe-cuervo', alcaide: 'je
 // (el Mate Meme del Challenge: el mp3 lo pone el usuario; si no está, memeShot sintetiza)
 // (el Luisón: su aullido y los lobos que lo anuncian desde lejos)
 const WOLVES = ['lobos-1', 'lobos-2', 'lobos-3', 'lobos-4'];
-const SFX_MORE = ['dragon-rugido', 'dragon-fuego-1', 'dragon-fuego-2', ...Object.values(BOSS_SFX_ID), 'alarma-creciente', 'mate-meme', 'luison-aullido', ...WOLVES];
+// (los eventos de ronda 10, sin canción: el apagón y las celdas del motín, las
+// campanas del asedio y el apagón de la Luz Mala; audio.eventSfx)
+const EVENT_SFX = ['evento-apagon-penal', 'evento-celdas-penal', 'evento-campanas-asedio', 'evento-campana-fin-asedio', 'evento-apagon-molino'];
+const SFX_MORE = ['dragon-rugido', 'dragon-fuego-1', 'dragon-fuego-2', ...Object.values(BOSS_SFX_ID), 'alarma-creciente', 'mate-meme', 'luison-aullido', ...WOLVES, ...EVENT_SFX];
 // el aullido grabado del Luisón arranca con un resuello, como si lo
 // preparase: el aullido de verdad llega a estos segundos (luisonHowl, y las
 // poses de entities/luison.js esperan eso para levantar el hocico)
@@ -72,6 +76,9 @@ const PERK_TUNES = {
   // que se escabulle entre el maizal (picadita, con silencios) y se esconde
   // bajando de a medio tono
   maiz: { wave: 'triangle', bpm: 168, cutoff: 2600, notes: [[57, 0.25], [0, 0.25], [62, 0.25], [0, 0.25], [65, 0.25], [0, 0.25], [69, 0.5], [67, 0.25], [65, 0.25], [64, 0.5], [0, 0.5], [65, 0.25], [0, 0.25], [67, 0.25], [0, 0.25], [69, 0.25], [0, 0.25], [72, 0.5], [70, 0.25], [69, 0.25], [67, 0.5], [0, 0.25], [64, 0.25], [63, 0.25], [62, 1.5]] },
+  // Stamin-Up (Trotadora): un malambo al galope (ta-ta-tán), en mi menor, que
+  // se larga a correr escala arriba y termina arriba de todo
+  stamin: { wave: 'square', bpm: 200, cutoff: 3000, notes: [[64, 0.5], [64, 0.25], [64, 0.25], [71, 0.5], [64, 0.5], [67, 0.5], [67, 0.25], [67, 0.25], [74, 0.5], [67, 0.5], [69, 0.5], [71, 0.5], [72, 0.5], [74, 0.5], [76, 0.5], [78, 0.5], [79, 1], [78, 0.5], [76, 0.5], [79, 0.5], [83, 2]] },
 };
 
 const BOX_TUNE = [[76, 1], [79, 1], [84, 1], [83, 0.5], [79, 0.5], [76, 1], [74, 1], [77, 1], [81, 1], [79, 2], [72, 1], [76, 2]];
@@ -95,9 +102,10 @@ const VOICE_SLOT = { abuelo: 0, fierro: 0, alcaide: 1, entidad: 2, gil: 1, franc
 export default class GameAudio {
   constructor() {
     const Ctx = window.AudioContext || window.webkitAudioContext;
-    // ~25 ms de colchón (el mínimo, 'interactive', son ~10): con la compu
+    // ~40 ms de colchón (el mínimo, 'interactive', son ~10): con la compu
     // cargada y pocos fps la música se entrecortaba; esto no se nota en los tiros
-    this.ctx = new Ctx({ latencyHint: 0.025 });
+    // (era 25, que Chrome redondeaba a 30; subido por seguridad para las compus flojas)
+    this.ctx = new Ctx({ latencyHint: 0.04 });
     const c = this.ctx;
     this.master = c.createGain();
     this.comp = c.createDynamicsCompressor();
@@ -319,6 +327,45 @@ export default class GameAudio {
       this.bank[kind] = [];
       for (let i = 0; i < n; i++) this.bank[kind].push(this.toBuffer(zombieSound(kind).data));
     }
+    this.bake();
+  }
+
+  // Las explosiones y el tiro de lanzador se hornean una vez en buffers (unas
+  // tomas de cada uno, con la misma receta). Sintetizada, cada explosión eran
+  // ~30 nodos con filtros que barren: las bolas de fuego de los jefes caen de
+  // a seis por jugador y en las compus flojas el hilo de audio no daba abasto
+  // (se trababa todo el sonido). Hasta que terminan, suenan las sintetizadas.
+  bake() {
+    if (this.bakedCore) return;
+    this.bakedCore = true;
+    this.bakeSound('explosion', 1.2, this.explosionBody, 4);
+    this.bakeSound('launcher', 0.25, this.launcherBody, 3);
+  }
+
+  // Hornea `takes` tomas de un sonido sintetizado de `dur` segundos (para los
+  // que suenan seguido: golpes, impactos). body(o, t) arma la receta con
+  // this.noise / this.tone sobre o, como si sonara en vivo. Después:
+  // bakedBuf(key) da una toma (null mientras no terminó) para playBuffer.
+  bakeSound(key, dur, body, takes = 1) {
+    const Off = window.OfflineAudioContext;
+    if (!Off) return;
+    this.baked ||= {};
+    const sr = this.ctx.sampleRate;
+    for (let i = 0; i < takes; i++) {
+      try {
+        const off = new Off(1, Math.ceil(dur * sr), sr);
+        // (noise y tone arman sobre this.ctx: acá, sobre el de afuera)
+        body.call(Object.create(this, { ctx: { value: off } }), off.destination, 0);
+        off.startRendering().then((b) => (this.baked[key] ||= []).push(b), () => {});
+      } catch {
+        /* sin hornear: queda la sintetizada */
+      }
+    }
+  }
+
+  bakedBuf(key) {
+    const L = this.baked?.[key];
+    return L?.length ? L[Math.floor(Math.random() * L.length)] : null;
   }
 
   toBuffer(data) {
@@ -455,14 +502,17 @@ export default class GameAudio {
     // setTargetAtTime: ese cuadro se saltea y el oído queda donde estaba
     if (!Number.isFinite(pos.x + pos.y + pos.z + fwd.x + fwd.y + fwd.z)) return;
     const l = this.ctx.listener;
-    const t = this.now;
     if (l.positionX) {
-      l.positionX.setTargetAtTime(pos.x, t, 0.02);
-      l.positionY.setTargetAtTime(pos.y, t, 0.02);
-      l.positionZ.setTargetAtTime(pos.z, t, 0.02);
-      l.forwardX.setTargetAtTime(fwd.x, t, 0.02);
-      l.forwardY.setTargetAtTime(fwd.y, t, 0.02);
-      l.forwardZ.setTargetAtTime(fwd.z, t, 0.02);
+      // (de un saque cada cuadro: con setTargetAtTime la curva no termina
+      // nunca y cada panner del juego recalculaba muestra por muestra; con
+      // varias explosiones juntas el hilo de audio no daba abasto en las
+      // compus flojas y se trababa todo el sonido)
+      l.positionX.value = pos.x;
+      l.positionY.value = pos.y;
+      l.positionZ.value = pos.z;
+      l.forwardX.value = fwd.x;
+      l.forwardY.value = fwd.y;
+      l.forwardZ.value = fwd.z;
       l.upX.value = 0;
       l.upY.value = 1;
       l.upZ.value = 0;
@@ -1071,8 +1121,13 @@ export default class GameAudio {
   }
 
   launcher(pos) {
-    const t = this.now;
-    const o = this.out({ pos, reverb: 0.3, gain: 0.8 });
+    const buf = this.bakedBuf('launcher');
+    if (buf) this.playBuffer(buf, { pos, gain: 0.8, reverb: 0.3 });
+    else this.launcherBody(this.out({ pos, reverb: 0.3, gain: 0.8 }), this.now);
+  }
+
+  // (lo que suena, sin la salida: también lo hornea bake)
+  launcherBody(o, t) {
     this.tone(o, { t, dur: 0.18, freq: 220, freqEnd: 70, gain: 0.8 });
     this.noise(o, { t, dur: 0.15, freq: 900, freqEnd: 200, gain: 0.6 });
   }
@@ -1087,8 +1142,13 @@ export default class GameAudio {
   // id: un grabado de core/weaponSfx.js (si bajó, suena ese)
   explosion(pos, big = 1, id = null) {
     if (id && this.guns?.play(id, { pos, gain: big })) return;
-    const t = this.now;
-    const o = this.out({ pos, reverb: 0.7, gain: 1.3 * big });
+    const buf = this.bakedBuf('explosion');
+    if (buf) this.playBuffer(buf, { pos, gain: 1.3 * big, reverb: 0.7 });
+    else this.explosionBody(this.out({ pos, reverb: 0.7, gain: 1.3 * big }), this.now);
+  }
+
+  // (lo que suena, sin la salida: también lo hornea bake)
+  explosionBody(o, t) {
     this.noise(o, { t, dur: 1.1, freq: 1800, freqEnd: 80, q: 0.5, gain: 1, brown: true });
     this.noise(o, { t, dur: 0.3, freq: 5000, freqEnd: 400, gain: 0.5 });
     this.tone(o, { t, dur: 0.8, freq: 90, freqEnd: 25, gain: 1 });
@@ -1585,6 +1645,17 @@ export default class GameAudio {
         this.noise(o, { t: t + 0.45, dur: 0.75, type: 'highpass', freq: 3800, q: 0.5, gain: 0.3, attack: 0.25 });
         for (const d of [1.25, 1.42, 1.51]) this.tone(o, { t: t + d, dur: 0.05, freq: 900 + Math.random() * 500, freqEnd: 300, gain: 0.25, attack: 0.002 });
         break;
+      case 'stamin': {
+        // el galope que arranca y se va apurando, y el resoplido del que corre
+        let tt = t;
+        for (let i = 0; i < 10; i++) {
+          this.noise(o, { t: tt, dur: 0.05, type: 'bandpass', freq: 600 + (i % 3) * 140, q: 2, gain: 0.5, attack: 0.003 });
+          this.tone(o, { t: tt, dur: 0.07, freq: 120, freqEnd: 62, gain: 0.32, attack: 0.003 });
+          tt += (i % 3 === 2 ? 0.2 : 0.09) * (1 - i * 0.045);
+        }
+        this.noise(o, { t: tt + 0.05, dur: 0.42, type: 'bandpass', freq: 1500, freqEnd: 650, q: 0.8, gain: 0.32, attack: 0.05 });
+        break;
+      }
       default:
         break;
     }
@@ -1959,6 +2030,8 @@ export default class GameAudio {
     else if (MAP_ID === 'torre') this.torreStart(t);
     else if (MAP_ID === 'castillo') this.castilloStart(t);
     else if (MAP_ID === 'esteros') esterosStart(this, t);
+    // el Monumento: la banda de los Granaderos (fx/monumentoMusic.js)
+    else if (MAP_ID === 'monumento') monumentoStart(this, t);
     else this.molinoStart(t);
   }
 
@@ -1970,6 +2043,7 @@ export default class GameAudio {
     else if (MAP_ID === 'torre') this.torreEnd(t);
     else if (MAP_ID === 'castillo') this.castilloEnd(t);
     else if (MAP_ID === 'esteros') esterosEnd(this, t);
+    else if (MAP_ID === 'monumento') monumentoEnd(this, t);
     else this.molinoEnd(t);
   }
 
@@ -2433,6 +2507,15 @@ export default class GameAudio {
     if (buf) this.playBuffer(buf, { gain: 1, reverb: 0.15 });
     else if (kind === 'creciente') this.sting();
     else this.bossArrive();
+  }
+
+  // Un grabado de los eventos de ronda 10 (EVENT_SFX): sin pos se oye igual en
+  // todo el mapa. false si todavía no bajó (el que llama sintetiza el suyo).
+  eventSfx(id, { pos = null, gain = 1, reverb = 0.25, ref, when = 0 } = {}) {
+    const buf = this.sfxBuf[id];
+    if (!buf || !this.ctx) return false;
+    this.playBuffer(buf, { pos, gain, reverb, ref, when: when ? this.now + when : 0 });
+    return true;
   }
 
   bossArrive() {

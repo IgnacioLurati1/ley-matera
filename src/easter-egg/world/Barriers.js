@@ -41,6 +41,9 @@ export default class Barriers {
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
+    // (sus límites se calculan una vez: el que entra con ventanas rotas los
+    // tenía chicos y las tablas que volvían podían no dibujarse)
+    this.mesh.frustumCulled = false;
     game.scene.add(this.mesh);
     this.windows = WINDOWS.map((def, i) => {
       const [cx, cz] = def.cell;
@@ -113,7 +116,9 @@ export default class Barriers {
   // Arranca una tabla. Devuelve true si había alguna.
   tear(i, remote = false) {
     const w = this.windows[i];
-    const on = w.boards.filter((b) => b.state === 'on');
+    let on = w.boards.filter((b) => b.state === 'on');
+    // (la del anfitrión: si la tabla todavía estaba volviendo, igual sale)
+    if (!on.length && remote) on = w.boards.filter((b) => b.state === 'repair');
     if (!on.length) return false;
     const b = on[Math.floor(Math.random() * on.length)];
     b.state = 'tear';
@@ -131,7 +136,8 @@ export default class Barriers {
     // la defensa del yerbal: las tranqueras de los tablones quedan abiertas
     if (!remote && this.locked?.has(i)) return false;
     const w = this.windows[i];
-    const b = w.boards.find((x) => x.state === 'off');
+    // (la del anfitrión: si la tabla todavía estaba volando, igual vuelve)
+    const b = w.boards.find((x) => x.state === 'off') || (remote && w.boards.find((x) => x.state === 'tear'));
     if (!b) return false;
     b.state = 'repair';
     b.t = 0;

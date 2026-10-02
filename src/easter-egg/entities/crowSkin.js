@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { assetUrl } from '../../lib/assets';
+import { warmSpot } from './bossSkin';
 
 // El Cuervo con cuerpo de verdad: un modelo de Meshy (malla y textura) con un
 // esqueleto armado por código (tools: el bake del cuervo), en lugar de las
@@ -94,6 +95,49 @@ export default class CrowSkin {
     C.rig.add(root);
     this.perchY = PERCH_Y;
     this.state = 2;
+    if (!C.rig.visible) this.warm();
+  }
+
+  // Bajado antes de que venga (Crow lo arma al empezar): la textura sube, el
+  // programa se compila y se dibuja unos cuadros escondido abajo del piso
+  // (sombras y G-buffer incluidos), así al aparecer no traba.
+  warm() {
+    const C = this.crow;
+    const g = C.g;
+    const root = this.root;
+    // (ya se está calentando)
+    if (root.parent !== C.rig) return;
+    // (después de la intro: con su luz la cuenta de luces es otra)
+    if (g.intro?.active) {
+      setTimeout(() => !C.rig.visible && root.parent === C.rig && this.warm(), 1000);
+      return;
+    }
+    const R = g.renderer;
+    if (R) {
+      root.traverse((o) => {
+        if (!o.isMesh) return;
+        for (const m of [].concat(o.material)) for (const k in m) if (m[k]?.isTexture) R.initTexture(m[k]);
+      });
+    }
+    // (abajo del piso: el del jugador y el de una lámpara, bossSkin warmSpot)
+    // (cambia de lugar cada 0,1 s: con tope de cuadros no se dibuja en cada uno)
+    const place = () => root.position.copy(warmSpot(g, Math.floor(performance.now() / 100)));
+    g.scene.add(root);
+    place();
+    root.visible = true;
+    R?.compileAsync?.(root, g.camera, g.scene).catch(() => {});
+    let n = 0;
+    const back = () => {
+      // (vuelve a las piezas cuando ya se dibujó, o si vino antes)
+      if (++n < 30 && !C.rig.visible && root.parent === g.scene) {
+        place();
+        requestAnimationFrame(back);
+        return;
+      }
+      root.position.set(0, 0, 0);
+      C.rig.add(root);
+    };
+    requestAnimationFrame(back);
   }
 
   // Cada cuadro, después de Crow.animate (que dejó la pose en las piezas y en crow.pose).

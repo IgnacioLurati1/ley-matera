@@ -1383,4 +1383,34 @@ export const PAINT_PAP = {
       },
       { scale: 1.3 },
     ),
+  // el Monumento: franjas celestes y blancas que flamean, con soles de oro de
+  // 32 rayos (rectos y flamígeros) y un borde de llama votiva en las juntas
+  monumento: () =>
+    pixels(
+      (u, v) => {
+        const s = v * 3 + 0.07 * Math.sin(u * 3 * TAU + v * 2) + 0.025 * Math.sin(u * 11 * TAU);
+        const band = ((Math.floor(s) % 3) + 3) % 3;
+        const f = s - Math.floor(s);
+        const shine = Math.pow(Math.sin(f * Math.PI), 0.5);
+        let c = band === 1 ? mix([214, 220, 228], [250, 250, 246], shine) : mix([60, 120, 180], [130, 190, 238], shine);
+        // la junta entre franjas: un hilo de llama
+        const edge = f < 0.035 || f > 0.965;
+        if (edge) c = [255, 170, 60];
+        // los soles: en una grilla corrida, en la franja blanca
+        const gu = u * 6 + (Math.floor(v * 3) % 2) * 0.5;
+        const gv = v * 3;
+        const cu = gu - Math.floor(gu) - 0.5;
+        const cv = gv - Math.floor(gv) - 0.5;
+        const r = Math.hypot(cu, cv * 0.5);
+        const a = Math.atan2(cv, cu);
+        const ray = Math.abs(Math.sin(a * 16));
+        let gold = 0;
+        if (band === 1 && r < 0.11) gold = 1;
+        else if (band === 1 && r < 0.2 && ray > 0.55 + (r - 0.11) * 3) gold = 0.8;
+        if (gold) c = mix(c, [246, 186, 30], gold);
+        const n = fbm(u, v, 32, 16, 2, 1812) * 0.14;
+        return [...shade(c, 0.92 + n), gold ? 0.75 : edge ? 0.6 : 0.25 + shine * 0.3, gold ? 0.22 : 0.32, gold ? 1 : edge ? 0.4 : 0.05];
+      },
+      { scale: 1.2 },
+    ),
 };

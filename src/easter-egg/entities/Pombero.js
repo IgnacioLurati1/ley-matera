@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import Navigation from '../world/Navigation';
-import { RISERS } from '../config/map';
+import { RISERS, MAP_ID } from '../config/map';
 import { POINTS, zombieHealth } from '../config/rules';
 import { reachableSpot } from './reach';
+import PomberoSkin from './pomberoSkin';
 
 // El Pombero: duende del monte, petiso y peludo, con un sombrero de paja
 // enorme y un silbido que se oye antes de verlo. Muy de vez en cuando, cuando
@@ -19,7 +20,16 @@ const CHANCE = 0.25; // por cada potenciador que cae
 const COOLDOWN = 150; // segundos de juego entre una aparición y la otra
 const RUN = 3.9;
 const CARRY = 3.3;
-const STATES = ['appear', 'toItem', 'flee', 'dead'];
+const STATES = ['appear', 'toItem', 'flee', 'dead', 'watch'];
+// Mate no Numa: muy de vez en cuando (una vez por partida; dos con más de un
+// jugador) se queda agazapado en el pajonal, mirando: se le ven los ojos y
+// poco más. Cuando alguien lo mira, se esconde. Sin cartel: que lo descubran.
+const WATCH_FIRST = [180, 480]; // s de partida: la primera vez, al azar entre
+const WATCH_GAP = [240, 540]; // y la segunda, después de la primera
+const WATCH_MAX = 50; // si nadie lo ve, igual se va
+const WATCH_SEEN = 0.2; // cuánto lo tienen que mirar para que se esconda (s)
+const WATCH_ANG = 0.12; // la mirada: qué tan derecho (rad)
+const WATCH_NEAR = 5; // más cerca que esto, se esconde aunque no lo miren
 const NAMES = {
   maxammo: 'la munición máxima',
   insta: 'la muerte instantánea',
@@ -30,6 +40,8 @@ const NAMES = {
 };
 
 const tmpV = new THREE.Vector3();
+const tmpE = new THREE.Vector3();
+const tmpD = new THREE.Vector3();
 const dirOut = { x: 0, z: 0 };
 
 export default class Pombero {
@@ -48,6 +60,12 @@ export default class Pombero {
     this.rig = this.build();
     this.rig.visible = false;
     game.scene.add(this.rig);
+    // el cuerpo low poly (mientras baja, las piezas)
+    this.skin = new PomberoSkin(this);
+    this.clock = 0;
+    this.watchLeft = MAP_ID === 'esteros' ? -1 : 0;
+    this.watchAt = WATCH_FIRST[0] + Math.random() * (WATCH_FIRST[1] - WATCH_FIRST[0]);
+    this.seenT = 0;
   }
 
   // ---------------- modelo ----------------
@@ -310,7 +328,15 @@ export default class Pombero {
   update(dt) {
     const g = this.g;
     const z = this.z;
-    if (!z.active) return;
+    // (el de Mate no Numa en el pajonal: lo decide quien simula)
+    if (!g.net?.guest && this.watchLeft !== 0 && g.state === 'playing') {
+      this.clock += dt;
+      if (!z.active && this.clock > this.watchAt) this.tryWatch();
+    }
+    if (!z.active) {
+      this.animate(dt);
+      return;
+    }
     this.t += dt;
     if (g.net?.guest) {
       this.follow(dt);
@@ -359,8 +385,126 @@ export default class Pombero {
       if (Math.hypot(this.escape.x - z.pos.x, this.escape.z - z.pos.z) < 0.9 || this.t > (this.carry ? 45 : 2.5)) this.vanish();
     } else if (this.state === 'dead') {
       if (this.t > 3) this.hide();
+    } else if (this.state === 'watch') {
+      this.watchTick(dt);
     }
     this.animate(dt);
+  }
+
+  // ---------------- agazapado en el pajonal (Mate no Numa) ----------------
+  tryWatch() {
+    const g = this.g;
+    if (this.watchLeft < 0) this.watchLeft = (g.rounds?.players || 1) > 1 ? 2 : 1;
+    if (this.watchLeft <= 0) return;
+    const spot = (g.rounds?.round || 0) >= 2 ? this.watchSpot() : null;
+    if (!spot) {
+      this.watchAt = this.clock + 20;
+      return;
+    }
+    this.watchLeft--;
+    this.watchAt = this.clock + WATCH_GAP[0] + Math.random() * (WATCH_GAP[1] - WATCH_GAP[0]);
+    const z = this.z;
+    z.pos.set(spot.x, g.world.floorAt(spot.x, spot.z), spot.z);
+    z.yaw = spot.yaw;
+    z.hp = z.maxHp = 1;
+    z.active = true;
+    z.dead = false;
+    this.item = null;
+    this.seenT = 0;
+    this.setState('watch');
+  }
+
+  // Un lugar en el borde del pajonal, a la espalda o al costado de alguien (no
+  // lo ve aparecer): la celda de paja y, del lado de él, una que se camina.
+  watchSpot() {
+    const g = this.g;
+    const Z = g.zombies;
+    const players = this.players();
+    if (!players.length || !Z.cellKind) return null;
+    const p = players[Math.floor(Math.random() * players.length)];
+    const fx = -Math.sin(p.yaw || 0);
+    const fz = -Math.cos(p.yaw || 0);
+    for (let k = 0; k < 80; k++) {
+      const ang = Math.random() * Math.PI * 2;
+      const d = 9 + Math.random() * 13;
+      const dx = Math.sin(ang);
+      const dz = Math.cos(ang);
+      if (dx * fx + dz * fz > 0.2) continue;
+      const x = p.pos.x + dx * d;
+      const z = p.pos.z + dz * d;
+      if (Z.cellKind(x, z) !== 1 || Z.cellKind(x - dx * 1.1, z - dz * 1.1) !== 0) continue;
+      if (players.some((o) => Math.hypot(o.pos.x - x, o.pos.z - z) < 7)) continue;
+      // (que se lo pueda ver: sin paja ni paredes en el medio)
+      if (!this.openLine(p.pos.x, p.pos.y + 1.6, p.pos.z, x, z)) continue;
+      return { x, z, yaw: Math.atan2(p.pos.x - x, p.pos.z - z) };
+    }
+    return null;
+  }
+
+  // ¿Se ve la cabeza desde ahí? Todo el camino por donde se camina (menos el
+  // último metro, su mata) y sin nada sólido en el medio.
+  openLine(ex, ey, ez, x, z) {
+    const g = this.g;
+    const Z = g.zombies;
+    const dx = x - ex;
+    const dz = z - ez;
+    const d = Math.hypot(dx, dz);
+    if (Z.cellKind(ex, ez) !== 0) return false;
+    for (let t = 0.5; t < d - 1.3; t += 0.5) if (Z.cellKind(ex + (dx * t) / d, ez + (dz * t) / d) !== 0) return false;
+    const k = Math.max(0, (d - 1.3) / d);
+    return g.world.clear(tmpE.set(ex, ey, ez), tmpD.set(ex + dx * k, g.world.floorAt(x, z) + 0.6, ez + dz * k));
+  }
+
+  // Mira al que tiene más cerca; si alguien lo mira (o se le acerca), se esconde.
+  watchTick(dt) {
+    const g = this.g;
+    const z = this.z;
+    const head = tmpV.set(z.pos.x, z.pos.y + 0.6, z.pos.z);
+    let seen = false;
+    let near = Infinity;
+    let face = null;
+    for (const p of this.players()) {
+      const local = p === g.player;
+      const eye = local ? g.camera.position : tmpE.set(p.pos.x, p.pos.y + 1.6, p.pos.z);
+      const dx = head.x - eye.x;
+      const dy = head.y - eye.y;
+      const dz = head.z - eye.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (d < near) {
+        near = d;
+        face = Math.atan2(-dx, -dz);
+      }
+      if (d < WATCH_NEAR) seen = true;
+      if (d > 32 || !this.openLine(eye.x, eye.y, eye.z, z.pos.x, z.pos.z)) continue;
+      let lx;
+      let ly;
+      let lz;
+      if (local) {
+        g.camera.getWorldDirection(tmpD);
+        lx = tmpD.x;
+        ly = tmpD.y;
+        lz = tmpD.z;
+      } else {
+        const cp = Math.cos(p.pitch || 0);
+        lx = -Math.sin(p.yaw || 0) * cp;
+        ly = Math.sin(p.pitch || 0);
+        lz = -Math.cos(p.yaw || 0) * cp;
+      }
+      if ((lx * dx + ly * dy + lz * dz) / d > Math.cos(WATCH_ANG)) seen = true;
+    }
+    if (face != null) {
+      let dd = face - z.yaw;
+      while (dd > Math.PI) dd -= Math.PI * 2;
+      while (dd < -Math.PI) dd += Math.PI * 2;
+      z.yaw += dd * Math.min(1, dt * 2);
+    }
+    this.seenT = seen ? this.seenT + dt : Math.max(0, this.seenT - dt);
+    if (this.seenT > WATCH_SEEN || this.t > WATCH_MAX) {
+      // se agacha y se va, con una risita bajita
+      g.audio.laugh?.(tmpV.set(z.pos.x, z.pos.y + 0.5, z.pos.z));
+      g.net?.event('pomb', { a: 'hid' });
+      this.hide();
+    }
   }
 
   move(dt, tx, tz, speed) {
@@ -487,7 +631,7 @@ export default class Pombero {
   // ---------------- daño ----------------
   hitTest(o, d, maxT) {
     const z = this.z;
-    if (!z.active || z.dead || this.state === 'appear') return null;
+    if (!z.active || z.dead || this.state === 'appear' || this.state === 'watch') return null;
     const s = this.rig.scale.x;
     const head = sphereHit(o, d, z.pos.x, z.pos.y + 1.02 * s, z.pos.z, 0.24 * s, maxT);
     const body = sphereHit(o, d, z.pos.x, z.pos.y + 0.58 * s, z.pos.z, 0.32 * s, maxT);
@@ -499,7 +643,7 @@ export default class Pombero {
   damage(amount, info = {}) {
     const g = this.g;
     const z = this.z;
-    if (!z.active || z.dead || this.state === 'appear') return false;
+    if (!z.active || z.dead || this.state === 'appear' || this.state === 'watch') return false;
     const type = info.type || 'bullet';
     // el Kaboom no lo alcanza: es un duende, no un muerto
     if (type === 'nuke') return false;
@@ -550,14 +694,23 @@ export default class Pombero {
   }
 
   // ---------------- animación ----------------
+  // Las piezas se mueven igual (el botín y los golpes las usan); si ya bajó el
+  // modelo, se ve el modelo.
   animate(dt) {
+    this.animateRig(dt);
+    const on = this.skin?.update(dt);
+    this.body.visible = !on;
+  }
+
+  animateRig(dt) {
     const z = this.z;
     const r = this.rig;
     r.visible = z.active;
     if (!z.active) return;
-    r.position.set(z.pos.x, z.pos.y, z.pos.z);
-    r.rotation.y = z.yaw;
     const st = this.state;
+    // (agazapado en el pajonal, sin el modelo: las piezas hundidas en las cañas)
+    r.position.set(z.pos.x, z.pos.y - (st === 'watch' ? 0.6 : 0), z.pos.z);
+    r.rotation.y = z.yaw;
     // saliendo del pozo: crece desde abajo
     const grow = st === 'appear' ? Math.min(1, this.t / 0.7) : 1;
     r.scale.setScalar(Math.max(0.05, grow));
@@ -657,11 +810,16 @@ export default class Pombero {
     } else if (m.a === 'gone') {
       this.appearFx();
       this.hide();
+    } else if (m.a === 'hid') {
+      // (el del pajonal: sin silbido ni tierra, una risita y ya no está)
+      g.audio.laugh?.(tmpV.set(this.z.pos.x, this.z.pos.y + 0.5, this.z.pos.z));
+      this.hide();
     }
   }
 
   dispose() {
     this.dropCarry();
+    this.skin?.dispose();
     this.rig.removeFromParent();
   }
 }

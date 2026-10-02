@@ -90,6 +90,7 @@ export default class Intro {
     if (!this.S || this.active) return false;
     this.active = true;
     this.t = 0;
+    this.wallAt = 0;
     this.shotI = -1;
     this.cueI = 0;
     this.out = null;
@@ -190,7 +191,13 @@ export default class Intro {
     if (!this.active) return;
     const g = this.g;
     const S = this.S;
-    this.t += dt;
+    // el reloj de la intro es el de verdad, no el dt con tope de Game.loop: en
+    // una compu que se traba (al arrancar se compila todo) no se atrasa de la
+    // música ni de los otros jugadores (un salto de más de 1 s es una pausa)
+    const now = performance.now();
+    const w = (now - (this.wallAt || 0)) / 1000;
+    this.wallAt = now;
+    this.t += w > dt && w < 1 ? w : dt;
     const t = Math.min(this.t, this.total);
     // lo que pasa a una hora fija (carteles, sonidos)
     while (this.cueI < this.cues.length && this.cues[this.cueI][0] <= t) this.cues[this.cueI++][1](this);

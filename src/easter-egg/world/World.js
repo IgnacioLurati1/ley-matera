@@ -17,6 +17,8 @@ import { installCastleHooks, buildCastle } from './Castle';
 import { buildMountain } from './Mountain';
 import { registerCastleProps } from './castleProps';
 import { installEsterosHooks, buildEsteros, esterosMaterials } from './Esteros';
+import { installMonumentoHooks, buildMonumento, buildMonumentoOutside } from './Monumento';
+import { monumentoMaterials } from './monumentoTextures';
 import { buildCastleSky } from './castleSky';
 import Night from '../fx/Night';
 import { ARENA } from './Arena';
@@ -80,8 +82,12 @@ export default class World {
     if (FEATURES.castle) installCastleHooks(this);
     // el estero: el suelo suave, el pajonal entre zonas (world/Esteros.js)
     if (FEATURES.esteros) installEsterosHooks(this);
+    // el Monumento: las calles que bajan al río y el fondo del río (world/Monumento.js)
+    if (FEATURES.monumento) installMonumentoHooks(this);
     this.makeGrid();
-    if (this.levels) buildLevelArchitecture(this, DOORS);
+    // (el Monumento arma su arquitectura a mano, sin la de celdas de Levels)
+    if (FEATURES.monumento) buildMonumento(this);
+    else if (this.levels) buildLevelArchitecture(this, DOORS);
     else this.buildArchitecture();
     if (FEATURES.attic) this.attic = buildAttic(this);
     if (FEATURES.farm) buildFences(this);
@@ -91,6 +97,7 @@ export default class World {
       buildMountain(this);
       buildCastle(this);
     } else if (FEATURES.esteros) buildEsteros(this);
+    else if (FEATURES.monumento) buildMonumentoOutside(this);
     else if (this.levels) buildTerrain(this);
     else this.buildOutside();
     // techos de adorno (el molino)
@@ -224,7 +231,7 @@ export default class World {
     M.packBlue = std(null, { c: 0x1e4f9c });
     M.packWhite = std(null, { c: 0xece2cc });
     // la torre usa lo de todos los mapas (cada tanda de pisos es de uno)
-    if (FEATURES.penal || FEATURES.tower || FEATURES.castle || FEATURES.esteros) {
+    if (FEATURES.penal || FEATURES.tower || FEATURES.castle || FEATURES.esteros || FEATURES.monumento) {
       penalTextures(T);
       M.stoneWall = std(T.stoneWall, { bump: 1.4 });
       M.stoneStep = std(T.stoneWall, { c: 0xa8a298, bump: 1 });
@@ -267,6 +274,7 @@ export default class World {
     // el castillo: granito, nieve, lajas, hielo y pizarra (world/castleTextures.js)
     if (FEATURES.castle) castleMaterials(T, M, std);
     if (FEATURES.esteros) esterosMaterials(T, M, std);
+    if (FEATURES.monumento) monumentoMaterials(T, M, std);
     this.M = M;
   }
 
@@ -1064,16 +1072,20 @@ export default class World {
       // el sol se hunde en el horizonte mientras sube la luna
       const sunDir = this.sunDir.clone();
       sunDir.y = -0.08 + d * 0.2;
-      const dir = this.moonDir.clone().lerp(sunDir.normalize(), Math.min(1, d * 1.6)).normalize();
-      this.moon.position.copy(dir).multiplyScalar(60).add(mapCenter());
+      sunDir.normalize();
       this.sunSprite.position.copy(sunDir).multiplyScalar(250).add(mapCenter());
       this.sunSprite.material.opacity = Math.min(1, d * 1.5);
       this.moonSprite.material.opacity = 1 - Math.min(1, d * 1.4);
       this.moonHalo.visible = d < 0.6;
-      // las sombras son estáticas: se rehacen de vez en cuando mientras baja
+      // la luz grande (y su sombra) se mueve a saltos, de vez en cuando
+      // mientras baja: corriéndola en cada cuadro, la sombra de todo el mapa
+      // (fx/Epic.js) se redibujaba entera en cada cuadro los 20 s que tarda,
+      // en cada paso del easter egg y en cada ronda de caballos
       this.shadowT = (this.shadowT || 0) - dt;
-      if (this.shadowT <= 0) {
+      if (this.shadowT <= 0 || Math.abs(this.daylight - d) <= 0.001) {
         this.shadowT = 0.5;
+        const dir = this.moonDir.clone().lerp(sunDir, Math.min(1, d * 1.6)).normalize();
+        this.moon.position.copy(dir).multiplyScalar(60).add(mapCenter());
         this.g.renderer.shadowMap.needsUpdate = true;
       }
     }

@@ -9,6 +9,7 @@ import { camoFor } from '../weapons/camos';
 import { supremoOn } from '../core/eggs';
 import { mesh, boxGeo, cylGeo, mergeByMaterial } from './props';
 import { buildBoxSkin } from './BoxSkins';
+import { buildLock, lockMats, disposeLock } from './lockSkins';
 import { buildPerkMachine, MACHINE } from './perkMachines';
 import { cherryFx } from '../fx/cherryFx';
 import { maizal } from '../entities/maizaster';
@@ -19,6 +20,8 @@ const LEVER_ON = 0.6;
 import { DOOR_H } from './World';
 import { cornMesh } from './Farm';
 import { buildDrawbridge } from './castleBridge';
+import { vallaDoor, bronzeDoor } from './monumentoDoors';
+import { sableModel } from '../weapons/sableModels';
 
 // ¿Sale en la caja de este mapa? (`only`: los de un mapa solo; el Challenge de
 // la torre pone los de todos los mapas, menos los especiales de otro: FEATURES.boxAll)
@@ -41,6 +44,16 @@ const MODEL_FWD = 0.12;
 
 const tmpV = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
+
+// Saca la mano y el brazo de primera persona (los marca weapons/viewmodels
+// con userData.hand) de un mate o facón que se muestra suelto en el mundo.
+function dropHands(obj) {
+  const hands = [];
+  obj.traverse((o) => {
+    if (o !== obj && o.userData.hand) hands.push(o);
+  });
+  for (const o of hands) o.removeFromParent();
+}
 
 export default class Interactables {
   constructor(game) {
@@ -207,6 +220,15 @@ export default class Interactables {
       } else if (d.kind === 'puente') {
         // el puente levadizo de la barbacana (lo baja el torno del Pack-a-Pava)
         buildDrawbridge(this.g, M, group, pieces, width);
+      } else if (d.kind === 'valla') {
+        // el Monumento: las vallas amarillas de los actos (world/monumentoDoors.js)
+        vallaDoor(M, group, pieces, width, i + 1);
+      } else if (FEATURES.monumento && d.kind === 'door') {
+        // el Monumento: portones de bronce, abren hacia la segunda zona
+        const zOf = (x, z) => (world.inside(x, z) ? world.zoneKeys[world.zone[world.idx(x, z)]] : null);
+        const [c0x, c0z] = d.cells[0];
+        const side = horizontal ? (zOf(c0x, c0z + 1) === d.zones[1] ? 1 : -1) : zOf(c0x + 1, c0z) === d.zones[1] ? 1 : -1;
+        bronzeDoor(M, group, pieces, width, DOOR_H, side);
       } else if (d.kind === 'door') {
         for (const s of [-1, 1]) {
           const hinge = new THREE.Group();
@@ -243,10 +265,11 @@ export default class Interactables {
         pos: new THREE.Vector3(cx, fy + 1.2, cz),
         radius: 2.6,
         wide: true,
+        span: width > 4 ? { ax: horizontal ? 1 : 0, az: horizontal ? 0 : 1, len: width / 2 - 1.2 } : null,
         prompt: () => {
           if (door.open || d.locked) return null;
           if (d.kind === 'vida') return { text: 'Cerradura eléctrica: se abre con la electricidad del gaucho life', noCost: true, info: true };
-          return `abrir ${d.kind === 'debris' ? 'los escombros' : d.kind === 'gate' ? 'la tranquera' : d.kind === 'reja' ? 'la reja' : 'la puerta'}`;
+          return `abrir ${d.kind === 'debris' ? 'los escombros' : d.kind === 'gate' ? 'la tranquera' : d.kind === 'reja' ? 'la reja' : d.kind === 'valla' ? 'el vallado' : 'la puerta'}`;
         },
         cost: () => this.doorCost(d),
         use: () => (d.locked || d.kind === 'vida' ? false : this.openDoor(door)),
@@ -271,7 +294,7 @@ export default class Interactables {
     door.open = true;
     g.world.openDoor(door.index);
     for (const z of door.def.zones) g.activateZone(z);
-    g.audio.door(door.group.position, door.def.kind === 'debris');
+    g.audio.door(door.group.position, door.def.kind === 'debris' || door.def.kind === 'valla');
     const start = g.time;
     this.animations.push((t, dt) => {
       const k = Math.min(1, (t - start) / (door.def.kind === 'debris' ? 1.3 : door.def.kind === 'hielo' ? 2.6 : door.def.kind === 'puente' ? 1.5 : 0.9));
@@ -342,6 +365,9 @@ export default class Interactables {
       // se arma desde ya, escondido, para que sus shaders se compilen en la
       // carga (armarlo al comprar trababa el juego)
       const shown = isNade ? null : isBowie ? buildKnife(g.textures, 'plata') : buildMate(wb.weapon, false, g.textures).root;
+      // (sin la mano y la manga de primera persona: colgado en la pared el
+      // facón sacaba el brazo entero a través del muro)
+      if (shown) dropHands(shown);
       if (shown) {
         shown.scale.setScalar(isBowie ? 3 : 3.2);
         shown.position.set(a.x + wb.face[0] * 0.12, fy + 1.55, a.z + wb.face[1] * 0.12);
@@ -443,7 +469,7 @@ export default class Interactables {
         prompt: () => {
           if (machine.gone) return null;
           if (g.player.perks.has(spot.perk)) return null;
-          if (this.shockPower && !machine.powered) return { text: 'La máquina no tiene corriente: dale electricidad desde el gaucho life', noCost: true, info: true };
+          if (this.shockPower && !machine.powered) return { text: g.defense?.cut ? 'Sin luz: los tableros' : 'La máquina no tiene corriente: dale electricidad desde el gaucho life', noCost: true, info: true };
           if (!this.shockPower && !g.world.power && spot.perk !== 'revive') return { text: 'Primero hay que encender la luz', noCost: true };
           return `tomar ${perk.name}`;
         },
@@ -672,14 +698,14 @@ export default class Interactables {
         pap.state = 'working';
         pap.t = 0;
         // (entra con el camuflaje de la armería; sale con el del Pack-a-Pava)
-        pap.model = buildMate(pap.entry.id, pap.entry.up, g.textures, 'R', pap.entry.up ? null : camoFor(pap.entry.id)).root;
+        pap.model = this.papModel(pap.entry.id, pap.entry.up, pap.entry.up ? null : camoFor(pap.entry.id));
         pap.model.scale.setScalar(2.4);
-        pap.model.position.copy(slotPos);
+        // (pap.slotPos: el de la máquina, o el que puso la misión, p. ej. la
+        // Llama Votiva del Monumento, que la muda: world/papLlama.js)
+        pap.model.position.copy(pap.slotPos);
         pap.model.rotation.y = a.rot + Math.PI / 2;
         this.root.add(pap.model);
-        pap.slotPos = slotPos;
-        pap.face = new THREE.Vector3(PAP.face[0], 0, PAP.face[1]);
-        g.audio.pap(slotPos);
+        g.audio.pap(pap.slotPos);
         return true;
       },
     });
@@ -700,6 +726,33 @@ export default class Interactables {
     ctx.shadowBlur = 16;
     ctx.fillText(`PACK-A-PAVA · $${PAP_COST[0]}`, 256, 50);
     return toTexture(c, { repeat: false });
+  }
+
+  // El mate que se ve en la máquina: copia del que ya está armado (comparte
+  // mallas y materiales; antes cada vuelta armaba uno nuevo que quedaba en la
+  // placa para siempre). Sin el fogonazo de la mano, si lo tenía puesto.
+  papModel(id, up, camo = null) {
+    // el Sable Corvo (weapons/Sable.js) viene con la mano y a escala de
+    // primera persona: en la máquina va el sable solo, de tamaño real y acostado
+    if (id === 'sable') {
+      const o = new THREE.Group();
+      const s = sableModel(up);
+      s.scale.setScalar(1 / 2.4);
+      s.rotation.z = Math.PI / 2;
+      o.add(s);
+      return o;
+    }
+    const W = this.g.weapons;
+    if (!W?.modelOf) return buildMate(id, up, this.g.textures, 'R', camo).root;
+    const m = W.modelOf(id, up, camo).root.clone();
+    dropHands(m);
+    const drop = [];
+    m.traverse((o) => {
+      if (W.flash && o.material === W.flash.material) drop.push(o);
+    });
+    for (const o of drop) o.removeFromParent();
+    m.visible = true;
+    return m;
   }
 
   clearPap() {
@@ -732,7 +785,7 @@ export default class Interactables {
       }
       if (pap.t > 3.4) {
         pap.model.removeFromParent();
-        pap.model = buildMate(pap.entry.id, pap.tier, g.textures).root;
+        pap.model = this.papModel(pap.entry.id, pap.tier);
         pap.model.scale.setScalar(2.4);
         pap.model.rotation.y = this.anchor(PAP.cell, PAP.face).rot + Math.PI / 2;
         this.root.add(pap.model);
@@ -1010,7 +1063,7 @@ export default class Interactables {
     if (pap.ritual && playerId >= 0 && !g.net?.guest) g.ee.startPapRitual(playerId);
     pap.state = 'working';
     pap.t = 0;
-    pap.model = buildMate(weaponId, tier - 1, g.textures).root;
+    pap.model = this.papModel(weaponId, tier - 1);
     pap.model.scale.setScalar(2.4);
     pap.model.position.copy(pap.slotPos);
     pap.model.rotation.y = this.anchor(PAP.cell, PAP.face).rot + Math.PI / 2;
@@ -1264,6 +1317,9 @@ export default class Interactables {
           // la plata vuelve al que la abrió (en línea puede ser un invitado)
           if (g.powerups.active.firesale) {
             // en fire sale no se devuelve nada
+          } else if (g.net?.guest) {
+            // (en el invitado no: la devuelve el anfitrión al que la abrió;
+            // antes cada invitado se la sumaba, aunque estuviera comprando una puerta)
           } else if (box.taker != null && g.net?.host && box.taker !== g.net.id) g.net.givePts(box.taker, 950);
           else g.addPoints(950, null, true);
           g.audio.whoosh(box.center);
@@ -1336,20 +1392,20 @@ export default class Interactables {
   }
 
   // ---------------- candados del Capataz ----------------
-  lockTarget(from) {
-    let best = null;
-    let bd = 13;
+  // ok(it): además, si el jefe llega (Zombies.lockReach: las de atrás de una
+  // puerta cerrada no); de la más cerca a la más lejos
+  lockTarget(from, ok = null) {
+    const near = [];
     for (const it of this.list) {
       if (!it.lockable || it.locked) continue;
       if (it.kind === 'box' && (this.box.state === 'away' || this.box.state === 'coffee')) continue;
       if (it.kind === 'perk' && it.machine.gone) continue;
       const d = it.pos.distanceTo(from);
-      if (d < bd) {
-        bd = d;
-        best = it;
-      }
+      if (d < 13) near.push([d, it]);
     }
-    return best;
+    near.sort((a, b) => a[0] - b[0]);
+    for (const [, it] of near) if (!ok || ok(it)) return it;
+    return null;
   }
 
   // (en línea lo pone el anfitrión y lo ven todos: 'lock'; quiet, el que entra
@@ -1359,24 +1415,40 @@ export default class Interactables {
     it.locked = true;
     const g = this.g;
     g.net?.event('lock', { i: it.index });
-    const chain = new THREE.Group();
-    const iron = this.M.iron;
-    for (let i = 0; i < 12; i++) {
-      const link = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.012, 6, 10), iron);
-      link.position.set(-0.6 + i * 0.11, 1.0 + Math.sin(i * 0.5) * 0.12, 0);
-      link.rotation.y = i % 2 ? Math.PI / 2 : 0;
-      chain.add(link);
-    }
-    const padlock = mesh(boxGeo(0.16, 0.18, 0.08), this.M.brass, 0, 0.88, 0.02);
-    chain.add(padlock);
-    chain.position.copy(it.pos).setY(it.floorY || 0);
-    const toFront = new THREE.Vector3().subVectors(it.front, it.pos).setY(0).normalize();
-    chain.position.addScaledVector(toFront, 0.62);
-    chain.rotation.y = Math.atan2(toFront.x, toFront.z);
-    this.root.add(chain);
+    const alc = g.zombies.boss?.kind === 'alcaide' || (!g.zombies.boss && MAP_ID === 'penal');
+    it.lockBy = alc ? 'Alcaide' : 'Capataz';
+    // las cadenas, el candado y el precinto de cada cosa (world/lockSkins.js),
+    // colgados de su grupo (la caja se los lleva)
+    this.lockMats ||= lockMats(this.M);
+    const host = it.kind === 'perk' ? it.machine?.group : it.kind === 'pap' ? this.pap?.group : it.kind === 'box' ? this.box?.group : null;
+    let dims = null;
+    if (it.kind === 'perk') dims = { w: MACHINE.W, d: MACHINE.D, h: MACHINE.H };
+    else if (it.kind === 'pap') dims = { w: 1.9, d: 1.1, h: 1.2 };
+    // (todos los cajones miden lo mismo, world/BoxSkins.js; las vueltas de
+    // arriba siguen la tapa de cada uno)
+    else if (it.kind === 'box') dims = { w: 1.7, d: 0.8, h: 0.66 };
+    const chain = host && buildLock(it.kind, dims, this.lockMats, it.kind === 'box' ? host : null);
+    if (!chain) return;
+    host.add(chain);
     it.lockMesh = chain;
     if (quiet) return;
-    const alc = g.zombies.boss?.kind === 'alcaide';
+    // entra de golpe y el candado queda hamacándose
+    const t0 = g.time;
+    const pad = chain.userData.lock;
+    chain.position.y = 0.16;
+    chain.scale.setScalar(1.05);
+    this.animations.push((t) => {
+      if (!chain.parent) return false;
+      const u = t - t0;
+      const k = Math.min(1, u / 0.28);
+      const e = 1 - (1 - k) ** 3;
+      chain.position.y = 0.16 * (1 - e);
+      chain.scale.setScalar(1 + 0.05 * (1 - e));
+      const sw = u < 3.5 ? Math.exp(-u * 1.6) * Math.sin(u * 7.5) : 0;
+      pad.rotation.z = sw * 0.55;
+      pad.rotation.x = -Math.abs(sw) * 0.25;
+      return u < 3.5;
+    });
     g.hud.subtitle(alc ? 'El Alcaide clausuró una máquina.' : 'El Capataz clausuró una máquina.', 2.5, 'boss');
     if (alc) {
       if (Math.random() < 0.6) g.say('alcaide', Math.random() < 0.5 ? 'Clausurado por orden del señor alcaide. Andá a quejarte al Cabildo.' : 'Esto queda precintado. Acá los gauchos no se sirven solos.');
@@ -1386,9 +1458,28 @@ export default class Interactables {
   unlock(it) {
     if (!it.locked) return;
     it.locked = false;
-    it.lockMesh?.removeFromParent();
+    const chain = it.lockMesh;
     it.lockMesh = null;
     this.g.audio.chain(it.pos);
+    if (!chain) return;
+    // salta el arco del candado y las cadenas se caen
+    const t0 = this.g.time;
+    const sh = chain.userData.lock?.userData.shackle;
+    this.animations.push((t) => {
+      const u = t - t0;
+      if (sh) {
+        sh.position.y = Math.min(0.035, u * 0.35);
+        sh.rotation.y = Math.min(1.3, u * 9);
+      }
+      if (u > 0.18) {
+        const f = u - 0.18;
+        chain.position.y = -2.6 * f * f;
+        chain.scale.setScalar(Math.max(0.05, 1 - f * 1.3));
+      }
+      if (u < 0.75) return true;
+      disposeLock(chain);
+      return false;
+    });
   }
 
   // ---------------- actualización ----------------
@@ -1449,8 +1540,18 @@ export default class Interactables {
     let best = null;
     let bestScore = -Infinity;
     for (const it of this.list) {
-      const dx = it.pos.x - g.player.pos.x;
-      const dz = it.pos.z - g.player.pos.z;
+      let ix = it.pos.x;
+      let iz = it.pos.z;
+      // (los vanos anchos, como la valla de 19 m del Monumento: se usan desde
+      // cualquier punto del largo, no solo desde el medio)
+      if (it.span) {
+        const S = it.span;
+        const t = Math.max(-S.len, Math.min(S.len, (g.player.pos.x - ix) * S.ax + (g.player.pos.z - iz) * S.az));
+        ix += S.ax * t;
+        iz += S.az * t;
+      }
+      const dx = ix - g.player.pos.x;
+      const dz = iz - g.player.pos.z;
       const d = Math.hypot(dx, dz);
       if (d > it.radius) continue;
       if (g.world.levels && Math.abs(it.pos.y - g.player.pos.y - 1.1) > 2.2) continue;
@@ -1467,8 +1568,8 @@ export default class Interactables {
     this.setCurrent(best);
     if (!best) {
       this.holdT = 0;
-      // en línea, mirando a un compañero: convidarle plata
-      if (g.net && this.shareCheck(dt, input, fwd)) return;
+      // en línea, mirando a un compañero: convidarle plata (no sentado en el bote del penal)
+      if (g.net && !g.ee?.boat?.seats?.includes(g.net.id ?? 0) && this.shareCheck(dt, input, fwd)) return;
       g.hud.setHold(null);
       return;
     }
@@ -1624,11 +1725,19 @@ export default class Interactables {
     }
     g.hud.setHint(`Mantené [F] para levantar a ${best.name}`);
     this.current = null;
-    // con Rosamorte se levanta al doble de rápido (como en el original)
-    const need = g.player.perks.has('revive') ? 1.75 : 3.5;
+    // con Rosamorte se levanta al doble de rápido (como en el original); con
+    // Manos Rápidas (la empanada tucumana), otra vez a la mitad
+    const need = (g.player.perks.has('revive') ? 1.75 : 3.5) * (g.emp?.has('tucumana') ? 0.5 : 1);
     // (fLock: la F que quedó apretada del anterior no arranca otro)
     if (!input.key('KeyF')) this.fLock = false;
     if (input.key('KeyF') && !this.fLock) {
+      if (!this.reviveT) g.net.act?.('revive', need);
+      // (mientras lo levantás, al caído no le corre el tiempo para desangrarse)
+      this.revSendT = (this.revSendT || 0) - dt;
+      if (!this.reviveT || this.revSendT <= 0) {
+        this.revSendT = 0.25;
+        g.net.share?.('rev', { id: best.id, by: g.net.id });
+      }
       this.reviveT = (this.reviveT || 0) + dt;
       g.hud.setHold(Math.min(1, this.reviveT / need));
       if (this.reviveT >= need) {
@@ -1657,7 +1766,7 @@ export default class Interactables {
     }
     this.current = it;
     if (it.locked) {
-      g.hud.setHint(`Presioná [F] para quitar el candado del Capataz [Costo: ${LOCK_COST}]`);
+      g.hud.setHint(`Presioná [F] para quitar el candado del ${it.lockBy || 'Capataz'} [Costo: ${LOCK_COST}]`);
       return;
     }
     const pr = it.prompt();

@@ -14,6 +14,7 @@
 //  · Chisporé (Electric Cherry): las dos cerezas con el rayo atrás.
 //  · Extremaunión (Dying Wish): el corazón con la aureola y el latido que vuelve.
 //  · Maleza Gaucha (Maizaster): los ojos que espían entre la paja seca.
+//  · Trotadora (Stamin-Up): la alpargata con alas, a la carrera.
 // Los usan el medallón del HUD (perkIconURL), el emblema del paquete de la
 // máquina (core/textures perkLabel) y la faja del mate (weapons/perkMates).
 // Todo en unidades del radio: el símbolo cabe en un círculo de radio ~0.66.
@@ -387,6 +388,64 @@ const SYMBOLS = {
     const pl = new Path2D();
     pl.ellipse(0.43, -0.6, 0.07, 0.17, 0.2, 0, Math.PI * 2);
     solid(ctx, pl, FG, 0.04);
+  },
+  stamin(ctx, T) {
+    // las rayas de la corrida, atrás
+    for (const [y, x0] of [[0.2, -0.7], [0.38, -0.74], [0.56, -0.6]]) {
+      const l = new Path2D();
+      l.moveTo(x0, y);
+      l.lineTo(x0 + 0.26, y);
+      line(ctx, l, 0.07);
+    }
+    ctx.save();
+    ctx.translate(0.1, 0.08);
+    ctx.rotate(-0.26);
+    ctx.scale(1.06, 1.06);
+    // la alpargata: la lona...
+    const up = new Path2D();
+    up.moveTo(-0.5, 0.3);
+    up.lineTo(-0.47, -0.1);
+    up.quadraticCurveTo(-0.3, -0.03, -0.12, -0.08);
+    up.quadraticCurveTo(0.2, -0.02, 0.42, 0.13);
+    up.quadraticCurveTo(0.6, 0.21, 0.57, 0.3);
+    up.closePath();
+    solid(ctx, up, FG, 0.07);
+    // ...con la costura de la puntera
+    const seam = new Path2D();
+    seam.moveTo(0.16, 0.3);
+    seam.quadraticCurveTo(0.18, 0.08, 0.3, 0.06);
+    line(ctx, seam, 0.035, T.base);
+    // el ala en el tobillo: cuatro plumas que se abren para atrás y arriba
+    for (const [a, len] of [[-1.95, 0.5], [-2.25, 0.46], [-2.55, 0.4], [-2.85, 0.32]]) {
+      const f = new Path2D();
+      const bx = -0.28;
+      const by = 0.08;
+      const tx = bx + Math.cos(a) * len;
+      const ty = by + Math.sin(a) * len;
+      const nx = -Math.sin(a) * 0.1;
+      const ny = Math.cos(a) * 0.1;
+      f.moveTo(bx, by);
+      f.quadraticCurveTo((bx + tx) / 2 + nx, (by + ty) / 2 + ny, tx, ty);
+      f.quadraticCurveTo((bx + tx) / 2 - nx * 0.25, (by + ty) / 2 - ny * 0.25, bx, by);
+      f.closePath();
+      solid(ctx, f, FG, 0.06);
+    }
+    // ...y la suela de yute trenzado
+    const sole = new Path2D();
+    sole.roundRect(-0.54, 0.27, 1.14, 0.15, 0.07);
+    solid(ctx, sole, BRASS, 0.06);
+    ctx.save();
+    ctx.clip(sole);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 0.025;
+    for (let x = -0.56; x < 0.62; x += 0.09) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0.42);
+      ctx.lineTo(x + 0.07, 0.27);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.restore();
   },
 };
 

@@ -1232,6 +1232,113 @@ function maiz(T, M, perk) {
   return { g, rAt, top, vir: [std({ color: 0x8a6a3a, metalness: 0.6, roughness: 0.45 }), 0.011, 0.004], topping: popcorn };
 }
 
+// Stamin-Up (Trotadora): el mate zapatilla de correr. Pintado de amarillo a
+// naranja, la lengüeta con los cordones cruzados adelante, la muñequera de
+// toalla con la marca y dos alitas de oro a los costados (las del medallón).
+function stamin(T, M, perk) {
+  const L = perk.label;
+  const g = new THREE.Group();
+  const pts = profile([[0, 0], [0.022, 0.002], [0.037, 0.012], [0.044, 0.032], [0.044, 0.055], [0.04, 0.073], [0.033, 0.087], [0.029, 0.095], [0.031, 0.102]]);
+  const rAt = (y) => VM.profileRadius(pts, y);
+  const top = { r: 0.031, y: 0.102 };
+  const paint = texOf('st-pintura', 256, 256, (ctx, W, H) => {
+    const r = rng(401);
+    const gr = ctx.createLinearGradient(0, 0, 0, H);
+    gr.addColorStop(0, '#ffd23a');
+    gr.addColorStop(0.55, '#f7a21c');
+    gr.addColorStop(1, '#d9640e');
+    ctx.fillStyle = gr;
+    ctx.fillRect(0, 0, W, H);
+    // las rayas de velocidad que cruzan en diagonal
+    ctx.fillStyle = 'rgba(255,246,224,0.55)';
+    for (let k = 0; k < 4; k++) {
+      const x = W * (0.12 + k * 0.25);
+      ctx.beginPath();
+      ctx.moveTo(x, H * 0.62);
+      ctx.lineTo(x + 70, H * 0.62);
+      ctx.lineTo(x + 52, H * 0.7);
+      ctx.lineTo(x - 18, H * 0.7);
+      ctx.fill();
+    }
+    grain(ctx, W, H, r, 900, 0.12);
+  });
+  g.add(body(pts, phys({ map: paint, roughness: 0.32, clearcoat: 0.8, clearcoatRoughness: 0.15 })));
+  // la lengüeta con los ojalitos y los cordones cruzados (adelante, lejos de los dedos)
+  const laces = texOf('st-cordones', 128, 256, (ctx, W, H) => {
+    ctx.fillStyle = '#2a1a10';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#3a2618';
+    ctx.fillRect(W * 0.22, 0, W * 0.56, H);
+    const rows = 5;
+    const ys = Array.from({ length: rows }, (_, i) => H * (0.14 + (i * 0.72) / (rows - 1)));
+    ctx.lineCap = 'round';
+    for (let i = 0; i < rows - 1; i++) {
+      for (const [x0, x1] of [[0.16, 0.84], [0.84, 0.16]]) {
+        ctx.strokeStyle = '#8a5a2a';
+        ctx.lineWidth = 15;
+        ctx.beginPath();
+        ctx.moveTo(W * x0, ys[i]);
+        ctx.lineTo(W * x1, ys[i + 1]);
+        ctx.stroke();
+        ctx.strokeStyle = '#fff6e6';
+        ctx.lineWidth = 11;
+        ctx.stroke();
+      }
+    }
+    for (const y of ys) {
+      for (const x of [0.16, 0.84]) {
+        ctx.fillStyle = '#c8ccd2';
+        ctx.beginPath();
+        ctx.arc(W * x, y, 9, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = '#111';
+        ctx.beginPath();
+        ctx.arc(W * x, y, 4.5, 0, TAU);
+        ctx.fill();
+      }
+    }
+  });
+  g.add(strip(rAt, -0.36, 0.72, 0.014, 0.058, std({ map: laces, bumpMap: laces, bumpScale: 0.6, roughness: 0.8 }), 0.0011, 10));
+  // la muñequera de toalla, con la marca
+  const terry = texOf('st-faja', 1024, 128, (ctx, W, H) => {
+    const r = rng(409);
+    const stripes = (c, cx, seg, h) => {
+      c.fillStyle = L.bg;
+      c.fillRect(cx + seg * 0.42, h * 0.22, 6, h * 0.56);
+      c.fillRect(cx + seg * 0.42 + 10, h * 0.22, 6, h * 0.56);
+    };
+    paintBand(L, perk, { bg: '#fbf6ea', ink: L.bg, rule: L.bg, deco: stripes })(ctx, W, H);
+    // el rizo de la toalla
+    for (let i = 0; i < 5000; i++) {
+      ctx.fillStyle = r() < 0.5 ? 'rgba(255,255,255,0.35)' : 'rgba(120,90,60,0.14)';
+      ctx.beginPath();
+      ctx.arc(r() * W, r() * H, 0.8 + r() * 1.4, 0, TAU);
+      ctx.fill();
+    }
+  });
+  g.add(band(rAt, 0.064, 0.085, std({ map: terry, bumpMap: terry, bumpScale: 1.2, roughness: 0.95 }), 0.0022));
+  // las alitas de oro, a los costados (tres plumas cada una, para atrás y arriba)
+  const gold = std({ color: 0xf2c14e, metalness: 0.85, roughness: 0.28 });
+  for (const a of [Math.PI / 2 + 0.25, -Math.PI / 2 - 0.25]) {
+    const holder = new THREE.Group();
+    const y = 0.07;
+    for (const [rz, len, w] of [[0.55, 0.03, 0.0065], [0.95, 0.026, 0.006], [1.35, 0.02, 0.0055]]) {
+      const f = new THREE.Shape();
+      f.moveTo(0, 0);
+      f.quadraticCurveTo(len * 0.5, w, len, 0);
+      f.quadraticCurveTo(len * 0.5, -w * 0.6, 0, 0);
+      const m = flat(f, 0.0012, gold, 0.0003);
+      m.position.z = -0.0006;
+      m.rotation.z = rz;
+      holder.add(m);
+    }
+    holder.position.set(Math.sin(a) * rAt(y) * 0.96, y, Math.cos(a) * rAt(y) * 0.96);
+    holder.rotation.y = a - Math.PI / 2;
+    g.add(holder);
+  }
+  return { g, rAt, top, vir: [std({ color: 0xf2f4f6, metalness: 1, roughness: 0.12 }), 0.012, 0.004] };
+}
+
 // Cualquier otro perk: la calabaza del color del perk, con la faja de su nombre.
 function generic(T, M, perk) {
   const g = new THREE.Group();
@@ -1242,7 +1349,7 @@ function generic(T, M, perk) {
   return { g, rAt, top, vir: [M.silver, 0.012, 0.004] };
 }
 
-const BUILDERS = { jugg, revive, speed, doubletap, mule, deadshot, phd, dragon, aqua, cherry, wish, maiz };
+const BUILDERS = { jugg, revive, speed, doubletap, mule, deadshot, phd, dragon, aqua, cherry, wish, maiz, stamin };
 
 // Arma el mate de un perk (o uno genérico del color, si no hay perk).
 // Devuelve { root, tip, strawDir } como el de siempre (Weapons.drink).

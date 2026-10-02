@@ -26,13 +26,14 @@ const write = (k, v) => {
   }
 };
 
-// Los mapas con el easter egg completado (en el orden del juego).
+// Los mapas con el easter egg completado (en el orden del juego). Los mapas
+// bonus (el Monumento) no cuentan para el super easter egg.
 export function eggsDone() {
   const d = read(KEY) || {};
-  return MAP_LIST.filter((m) => d[m.id]).map((m) => m.id);
+  return MAP_LIST.filter((m) => !m.bonus && d[m.id]).map((m) => m.id);
 }
 
-export const eggsTotal = () => MAP_LIST.length;
+export const eggsTotal = () => MAP_LIST.filter((m) => !m.bonus).length;
 
 // Anota el mapa; devuelve true si es la primera vez.
 export function markEgg(id) {

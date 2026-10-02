@@ -396,6 +396,8 @@ export default class Elementales {
       mesh.add(core, halo);
       this.spawn({ kind: 'tormenta', st, charged: true, pos: muzzle.clone(), vel: vel.clone(), gravity: 0, mesh, life: 5, zapT: 0, ghost, snd: this.snd.zoneLoop('rayo', muzzle) });
       this.shotSound('rayo', st, muzzle, true, ghost);
+      // (el asedio: apuntando a una catapulta, el cielo le contesta)
+      if (!ghost) g.ee?.onCharged?.('rayo', origin, fwd);
       return;
     }
     // el primero: el que está en la mira (o el más derecho adelante)

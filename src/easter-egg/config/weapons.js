@@ -1040,6 +1040,46 @@ export const WEAPONS = {
       aura: { radius: 3.6, tick: 0.12, boss: 16000, bossFrac: 0.02 },
     },
   },
+  // El Sable Corvo de San Martín (la maravilla del Monumento al Mate): no sale
+  // de la caja; se arma con tres piezas en la Llama Votiva (el mapa llama a
+  // weapons.sable.give()). weapons/Sable.js
+  //  · slash: el combo de tres tajos (alcance, coseno del medio ángulo, cuántos
+  //    corta, hasta qué ronda mata de un tajo; a los jefes, la parte de su vida
+  //    por golpe y lo mínimo)
+  //  · throw: el tiro de boomerang (lejos, de costado, segundos de vuelo, radio
+  //    del corte, espera; jefes como arriba)
+  //  · wave (mejorado): la medialuna celeste de cada tajo
+  //  · carga (mejorado): bajas para llenarla, largo, medio ancho del pasillo,
+  //    velocidad del galope, cuánto se mantiene el derecho y a los jefes
+  sable: {
+    name: 'Sable Corvo',
+    desc: 'Izquierdo: tajos. Derecho: tiralo, vuelve solo.',
+    kind: 'sable',
+    auto: true,
+    rpm: 135,
+    mag: 0,
+    reserve: 0,
+    reload: 1,
+    damage: 0,
+    headMult: 1,
+    range: 3.6,
+    sound: 'silent',
+    recoil: 0.04,
+    special: true,
+    wonder: true,
+    noAds: true,
+    slash: { range: 3.6, cos: 0.25, targets: 5, oneHit: 26, boss: 0.03, bossMin: 1800 },
+    throw: { reach: 13, side: 3.6, time: 1.35, radius: 1.25, cd: 3, boss: 0.06, bossMin: 3000 },
+    pap: {
+      name: 'Sable de San Lorenzo',
+      desc: 'Cada tajo larga una medialuna. Con la carga llena, mantené el derecho.',
+      rpm: 150,
+      slash: { range: 3.9, cos: 0.18, targets: 6, oneHit: 36, boss: 0.04, bossMin: 2600 },
+      throw: { reach: 16, side: 4.4, time: 1.45, radius: 1.6, cd: 2.6, boss: 0.08, bossMin: 4500 },
+      wave: { range: 12, speed: 30, half: 2.3, boss: 0.012 },
+      carga: { kills: 25, len: 38, half: 4.2, speed: 17, hold: 0.45, boss: 0.3, bossMin: 12000 },
+    },
+  },
 };
 
 // Pesos de la caja misteriosa (0 o ausente = no sale de la caja). `only`:

@@ -19,13 +19,15 @@ import { camoFor } from '../weapons/camos';
 
 const SNAP_HZ = 20;
 // (los nuevos, siempre al final: el índice viaja en la foto)
-const BOSS_KINDS = ['capataz', 'mandinga', 'scarecrow', 'alcaide', 'gil', 'francisco', 'caballero', 'sargento', 'luison'];
+const BOSS_KINDS = ['capataz', 'mandinga', 'scarecrow', 'alcaide', 'gil', 'francisco', 'caballero', 'sargento', 'luison', 'surubi'];
 // los jefes del final (los que no son un jefe de ronda)
 const FINAL_KINDS = [1, 2, 4, 5];
 const MOVE_HZ = 20;
 // la altura va en 2 bytes (centímetros): la torre tiene más de 60 m
 const PLAYER_BYTES = 13;
 const ZOMBIE_BYTES = 12;
+// los avisos del anfitrión que un invitado no puede mandar con share
+const HOST_ONLY = new Set(['start', 'go', 'arrive', 'map', 'pause', 'win', 'over']);
 
 const tmpV = new THREE.Vector3();
 // Altura en centímetros para 2 bytes (hasta ±327 m).
@@ -195,7 +197,10 @@ export default class Session {
       this.ptsT -= dt;
       if (this.ptsT <= 0) {
         this.ptsT = 0.25;
-        for (const [id, v] of this.pts) if (v) this.net.to(id, { t: 'pts', v });
+        // (los tiros y las bajas de los invitados: con los puntos dobles, x2;
+        // el invitado los suma tal cual. k: son de tiros y bajas)
+        const x2 = g.powerups?.active.double ? 2 : 1;
+        for (const [id, v] of this.pts) if (v) this.net.to(id, { t: 'pts', v: v * x2, k: 1 });
         this.pts.clear();
         for (const [id, v] of this.xpq) if (v) this.net.to(id, { t: 'xp', v });
         this.xpq.clear();
@@ -213,13 +218,15 @@ export default class Session {
     // por si alguien entró después)
     if (g.state === 'playing' && g.weapons) {
       const s = g.weapons.slot;
-      const key = s ? `${s.id}|${tierOf(s.up)}` : '';
+      // (la hoz de oro, la del bastón del Yasy: si no, los demás veían la común)
+      const gold = s?.id === 'hoz' && !!g.player?.baston;
+      const key = s ? `${s.id}|${tierOf(s.up)}|${gold ? 1 : 0}` : '';
       this.wpnT -= dt;
       if (key !== this.wpnKey || this.wpnT <= 0) {
         this.wpnKey = key;
         this.wpnT = 4;
         // (c: el camuflaje de la armería, que se ve hasta el Pack-a-Pava)
-        this.share('wpn', { id: this.id, w: s?.id || '', u: s ? tierOf(s.up) : 0, c: (s && !s.up && camoFor(s.id)) || '' });
+        this.share('wpn', { id: this.id, w: s?.id || '', u: s ? tierOf(s.up) : 0, c: gold ? 'oro' : (s && !s.up && camoFor(s.id)) || '' });
       }
     }
     // panel de compañeros
@@ -577,7 +584,11 @@ export default class Session {
       this.lost = true;
       g.onHostGone();
     });
-    net.on('pts', (m) => g.addPoints(m.v, null, true));
+    // (con Plata en Balas, la empanada árabe, lo de los tiros y las bajas va a balas)
+    net.on('pts', (m) => {
+      if (m.k && g.emp?.has('arabe') && g.emp.toAmmo(m.v)) return;
+      g.addPoints(m.v, null, true);
+    });
     net.on('xp', (m) => g.levels?.gain(m.v, 'kills'));
     // la tabla de puntos: la plata de un invitado, y la tabla que reparte el anfitrión
     net.on('score', (m, from) => {
@@ -662,7 +673,8 @@ export default class Session {
     });
     // lo que manda un invitado para que lo vean todos (el anfitrión lo reparte)
     net.on('share', (m, from) => {
-      if (!this.host) return;
+      // (lo que arranca, pausa o termina la partida lo dice solo el anfitrión)
+      if (!this.host || HOST_ONLY.has(m.e)) return;
       this.applyEvent(m);
       net.broadcast({ ...m, t: 'ev' }, from);
     });
@@ -703,9 +715,10 @@ export default class Session {
     });
   }
 
-  // Puntos que se ganó un invitado con algo que simula el anfitrión.
+  // Plata que le vuelve a un invitado por algo que simula el anfitrión (la
+  // caja que se le fue): va aparte, sin los puntos dobles.
   givePts(id, v) {
-    this.pts.set(id, (this.pts.get(id) || 0) + v);
+    this.net.to(id, { t: 'pts', v });
   }
 
   giftPoints(to, n) {
@@ -828,11 +841,14 @@ export default class Session {
     if (this.host) this.net.broadcast(m, m.pid);
     const from = tmpV.set(m.x, m.y, m.z).clone();
     const to = new THREE.Vector3(m.ex, m.ey, m.ez);
-    if (m.k === 'stream') g.fx.waterJet(from, to, !!m.u);
-    else g.fx.tracer(from, to, m.u ? 0xffa0ff : 0xfff0c8);
+    // (lo que se ve sale del mate que tiene en la mano su gaucho, no de su
+    // cámara, que queda más arriba; el tiro de verdad ya lo hizo él)
+    const vis = this.avatars?.muzzleOf?.(m.pid, new THREE.Vector3()) || from;
+    if (m.k === 'stream') g.fx.waterJet(vis, to, !!m.u);
+    else g.fx.tracer(vis, to, m.u ? 0xffa0ff : 0xfff0c8);
     g.critters?.onNoise(from);
-    g.fx.flash(from, 0xffb060, 6, 0.05, 6);
-    g.audio.shot(m.k, from, !!m.u);
+    g.fx.flash(vis, 0xffb060, 6, 0.05, 6);
+    g.audio.shot(m.k, vis, !!m.u);
   }
 
   // Un invitado le pegó a un zombie: el anfitrión aplica el daño.
@@ -857,6 +873,8 @@ export default class Session {
       pu: info.pup || undefined,
       // (el tope al jefe final de la medialuna de la hoz de oro)
       cp: info.cap || undefined,
+      // (el tajo de la hoz: la baja paga como a cuchillo)
+      ml: info.melee ? 1 : undefined,
     });
   }
 
@@ -875,6 +893,7 @@ export default class Session {
       decap: !!m.dc,
       pup: m.pu,
       cap: m.cp,
+      melee: !!m.ml,
       point: new THREE.Vector3(m.x, m.y, m.w),
       dir: new THREE.Vector3(m.dx, 0, m.dz),
       noPoints: true,
@@ -1038,6 +1057,8 @@ export default class Session {
     }
     if (m.bowie) g.weapons.giveBowie();
     if (m.perk) {
+      // (la musiquita de la máquina, como cuando se compra solo; la del anfitrión suena allá)
+      if (it) g.audio.perkJingle(m.perk, it.pos);
       g.weapons.drink(g.perkColor(m.perk), () => g.player.givePerk(m.perk));
     }
     if (m.gift) g.activities.applyGift(m.gift);
@@ -1056,6 +1077,12 @@ export default class Session {
   share(name, data = {}) {
     if (this.host) this.event(name, data);
     else this.net.send({ t: 'share', e: name, ...data });
+  }
+
+  // Lo que hace el jugador, para que los demás lo vean en su gaucho (net/gauchoSkin:
+  // tomar, cuchillazo, tirar, recargar, levantar a otro; d: cuánto dura)
+  act(a, d = 0) {
+    this.share('act', d ? { id: this.id, a, d: +d.toFixed(2) } : { id: this.id, a });
   }
 
   applyEvent(m) {
@@ -1098,6 +1125,11 @@ export default class Session {
       case 'elem':
         g.weapons?.elem?.ghost(m);
         break;
+      // la bomba de yerba o la pava de otro jugador (la pava, en el anfitrión,
+      // además llama a los muertos)
+      case 'lob':
+        g.weapons?.ghostLob(m);
+        break;
       // la Piedra de Molino o el Mate Dragón de otro jugador (solo se ve)
       case 'esp':
         g.weapons?.esp?.ghost(m);
@@ -1131,6 +1163,10 @@ export default class Session {
       case 'facon':
         g.weapons?.facon?.ghost(m);
         break;
+      // el Sable Corvo de otro jugador: los tajos, el tiro y la Carga (solo se ve)
+      case 'sable':
+        g.weapons?.sable?.ghost(m);
+        break;
       case 'bolt':
         g.vida?.bolt(tmpV.fromArray(m.a).clone(), new THREE.Vector3().fromArray(m.b));
         break;
@@ -1150,6 +1186,23 @@ export default class Session {
       case 'wpn':
         if (m.id !== this.id) this.wpn.set(m.id, { w: m.w || '', u: m.u | 0, c: typeof m.c === 'string' ? m.c.slice(0, 24) : '' });
         break;
+      // lo que hace un compañero (Session.act; net/gauchoSkin lo muestra)
+      case 'act': {
+        const r = m.id !== this.id && this.remote.get(m.id);
+        if (r) r.act = { a: String(m.a).slice(0, 12), d: +m.d || 0, t: performance.now() };
+        break;
+      }
+      // alguien está levantando a un caído (Interactables.reviveCheck): mientras
+      // tanto no se desangra (Player.update; el ícono de los demás, Avatars.revives)
+      case 'rev': {
+        if (m.id === this.id) {
+          g.player.revHold = 0.45;
+          g.player.revBy = this.nameOf(m.by);
+        }
+        const r = this.remote.get(m.id);
+        if (r) r.revUntil = g.time + 0.45;
+        break;
+      }
       // los candados de los minijefes (los pone el anfitrión, los saca cualquiera)
       case 'lock': {
         const it = g.interact.list[m.i];
@@ -1303,5 +1356,5 @@ export default class Session {
   }
 }
 
-export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn', 'whipWind', 'whip', 'chargeWind', 'charge', 'stunned', 'enrage', 'summon', 'stairs', 'fall', 'boat', 'boatHit', 'howl', 'melting', 'aim', 'shoot', 'burrow', 'emerge', 'reel', 'zapped', 'lurk', 'lurkIn'];
+export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn', 'whipWind', 'whip', 'chargeWind', 'charge', 'stunned', 'enrage', 'summon', 'stairs', 'fall', 'boat', 'boatHit', 'howl', 'melting', 'aim', 'shoot', 'burrow', 'emerge', 'reel', 'zapped', 'lurk', 'lurkIn', 'ladder', 'ram', 'dance', 'danceWatch', 'lance'];
 export const SPEEDS = ['walk', 'run', 'sprint'];

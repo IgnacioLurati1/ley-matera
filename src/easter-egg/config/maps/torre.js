@@ -142,7 +142,6 @@ export const WALL_BUYS = [
   { weapon: 'vidrio', ...S(33, 2) },
   { weapon: 'lata', ...N(33, 4) },
   { weapon: 'algarrobo', ...W(26, 6) },
-  { weapon: 'granadas', ...E(33, 8) },
   { weapon: 'bowie', ...S(26, 9) },
 ];
 // El Rayo Matero Mark III: en la historia se arma en el pararrayos de la cima
@@ -161,6 +160,8 @@ const BASE_PERKS = [
   { perk: 'phd', ...S(26, 10) },
   { perk: 'mule', ...N(26, 12) },
   { perk: 'deadshot', ...E(26, 13) },
+  // Stamin-Up (la Trotadora), en el 8 (entre el 7 y el 10 no había ninguno)
+  { perk: 'stamin', ...N(33, 8) },
 ];
 // y en la historia, dos más: el Chisporé (Electric Cherry) en los Calabozos
 // Altos (el penal también subió) y la Extremaunión (Dying Wish) en la Capilla

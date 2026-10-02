@@ -26,13 +26,14 @@ const NAMES = {
   piedra: '¡Piedra de molino!',
   dragon: '¡Mate Dragón!',
   facon: '¡Facón Relámpago!',
+  clarin: '¡Toque de Clarín!',
   // los del Challenge de la torre (FEATURES.pups)
   infinito: '¡Balas infinitas!',
   botas: '¡Botas de potro!',
 };
 // El potenciador propio de cada mapa. Entra en la bolsa solo si ya tiene
 // nombre (NAMES): así uno a medio hacer no sale vacío.
-const SPECIAL = { granja: 'muerte', molino: 'piedra', penal: 'almas', torre: 'admin', castillo: 'dragon', esteros: 'facon' };
+const SPECIAL = { granja: 'muerte', molino: 'piedra', penal: 'almas', torre: 'admin', castillo: 'dragon', esteros: 'facon', monumento: 'clarin' };
 // Los personales: un arma que dura unos segundos, solo para el que lo agarra
 // ([id del arma, segundos]). Su tiempo se ve en el HUD con la misma clave.
 const PERSONAL = {
@@ -48,7 +49,7 @@ export default class Powerups {
   constructor(game) {
     this.g = game;
     this.items = [];
-    this.active = { insta: 0, double: 0, firesale: 0, infinito: 0, botas: 0 };
+    this.active = { insta: 0, double: 0, firesale: 0, infinito: 0, botas: 0, clarin: 0 };
     for (const k of Object.keys(PERSONAL)) this.active[k] = 0;
     this.bag = [];
     this.nextScore = POWERUP.firstThreshold;
@@ -188,6 +189,16 @@ export default class Powerups {
         add(new THREE.CylinderGeometry(0.06, 0.06, 0.08, 10), M.steel, 0, 0.23);
         add(new THREE.CylinderGeometry(0.008, 0.008, 0.14, 4), M.teabag, 0.03, 0.32, 0, 0, 0, -0.4);
         break;
+      case 'clarin': {
+        add(new THREE.TorusGeometry(0.13, 0.018, 8, 24), gold, 0, 0, 0);
+        add(new THREE.TorusGeometry(0.09, 0.016, 8, 20), gold, 0.02, 0, 0.02);
+        add(new THREE.CylinderGeometry(0.11, 0.02, 0.26, 18, 1, true), gold, 0.2, 0.06, 0, 0, 0, Math.PI / 2 + 0.25);
+        add(new THREE.CylinderGeometry(0.02, 0.02, 0.2, 8), gold, -0.18, -0.02, 0, 0, 0, Math.PI / 2);
+        // el cordón celeste y blanco con su borla
+        add(new THREE.TorusGeometry(0.15, 0.008, 6, 20, Math.PI), new THREE.MeshStandardMaterial({ color: 0x74acdf }), 0, -0.1, 0, 0, 0, Math.PI);
+        add(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshStandardMaterial({ color: 0xf4f2ec }), 0, -0.26, 0);
+        break;
+      }
       case 'carpenter':
         add(new THREE.CylinderGeometry(0.025, 0.03, 0.5, 8), M.wood, 0, 0, 0, 0, 0, 0.5);
         add(new THREE.BoxGeometry(0.25, 0.08, 0.08), M.steel, -0.11, 0.2, 0, 0, 0, 0.5);
@@ -398,11 +409,21 @@ export default class Powerups {
         g.later(0.3, () => g.addPoints(POINTS.nuke, null, true));
         break;
       case 'carpenter':
-        if (!g.net?.guest) g.barriers.repairAll();
+        // (en todas las compus: si no, los invitados seguían viendo las
+        // ventanas vacías; las trabadas de la defensa del yerbal ya les llegan)
+        g.barriers.repairAll();
         g.later(1.5, () => g.addPoints(POINTS.carpenter, null, true));
         break;
       case 'firesale':
         this.active.firesale = POWERUP.duration;
+        break;
+      // el Monumento: el toque de clarín de los Granaderos. Los muertos se
+      // cuadran (quietos, firmes) 6 s y todo lo que les pega hace el doble
+      // (entities/Zombies.js mira active.clarin)
+      case 'clarin':
+        this.active.clarin = 6;
+        g.audio.bugle(g.camera.position.clone());
+        g.post?.flash?.(0.35);
         break;
       case 'infinito':
         this.active.infinito = POWERUP.duration;

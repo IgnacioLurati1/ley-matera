@@ -4,6 +4,7 @@ import { EE, DOORS, ZONES } from '../config/map';
 import { rng } from '../core/noise';
 import { depthPrepass } from '../fx/prepass';
 import { buildCamps } from '../world/matorralCamps';
+import MatorralChests from './matorralChests';
 
 // El Matorral (La Tapera, zona K, atrás de la despensa de la atahona): un
 // campo inmenso de maíz más alto que uno (el mismo que levanta el
@@ -230,6 +231,8 @@ export default class Matorral {
     // los campamentos primero: el maíz no crece adentro de sus cosas
     this.camps = buildCamps(g.world, this.C.camps);
     this.build();
+    // los cofres de los campamentos (entities/matorralChests.js)
+    this.chests = new MatorralChests(this);
   }
 
   inside(x, z) {
@@ -502,7 +505,11 @@ export default class Matorral {
     if (this.warnT > 0) this.updateWarn(dt);
     this.campFx(dt);
     this.cull(dt);
-    if (!g.net?.guest) this.hostTick(dt);
+    this.chests.update(dt);
+    if (!g.net?.guest) {
+      this.chests.hostTick();
+      this.hostTick(dt);
+    }
     // los cortes de acá, juntos, a los demás
     this.outT -= dt;
     if (this.outbox.length && this.outT <= 0 && g.net) {
@@ -816,6 +823,7 @@ export default class Matorral {
       this.resetCuts();
       g.yasy?.onRegrow();
     }
+    this.chests.onState(s);
     if (send) this.send();
   }
 
@@ -824,7 +832,7 @@ export default class Matorral {
     this.syncT = this.state === 'fire' || this.timer >= 0 ? 3 : 8;
     if (!g.net?.host) return;
     // (ft y no t: la t es el tipo del mensaje de la red)
-    g.net.event('mato', { k: 'st', s: this.state, ft: +this.fireT.toFixed(2), r: this.ashRound, tm: +this.timer.toFixed(1) });
+    g.net.event('mato', { k: 'st', s: this.state, ft: +this.fireT.toFixed(2), r: this.ashRound, tm: +this.timer.toFixed(1), ch: this.chests.net() });
   }
 
   // ---------------- para los Yasy ----------------
@@ -852,6 +860,10 @@ export default class Matorral {
   // ---------------- red ----------------
   onEvent(m) {
     const g = this.g;
+    if (m.k === 'chest' || m.k === 'open' || m.k === 'opened') {
+      this.chests.onEvent(m);
+      return;
+    }
     if (m.k === 'cut') {
       const c = m.c || [];
       for (let i = 0; i + 6 < c.length; i += 7) this.cutArc(c[i], c[i + 1], c[i + 2], c[i + 3], c[i + 4], c[i + 5], c[i + 6]);
@@ -864,6 +876,7 @@ export default class Matorral {
       if (m.s === 'fire') this.fireT = m.ft;
       this.ashRound = m.r;
       this.timer = m.tm;
+      if (m.ch) this.chests.apply(m.ch);
     }
   }
 

@@ -415,7 +415,13 @@ export default class Yasy {
       }
       // (ya es de todos: el dorado no vuelve)
       if (!this.goldDone && !this.baston && !g.player.baston && this.list[GOLD].st === 'off') this.spawnGold(ins);
-    } else this.spawnT = Math.min(this.spawnT, 1.2);
+    } else {
+      this.spawnT = Math.min(this.spawnT, 1.2);
+      // quemado, el dorado no queda (vuelve cuando el maizal crece de nuevo:
+      // onRegrow), como los cofres de los campamentos
+      const G = this.list[GOLD];
+      if (M.state === 'ash' && !['off', 'dead', 'sink', 'latch'].includes(G.st)) this.setSt(G, 'sink');
+    }
     for (const y of this.list) if (y.st !== 'off') this.think(y, dt, ins);
     // la primera vez que alguien se cruza uno
     if (!this.said) {

@@ -3,6 +3,7 @@ import { EE } from '../../config/map';
 import { buildChiqui, chiquiGiggle } from '../../world/Chiqui';
 import { myId, isHost, announce, players } from './common';
 import Juramento from './Juramento';
+import { preloadBossSkin } from '../bossSkin';
 
 // Los dos pasos del final antes de la Gran Guerra:
 //  · La vanguardia: el Chiquitijuein (chiquito, en la muralla del patio)
@@ -85,6 +86,10 @@ export default class Vanguardia {
     // todo (core/music.js), mientras el Chiquitijuein mira desde la muralla
     if (on && !g.music?.is('jefe-generico')) g.music?.play('jefe-generico', { loop: true, while: () => this.chiqui.visible && (g.state === 'playing' || g.state === 'paused') });
     if (on) {
+      // (el cuerpo de verdad de los Caballeros Negros se baja antes de que salgan)
+      preloadBossSkin(g.zombies, 'caballero');
+      // (el cuerpo de verdad: les mueve el dedo, "no, no, no"; el último, se va frotando las manos)
+      this.chiquiRig.act(line === 3 ? 'taunt' : 'wag', { until: 3.2 });
       g.fx.sparkle(this.chiqui.position.clone().setY(this.chiqui.position.y + 0.8), [1, 0.2, 0.1], 30, 0.8);
       chiquiGiggle(g.audio, { pos: this.chiqui.position, gain: 1.2, ref: 10 });
     }
@@ -170,7 +175,7 @@ export default class Vanguardia {
       // se balancea y mira al que tenga más cerca
       const p = g.player.pos;
       this.chiqui.rotation.y = Math.atan2(p.x - this.chiqui.position.x, p.z - this.chiqui.position.z);
-      this.chiqui.position.y = EE.chiqui[1] + Math.abs(Math.sin(t * 3)) * 0.04;
+      this.chiqui.position.y = EE.chiqui[1] + (this.chiquiRig.skin ? 0 : Math.abs(Math.sin(t * 3)) * 0.04);
       this.chiquiRig.update(dt, t);
     }
     if (!isHost(g) || this.egg.step !== 7 || this.nextT < 0) return;

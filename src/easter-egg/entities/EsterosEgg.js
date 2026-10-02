@@ -8,6 +8,7 @@ import Ofrenda from './esteros/Ofrenda';
 import EsterosEnding from '../ui/EsterosEnding';
 import LuisonArrival, { prefetchSong } from '../ui/LuisonArrival';
 import SongEgg from '../world/SongEgg';
+import Thriller from './esteros/Thriller';
 import { TRACKS, LUISON_FROM } from '../core/music';
 import { LUISON_PREP } from '../core/audio';
 
@@ -110,6 +111,8 @@ export default class EsterosEgg {
     this.ofrenda = new Ofrenda(this);
     // easter egg musical: tres verduleras (world/SongEgg.js)
     this.song = new SongEgg(game, 'esteros');
+    // el tocadiscos de la enramada: el baile de los muertos (entities/esteros/Thriller.js)
+    this.thriller = new Thriller(game);
     this.buildHueco();
     // (el cartel de qué hacer ya no se muestra: el usuario lo sacó el
     // 2026-09-26; la guía de cada mapa va aparte, en PDF)
@@ -647,11 +650,12 @@ export default class EsterosEgg {
   }
 
   fullState() {
-    return { s: this.step, roles: [...this.roles], sb: this.saber.state(), pd: this.poder.state(), of: this.ofrenda.state() };
+    return { s: this.step, roles: [...this.roles], sb: this.saber.state(), pd: this.poder.state(), of: this.ofrenda.state(), th: this.thriller.state() };
   }
 
   applyRemote(m) {
     if (m.song) return this.song.applyRemote(m.song);
+    if (m.thr) return this.thriller.applyRemote(m.thr);
     if (m.vz) return this.playVoice(m.vz);
     if (m.wg) return this.playWhisper(m.wg);
     if (m.wi) return this.poder.apply(m);
@@ -666,6 +670,7 @@ export default class EsterosEgg {
     if (m.sb) this.saber.apply(m.sb);
     if (m.pd) this.poder.apply(m.pd);
     if (m.of) this.ofrenda.apply(m.of);
+    if (m.th) this.thriller.apply(m.th);
   }
 
   // Lo que manda un invitado.
@@ -681,6 +686,7 @@ export default class EsterosEgg {
     this.poder.update(dt);
     this.ofrenda.update(dt);
     this.song.update(dt);
+    this.thriller.update(dt);
     // la llegada del Luisón, armada de antes (con la luz ya en la laguna)
     if (this.step === 4 && !this.arrival && !this.scene) this.prepArrival();
     this.luisonMusic();
@@ -773,6 +779,7 @@ export default class EsterosEgg {
     this.arrival?.dispose();
     this.arrival = null;
     window.removeEventListener('keydown', this.onKey);
+    this.thriller.dispose();
     this.saber.dispose();
     this.poder.dispose();
     this.ofrenda.dispose();

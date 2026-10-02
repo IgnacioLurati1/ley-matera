@@ -196,13 +196,13 @@ class Rig {
     const tube = (r, sharp, flow, gain, near, a, b) =>
       prep(new THREE.Mesh(G.tube, shader({ uLen: this.LEN, uTime: this.TIME, uGrow: this.GROW, uK: this.K, uR: { value: r }, uSharp: { value: sharp }, uFlow: { value: flow }, uGain: { value: gain }, uNear: { value: near }, uA: { value: new THREE.Color(a) }, uB: { value: new THREE.Color(b) } }, TUBE_VS, TUBE_FS)));
     // el halo (ancho, ámbar, con la energía que corre) y el núcleo (oro claro)
-    this.glow = tube(0.2, 1.3, 1, 0.5, 0.25, 0xff7a0c, 0xffb83a);
-    this.core = tube(0.055, 2.6, 0.4, 1.05, 0.8, 0xffb43c, 0xfff0c0);
+    this.glow = tube(0.2, 1.3, 1, 0.38, 0.25, 0xff7a0c, 0xffb83a);
+    this.core = tube(0.055, 2.6, 0.4, 0.8, 0.8, 0xffb43c, 0xfff0c0);
     this.R0 = [0.2, 0.055, 0.36];
-    this.helix = prep(new THREE.Mesh(G.helix, shader({ uLen: this.LEN, uTime: this.TIME, uGrow: this.GROW, uK: this.K, uR: { value: 0.36 }, uA: { value: new THREE.Color(0xffc248).multiplyScalar(1.6) } }, HELIX_VS, HELIX_FS)));
+    this.helix = prep(new THREE.Mesh(G.helix, shader({ uLen: this.LEN, uTime: this.TIME, uGrow: this.GROW, uK: this.K, uR: { value: 0.36 }, uA: { value: new THREE.Color(0xffc248).multiplyScalar(1.2) } }, HELIX_VS, HELIX_FS)));
     this.root.add(this.glow, this.core, this.helix);
     // las medialunas que vuelan por el rayo
-    this.ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc23a).multiplyScalar(2.4), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false });
+    this.ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc23a).multiplyScalar(1.8), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false });
     this.rings = [];
     for (let i = 0; i < RINGS; i++) {
       const m = prep(new THREE.Mesh(G.ring, this.ringMat));
@@ -213,13 +213,13 @@ class Rig {
     this.ringT = 0;
     // el sol donde pega: el destello, los rayos que giran y el halo
     this.hit = new THREE.Group();
-    this.hitFlare = prep(sprite(flareTexture(), 0xffd890, 1.5));
-    this.hitRays = prep(sprite(raysTexture(), 0xffa424, 1.3));
-    this.hitHalo = prep(sprite(dot, 0xff7a14, 0.7));
+    this.hitFlare = prep(sprite(flareTexture(), 0xffd890, 1.15));
+    this.hitRays = prep(sprite(raysTexture(), 0xffa424, 1));
+    this.hitHalo = prep(sprite(dot, 0xff7a14, 0.55));
     this.hit.add(this.hitHalo, this.hitRays, this.hitFlare);
     this.root.add(this.hit);
     // (la punta de la hoja de otro jugador; la propia va en la mano)
-    this.tip = prep(sprite(flareTexture(), 0xffe6a0, 2.4));
+    this.tip = prep(sprite(flareTexture(), 0xffe6a0, 1.8));
     this.root.add(this.tip);
     this.busy = false;
     home.add(this.root);
@@ -323,7 +323,7 @@ export default class HozBeam {
     this.loop = null;
     this.kills = [];
     // el destello de la punta de la hoja, en la mano (escena de la mano)
-    this.vmTip = sprite(flareTexture(), 0xffe6a0, 3);
+    this.vmTip = sprite(flareTexture(), 0xffe6a0, 2.2);
     this.vmTip.renderOrder = 10;
     this.vmTip.visible = false;
     weapons.warm.add(this.vmTip);

@@ -58,6 +58,11 @@ export const TRACKS = {
   // la otra de los jefes de ronda (sale una u otra al azar)
   'jefe-generico-2': { name: 'Pelea de los jefes de ronda', gain: 0.97, loop: [2, 190.5] },
   'defensa-granja': { name: 'La defensa del yerbal', gain: 0.95 },
+  // el asedio del castillo (entities/castle/Asedio.js), después de los campanazos
+  // (la eligió el usuario; al final tiene 4 s de silencio: da la vuelta antes)
+  'asedio-castillo': { name: 'El asedio', gain: 1, loop: [0, 116] },
+  // el baile del estero (entities/esteros/Thriller.js; el tramo que se baila, recortado)
+  'baile-esteros': { name: 'El baile del estero', gain: 0.8 },
   'cine-castillo-medio': { name: 'El origen de los mates', gain: 1 },
   'cine-castillo-caballeros': { name: 'Lo que dicen los caballeros', gain: 0.91 },
   'cine-penal-final': { name: 'El final del penal', gain: 1 },
@@ -182,7 +187,8 @@ export default class Music {
     const zb = g.zombies?.boss;
     const cz = g.crow?.z;
     const b = zb && !zb.dead ? zb : cz?.active && !cz.dead ? cz : null;
-    if (!this.cur && b && g.state === 'playing' && !g.arena?.active && !g.ee?.scene && !g.intro?.active && !songOn()) {
+    // (g.defense.quiet: el asedio del castillo no lleva música, ni esta)
+    if (!this.cur && b && g.state === 'playing' && !g.arena?.active && !g.ee?.scene && !g.intro?.active && !songOn() && !g.defense?.quiet) {
       this.play(Math.random() < 0.5 ? 'jefe-generico' : 'jefe-generico-2', { loop: true, while: (G) => (G.zombies?.boss === b || (G.crow?.z === b && b.active)) && !b.dead && (G.state === 'playing' || G.state === 'paused') });
     }
     // (Alt+I) arrancó la partida: se salta a la escena elegida
@@ -246,6 +252,28 @@ export const SCENES = [
       g.ee.defense.start(g.rounds);
     },
   },
+  // la Noche de la Luz Mala del molino (entities/LuzMala.js), con modo dios
+  {
+    id: 'noche-molino',
+    map: 'molino',
+    group: 'Jefes',
+    name: 'El molino: la Noche de la Luz Mala (las luces y el Capataz Maldito)',
+    go: (g) => {
+      g.godMode = true;
+      g.ee.noche?.debugStart();
+    },
+  },
+  // el motín del penal (entities/penalMotin.js): la sirena, las celdas y el Alcaide, con modo dios
+  {
+    id: 'motin-penal',
+    map: 'penal',
+    group: 'Jefes',
+    name: 'Mate of the Dead: el motín (las celdas, los tableros y el Alcaide)',
+    go: (g) => {
+      g.godMode = true;
+      g.ee.motin?.debugStart();
+    },
+  },
   {
     id: 'jefe-esteros',
     map: 'esteros',
@@ -267,6 +295,18 @@ export const SCENES = [
       g.godMode = true;
       g.addPoints(100000, null, true);
       g.ee.debugStep(7);
+    },
+  },
+  // el asedio del castillo (entities/castle/Asedio.js): ya, con modo dios
+  {
+    id: 'asedio-castillo',
+    map: 'castillo',
+    group: 'Jefes',
+    name: 'Der Mateendrache: el asedio (catapultas, escaleras y el ariete)',
+    track: 'asedio-castillo',
+    go: (g) => {
+      g.godMode = true;
+      g.ee.asedio?.debugStart();
     },
   },
   {

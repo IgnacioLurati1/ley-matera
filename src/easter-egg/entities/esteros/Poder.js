@@ -3,7 +3,7 @@ import { EE } from '../../config/map';
 import { WEAPONS } from '../../config/weapons';
 import Encierro from '../Encierro';
 import { isHost, announce, toastAll } from '../castle/common';
-import { mat, glint, pulse, pavaModel } from './common';
+import { glint, pulse, pavaModel } from './common';
 
 // "El Pacto", pasos 2 y 3: el poder.
 //  2. El Liquidificador: la pava negra del fondo de la Laguna del Irupé
@@ -58,8 +58,7 @@ export default class Poder {
     this.root.add(this.sunk, this.sunkGlint);
     // la del altar (la misma pava, ya embrujada)
     const [ax, az] = EE.altar;
-    const hot = mat('pavaHot', () => new THREE.MeshStandardMaterial({ color: 0x1a1a18, emissive: 0x8affc0, emissiveIntensity: 0.25, metalness: 0.6, roughness: 0.4 }));
-    this.altarPava = pavaModel(hot);
+    this.altarPava = pavaModel(true);
     this.altarPava.position.set(ax, this.floor(ax, az) + 1.02, az);
     this.altarPava.visible = false;
     this.altarGlow = glint(g, 0x9affc8, 1.8);

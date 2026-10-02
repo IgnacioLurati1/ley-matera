@@ -201,7 +201,7 @@ export const EMPANADAS = [
     use: 'activa',
     dur: 1,
     desc: 'Aparece una munición máxima.',
-    color: '#8a6ad8',
+    color: '#3a7ae8',
     look: { shape: 'trenza', cook: 'barro', fill: '#5a2e1c' },
   },
   {
@@ -213,7 +213,7 @@ export const EMPANADAS = [
     use: 'activa',
     dur: 1,
     desc: 'Aparece una muerte instantánea.',
-    color: '#8a6ad8',
+    color: '#3a7ae8',
     look: { shape: 'trenza', cook: 'horno', mark: 'azucar', fill: '#6a3a22' },
   },
   {
@@ -225,7 +225,7 @@ export const EMPANADAS = [
     use: 'activa',
     dur: 1,
     desc: 'Aparecen los puntos dobles.',
-    color: '#8a6ad8',
+    color: '#3a7ae8',
     look: { shape: 'pico', cook: 'horno', mark: 'queso', fill: '#b85a3a' },
   },
   {
@@ -237,7 +237,7 @@ export const EMPANADAS = [
     use: 'activa',
     dur: 1,
     desc: 'Aparece un Kaboom.',
-    color: '#8a6ad8',
+    color: '#3a7ae8',
     look: { shape: 'trenza', cook: 'barro', mark: 'cortes', fill: '#4a2416' },
   },
   {
@@ -249,7 +249,7 @@ export const EMPANADAS = [
     use: 'activa',
     dur: 1,
     desc: 'Aparece un carpintero.',
-    color: '#8a6ad8',
+    color: '#3a7ae8',
     look: { shape: 'redonda', cook: 'horno', mark: 'sesamo', fill: '#f09a2a' },
   },
   {
@@ -261,7 +261,7 @@ export const EMPANADAS = [
     use: 'rondas',
     dur: 1,
     desc: 'Hasta que termine la ronda, los potenciadores duran el doble. Para todos.',
-    color: '#8a6ad8',
+    color: '#3a7ae8',
     look: { shape: 'tenedor', cook: 'barro', mark: 'cortes', fill: '#6a3020' },
   },
   {
@@ -273,7 +273,7 @@ export const EMPANADAS = [
     use: 'auto',
     dur: 1,
     desc: 'El próximo mate que saques de la caja sale del Pack-a-Pava.',
-    color: '#8a6ad8',
+    color: '#3a7ae8',
     look: { shape: 'sobre', cook: 'horno', mark: 'sesamo', fill: '#4a7a3a' },
   },
   {
@@ -285,7 +285,7 @@ export const EMPANADAS = [
     use: 'auto',
     dur: 1,
     desc: 'El próximo mate que compres de la pared sale del Pack-a-Pava.',
-    color: '#8a6ad8',
+    color: '#3a7ae8',
     look: { shape: 'fino', cook: 'horno', mark: 'aceituna', fill: '#6a3a22' },
   },
   {
@@ -297,7 +297,7 @@ export const EMPANADAS = [
     use: 'auto',
     dur: 1,
     desc: 'El próximo perk que te tomes viene con otro de yapa.',
-    color: '#8a6ad8',
+    color: '#3a7ae8',
     look: { shape: 'tenedor', cook: 'frita', mark: 'azucar', fill: '#a8203a', small: true },
   },
   {
@@ -309,7 +309,7 @@ export const EMPANADAS = [
     use: 'tiempo',
     dur: 600,
     desc: 'Por diez minutos ganás el doble de experiencia.',
-    color: '#3a7ae8',
+    color: '#8a6ad8',
     look: { shape: 'trenza', cook: 'horno', mark: 'sesamo', fill: '#7a4a2a', big: true },
   },
   {
@@ -322,7 +322,7 @@ export const EMPANADAS = [
     use: 'tiempo',
     dur: 60,
     desc: 'Por un minuto, todos los muertos caminan.',
-    color: '#3a7ae8',
+    color: '#8a6ad8',
     look: { shape: 'trenza', cook: 'horno', mark: 'aceituna', fill: '#6a3a22' },
   },
   {
@@ -334,7 +334,7 @@ export const EMPANADAS = [
     use: 'activa',
     dur: 1,
     desc: 'Aparece una liquidación.',
-    color: '#3a7ae8',
+    color: '#8a6ad8',
     look: { shape: 'tenedor', cook: 'palida', mark: 'verdeo', fill: '#c8a878' },
   },
   {
@@ -348,7 +348,7 @@ export const EMPANADAS = [
     dur: 1,
     secs: 30,
     desc: 'Por 30 segundos, los muertos no ven a nadie.',
-    color: '#3a7ae8',
+    color: '#8a6ad8',
     look: { shape: 'trenza', cook: 'barro', mark: 'aji', fill: '#4a2014' },
   },
   {
@@ -360,7 +360,7 @@ export const EMPANADAS = [
     use: 'rondas',
     dur: 1,
     desc: 'Hasta que termine la ronda, cada tiro que pega va a la cabeza.',
-    color: '#3a7ae8',
+    color: '#8a6ad8',
     look: { shape: 'fino', cook: 'barro', fill: '#5a2a1a' },
   },
   {
@@ -372,7 +372,7 @@ export const EMPANADAS = [
     use: 'auto',
     dur: 5,
     desc: 'Tus próximos cinco facones largan una descarga que electrocuta a los de alrededor.',
-    color: '#3a7ae8',
+    color: '#8a6ad8',
     look: { shape: 'trenza', cook: 'barro', mark: 'cortes', fill: '#3a1a10' },
   },
   {
@@ -383,8 +383,8 @@ export const EMPANADAS = [
     rarity: 'rara',
     use: 'activa',
     dur: 1,
-    desc: 'Te tomás gratis un perk del mapa que no tenías.',
-    color: '#3a7ae8',
+    desc: 'Un perk del mapa que no tenías, gratis para vos y para cada compañero.',
+    color: '#8a6ad8',
     look: { shape: 'parada', cook: 'horno', mark: 'verdeo', fill: '#e8a888' },
   },
   {
@@ -397,7 +397,7 @@ export const EMPANADAS = [
     use: 'activa',
     dur: 1,
     desc: 'Les revienta la cabeza a todos los muertos que tenés a la vista.',
-    color: '#3a7ae8',
+    color: '#8a6ad8',
     look: { shape: 'bolsita', cook: 'horno', mark: 'queso', fill: '#f8eed0' },
   },
   {
@@ -410,7 +410,7 @@ export const EMPANADAS = [
     use: 'activa',
     dur: 1,
     desc: 'Aparece la Máquina de Muerte.',
-    color: '#3a7ae8',
+    color: '#8a6ad8',
     look: { shape: 'tenedor', cook: 'frita', mark: 'azucar', fill: '#8a2a3a', small: true },
   },
   {
@@ -485,8 +485,8 @@ export const EMPANADA = Object.fromEntries(EMPANADAS.map((e) => [e.id, e]));
 export const CLASICAS = EMPANADAS.filter((e) => e.kind === 'clasica');
 export const ESPECIALES = EMPANADAS.filter((e) => e.kind === 'especial');
 export const RARITY = {
-  comun: { name: 'Especial', color: '#8a6ad8' },
-  rara: { name: 'Especial rara', color: '#3a7ae8' },
+  comun: { name: 'Especial', color: '#3a7ae8' },
+  rara: { name: 'Especial rara', color: '#8a6ad8' },
   ultra: { name: 'Especial ultra rara', color: '#f0a020' },
 };
 

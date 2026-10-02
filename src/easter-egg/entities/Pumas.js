@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import PumaSkin from './pumaSkin';
 
 // Pumas de la cordillera: la ronda especial del castillo (el lugar de los
 // carpinchos del molino). Por dentro son los mismos "perros" (Zombies los
@@ -115,9 +116,17 @@ export default class PumaRig {
     }
     this.all = [this.body, this.head, this.nose, this.jaw, this.upper, this.lower, this.paw, this.tail1, this.tail2, this.eyes];
     this.last = game.time;
+    // con cuerpo de verdad (entities/pumaSkin.js): mientras baja, las piezas
+    this.skin = new PumaSkin(game, eyeMat);
   }
 
   hide(slot) {
+    this.zero(slot);
+    this.skin.hide(slot);
+  }
+
+  // Las piezas de uno, escondidas.
+  zero(slot) {
     for (const im of [this.body, this.head, this.nose, this.jaw, this.tail1, this.tail2]) im.setMatrixAt(slot, ZERO);
     for (let k = 0; k < 4; k++) {
       this.upper.setMatrixAt(slot * 4 + k, ZERO);
@@ -175,6 +184,8 @@ export default class PumaRig {
       const legs = [0, 0, 0, 0];
       let tailA = 0.9 - run * 0.5;
       let tailB = 0.4;
+      // corriendo (no saltando, caído ni en el zarpazo): el de cuerpo de verdad dobla las patas en el aire
+      let gallop = false;
       if (z.state === 'dogspawn') {
         // el salto desde lo alto de la pared: una parábola que cae adelante
         const k = Math.min(1, z.stateT / LEAP_T);
@@ -189,7 +200,9 @@ export default class PumaRig {
       } else if (z.dead) {
         const k = Math.min(1, z.stateT / 0.45);
         roll = k * 1.5;
-        y = -k * 0.36;
+        // (gira sobre las patas, en el piso: el cuerpo queda de costado a ras;
+        // sube apenas lo que mide de ancho, si no se hunde entero)
+        y = k * 0.13;
         headP = 0.3 * k;
         jawA = 0.3;
         tailA = 1.5;
@@ -208,6 +221,7 @@ export default class PumaRig {
         legs[2] = s * 0.6;
         legs[3] = s * 0.5;
       } else {
+        gallop = true;
         // las de adelante casi juntas y las de atrás juntas, desfasadas
         const a = 0.7 * run + 0.06;
         legs[0] = Math.sin(ph) * a;
@@ -224,6 +238,14 @@ export default class PumaRig {
       tmpV.set(z.pos.x + fx * fwd, (z.baseY || 0) + y, z.pos.z + fz * fwd);
       const s = (z.scale || 1) * 1.05;
       tmpM.compose(tmpV, tmpQ, tmpS.set(s, s, s));
+      // con cuerpo de verdad: los mismos números en sus huesos (las piezas, escondidas)
+      if (this.skin.pose(z.slot, { M: tmpM, s, headP, jawA, tailA, tailB, sway: Math.sin(ph * 0.7) * 0.15 * run, legs, ph, run, gallop })) {
+        if (!z.dogSkin) this.zero(z.slot);
+        z.dogSkin = true;
+        continue;
+      }
+      if (z.dogSkin) this.skin.hide(z.slot);
+      z.dogSkin = false;
       this.body.setMatrixAt(z.slot, local(tmpM, 0, HIP_Y + 0.12, 0, 0, 0, 0));
       const H = local(tmpM, 0, HIP_Y + 0.2, 0.46, headP, 0, 0);
       this.head.setMatrixAt(z.slot, H);
@@ -299,11 +321,14 @@ export default class PumaRig {
     const fx = Math.sin(z.yaw);
     const fz = Math.cos(z.yaw);
     const by = z.baseY || 0;
-    const head = { x: z.pos.x + fx * 0.72 * s, y: by + 0.95 * s, z: z.pos.z + fz * 0.72 * s, r: 0.19 * s };
+    // (el de cuerpo de verdad lleva la cabeza más baja, gruñendo, y el lomo apenas más bajo)
+    const hy = z.dogSkin ? 0.58 : 0.95;
+    const ty = z.dogSkin ? 0.56 : 0.72;
+    const head = { x: z.pos.x + fx * 0.74 * s, y: by + hy * s, z: z.pos.z + fz * 0.74 * s, r: 0.19 * s };
     const th = sphereHit(o, d, head, maxT);
     let best = th === null ? null : { t: th, zone: 'head' };
     for (const k of [-0.35, 0.05, 0.4]) {
-      const c = { x: z.pos.x + fx * k * s, y: by + 0.72 * s, z: z.pos.z + fz * k * s, r: 0.3 * s };
+      const c = { x: z.pos.x + fx * k * s, y: by + ty * s, z: z.pos.z + fz * k * s, r: 0.3 * s };
       const t = sphereHit(o, d, c, maxT);
       if (t !== null && (!best || t < best.t)) best = { t, zone: 'torso' };
     }

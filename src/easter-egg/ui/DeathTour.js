@@ -205,13 +205,10 @@ export default class DeathTour {
     if (!this.done && this.t >= this.total) this.finish();
   }
 
-  where(name) {
-    const el = this.whereEl;
-    el.classList.remove('is-on');
-    if (!name) return;
-    el.textContent = name;
-    void el.offsetWidth;
-    el.classList.add('is-on');
+  // (el nombre del lugar abajo a la izquierda ya no sale: el usuario lo sacó;
+  // las tomas siguen siendo las de los lugares con nombre)
+  where() {
+    this.whereEl.classList.remove('is-on');
   }
 
   skip() {

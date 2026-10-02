@@ -222,10 +222,11 @@ export default class GauchoLife {
     for (const it of I.list) {
       if (it.kind === 'perk') {
         const m = it.machine;
-        this.addTarget({ pos: it.pos.clone().setY(it.pos.y + 0.6), r: 0.9, on: () => !m.powered && !m.gone, hit: () => I.powerMachine(m) });
+        // (en el motín del penal, sin luz, el rayo no las prende: primero los tableros)
+        this.addTarget({ pos: it.pos.clone().setY(it.pos.y + 0.6), r: 0.9, on: () => !m.powered && !m.gone && !this.g.defense?.cut, hit: () => I.powerMachine(m) });
       } else if (it.kind === 'pap') {
         const pap = I.pap;
-        this.addTarget({ pos: it.pos.clone().setY(it.pos.y + 0.6), r: 1.1, on: () => !pap.powered, hit: () => I.powerMachine(pap) });
+        this.addTarget({ pos: it.pos.clone().setY(it.pos.y + 0.6), r: 1.1, on: () => !pap.powered && !this.g.defense?.cut, hit: () => I.powerMachine(pap) });
       } else if (it.kind === 'door' && it.door.def.kind === 'vida' && !this.huecos.hasPanel(it.door)) {
         const door = it.door;
         this.addTarget({ pos: it.pos.clone().setY(it.pos.y + 0.1), r: 0.9, on: () => !door.open, hit: () => I.openDoor(door) });
@@ -273,12 +274,14 @@ export default class GauchoLife {
     const g = this.g;
     const p = g.player;
     if (this.active || !p.alive || p.downed || g.arena?.active || g.state !== 'playing') return;
-    if (this.charges <= 0) {
+    // (en el motín del penal entrar a mano no gasta carga: entities/penalMotin.js)
+    const free = !!g.defense?.freeVida;
+    if (this.charges <= 0 && !free) {
       g.hud.subtitle('No te quedan cargas de gaucho life (se recupera una cada 5 rondas).', 3);
       g.audio.deny();
       return;
     }
-    this.charges--;
+    if (!free) this.charges--;
     this.enter({});
   }
 

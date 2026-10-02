@@ -17,6 +17,7 @@ import Termas from './castle/Termas';
 import Sortija from './castle/Sortija';
 import Taba from './castle/Taba';
 import Munecos from './castle/Munecos';
+import Asedio from './castle/Asedio';
 import SongEgg from '../world/SongEgg';
 import CastleOrigin from '../ui/CastleOrigin';
 import { skinPap } from '../world/castleRooms';
@@ -94,6 +95,11 @@ export default class CastleEgg {
     this.taba = new Taba(this);
     // la canción escondida de los tres muñecos de nieve
     this.munecos = new Munecos(this);
+    // el asedio de cada 10 rondas (y el del easter egg, después del origen):
+    // los muertos lo buscan por g.defense (Zombies.chase y pickSpawner, Rounds)
+    this.asedio = new Asedio(this);
+    this.defense = this.asedio;
+    game.defense = this.asedio;
     // easter egg musical: tres anchos de espadas (world/SongEgg.js)
     this.song = new SongEgg(game, 'castillo');
     this.exitT = -1;
@@ -277,6 +283,8 @@ export default class CastleEgg {
   startOrigin() {
     const g = this.g;
     this.step = 3;
+    // (el temple espera: el Chiquitijuein va a sentir despertar los mates)
+    this.asedio.expectEarly();
     this.netSync();
     g.net?.event('ee', { cine: 'origen' });
     this.playOrigin();
@@ -292,9 +300,20 @@ export default class CastleEgg {
       if (!isHost(g)) return;
       // (el anfitrión la cortó o terminó: se termina para todos)
       g.net?.event('ee', { cine: 'end' });
-      announce(g, 'Los mates de la luz se templan en su altar. Se sopla el erke y el que sopló aguanta el encierro.', 5);
-      this.say('fierro', FIERRO.temple, 1);
+      // (el Chiquitijuein sintió despertar los mates: antes del temple, el asedio)
+      if (this.asedio.forceEarly()) return;
+      this.templeHint();
     });
+  }
+
+  templeHint() {
+    announce(this.g, 'Los mates de la luz se templan en su altar. Se sopla el erke y el que sopló aguanta el encierro.', 5);
+    this.say('fierro', FIERRO.temple, 1);
+  }
+
+  // (anfitrión) Terminó un asedio: si estaban en el temple, ahora sí.
+  asedioOver() {
+    if (this.step === 3 && this.altares.count(true) < 4) this.templeHint();
   }
 
   // Las cuatro cadenas rotas (Cueva): el dragón se va volando y se posa en el techo.
@@ -361,6 +380,7 @@ export default class CastleEgg {
     if (this.g.arena?.active) return this.g.arena.onShot(o, d, maxT);
     for (const el of ['viento', 'rayo', 'hielo']) this.quests[el].onShot(o, d, maxT);
     this.sortija.onShot(o, d, maxT);
+    this.asedio.onShot(o, d, maxT);
     return undefined;
   }
 
@@ -372,6 +392,14 @@ export default class CastleEgg {
   // El soplido del Zonda (sin cargar).
   onBlast(o, d, range, angle) {
     if (this.g.arena?.active) return this.g.arena.onBlast?.(o, d, range, angle);
+    this.asedio.onBlast(o, d, range, angle);
+    return undefined;
+  }
+
+  // Un tiro cargado recién salido (Elementales: el Illapa que llama al rayo).
+  onCharged(el, o, d) {
+    if (this.g.arena?.active) return undefined;
+    this.asedio.onCharged(el, o, d);
     return undefined;
   }
 
@@ -385,6 +413,7 @@ export default class CastleEgg {
     if (this.g.arena?.active) return this.g.arena.onElemental(el, pos, charged);
     this.quests.hielo.onElemental(el, pos, charged);
     this.cueva.onElemental(el, pos, charged);
+    this.asedio.onElemental(el, pos, charged);
     return undefined;
   }
 
@@ -392,6 +421,7 @@ export default class CastleEgg {
     if (!isHost(this.g)) return;
     this.quests.fuego.onKill(z);
     this.vanguardia.onKill(z);
+    this.asedio.onKill(z);
   }
 
   // La cámara de la escena en curso (el vuelo a la Gran Guerra, las cinemáticas).
@@ -409,7 +439,7 @@ export default class CastleEgg {
   fullState() {
     const qs = {};
     for (const el of ELEMENTS) qs[el] = this.quests[el].state();
-    return { step: this.step, alt: this.altares.state(), qs, cu: this.cueva.state(), vgs: this.vanguardia.state(), dm: this.dragon.mode, ...this.munecos.state() };
+    return { step: this.step, alt: this.altares.state(), qs, cu: this.cueva.state(), vgs: this.vanguardia.state(), dm: this.dragon.mode, as: this.asedio.state(), ...this.munecos.state() };
   }
 
   applyRemote(m) {
@@ -430,6 +460,7 @@ export default class CastleEgg {
     if (m.vg) return this.vanguardia.apply(m);
     if (m.dr) return this.dragon.apply(m);
     if (m.gg) return this.g.arena?.onNet?.(m);
+    if (m.ase) return this.asedio.onEvent(m);
     if (m.sn != null) return this.munecos.apply(m);
     if (m.step !== undefined) this.step = m.step;
     if (m.qs) for (const el of ELEMENTS) if (m.qs[el]) this.quests[el].apply(m.qs[el]);
@@ -438,6 +469,7 @@ export default class CastleEgg {
     if (m.vgs) this.vanguardia.apply(m.vgs);
     if (m.dm) this.dragon.setMode(m.dm);
     if (m.sns) this.munecos.apply(m, true);
+    if (m.as) this.asedio.applyRemote(m.as);
   }
 
   // Lo que manda un invitado.
@@ -446,6 +478,7 @@ export default class CastleEgg {
     else if (m.a === 'q') this.quests[m.q]?.onGuest(m, from);
     else if (m.a === 'cueva') this.cueva.onGuest(m);
     else if (m.a === 'gg') this.g.arena?.onGuestHit?.(m, from);
+    else if (m.a === 'as') this.asedio.onGuest(m, from);
   }
 
   // ---------------- atajos de prueba ----------------
@@ -507,6 +540,7 @@ export default class CastleEgg {
     for (const el of ELEMENTS) this.quests[el].update(dt);
     this.cueva.update(dt);
     this.dragon.update(dt);
+    this.asedio.update(dt);
     // el vapor de la poza del Pack-a-Pava
     const ps = this.papSteam;
     const cam = g.camera.position;
@@ -591,6 +625,8 @@ export default class CastleEgg {
   }
 
   dispose() {
+    this.asedio.dispose();
+    if (this.g.defense === this.asedio) this.g.defense = null;
     this.song?.dispose();
     this.dragonModel.dispose();
     this.cueva.dispose();

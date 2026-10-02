@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { submerged } from './swim';
+import { skinBoneAt } from './bossSkin';
 
 // Lo nuevo de los jefes (el pedido de "jefes más difíciles", 2026-09-27):
 //  · A quién va: en co-op no persigue siempre al más cercano. Cada 6 a 8 s va
@@ -301,7 +302,8 @@ export default class BossMoves {
     const by = z.baseY || 0;
     const hand = new THREE.Vector3(z.pos.x + fx * 0.6, by + 2.1 * (z.scale / 1.4), z.pos.z + fz * 0.6);
     const rh = this.Z.bossRig.parts[6];
-    if (rh) hand.setFromMatrixPosition(rh.matrixWorld);
+    // (con cuerpo de verdad sale de la mano del modelo: entities/bossSkin.js)
+    if (!skinBoneAt(this.Z, 'whip', hand) && rh) hand.setFromMatrixPosition(rh.matrixWorld);
     let best = null;
     let bestAlong = CHAIN_RANGE;
     for (const p of this.Z.bossTargets()) {

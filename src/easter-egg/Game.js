@@ -51,6 +51,7 @@ import TowerCinematic from './ui/TowerCinematic';
 import CastleEnding from './ui/CastleEnding';
 import CastleEgg from './entities/CastleEgg';
 import EsterosEgg from './entities/EsterosEgg';
+import MonumentoEgg from './entities/MonumentoEgg';
 import GranGuerra from './world/GranGuerra';
 import CastleWeather from './world/CastleWeather';
 import Intro from './ui/Intro';
@@ -63,6 +64,7 @@ import Hud from './ui/Hud';
 import { scoreboard } from './ui/Scoreboard';
 import Menus from './ui/Menus';
 import Levels from './ui/Levels';
+import LogrosTracker from './entities/logrosTracker';
 import { addPesos } from './core/progress';
 import Arrival, { prewarmMaps, compile as rewarmShaders, warmWorld } from './ui/Arrival';
 import TitleIntro from './ui/TitleIntro';
@@ -256,6 +258,8 @@ export default class Game {
     this.hud = new Hud(root);
     // la experiencia y los niveles (core/progress: se guardan en el navegador)
     this.levels = new Levels(this);
+    // los logros (core/logros.js): se cuelgan de los niveles y del aviso del HUD
+    this.logros = new LogrosTracker(this);
     this.hud.setSubScale(this.settings.subSize);
     this.hud.show(false);
     // el HUD va debajo de los menús
@@ -575,7 +579,7 @@ export default class Game {
     this.vida = FEATURES.vida ? new GauchoLife(this) : null;
     // el cuervo es el jefe de la granja (el Capataz, el del molino)
     this.crow = FEATURES.boss === 'crow' || FEATURES.boss === 'mixed' ? new Crow(this) : null;
-    this.ee = FEATURES.egg === 'hoz' ? new FarmEgg(this) : FEATURES.egg === 'gauchos' ? new PenalEgg(this) : FEATURES.egg === 'revelaciones' ? new TowerEgg(this) : FEATURES.egg === 'reto' ? new TowerChallenge(this) : FEATURES.egg === 'mateendrache' ? new CastleEgg(this) : FEATURES.egg === 'pacto' ? new EsterosEgg(this) : new EasterEgg(this);
+    this.ee = FEATURES.egg === 'hoz' ? new FarmEgg(this) : FEATURES.egg === 'gauchos' ? new PenalEgg(this) : FEATURES.egg === 'revelaciones' ? new TowerEgg(this) : FEATURES.egg === 'reto' ? new TowerChallenge(this) : FEATURES.egg === 'mateendrache' ? new CastleEgg(this) : FEATURES.egg === 'pacto' ? new EsterosEgg(this) : FEATURES.egg === 'bandera' ? new MonumentoEgg(this) : new EasterEgg(this);
     // La Tapera: el matorral de atrás de la atahona y sus Yasy (después del
     // easter egg: la Yerba Madre es su sexta planta)
     this.matorral = FEATURES.egg === 'hoz' ? new Matorral(this) : null;
@@ -635,7 +639,8 @@ export default class Game {
 
   // ---------------- flujo del juego ----------------
   startGame() {
-    if (this.state === 'arriving') return;
+    // (en una sala, el invitado no arranca nada: espera la orden del anfitrión)
+    if (this.state === 'arriving' || this.net?.guest) return;
     // la primera partida con los seis easter eggs: ¿el Mate Supremo en la
     // caja? (ui/SupremoAsk; contestada, arranca)
     if (askSupremo(this, () => this.startGame())) return;

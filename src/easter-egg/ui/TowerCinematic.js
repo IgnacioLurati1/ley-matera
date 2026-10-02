@@ -6,6 +6,7 @@ import { groundY } from '../world/Llano';
 import { warmScene } from './cineWarm';
 import { crewIds, glowFront } from './cineCrew';
 import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
+import { skinBoneAt, preloadBossSkin } from '../entities/bossSkin';
 
 // Final de la torre (el modo historia; el del Challenge es otro:
 // entities/challengeHeaven.js), adentro del juego. Rehecho el 2026-09-29 (el
@@ -71,7 +72,7 @@ const FP = {
   // lo ofrece con los brazos estirados
   offer: { hipY: 0.54, torsoP: 0.22, headP: -0.12, shLp: -1.6, shRp: -1.6, shLr: -0.2, shRr: 0.2, elL: -0.35, elR: -0.35 },
   // en paz: mira para arriba, los brazos apenas abiertos
-  peace: { hipY: 0.55, torsoP: -0.1, headP: -0.62, shLp: -0.35, shRp: -0.35, shLr: 0.5, shRr: -0.5, elL: -0.25, elR: -0.25 },
+  peace: { hipY: 0.55, torsoP: -0.1, headP: -0.62, shLp: -0.35, shRp: -0.35, shLr: -0.4, shRr: 0.4, elL: -0.25, elR: -0.25 },
 };
 // el orden en que se deshace (pies, piernas, cadera, manos, brazos, torso, cabeza)
 const CRUMBLE = [[11, 12], [9, 10], [7, 8], [0], [5, 6], [3, 4], [1, 16, 17], [2, 13, 14, 15]];
@@ -82,6 +83,8 @@ const tmpW = new THREE.Vector3();
 const tmpU = new THREE.Vector3();
 const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
+const tmpC = new THREE.Vector3();
+const tmpD = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const HAND = new THREE.Vector3(0, -0.17, 0);
 
@@ -222,6 +225,7 @@ export default class TowerCinematic {
     z.hp = z.maxHp = 1;
     Z.boss = z;
     Z.dressBoss('francisco');
+    preloadBossSkin(Z, 'francisco');
     const R = Z.bossRig;
     R.rig.visible = true;
     for (const p of R.parts) if (p) p.visible = true;
@@ -879,11 +883,13 @@ export default class TowerCinematic {
     C.halo.material.opacity = t > CHIQ.cut ? 0 : 0.45 + Math.sin(t * 3) * 0.1;
     if (t > CHIQ.cut && t < CHIQ.stop) {
       // pasitos rengos hacia la torre; la bombilla golpea el piso cada dos
+      // (con el cuerpo de verdad, paso parejo mirando adelante: el clip de
+      // caminar ya tiene su paso y el tironeo de las piezas lo hacía bailar)
       const face = o.rotation.y;
-      const v = 0.34 * (0.5 + 0.5 * Math.abs(Math.sin(t * 5.5)));
+      const v = C.skin ? 0.2 : 0.34 * (0.5 + 0.5 * Math.abs(Math.sin(t * 5.5)));
       o.position.x += Math.sin(face) * dt * v;
       o.position.z += Math.cos(face) * dt * v;
-      o.position.y = groundY(o.position.x, o.position.z) + Math.abs(Math.sin(t * 5.5)) * 0.03;
+      o.position.y = groundY(o.position.x, o.position.z) + (C.skin ? 0 : Math.abs(Math.sin(t * 5.5)) * 0.03);
       C.arms[0].rotation.x = Math.sin(t * 5.5) * 0.25;
       const step = Math.floor(t * 1.75);
       if (step !== S.steps) {
@@ -897,16 +903,19 @@ export default class TowerCinematic {
       o.position.y = groundY(o.position.x, o.position.z);
       C.arms[0].rotation.x = 0;
     }
-    // da vuelta la cabeza (el cuerpo no) hasta mirarte por arriba del hombro
+    // da vuelta la cabeza (el cuerpo no) hasta mirarte por arriba del hombro;
+    // con el cuerpo de verdad se da vuelta entero (la cabeza sola, media vuelta, quedaba rara)
     if (t > CHIQ.turn && S.stage < 2) {
       if (S.headTo === null) {
         let a = Math.atan2(cam.x - o.position.x, cam.z - o.position.z) - o.rotation.y;
         while (a > Math.PI) a -= Math.PI * 2;
         while (a < -Math.PI) a += Math.PI * 2;
         S.headTo = a;
+        S.yaw0 = o.rotation.y;
       }
       const k = smooth(clamp01((t - CHIQ.turn) / 1.3));
-      C.head.rotation.y = S.headTo * k;
+      if (C.skin) o.rotation.y = S.yaw0 + S.headTo * k;
+      else C.head.rotation.y = S.headTo * k;
       C.eyeK = 1 + k * 1.3;
     }
     // sonríe... y se ríe
@@ -971,6 +980,20 @@ export default class TowerCinematic {
     tmpA.copy(HAND).applyMatrix4(mats[5]);
     tmpB.copy(HAND).applyMatrix4(mats[6]);
     return out.addVectors(tmpA, tmpB).multiplyScalar(0.5).setY((tmpA.y + tmpB.y) * 0.5 - MATE_H * 0.45);
+  }
+
+  // Lo mismo con el cuerpo de verdad de Francisco (si se ve): el medio de las
+  // palmas (un poco más allá de las muñecas). null si no está.
+  skinHands(out) {
+    const Z = this.g.zombies;
+    const a = skinBoneAt(Z, 'LeftHand', tmpA);
+    const b = skinBoneAt(Z, 'RightHand', tmpB);
+    const fa = skinBoneAt(Z, 'LeftForeArm', tmpC);
+    const fb = skinBoneAt(Z, 'RightForeArm', tmpD);
+    if (!a || !b || !fa || !fb) return null;
+    a.lerp(fa, -0.3);
+    b.lerp(fb, -0.3);
+    return out.addVectors(a, b).multiplyScalar(0.5).setY((a.y + b.y) * 0.5 - MATE_H * 0.3);
   }
 
   groupCenter(out) {
@@ -1485,7 +1508,8 @@ export default class TowerCinematic {
     const g = this.g;
     let speed = 1;
     if (this.mateAt === 'fran' && this.franZ) {
-      this.handsAt(this.franZ.mats, tmpV);
+      // (con el cuerpo de verdad, entre sus manos: entities/bossSkin.js)
+      if (!this.skinHands(tmpV)) this.handsAt(this.franZ.mats, tmpV);
       const k = smooth(clamp01((t - this.mateUpT) / 0.6));
       m.position.lerp(tmpV, k < 1 ? 0.35 : 1);
       m.quaternion.slerpQuaternions(this.mateQ0, tmpQ.setFromAxisAngle(tmpU.set(0, 1, 0), 0), k);

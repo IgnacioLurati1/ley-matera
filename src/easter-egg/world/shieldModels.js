@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mesh, boxGeo, cylGeo } from './props';
 import { yacare, upgradeShield } from './shieldUpModels';
+import { ejercito } from './monumentoShield';
 
 // El escudo armable de cada mapa, hecho con las tres piezas que se juntan
 // (config/maps/*: ACT.parts y ACT.shield). Mide unos 0,7 m; la cara mira a +z,
@@ -151,7 +152,7 @@ function caballero(M) {
   return g;
 }
 
-const BUILD = { molino: tranquera, granja: paja, penal: barrotes, esteros: yacare, torre: tapaPava, castillo: caballero };
+const BUILD = { molino: tranquera, granja: paja, penal: barrotes, esteros: yacare, torre: tapaPava, castillo: caballero, monumento: ejercito };
 
 // up: el escudo mejorado de ese mapa (world/shieldUpModels, world/ShieldUpgrade)
 export function shieldModel(M, mapId, up = false) {

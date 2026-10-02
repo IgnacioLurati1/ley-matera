@@ -4,6 +4,8 @@ import { makePose, solvePose } from '../entities/skeleton';
 import { PLAYER_START } from '../config/map';
 import { buildChiqui, chiquiGiggle } from '../world/Chiqui';
 import { crewIds } from './cineCrew';
+import { glowEye } from '../entities/bossSkin';
+import { walkLegs, stepPerson } from '../entities/personWalk';
 
 // Los guiones de las cinemáticas de entrada (ui/Intro.js), uno por mapa.
 // Cada guion arma lo suyo (escondido) y devuelve:
@@ -16,10 +18,13 @@ import { crewIds } from './cineCrew';
 //  · cues: [segundo, acción] (carteles, sonidos); o, en cada toma, at:
 //    [segundo de la toma, acción].
 //  · start / tick / stop / warm / dispose.
-// La historia: un hombre (Francisco, aunque nadie lo sabe) trae a los gauchos
+// La historia: un gaucho dorado (nadie sabe quién es) trae a los gauchos
 // al molino sin decir una palabra; en la tapera hay que hacer una yerba más
 // fuerte; en el penal, recuperar el mate; en la torre, bajar a la Voz.
 
+// el gaucho dorado del molino: el poncho y lo oscuro del resto (en la sombra)
+const GOLD_PONCHO = 0x9a6c1e;
+const GOLD_SHADE = 0.32;
 const tmpV = new THREE.Vector3();
 const tmpW = new THREE.Vector3();
 const tmpU = new THREE.Vector3();
@@ -61,6 +66,8 @@ function chestAt(a, out) {
 
 // Dónde queda la mano (punta del antebrazo): 5 la izquierda del muñeco, 6 la derecha.
 function handAt(a, part, out) {
+  // (con cuerpo de verdad, entities/skinPuppet: la mano del modelo)
+  if (a.sk?.hand(part, out)) return out;
   return out.set(0, -0.19, 0).applyMatrix4(a.mats[part]);
 }
 
@@ -72,15 +79,22 @@ function stand(P) {
 function walk(P, ph, k = 1) {
   const s = Math.sin(ph);
   stand(P);
-  P.hipY = 0.93 + Math.abs(Math.cos(ph)) * 0.02 * k;
-  P.torsoY = s * 0.08 * k;
-  P.torsoR = s * 0.03 * k;
-  P.hipLp = s * 0.42 * k;
-  P.hipRp = -s * 0.42 * k;
-  P.knL = 0.06 + Math.max(0, Math.sin(ph + 1.4)) * 0.62 * k;
-  P.knR = 0.06 + Math.max(0, Math.sin(ph + 1.4 + Math.PI)) * 0.62 * k;
+  // (las piernas: entities/personWalk, el paso de gente que no patina)
+  walkLegs(P, ph, k);
   P.shLp = -s * 0.32 * k;
   P.shRp = s * 0.32 * k;
+}
+
+// Un cuadro de caminata de `a` que se movió `dist` metros: la fase por lo
+// caminado (no por el tiempo), medida en los pies del cuerpo que tenga
+// (entities/personWalk); antes los pies patinaban más de lo que caminaba.
+function stepWalk(a, st, dist, dt, k) {
+  const s = stepPerson(a, a.P, dist, dt, k, (ph, kk) => {
+    walk(a.P, ph, kk);
+    place(a, 0, 0, 0);
+  });
+  st.ph += s.dph;
+  walk(a.P, st.ph, s.k);
 }
 
 // Tirado boca arriba: el frente (la cara) mira al cielo y la cabeza va hacia -z del muñeco.
@@ -198,11 +212,26 @@ function boom(I, gain = 0.7) {
 function molino(g, I) {
   const people = new Avatars(g, null);
   const F = puppet(people, 430);
-  // Francisco (el de la torre): poncho claro, faja de oro, sombrero de paja vieja
-  F.M.poncho.color.set(0x9a8a6a);
+  // El que te trae: el gaucho dorado. Nadie sabe quién es (y en el final del
+  // castillo es el que se lleva a uno de los que duermen: el ciclo). Un
+  // gaucho como ustedes (net/gauchoSkin), en la sombra, con el poncho dorado
+  // gastado y dos ojos de oro debajo del ala (goldGaucho, cuando baja el cuerpo).
+  F.M.poncho.color.set(GOLD_PONCHO);
   F.M.band.color.set(0xd8a830);
-  F.M.hat.color.set(0x8a7448);
-  F.M.skin.color.set(0x9a7a60);
+  F.M.hat.color.set(0x3a2e22);
+  F.M.skin.color.set(0x2a2018);
+  const goldGaucho = () => {
+    const G = F.gs;
+    if (!G?.on || F.goldOn) return;
+    F.goldOn = true;
+    // (oscuro todo; el poncho, que el gaucho tiñe desde lo claro de la textura, igual de dorado)
+    G.mat.color.setScalar(GOLD_SHADE);
+    F.M.poncho.color.set(GOLD_PONCHO).multiplyScalar(1.7 / GOLD_SHADE);
+    for (const n of ['eyeA', 'eyeB']) {
+      const o = G.root.getObjectByName(n);
+      if (o) glowEye(o, F.M.eye, 0.014, g.textures?.dot);
+    }
+  };
   const eyeBase = new THREE.Color(0x120c08);
   // (sin pasarse de 1 en rojo y verde: en calidad baja, sin bloom, se vería blanco)
   const eyeGold = new THREE.Color(0xffa818).multiplyScalar(1.3);
@@ -210,7 +239,8 @@ function molino(g, I) {
   const bodies = [0, 1, 2, 3, 4].map((id) => puppet(people, 440 + id));
   const dragged = puppet(people, 450);
   const lamp = buildLantern(g);
-  const mate = buildMate(g);
+  // un mate en el pecho de cada uno (al tuyo te lo deja él; antes era solo el tuyo)
+  const mates = [0, 1, 2, 3, 4].map(() => buildMate(g));
   const H = new THREE.Vector3(PLAYER_START.x, 0, PLAYER_START.z);
   // de dónde a dónde lo arrastra (el patio, hasta la puerta del galpón)
   const D0 = new THREE.Vector3(21.5, 0, 26.4);
@@ -453,15 +483,26 @@ function molino(g, I) {
       st.cracked = false;
       F.group.visible = false;
       dragged.group.visible = false;
-      mate.visible = false;
+      for (const mt of mates) mt.visible = false;
       lampShow(false);
       // la luz de la linterna: un destello de fx que se queda prendido
       light = g.fx.flashes?.[g.fx.flashes.length - 1] || null;
     },
     tick(I, dt, t) {
+      goldGaucho();
       const m = st.mode;
       const s = I.S.shots[I.shotI];
       const lt = t - s.t0;
+      // lo que caminó Francisco desde el cuadro anterior (para el paso; de cero en cada modo)
+      if (st.wkMode !== m) {
+        st.wkMode = m;
+        st.wk = null;
+      }
+      const walked = (at) => {
+        const d = st.wk ? Math.hypot(at.x - st.wk.x, at.z - st.wk.z) : 0;
+        st.wk = { x: at.x, z: at.z };
+        return d;
+      };
       F.group.visible = m === 'drag' || m === 'kneel' || m === 'look' || (m === 'leave' && !st.gone) || m === 'sleep' || m === 'take';
       dragged.group.visible = m === 'drag';
       const lying = m === 'kneel' || m === 'look' || m === 'leave' || m === 'wake';
@@ -470,14 +511,19 @@ function molino(g, I) {
       if (asleep) sleepBodies(t);
       else if (lying && !st.stood) layBodies(t);
       else if (!lying) bodies.forEach((b) => (b.group.visible = false));
-      mate.visible = (m === 'kneel' && lt > 3) || m === 'look' || m === 'leave' || (m === 'wake' && !st.stood);
+      const ownMate = (m === 'kneel' && lt > 3) || m === 'look' || m === 'leave' || (m === 'wake' && !st.stood);
+      mates.forEach((mt, i) => {
+        mt.visible = lying && !st.stood && i < st.ids.length && (st.ids[i] === st.me ? ownMate : true);
+        if (!mt.visible) return;
+        chestAt(bodies[i], mt.position);
+        mt.rotation.set(0, 0, 0.2);
+      });
       if (m === 'drag') {
         // camina despacio, encorvado, tirando del poncho con la derecha
         const u = clamp01(lt / s.d);
         tmpV.lerpVectors(D0, D1, u);
         const yaw = Math.atan2(D1.x - D0.x, D1.z - D0.z);
-        st.ph += dt * 4.2;
-        walk(F.P, st.ph, 0.8);
+        stepWalk(F, st, walked(tmpV), dt, 0.8);
         F.P.torsoP = 0.3;
         F.P.headP = -0.15;
         F.P.shRp = 0.62;
@@ -556,8 +602,7 @@ function molino(g, I) {
           const u = clamp01(lt / 3.3);
           const to = tmpW.set(8.6, 0, 37.2);
           const at = tmpV.lerpVectors(st.leaveFrom, to, u);
-          st.ph += dt * 4.6;
-          walk(F.P, st.ph, 0.9);
+          stepWalk(F, st, walked(at), dt, 0.9);
           F.P.shLp = -0.4;
           F.P.shLr = 0.3;
           F.P.elL = -0.85;
@@ -570,11 +615,6 @@ function molino(g, I) {
             g.audio.noise(I.bus, { t: g.audio.now, dur: 0.5, type: 'highpass', freq: 2500, gain: 0.12 });
           }
         }
-        // la mano del mate: el de tu muñeco, en su mano
-        const p = myBody();
-        chestAt(p, tmpW);
-        mate.position.copy(tmpW);
-        mate.rotation.set(0, 0, 0.2);
         handAt(F, 5, tmpU);
         lampAt(tmpU.x, tmpU.y - 0.02, tmpU.z);
         lampShow(!st.gone);
@@ -583,10 +623,8 @@ function molino(g, I) {
           // llega de lo oscuro, despacio, con la linterna
           const u = smooth(clamp01(lt / 5.4));
           const at = tmpV.lerpVectors(COME, OVER, u);
-          if (u < 1) {
-            st.ph += dt * 4.2;
-            walk(F.P, st.ph, 0.85);
-          } else stand(F.P);
+          if (u < 1) stepWalk(F, st, walked(at), dt, 0.85);
+          else stand(F.P);
           F.P.shLp = -0.45;
           F.P.shLr = 0.3;
           F.P.elL = -0.9;
@@ -648,7 +686,7 @@ function molino(g, I) {
       for (const a of [F, dragged, ...bodies]) a.group.visible = false;
       coals.visible = false;
       lampShow(false);
-      mate.visible = false;
+      for (const mt of mates) mt.visible = false;
       if (light) light.life = 0;
       light = null;
       st.leaveFrom = null;
@@ -668,20 +706,22 @@ function molino(g, I) {
         place(dragged, D0.x, D0.z, 0);
         lampAt(H.x + 0.4, 0.8, H.z - 0.6);
         lampShow(true);
-        mate.visible = true;
-        mate.position.set(H.x + 0.3, 0.2, H.z + 0.4);
+        mates.forEach((mt, i) => {
+          mt.visible = true;
+          mt.position.set(H.x + 0.3 * i, 0.2, H.z + 0.4);
+        });
       } else {
         st.mode = 'off';
         for (const a of [F, dragged, ...bodies]) a.group.visible = false;
         lampShow(false);
-        mate.visible = false;
+        for (const mt of mates) mt.visible = false;
       }
     },
     dispose() {
       people.dispose();
       lamp.root.removeFromParent();
       lamp.pool.removeFromParent();
-      mate.removeFromParent();
+      for (const mt of mates) mt.removeFromParent();
       coals.removeFromParent();
     },
     // El final del castillo (CastleEnding): Francisco se lleva a uno de los que
@@ -970,6 +1010,8 @@ function torreReto(g, I) {
 // la cumbre y la cueva donde duerme el Mateendrache. Y te despertás en el patio.
 function castillo(g, I) {
   const chiqui = buildChiqui(g.textures);
+  // (en el trono, a oscuras: frotándose las manos)
+  chiqui.idle = 'taunt';
   chiqui.root.scale.setScalar(1.3);
   chiqui.root.position.set(51.5, 32.55, 21.65);
   chiqui.root.visible = false;
@@ -1280,6 +1322,44 @@ function esteros(g, I) {
   // la vara: plantada en el fondo mientras empuja, afuera del agua cuando la trae
   const STROKE = 2.6;
   const poleFrom = new THREE.Vector3();
+  // La izquierda de Gil también en la vara (empujaba con una sola mano, pedido
+  // del usuario 2026-10-01): los giros del hombro y el codo que dejan la mano
+  // más cerca de un tramo de la vara (de lo..hi m desde la derecha, para
+  // arriba), unas vueltas por cuadro desde los del cuadro anterior.
+  const ikL = { shLp: -0.8, shLr: -0.3, elL: -0.9 };
+  const ikLim = { shLp: [-3, 0.8], shLr: [-1.3, 1.3], elL: [-2.5, 0] };
+  const ikV = new THREE.Vector3();
+  const ikO = new THREE.Vector3();
+  const ikD = new THREE.Vector3();
+  const leftTo = (a, x, z, yaw, from, dir, lo, hi) => {
+    const P = a.P;
+    Object.assign(P, ikL);
+    ikO.copy(from);
+    ikD.copy(dir);
+    const err = () => {
+      solvePose(a.mats, x, z, yaw, 1, P);
+      ikV.set(0, -0.19, 0).applyMatrix4(a.mats[5]).sub(ikO);
+      const k = Math.max(lo, Math.min(hi, ikV.dot(ikD)));
+      return ikV.addScaledVector(ikD, -k).lengthSq();
+    };
+    let e = err();
+    for (let step = 0.24; step > 0.006; step *= 0.5) {
+      for (const k of ['shLp', 'shLr', 'elL']) {
+        for (const d of [step, -step]) {
+          const v0 = P[k];
+          P[k] = Math.max(ikLim[k][0], Math.min(ikLim[k][1], v0 + d));
+          const e2 = err();
+          if (e2 < e) {
+            e = e2;
+            break;
+          }
+          P[k] = v0;
+        }
+      }
+    }
+    Object.assign(ikL, { shLp: P.shLp, shLr: P.shLr, elL: P.elL });
+    place(a, x, z, yaw);
+  };
   const poseCrew = (T, dt) => {
     canoeAt(T);
     canoe.position.set(boat.x, boat.y, boat.z);
@@ -1313,7 +1393,9 @@ function esteros(g, I) {
     P.torsoY = st.turn * 0.3;
     P.headP = -0.05 - st.turn * 0.08;
     local(0, crew[3].z, 0, tmpU);
-    place(gil, tmpU.x, tmpU.z, boat.yaw);
+    const gx = tmpU.x;
+    const gz = tmpU.z;
+    place(gil, gx, gz, boat.yaw);
     // el pie de la vara
     const hand = handAt(gil, 6, tmpW);
     if (boat.speed === 0 || st.hold) {
@@ -1338,6 +1420,8 @@ function esteros(g, I) {
     pole.position.copy(poleFrom);
     pole.quaternion.setFromUnitVectors(tmpV.set(0, 1, 0), tmpU);
     pole.visible = true;
+    // la otra mano, más arriba en la vara
+    leftTo(gil, gx, gz, boat.yaw, hand, tmpU, 0.25, 0.75);
     // el farol, colgado del palo de la proa
     local(0, 1.86, boat.y + 0.72, tmpU);
     lamp.root.position.copy(tmpU);
@@ -1551,4 +1635,49 @@ function esteros(g, I) {
   };
 }
 
-export const SCRIPTS = { molino, granja, penal, torre, torreReto, castillo, esteros };
+// ---------------- Monumento al Mate ----------------
+// Rosario, de noche, con niebla baja. Desde el río, la Torre a oscuras; la
+// Costanera vacía, el Patio Cívico subiendo hasta el Propileo donde la Llama
+// Votiva está apagada, la Patria Abanderada en la proa y, lejos, un clarín.
+// Y te despertás en el Patio Cívico.
+function monumento(g, I) {
+  const shots = [
+    { d: 6.4, fadeIn: 2, fog: 0.6, cam: [[150, 2.5, 60], [128, 3.2, 44]], look: [[77, 24, 31], [77, 26, 31]], ease: 'lin' },
+    { d: 5, fadeIn: 0.5, fog: 0.8, where: 'La Costanera', cam: [[111, -3.2, 54], [111, -3.0, 42]], look: [[115, -4, 30], [114, -3.6, 28]], ease: 'lin' },
+    { d: 5.4, fadeIn: 0.5, where: 'La Proa', cam: [[96, -1.6, 38], [94, -1.2, 34]], look: [[87.2, 9.5, 30.5], [87.2, 10.5, 30.5]], ease: 'lin' },
+    { d: 5.6, fadeIn: 0.5, where: 'El Patio Cívico', cam: [[62, 1.6, 30.5], [46, 3.4, 30.5]], look: [[27.5, 8, 30.5], [27.5, 7.5, 30.5]], ease: 'lin' },
+    { d: 5, fadeIn: 0.5, fadeOut: 0.4, where: 'La Llama Votiva', cam: [[27.5, 6.6, 36], [27.5, 6.0, 33.4]], look: [[27.5, 5.4, 30.5], [27.5, 5.4, 30.5]], ease: 'lin' },
+    {
+      d: 5.4,
+      fadeIn: 0.6,
+      wake: true,
+      wakeAt: 0.8,
+      cam: [[50.5, 4.4, 30.5], [50.5, 2.6, 30.5]],
+      look: [[30, 5.5, 30.5], [30, 4.4, 30.5]],
+    },
+  ];
+  const cues = [
+    [0.1, (I) => {
+      wind(I, 34, { gain: 0.24, freq: 260, attack: 3 });
+      drone(I, 30, 41, { gain: 0.045, type: 'triangle' });
+    }],
+    [0.9, (I) => {
+      I.title(true);
+      boom(I, 0.5);
+    }],
+    [5.4, (I) => I.title(false)],
+    [12.6, (I) => I.card('Algo se mueve en el río.', { low: true, d: 3.2 })],
+    [23.4, (I) => I.card('La niebla apagó la Llama.', { low: true, d: 3.4 })],
+    // lejos, el clarín de los Granaderos
+    [27.6, () => g.audio.bugle(new THREE.Vector3(102, 0, 30))],
+  ];
+  return {
+    title: 'Monumento al Mate',
+    place: 'Monumento a la Bandera · Rosario',
+    fov: 55,
+    shots,
+    cues,
+  };
+}
+
+export const SCRIPTS = { molino, granja, penal, torre, torreReto, castillo, esteros, monumento };

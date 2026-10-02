@@ -3,6 +3,7 @@ import { ACT } from '../config/map';
 import { mesh, boxGeo, cylGeo } from './props';
 import { shieldModel } from './shieldModels';
 import { upgradeShield } from './shieldUpModels';
+import { buildGorriti, updateGorriti, gorritiKillFx } from './shieldGorriti';
 import { sfxClang, sfxGrind, sfxSizzle, sfxQuench, sfxClack, sfxSteam, sfxFlame, sfxUpgrade } from './shieldSfx';
 import '../ui/shieldUp.css';
 
@@ -20,7 +21,10 @@ import '../ui/shieldUp.css';
 //    se ceba (tres veces), con alguien cerca para que no se apague.
 //  · forge (castillo): el escudo adelante sobre las Brasas de la Liza hasta el
 //    rojo y tres escudazos en el yunque de la Herrería antes de que se enfríe.
-// Lo que hace el mejorado (prop): push, zap, chain, bite, steam, blazon.
+//  · gorriti (monumento): el escudo en las manos del canónigo Gorriti (Pasaje
+//    Juramento); 8 muertos a escudazos cerca antes de la tercera campanada
+//    de la Catedral (world/shieldGorriti).
+// Lo que hace el mejorado (prop): push, zap, chain, bite, steam, blazon, rebote.
 // En línea decide el anfitrión (pedidos 'sup' y eventos 'sup' de net/Session).
 
 const tmpV = new THREE.Vector3();
@@ -34,6 +38,7 @@ const DESC = {
   bite: 'El escudazo muerde',
   steam: 'Larga vapor cuando le pegan',
   blazon: 'Cinco golpes cargan una llamarada',
+  rebote: 'Le devuelve el golpe al que le pega',
 };
 
 // materiales propios de la mejora (uno por sesión)
@@ -92,6 +97,7 @@ export default class ShieldUpgrade {
     else if (k === 'temper') this.buildTemper();
     else if (k === 'skull') this.buildSkull();
     else if (k === 'pava') this.buildPava();
+    else if (k === 'gorriti') buildGorriti(this);
   }
 
   get kind() {
@@ -170,7 +176,7 @@ export default class ShieldUpgrade {
     switch (m.k) {
       case 'place': {
         if (this.done || st.stage !== 'idle' || !this.hasShield(from)) return;
-        const stage = { press: 'work', fence: 'hung', temper: 'hung', skull: 'hunt', pava: 'boil' }[this.kind];
+        const stage = { press: 'work', fence: 'hung', temper: 'hung', skull: 'hunt', gorriti: 'hunt', pava: 'boil' }[this.kind];
         if (!stage) return;
         if (this.kind === 'press' && !g.world.power) return;
         this.tell({ k: 'st', stage, p: 0, n: 0, h: 0, c: 0, jam: false, by: from, ev: 'place' });
@@ -211,7 +217,7 @@ export default class ShieldUpgrade {
       if (m.ev === 'place') {
         // el que lo puso se queda sin escudo (el de la estación es ese; el
         // cráneo solo se toca)
-        if (m.by === me && this.kind !== 'skull') {
+        if (m.by === me && this.kind !== 'skull' && this.kind !== 'gorriti') {
           g.player.shield = null;
           g.hud.setShield(null);
         }
@@ -599,6 +605,17 @@ export default class ShieldUpgrade {
       b.material.emissiveIntensity = lit ? (st.stage === 'ready' ? 1.5 + Math.sin(g.time * 12 + i) * 1.2 : 2.2) : 0;
     });
     if (st.stage === 'hung' || st.stage === 'ready') this.station.show(st.stage === 'ready' ? 1 : st.n / (this.U.need || 10));
+    // (anfitrión) el escudo colgado con la corriente prendida llama a los
+    // muertos al alambre, como la pava: si no, solo pasaban los de una
+    // ventana y cargarlo costaba varias vueltas de la trampa
+    const lures = g.lures;
+    if (lures && this.isHost()) {
+      const i = lures.findIndex((l) => l.src === this);
+      if (on && st.stage === 'hung' && trap.def.rect) {
+        const [x0, z0, x1, z1] = trap.def.rect;
+        if (i < 0) lures.push({ src: this, pos: new THREE.Vector3((x0 + x1) / 2, this.stationPos.y - 1.18, (z0 + z1) / 2) });
+      } else if (i >= 0) lures.splice(i, 1);
+    }
     // con la trampa prendida, el alambre le larga chispas al escudo colgado
     if (on && st.stage === 'hung' && trap.posts) {
       F.arcT -= dt;
@@ -1090,7 +1107,7 @@ export default class ShieldUpgrade {
         this.tell({ k: 'st', stage: 'ready', n });
         this.tell({ k: 'done', by: st.by, give: 0 });
       } else this.tell({ k: 'st', n });
-    } else if (this.kind === 'skull' && st.stage === 'hunt' && !this.done && info.type === 'bash') {
+    } else if ((this.kind === 'skull' || this.kind === 'gorriti') && st.stage === 'hunt' && !this.done && info.type === 'bash') {
       const H = this.huntPos;
       if (Math.hypot(z.pos.x - H.x, z.pos.z - H.z) > (this.U.r || 10)) return;
       const n = st.n + 1;
@@ -1116,7 +1133,7 @@ export default class ShieldUpgrade {
       this.root.add(obj);
       this.flying.push({ obj, from, t: 0 });
       g.fx.sparkle(from, [0.4, 1, 0.55], 4, 0.3);
-    }
+    } else if (this.kind === 'gorriti') gorritiKillFx(this, from);
   }
 
   // ---------------- lo que hace el escudo mejorado ----------------
@@ -1152,6 +1169,12 @@ export default class ShieldUpgrade {
         break;
       case 'chain':
         if (zi != null) this.fx(zi, 'chain');
+        break;
+      case 'rebote':
+        if (zi != null) this.fx(zi, 'rebote', { dx: +(dx / d).toFixed(2), dz: +(dz / d).toFixed(2) });
+        g.fx.flash(at, 0x9cd0ff, 12, 0.18, 6);
+        g.fx.sparkle(at, [0.6, 0.85, 1], 8, 0.5);
+        sfxClang(g.audio, at.clone(), 0.6);
         break;
       case 'steam': {
         if ((s.steamT || 0) > g.time) break;
@@ -1263,6 +1286,13 @@ export default class ShieldUpgrade {
           this.tell({ k: 'zv', zi, fx: 'push' });
         }
         break;
+      case 'rebote':
+        // el golpe vuelve: lo tira para atrás y le duele lo que pegó
+        if (!z || z.dead) break;
+        this.hurtZ(z, 150 + z.maxHp * 0.06, { type: 'bullet', zone: 'torso', point: tmpV.set(z.pos.x, (z.baseY || 0) + 1.2, z.pos.z).clone() }, by);
+        if (this.canReel(z)) this.reel(z, 1.0, (d.dx || 0) * 6.5, (d.dz || 0) * 6.5);
+        this.tell({ k: 'zv', zi, fx: 'rebote' });
+        break;
       case 'zap':
         if (!z || z.dead) break;
         this.hurtZ(z, 120 + z.maxHp * 0.05, { type: 'bullet', zone: 'torso', zap: true, point: tmpV.set(z.pos.x, (z.baseY || 0) + 1.2, z.pos.z).clone() }, by);
@@ -1322,6 +1352,9 @@ export default class ShieldUpgrade {
     if (m.fx === 'push') {
       g.fx.dust?.(at, { x: 0, y: 1, z: 0 }, [0.5, 0.45, 0.4], 6);
       sfxClang(g.audio, at.clone(), 0.35);
+    } else if (m.fx === 'rebote') {
+      g.fx.sparkle(at, [0.6, 0.85, 1], 10, 0.6);
+      g.fx.flash(at, 0x9cd0ff, 10, 0.2, 6);
     } else if (m.fx === 'zap') g.fx.electric(at, 12);
     else if (m.fx === 'chain') {
       if (!this.chains.some((c) => c.z === z && c.fx)) this.chains.push({ z, zi: m.zi, t: m.s || 3, fx: this.chainFx() });
@@ -1402,6 +1435,7 @@ export default class ShieldUpgrade {
     else if (k === 'skull') this.updateSkull(dt);
     else if (k === 'pava') this.updatePava(dt);
     else if (k === 'forge') this.updateForge(dt);
+    else if (k === 'gorriti') updateGorriti(this, dt);
     this.updateHot(dt);
     this.updateEffects(dt);
   }

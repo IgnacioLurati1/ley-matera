@@ -171,6 +171,8 @@ export default class Altares {
         radius: 1.7,
         prompt: () => {
           if (A.state === 'locked' || A.erkeOff) return null;
+          // (el asedio que viene o está en marcha: el temple espera)
+          if (!A.up && !this.temper && this.egg.asedio?.templeLock?.()) return { text: 'Primero, el asedio', noCost: true, info: true };
           if (this.temper) {
             if (this.temper.el === A.el) return { text: `Templando el ${name}: faltan ${Math.max(0, Math.ceil(TEMPER_SECS - this.temper.t))} s`, noCost: true, info: true };
             return { text: 'El erke calla: hay otro temple en marcha', noCost: true, info: true };
@@ -306,7 +308,7 @@ export default class Altares {
   // ---------------- el temple ----------------
   startTemper(A, owner) {
     const g = this.g;
-    if (A.state !== 'ready' || A.up || this.temper) return false;
+    if (A.state !== 'ready' || A.up || this.temper || this.egg.asedio?.templeLock?.()) return false;
     const pos = owner === myId(g) ? g.player.pos : g.net?.remote.get(owner)?.pos;
     if (!pos || g.world.zoneAt(pos.x, pos.z, pos.y) !== A.zone) return false;
     this.temper = this.makeTemper(A.el, owner, 0);

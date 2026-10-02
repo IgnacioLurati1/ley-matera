@@ -59,6 +59,7 @@ export const PAP_CAMO = {
   esteros: { name: 'Cintas del Gauchito', desc: 'Cintas coloradas al viento y brasas de velas.' },
   torre: { name: 'Remolino Cósmico', desc: 'Una galaxia que da vueltas alrededor del mate.' },
   castillo: { name: 'Éter Andino', desc: 'Hielo de la cordillera, auroras y chakanas de oro.' },
+  monumento: { name: 'Celeste y Blanco', desc: 'Las franjas al viento, soles de oro y la llama votiva.' },
 };
 
 // Cómo se ve cada uno, además de lo que traen sus texturas (camoPaint.js: el

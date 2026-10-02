@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { POINTS, bossHealth, bossScale, zombieHealth } from '../config/rules';
-import { MAP_ID, MAP_W, MAP_H, SKY } from '../config/map';
+import { MAP_W, MAP_H, SKY } from '../config/map';
 import CrowSkin from './crowSkin';
 
 // El Cuervo: el jefe de la granja (lo que es el Capataz en el molino). Llega
@@ -38,6 +38,9 @@ export default class Crow {
     game.scene.add(this.rig);
     this.vel = new THREE.Vector3();
     this.orbit = 0;
+    // el cuerpo de verdad se baja y se calienta ya (bajándolo cuando venía,
+    // el juego se trababa un cuarto de segundo al aparecer: crowSkin ready)
+    this.skin = new CrowSkin(this);
   }
 
   // ---------------- modelo ----------------
@@ -175,8 +178,7 @@ export default class Crow {
     this.divePlot = null;
     this.rig.visible = true;
     // el cuerpo de verdad (entities/crowSkin.js): baja la primera vez que viene
-    // (por ahora solo en La Tapera: en la torre sigue el de piezas)
-    if (MAP_ID === 'granja') this.skin ||= new CrowSkin(this);
+    this.skin ||= new CrowSkin(this);
     g.audio.bossSfx('crow');
     return true;
   }
@@ -671,7 +673,7 @@ export default class Crow {
       z.pos.set(s.x, s.y, s.z);
       z.yaw = s.yaw;
       this.rig.visible = true;
-      if (MAP_ID === 'granja') this.skin ||= new CrowSkin(this);
+      this.skin ||= new CrowSkin(this);
       this.state = 'off';
       // (el invitado también lo oye llegar; no si entra con el Cuervo ya peleando)
       if (st === 'arrive') g.audio.bossSfx('crow');

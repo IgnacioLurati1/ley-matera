@@ -69,7 +69,7 @@ const SAPUCAY = { id: 'sapucay', map: 'esteros', every: 30, odds: 0.5, gain: 0.2
 // Cuánto dura la canción de cada mapa al empezar la ronda (audio.roundStart):
 // la llegada de la ronda especial suena unos segundos después, y recién ahí
 // aparecen los bichos.
-const SONG = { molino: 4.8, granja: 3.8, penal: 5, torre: 4.3, castillo: 3.8, esteros: 6 };
+const SONG = { molino: 4.8, granja: 3.8, penal: 5, torre: 4.3, castillo: 3.8, esteros: 6, monumento: 6 };
 const INTRO_GAP = 1.5;
 // cuánto después de que empieza la llegada salen los primeros
 const INTRO_SPAWN = { capybara: 2.4, horse: 3.4, puma: 1.8, yacare: 3 };

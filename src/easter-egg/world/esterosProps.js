@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mesh, boxGeo, cylGeo, addBuilders } from './props';
 import { leafCrownGeometry } from './esterosGrass';
+import { SKY, MAP_W, MAP_H } from '../config/map';
 
 // Utilería del estero (Mate no Numa): el campamento de Gil, el obraje, el
 // monte, las cruces con cintas coloradas y la reducción en ruinas. Cada
@@ -387,10 +388,16 @@ const BUILDERS = {
     const g = new THREE.Group();
     const rx = o.rx || 3.5;
     const rz = o.rz || 2.5;
-    const N = 44;
-    const W = rx + 1.2;
-    const D = rz + 1.2;
-    const geo = new THREE.PlaneGeometry(W * 2, D * 2, N, N).rotateX(-Math.PI / 2);
+    // (con la cuesta larga de atrás, la malla llega hasta donde termina)
+    const b = lomaBack(o);
+    const R = b ? o.ramp : 1;
+    const x0 = -rx - 1.2 + (b && b[0] < 0 ? b[0] * rx * (R - 1) : 0);
+    const x1 = rx + 1.2 + (b && b[0] > 0 ? b[0] * rx * (R - 1) : 0);
+    const z0 = -rz - 1.2 + (b && b[1] < 0 ? b[1] * rz * (R - 1) : 0);
+    const z1 = rz + 1.2 + (b && b[1] > 0 ? b[1] * rz * (R - 1) : 0);
+    const NX = Math.round(44 * Math.sqrt((x1 - x0) / (2 * rx + 2.4)));
+    const NZ = Math.round(44 * Math.sqrt((z1 - z0) / (2 * rz + 2.4)));
+    const geo = new THREE.PlaneGeometry(x1 - x0, z1 - z0, NX, NZ).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, 0, (z0 + z1) / 2);
     const p = geo.attributes.position;
     const uv = geo.attributes.uv;
     const col = new Float32Array(p.count * 3);
@@ -484,9 +491,38 @@ export function lomaTop(o) {
   return lomaY(o, 0, 0) - 0.05 + dodeTop * SLAB_H;
 }
 
+// La cuesta larga de atrás (o.ramp: cuántas veces más larga que adelante),
+// del lado de la luna: por ahí sube caminando el Luisón en la llegada, y
+// desde el claro no se ve (la tapa la cresta).
+function lomaBack(o) {
+  if (!o.ramp) return null;
+  if (!o.back) {
+    const d = SKY?.moon?.dir || [0.6, 0.31, 0.74];
+    const dl = Math.hypot(d[0], d[1], d[2]) || 1;
+    const cx = SKY?.center?.[0] ?? MAP_W / 2;
+    const cz = SKY?.center?.[1] ?? MAP_H / 2;
+    const mx = cx + (d[0] / dl) * 260 - o.pos[0];
+    const mz = cz + (d[2] / dl) * 260 - o.pos[1];
+    const l = Math.hypot(mx, mz) || 1;
+    o.back = [mx / l, mz / l];
+  }
+  return o.back;
+}
+
 // La altura de la loma (sobre el piso) en (x, z) locales. Afuera, un poco
 // abajo del piso (el borde queda tapado).
 export function lomaY(o, x, z) {
+  const b = lomaBack(o);
+  if (b) {
+    // (lo de atrás, apretado hacia la cresta: de a poco, sin quiebre arriba)
+    const a = x * b[0] + z * b[1];
+    if (a > 0) {
+      const w = 1.2;
+      const a2 = (a * (w * w + a * a)) / (w * w + o.ramp * a * a);
+      x += b[0] * (a2 - a);
+      z += b[1] * (a2 - a);
+    }
+  }
   const u = Math.hypot(x / (o.rx || 3.5), z / (o.rz || 2.5));
   if (u >= 1) return -0.4;
   const n = Math.sin(x * 1.7 + z * 0.9) * 0.5 + Math.sin(x * 0.6 - z * 2.1) * 0.5;

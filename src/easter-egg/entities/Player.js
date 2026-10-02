@@ -257,6 +257,7 @@ export default class Player {
       this.downed = true;
       this.downT = 0;
       this.bleed = 30;
+      this.revHold = 0;
       this.loseAllPerks();
       g.audio.sting();
       g.net.net.send({ t: 'down', id: g.net.id });
@@ -300,10 +301,13 @@ export default class Player {
     }
 
     if (this.downed && this.bleed > 0) {
-      // caído en cooperativo: te desangrás hasta que te levanten
-      this.bleed -= dt;
+      // caído en cooperativo: te desangrás hasta que te levanten (mientras un
+      // compañero te está levantando, el tiempo no corre: Session 'rev')
+      const held = this.revHold > 0;
+      if (held) this.revHold -= dt;
+      else this.bleed -= dt;
       this.eye += (0.55 - this.eye) * Math.min(1, dt * 5);
-      g.hud.setDowned(this.bleed / 30, 'Caíste: que un compañero te levante', true);
+      g.hud.setDowned(this.bleed / 30, held ? `${this.revBy || 'Un compañero'} te está levantando` : 'Caíste: que un compañero te levante', true);
       if (this.bleed <= 0) {
         this.downed = false;
         this.spectate();
@@ -330,13 +334,16 @@ export default class Player {
       this.winded = true;
       input.latched.delete('ShiftLeft');
     }
-    if (this.winded && this.stamina >= PLAYER.stamina * 0.35) this.winded = false;
+    // (Stamin-Up, la Trotadora: el doble de aire y se recupera más rápido)
+    const stamin = this.perks.has('stamin');
+    const stMax = PLAYER.stamina * (stamin ? 2 : 1);
+    if (this.winded && this.stamina >= stMax * 0.35) this.winded = false;
     if (wantSprint && this.stamina > 0 && !this.winded) {
       this.sprinting = true;
       this.stamina -= dt;
     } else {
       this.sprinting = false;
-      this.stamina = Math.min(PLAYER.stamina, this.stamina + dt * (wantSprint && !this.winded ? 0.3 : 1.2));
+      this.stamina = Math.min(stMax, this.stamina + dt * (wantSprint && !this.winded ? 0.3 : 1.2) * (stamin ? 1.5 : 1));
     }
 
     const moveMult = g.weapons.stats?.moveMult || 1;
@@ -347,6 +354,8 @@ export default class Player {
     if (g.weapons.ads) speed = Math.min(speed, PLAYER.ads);
     if (this.downed) speed = 0.8;
     speed *= moveMult;
+    // Stamin-Up: un 25% más rápido en todo (caminando, corriendo, apuntando)
+    if (stamin && !this.downed) speed *= 1.25;
     // las Botas de potro (potenciador del Challenge de la torre): se corre más
     if (g.powerups?.active.botas > 0 && !this.downed) speed *= 1.4;
     // el aullido del Luisón hiela: un rato se anda a menos de la mitad

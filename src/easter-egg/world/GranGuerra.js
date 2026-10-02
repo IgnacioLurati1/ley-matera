@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import Arena from './Arena';
 import { DECOR } from './castleDecor';
-import { buildChiqui, chiquiGiggle, chiquiGlitch } from './Chiqui';
+import { buildChiqui, chiquiGiggle, chiquiGlitch, chiquiAnchor, chiquiEmber, chiquiMeta } from './Chiqui';
 import Avatars from '../net/Avatars';
 import { ELEMENTS, ELEM_COLOR, ELEM_RGB, ELEM_NAME, isHost, rayHit, announce } from '../entities/castle/common';
 import { streamSong } from './SongEgg';
@@ -77,6 +77,7 @@ const dS = new THREE.Vector3();
 const dT = new THREE.Vector3();
 const smooth = (u) => u * u * (3 - 2 * u);
 const clamp01 = (u) => Math.max(0, Math.min(1, u));
+const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 // Dónde van las gemas en el poncho del duende (sus medidas, antes de agrandarlo).
 const GEMS = { viento: [0, 0.66, 0.24], fuego: [-0.1, 0.53, 0.25], rayo: [0.1, 0.53, 0.25], hielo: [0, 0.4, 0.27] };
@@ -938,7 +939,8 @@ export default class GranGuerra extends Arena {
     emberTex.colorSpace = THREE.SRGBColorSpace;
     C.traverse((o) => {
       const m = o.material;
-      if (!o.isMesh || !m?.map || !m.emissive) return;
+      // (el cuerpo de verdad comparte el material con los otros: lo suyo va en skinColossus)
+      if (!o.isMesh || !m?.map || !m.emissive || o.userData.chiquiSkin) return;
       m.emissive.set(0xffffff);
       m.emissiveMap = emberTex;
       m.emissiveIntensity = 1.6;
@@ -972,8 +974,15 @@ export default class GranGuerra extends Arena {
       { local: new THREE.Vector3(0, 0.5, 0.02), r: 0.27, kind: 'coloso' },
       { local: new THREE.Vector3(0, 0.88, 0), r: 0.17, kind: 'coloso' },
     ].map((s) => ({ ...s, c: new THREE.Vector3(), r: s.r * COL.scale }));
+    // con el cuerpo de verdad: se mueve con clips (no camina: el manotazo, los
+    // hechizos, el grito), la piel con brasas y las gemas cosidas al pecho
+    rig.auto = false;
+    rig.idle = 'taunt';
+    rig.onSkin(() => this.skinColossus());
     // el duende chiquito (para la última parte)
     const gn = buildChiqui(g.textures);
+    // (parado, varía los gestos: world/Chiqui.js idleMix)
+    gn.vary = true;
     gn.root.scale.setScalar(1.3);
     gn.root.visible = false;
     this.root.add(gn.root);
@@ -1029,6 +1038,68 @@ export default class GranGuerra extends Arena {
       return id;
     });
     this.knights.root.visible = false;
+  }
+
+  // El coloso con el cuerpo de verdad: grietas de fuego en la piel, las gemas
+  // colgadas del pecho (siguen al cuerpo cuando se agacha) y el cuerpo medido
+  // de nuevo (el modelo es más angosto que el de piezas).
+  skinColossus() {
+    const C = this.col;
+    C.ember = chiquiEmber(C.rig);
+    const meta = chiquiMeta();
+    const BONE = { viento: 'Spine01', fuego: 'Spine01', rayo: 'Spine01', hielo: 'Spine02' };
+    for (const G of this.gems) {
+      const p = meta?.gems?.[G.el];
+      if (!p) continue;
+      const a = chiquiAnchor(C.rig, BONE[G.el], p);
+      a.add(G.mesh, G.glow);
+      G.base = [0, 0, 0.012];
+      G.mesh.position.set(0, 0, 0.012);
+      G.glow.position.set(0, 0, 0.024);
+    }
+    this.colSolids[0].local.set(0, 0.46, 0.02);
+    this.colSolids[0].r = 0.2 * COL.scale;
+    this.colSolids[1].local.set(0, 0.84, 0.02);
+    this.colSolids[1].r = 0.19 * COL.scale;
+    // el ala del sombrero (el dragón la esquiva): altura y radio
+    this.colBrim = [0.86, 0.3];
+  }
+
+  // Mira al jugador. Con el cuerpo de verdad, corriendo mira adonde va y la
+  // cabeza sigue al jugador (hasta donde da el cuello).
+  faceGnome(F, p, dt) {
+    const toP = Math.atan2(p.x - F.pos.x, p.z - F.pos.z);
+    const R = F.rig;
+    if (!R.skin) {
+      F.root.rotation.set(0, toP, 0);
+      return;
+    }
+    F.lastPos ||= F.pos.clone();
+    const dx = F.pos.x - F.lastPos.x;
+    const dz = F.pos.z - F.lastPos.z;
+    F.lastPos.copy(F.pos);
+    const sp = dt > 0 ? Math.hypot(dx, dz) / dt : 0;
+    const moving = sp > 0.8 && sp < 30;
+    if (moving) F.moveYaw = Math.atan2(dx, dz);
+    F.runK = (F.runK || 0) + ((moving ? 1 : 0) - (F.runK || 0)) * Math.min(1, dt * 6);
+    const want = F.runK > 0.5 && F.moveYaw != null ? F.moveYaw : toP;
+    F.yaw = F.yaw == null ? want : F.yaw + wrapPi(want - F.yaw) * Math.min(1, dt * 10);
+    F.root.rotation.set(0, F.yaw, 0);
+    R.head.rotation.set(0, Math.max(-1.1, Math.min(1.1, wrapPi(toP - F.yaw))), 0);
+  }
+
+  // La lluvia de fuego (en todas las compus): el coloso levanta la mano al cielo.
+  spawnRain(flat) {
+    super.spawnRain(flat);
+    if (this.stage === 'gems' && !this.col.rig.one) this.col.rig.act('cast');
+  }
+
+  // Una bola de fuego (en todas las compus): si sale del duende, la tira con
+  // la mano (el anfitrión ya la arrancó antes: acá solo los invitados).
+  spawnFireball(from, vel) {
+    super.spawnFireball(from, vel);
+    const N = this.gnome;
+    if (N?.root.visible && N.rig.one?.name !== 'throw' && from.distanceTo(N.pos) < 2.5) N.rig.act('throw', { at: (chiquiMeta()?.clips.throw.key ?? 0.5) - 0.1 });
   }
 
   // ================= la pelea =================
@@ -1483,6 +1554,7 @@ export default class GranGuerra extends Arena {
     if (big) {
       this.col.glitch = Math.max(this.col.glitch, 0.35);
       chiquiGlitch(a, 0.45);
+      if (!this.col.rig.one) this.col.rig.act('hit');
     }
   }
 
@@ -1496,6 +1568,7 @@ export default class GranGuerra extends Arena {
     g.fx.flash(G.pos, ELEM_COLOR[G.el], 40, 1, 60);
     g.post?.flash(0.5);
     this.col.glitch = 1.2;
+    this.col.rig.act('scream');
     chiquiGlitch(g.audio, 0.9);
     g.fx.addShake(0.6);
   }
@@ -1508,6 +1581,9 @@ export default class GranGuerra extends Arena {
       const at = new THREE.Vector3(m.x, A.y, m.z);
       this.marks.push({ at, r: 3, t: 0, dur: 2.2, color: 0xff2a10, then: () => this.slamHit(at) });
       this.col.slamT = 0;
+      // (el cuerpo de verdad: el clip del manotazo, con la mano en el piso cuando pega)
+      const key = chiquiMeta()?.clips.slam.key ?? 1.65;
+      this.col.rig.act('slam', { delay: Math.max(0, 2.2 - key), at: Math.max(0, key - 2.2) });
     } else if (m.k === 'meteor') {
       const at = new THREE.Vector3(m.x, A.y, m.z);
       // (en el caos cae yerba prendida fuego del cielo: más chica y más seguido)
@@ -1517,6 +1593,7 @@ export default class GranGuerra extends Arena {
       rock.position.copy(from);
       this.root.add(rock);
       const r = sky ? 3 : 4.2;
+      if (!sky && !this.col.rig.one) this.col.rig.act('cast');
       this.meteors.push({ rock, from, at, t: 0, dur: sky ? 2.2 : 2.6, r, dmg: sky ? 40 : 70, arc: sky ? 4 : 14 });
       this.marks.push({ at, r, t: 0, dur: sky ? 2.2 : 2.6, color: sky ? 0x8aff3a : 0xff7a1a });
     } else if (m.k === 'bolt') {
@@ -1616,6 +1693,7 @@ export default class GranGuerra extends Arena {
     const g = this.g;
     const A = this.A;
     this.col.dissolve = 0.001;
+    this.col.rig.act('scream');
     const N = this.gnome;
     N.pos.set(A.x, A.y, A.z - 6);
     N.root.visible = true;
@@ -1872,8 +1950,8 @@ export default class GranGuerra extends Arena {
       for (const s of this.colSolids || []) push(s.c, s.r + DRAGON_CLEAR);
       // el ala del sombrero: un disco de 15 m arriba de la cabeza. Por abajo
       // del ala se le pasaba por adentro: se lo rodea por afuera, de frente
-      const hc = dT.set(0, 0.96, 0).applyMatrix4(C.root.matrixWorld);
-      const R = 0.42 * C.root.scale.x + DRAGON_CLEAR;
+      const hc = dT.set(0, this.colBrim?.[0] ?? 0.96, 0).applyMatrix4(C.root.matrixWorld);
+      const R = (this.colBrim?.[1] ?? 0.42) * C.root.scale.x + DRAGON_CLEAR;
       const dx = p.x - hc.x;
       const dz = p.z - hc.z;
       const dh = Math.hypot(dx, dz);
@@ -2163,6 +2241,8 @@ export default class GranGuerra extends Arena {
   }
 
   eyePos(out) {
+    const S = this.col.rig.skin;
+    if (S) return S.eyes[0].getWorldPosition(out).add(S.eyes[1].getWorldPosition(tmpW)).multiplyScalar(0.5);
     return out.set(0, 0.87, 0.14).applyMatrix4(this.col.root.matrixWorld);
   }
 
@@ -2214,6 +2294,7 @@ export default class GranGuerra extends Arena {
     }
     C.rig.update(dt, t);
     for (const G of C.rig.glows) G.scale.setScalar(0.06 + Math.sin(t * 7) * 0.01);
+    if (C.ember) C.ember.value = 0.85 + Math.sin(t * 2.3) * 0.25 + C.glitch * 0.8;
     root.updateMatrixWorld(true);
     // las gemas y el cuerpo (para los tiros)
     for (const G of this.gems) {
@@ -2222,7 +2303,7 @@ export default class GranGuerra extends Arena {
       G.flash = Math.max(0, (G.flash || 0) - dt * 3);
       G.mesh.rotation.y = t * 1.5;
       // el golpe la sacude y la infla; rajada, titila cada vez más rápido
-      const [bx, by, bz] = GEMS[G.el];
+      const [bx, by, bz] = G.base || GEMS[G.el];
       G.mesh.position.set(bx + (Math.random() - 0.5) * 0.008 * G.shake, by + (Math.random() - 0.5) * 0.008 * G.shake, bz);
       G.mesh.scale.set(1 + G.flash * 0.5, 1.4 + G.flash * 0.7, 0.6 + G.flash * 0.3);
       const hurt = 1 - clamp01(G.hp / (this.gemMax || GEM_HP));
@@ -2370,7 +2451,9 @@ export default class GranGuerra extends Arena {
         if (!N.target || N.pos.distanceTo(N.target) < 0.6) N.target = randSpot(0);
         const dir = tmpV.subVectors(N.target, N.pos).setY(0);
         const len = dir.length();
-        N.pos.addScaledVector(dir.normalize(), Math.min(len, 5.2 * dt));
+        // (tirando la bola se queda quieto: no la tira corriendo)
+        if (N.throwHold > 0) N.throwHold -= dt;
+        else N.pos.addScaledVector(dir.normalize(), Math.min(len, 5.2 * dt));
         if (!this.trick) {
           N.blinkT -= dt;
           if (N.blinkT <= 0) {
@@ -2390,6 +2473,12 @@ export default class GranGuerra extends Arena {
         }
         // bolas de fuego de la mano
         N.throwT -= dt;
+        // (el cuerpo de verdad: arranca el tiro antes, así la suelta cuando sale)
+        const lead = chiquiMeta()?.clips.throw.key ?? 0.5;
+        if (N.throwT <= lead && N.throwT + dt > lead) {
+          N.rig.act('throw');
+          N.throwHold = lead + 0.45;
+        }
         if (N.throwT <= 0) {
           N.throwT = 3 + Math.random() * 1.8;
           this.fireball(N.pos.clone().setY(N.pos.y + 1.2), 1);
@@ -2425,7 +2514,9 @@ export default class GranGuerra extends Arena {
     N.root.scale.setScalar(s);
     N.root.position.copy(N.pos);
     const p = g.player.pos;
-    N.root.rotation.set(0, Math.atan2(p.x - N.pos.x, p.z - N.pos.z), 0);
+    this.faceGnome(N, p, dt);
+    // mareado se agarra la cabeza, con miedo se echa atrás, sujetado lo sacude la luz
+    N.rig.mode = N.stun > 0 ? 'dizzy' : N.cower > 0 ? 'scared' : this.stage === 'pin' ? 'zap' : null;
     // mareado: se tambalea y las estrellitas le dan vueltas; con miedo, tiembla
     N.stars.visible = N.stun > 0;
     if (N.stun > 0) {
@@ -2442,7 +2533,7 @@ export default class GranGuerra extends Arena {
       for (const F of this.fakes) {
         if (!F.alive) continue;
         F.root.position.copy(F.pos);
-        F.root.rotation.y = Math.atan2(p.x - F.pos.x, p.z - F.pos.z);
+        this.faceGnome(F, p, dt);
         F.rig.update(dt, t);
       }
       N.emberT = (N.emberT || 0) - dt;
@@ -2925,6 +3016,9 @@ export default class GranGuerra extends Arena {
     N.root.position.set(A.x + (Math.random() - 0.5) * jit, A.y + k * 1.4 + Math.sin(t * 1.3) * 0.25, A.z + (Math.random() - 0.5) * jit);
     N.root.rotation.set(Math.sin(t * 2) * 0.08, t * (0.8 + lit * 0.5), 0);
     N.stars.visible = false;
+    // (el cuerpo de verdad: lo sacude el remolino)
+    N.rig.mode = 'zap';
+    N.rig.head.rotation.set(0, 0, 0);
     N.rig.update(dt, t);
     const c = this.shieldSolid.c.copy(N.root.position).setY(N.root.position.y + 0.55 * s);
     this.shield.position.copy(c);

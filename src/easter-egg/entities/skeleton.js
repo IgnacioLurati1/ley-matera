@@ -120,7 +120,8 @@ export function solvePose(mats, x, z, yaw, scale, P) {
     const sx = s === 0 ? -0.27 : 0.27;
     const p = s === 0 ? P.shLp : P.shRp;
     const r = s === 0 ? P.shLr : P.shRr;
-    sh.multiplyMatrices(spine, local(sx, 0.5, 0, p, 0, r));
+    // (el giro del brazo sobre su eje: solo lo usan los bailes, P.shLy/shRy)
+    sh.multiplyMatrices(spine, local(sx, 0.5, 0, p, (s === 0 ? P.shLy : P.shRy) || 0, r));
     mats[3 + s].multiplyMatrices(sh, local(0, -0.15, 0));
     el.multiplyMatrices(sh, local(0, -0.29, 0, s === 0 ? P.elL : P.elR));
     mats[5 + s].multiplyMatrices(el, local(0, -0.16, 0));
@@ -129,7 +130,7 @@ export function solvePose(mats, x, z, yaw, scale, P) {
     const sx = s === 0 ? -0.1 : 0.1;
     const p = s === 0 ? P.hipLp : P.hipRp;
     const r = s === 0 ? P.hipLr : P.hipRr;
-    hj.multiplyMatrices(hip, local(sx, -0.03, 0, p, 0, r));
+    hj.multiplyMatrices(hip, local(sx, -0.03, 0, p, (s === 0 ? P.hipLy : P.hipRy) || 0, r));
     mats[7 + s].multiplyMatrices(hj, local(0, -0.21, 0));
     kn.multiplyMatrices(hj, local(0, -0.43, 0, s === 0 ? P.knL : P.knR));
     mats[9 + s].multiplyMatrices(kn, local(0, -0.21, 0));

@@ -295,7 +295,6 @@ export const WALL_BUYS = [
   { weapon: 'vidrio', cell: [31, 16], face: [1, 0] },
   { weapon: 'lata', cell: [77, 38], face: [0, -1] },
   { weapon: 'algarrobo', cell: [18, 28], face: [-1, 0] },
-  { weapon: 'granadas', cell: [32, 61], face: [0, 1] },
   { weapon: 'bowie', cell: [73, 21], face: [1, 0] },
 ];
 export const PERK_SPOTS = [
@@ -306,6 +305,8 @@ export const PERK_SPOTS = [
   { perk: 'mule', cell: [5, 39], face: [1, 0] },
   { perk: 'deadshot', cell: [10, 4], face: [0, 1] },
   { perk: 'aqua', cell: [46, 55], face: [0, 1] },
+  // Stamin-Up (la Trotadora), en el despacho del coronel: entre la biblioteca y el sillón
+  { perk: 'stamin', cell: [67, 1], face: [0, 1] },
 ];
 // (contra el pajonal, sin pared: va en un poste)
 export const POWER = { cell: [31, 6], face: [0, 1], post: true };
@@ -425,8 +426,9 @@ export const PROPS = [
   { type: 'cruzCinta', pos: [19.6, 12.4], rot: -0.5, h: 1.1 },
   { type: 'cruzCinta', pos: [5.6, 17.6], rot: 1.1, vela: false },
   { type: 'arbolMonte', pos: [20.6, 6.6], h: 6 },
-  // la loma del Luisón (entre el algarrobo y la reducción, del lado de la luna)
-  { type: 'loma', pos: [16.5, 21.8], rx: 3.6, rz: 2.5, h: 5 },
+  // la loma del Luisón (entre el algarrobo y la reducción, del lado de la luna;
+  // ramp: la cuesta larga de atrás, por donde sube caminando en la llegada)
+  { type: 'loma', pos: [16.5, 21.8], rx: 3.6, rz: 2.5, h: 5, ramp: 3.2 },
   // ---- la casona del coronel ----
   { type: 'farolPoste', pos: [70.5, 15.5] },
   { type: 'carreta', pos: [69.5, 18.5], rot: 1.2 },

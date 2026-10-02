@@ -3,6 +3,7 @@ import { EE, RISERS } from '../config/map';
 import { mesh, boxGeo, cylGeo, mergeByMaterial, setWellBucket } from '../world/props';
 import { getMats } from '../weapons/viewmodels';
 import Encierro from './Encierro';
+import LuzMala from './LuzMala';
 
 // Easter egg "La Ronda del Abuelo":
 //  1. Prender la luz: aparece el fantasma del Abuelo en la capilla.
@@ -37,6 +38,7 @@ const LINES = {
   done: '¡Eso es un mate! Andá, que yo me quedo acá tranquilo.',
   hat: 'Una cosa más, m\'hijo. Cuando caiga el Capataz, llévenle el sombrero a su tumba, todos juntos. Esas almas no se juntan con balas... solo con la luz mala.',
   gotHat: 'El sombrero del Capataz. A su tumba... y prepárense, que los muertos no descansan.',
+  noche: "Primero las luces malas, m'hijo. Esas no se apagan con balas: al facón.",
 };
 // La Voz de Arriba, cuando el cementerio se calma.
 const VOZ = [
@@ -103,6 +105,11 @@ export default class EasterEgg {
     this.graves = RISERS.filter((r) => r.grave).map((r) => r.pos);
     this.fireLight = game.world.lights.find((e) => e.def.kind === 'fire' && e.def.zone === 'D') || null;
     this.register();
+    // la Noche de la Luz Mala (cada 10 rondas, o antes con los Mates de Oro):
+    // la ronda la lleva por g.defense (Rounds, Zombies.spawn)
+    this.noche = new LuzMala(game, this);
+    this.defense = this.noche;
+    game.defense = this.noche;
   }
 
   // Cuántas palancas hay: una por jugador en la partida.
@@ -493,6 +500,8 @@ export default class EasterEgg {
         if (this.arenaGone || this.tumba === 'voz') return null;
         if (this.tumba === 'souls') return { text: `El cementerio: ${this.tSouls} de ${this.tumbaNeed} almas`, noCost: true, info: true };
         if (!this.done) return { text: this.hasHat ? 'La tumba del Capataz: primero cebale el mate al Abuelo' : 'Aquí yace Anselmo, capataz del molino', noCost: true, info: true };
+        // (la Noche de la Luz Mala que viene con los Mates de Oro: primero eso)
+        if (this.noche?.lock()) return { text: 'Primero, la Luz Mala', noCost: true, info: true };
         if (!this.hasHat) return { text: 'La tumba del Capataz: falta su sombrero (se le vuela cuando cae)', noCost: true, info: true };
         const oro = this.missingOro();
         if (oro.length) return { text: `Falta que ${oro.join(', ')} agarre${oro.length > 1 ? 'n' : ''} su Mate de Oro`, noCost: true, info: true };
@@ -504,6 +513,7 @@ export default class EasterEgg {
       cost: () => 0,
       use: () => {
         if (!this.done || !this.hasHat || this.tumba !== 'idle' || this.arenaGone) return false;
+        if (this.noche?.lock()) return false;
         if (this.missingOro().length || this.encI.missing().length) return false;
         if (this.g.curandero && !this.g.curandero.anyoneHas()) return false;
         this.startTumba();
@@ -746,11 +756,15 @@ export default class EasterEgg {
       const lever = this.levers[m.i];
       if (lever) this.pullLever(lever, from);
     } else if (m.a === 'blast') this.extinguish();
+    // (el facón o un tiro a una luz mala: entities/LuzMala.js)
+    else this.noche?.onGuest(m, from);
   }
 
   // Estado del easter egg que manda el anfitrión (modo invitado).
   applyRemote(m) {
     const g = this.g;
+    // la Noche de la Luz Mala: su estado y sus efectos
+    if (m.ln || m.lnf || m.lnr || m.lnb != null || m.lne) this.noche?.applyEvent(m);
     // el balde del aljibe (lo sube el anfitrión; baja solo acá también)
     if (m.bk != null) {
       this.bucketT = m.bk;
@@ -847,6 +861,7 @@ export default class EasterEgg {
       calabaza: this.calabazaState === 'taken' ? 'taken' : null,
       oro: [...this.oro],
       lm: this.g.curandero?.netState(),
+      ln: this.noche?.state(),
     };
   }
 
@@ -865,6 +880,7 @@ export default class EasterEgg {
   }
 
   onShot(origin, dir, maxT) {
+    this.noche?.onShot(origin, dir, maxT);
     if (this.calabazaState !== 'shelf' || !this.g.world.power || this.shotSent) return;
     const p = this.calabaza.position;
     const v = new THREE.Vector3().subVectors(p, origin);
@@ -875,6 +891,7 @@ export default class EasterEgg {
   }
 
   onExplosion(pos, radius) {
+    this.noche?.onExplosion(pos, radius);
     if (this.calabazaState === 'shelf' && this.g.world.power && pos.distanceTo(this.calabaza.position) < radius * 0.6) this.hitCalabaza(new THREE.Vector3(0, 0, 1));
   }
 
@@ -963,6 +980,8 @@ export default class EasterEgg {
   // mide el tiempo desde que arrancó y se lo pasa a los demás).
   onBossDeath(_pos, z) {
     const g = this.g;
+    // (el Capataz Maldito: se apaga la última luz y su tesoro queda ahí)
+    this.noche?.onBossDeath(_pos, z);
     if (!z?.mandinga || g.net?.guest) return;
     const secs = Math.round(g.time - (this.started ?? g.time));
     this.eggDone(secs);
@@ -991,6 +1010,9 @@ export default class EasterEgg {
     const g = this.g;
     this.oro.add(id);
     g.net?.event('ee', { oro: [...this.oro] });
+    // todos con su Mate de Oro: si todavía no hubo Noche de la Luz Mala, viene
+    // ahora (y la tumba espera hasta que termine)
+    if (!this.missingOro().length && this.noche?.expectEarly()) return;
     if (g.net && this.hasHat && !this.missingOro().length) this.announce('Todos tienen su Mate de Oro. Llévenle el sombrero a la tumba del Capataz.', 4);
   }
 
@@ -1130,6 +1152,8 @@ export default class EasterEgg {
         }
       }
     }
+    // la Noche de la Luz Mala (después del fuego del barbacuá: apaga las luces del mapa)
+    this.noche?.update(dt);
     // el contador de lo que se está haciendo
     let craft = null;
     if (this.kiln === 'souls') craft = `<span>Barbacuá</span><b>${this.souls} / ${this.kilnNeed}</b>`;
@@ -1242,7 +1266,7 @@ export default class EasterEgg {
   }
 
   nextLine() {
-    if (this.done) return this.hasHat ? LINES.gotHat : LINES.hat;
+    if (this.done) return this.noche?.lock() ? LINES.noche : this.hasHat ? LINES.gotHat : LINES.hat;
     if (!this.introDone) {
       this.introDone = true;
       return LINES.intro;
@@ -1260,6 +1284,8 @@ export default class EasterEgg {
     this.encD.dispose();
     this.encH.dispose();
     this.encI.dispose();
+    this.noche?.dispose();
+    if (this.g.defense === this.noche) this.g.defense = null;
   }
 }
 

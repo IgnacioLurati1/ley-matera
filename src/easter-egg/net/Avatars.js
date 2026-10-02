@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { makePose, solvePose, PART_COUNT } from '../entities/skeleton';
 import { swimPose } from '../entities/zombieGaits';
+import { walkLegs, stepPerson } from '../entities/personWalk';
 import { shieldModel } from '../world/shieldModels';
 import { CAMO_BY_ID, camoable } from '../weapons/camos';
 import { VM } from '../weapons/viewmodels';
+import { gauchoSkin } from './gauchoSkin';
 
 // Los otros jugadores: un gaucho con sombrero, cara con bigote, poncho de
 // color que se bambolea al moverse y su mate en la mano, animado con el mismo
@@ -179,6 +181,8 @@ export default class Avatars {
       scale: 1,
     };
     this.list.set(r.id, { r, group, parts, hand, tag, fake, M, extras, poncho: ponchoAt, sway: new THREE.Vector2(), lastYaw: r.yaw, mats: Array.from({ length: PART_COUNT }, () => new THREE.Matrix4()), name: r.name, xray, xparts, xk: 0 });
+    // el gaucho de verdad (net/gauchoSkin.js): cuando baja, las piezas se esconden
+    gauchoSkin(this.list.get(r.id), [...parts, hat, face, ponchoAt]);
   }
 
   // El escudo armado colgado en la espalda (del torso, mirando para atrás,
@@ -222,10 +226,27 @@ export default class Avatars {
     a.gun?.removeFromParent();
     a.gun = null;
     const W = this.g.weapons;
-    const camo = !u && c && CAMO_BY_ID[c] && camoable(w) ? c : null;
-    const src = w && ((camo && W?.modelOf?.(w, 0, camo)) || W?.models?.get(`${w}|${u}`) || W?.models?.get(`${w}|0`));
+    // (la hoz de oro: 'oro', mejorada o no; weapons/Weapons.js equipModel)
+    const gold = w === 'hoz' && c === 'oro';
+    const camo = gold || (!u && c && CAMO_BY_ID[c] && camoable(w)) ? c : null;
+    const src = w && ((camo && W?.modelOf?.(w, gold ? u : 0, camo)) || W?.models?.get(`${w}|${u}`) || W?.models?.get(`${w}|0`));
     if (!src?.root) return;
     const gun = src.root.clone();
+    // la boca del mate en la copia (de ahí salen sus tiros en esta pantalla:
+    // muzzleOf; la copia tiene las mismas piezas en el mismo orden)
+    a.muzzle = null;
+    if (src.muzzle) {
+      let mi = -1;
+      let n = 0;
+      src.root.traverse((o) => {
+        if (o === src.muzzle) mi = n;
+        n++;
+      });
+      n = 0;
+      gun.traverse((o) => {
+        if (n++ === mi) a.muzzle = o;
+      });
+    }
     // (el fogonazo de la mano propia no viaja con la copia, ni la mano y el
     // brazo de primera persona: el muñeco ya tiene los suyos. Las manos van
     // marcadas en weapons/viewmodels.js; las hechas aparte, por el material)
@@ -244,6 +265,21 @@ export default class Avatars {
     holder.add(gun);
     a.group.add(holder);
     a.gun = holder;
+  }
+
+  // De dónde sale, en esta pantalla, un tiro de un compañero (Session.remoteShot):
+  // la boca del mate que se le ve en la mano o, sin el mate a la vista, la
+  // mano. Solo lo que se ve: el tiro de verdad sale de su cámara. null: sin
+  // muñeco a la vista (queda el punto que mandó).
+  muzzleOf(id, out) {
+    const a = this.list.get(id);
+    const r = a?.r;
+    if (!a || !a.group.visible || r.downed || r.dead || r.corpse || r.ghost) return null;
+    if (a.gun?.visible && a.muzzle) {
+      a.gun.updateMatrixWorld(true);
+      return a.muzzle.getWorldPosition(out);
+    }
+    return out.set(0, -0.19, 0).applyMatrix4(a.mats[6]);
   }
 
   // El color del poncho de un compañero (el estero: cada jugador es un
@@ -297,10 +333,14 @@ export default class Avatars {
       const r = a.r;
       if (!r.downed || r.dead) {
         a.downAt = null;
+        a.revAt = null;
         a.near = false;
         continue;
       }
       a.downAt ??= g.time;
+      // (mientras alguien lo levanta no se desangra: el anillo no avanza; Session 'rev')
+      if (r.revUntil > g.time && a.revAt != null) a.downAt += Math.max(0, g.time - a.revAt);
+      a.revAt = g.time;
       // de cerca no hace falta (ya lo dice el cartel de "Mantené [F]") y lo tapaba;
       // (un poco de margen para que no parpadee justo en el borde)
       const dist = g.player.pos.distanceTo(r.pos);
@@ -401,7 +441,20 @@ export default class Avatars {
         P.rootPitch = 0;
         P.rootY = Math.max(0, r.pos.y);
         a.fake.speedType = r.speed > 5 ? 'run' : 'walk';
-        if (r.moving || r.speed > 0.4) g.zombies.poseGait(a.fake, dt, Math.max(1, r.speed), g.time);
+        // (los de escena, caminando: el paso de gente por lo que avanzan hacia
+        // donde miran, para atrás al revés (entities/personWalk); con el de los
+        // muertos los pies patinaban la mitad de lo que caminaban)
+        const fwd = a.walkAt ? (r.pos.x - a.walkAt.x) * -Math.sin(r.yaw) + (r.pos.z - a.walkAt.z) * -Math.cos(r.yaw) : 0;
+        (a.walkAt ||= new THREE.Vector3()).copy(r.pos);
+        if (!this.team && (r.moving || r.speed > 0.4)) {
+          const went = Math.abs(fwd) < 2 ? Math.abs(fwd) : 0;
+          const s = stepPerson(a, P, went, dt, 0.85, (ph, k) => {
+            walkLegs(P, ph, k);
+            solvePose(a.mats, 0, 0, 0, 1, P);
+          });
+          a.fake.phase = (a.fake.phase || 0) + Math.sign(fwd) * s.dph;
+          walkLegs(P, a.fake.phase, s.k);
+        } else if (r.moving || r.speed > 0.4) g.zombies.poseGait(a.fake, dt, Math.max(1, r.speed), g.time);
         else g.zombies.poseIdle(a.fake, g.time);
         // parado como gaucho: brazos abajo y el mate adelante
         P.torsoP = r.crouch ? 0.55 : 0.05;
@@ -437,6 +490,8 @@ export default class Avatars {
       r.poseFn?.(P);
       const fw = P.rootFwd || 0;
       solvePose(a.mats, r.pos.x + Math.sin(r.yaw + Math.PI) * fw, r.pos.z + Math.cos(r.yaw + Math.PI) * fw, r.yaw + Math.PI, 1, P);
+      // (r.clips: un muñeco de escena que se mueve con los clips, el nado del final del penal)
+      a.gs?.pose(true, (this.team || r.clips) && !r.poseFn ? dt : 0, g);
       for (const m of a.parts) {
         m.matrix.copy(a.mats[m.part]);
         m.matrixWorldNeedsUpdate = true;

@@ -4,7 +4,7 @@ import Avatars from '../net/Avatars';
 import { useMap } from '../config/map';
 import { crewIds } from './cineCrew';
 import { warmScene } from './cineWarm';
-import { buildChiqui, chiquiGiggle, chiquiGlitch } from '../world/Chiqui';
+import { buildChiqui, chiquiGiggle, chiquiGlitch, chiquiHat } from '../world/Chiqui';
 import { ELEMENTS, ELEM_COLOR, ELEM_RGB, MATE_OF } from '../entities/castle/common';
 import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
 
@@ -90,18 +90,32 @@ const WHITE = 0xfff4e0;
 // corta a una altura del mundo: uDir 1 se ve lo de abajo (se arma de abajo
 // para arriba); -1, lo de arriba (se deshace de abajo para arriba). En el
 // borde del corte, una línea que quema. Aditivo: no tapa ni va al G-buffer.
+// (con piel y huesos, el dragón de verdad: el cuerpo se deshace en su pose)
 const ANI_VERT = /* glsl */ `
 uniform float uTime, uWave;
 varying vec3 vN, vV;
 varying float vY;
+#ifdef AMAP
+varying vec2 vUv;
+#endif
+#include <common>
+#include <skinning_pars_vertex>
 void main() {
-  vec4 wp = modelMatrix * vec4(position, 1.0);
+  #ifdef AMAP
+  vUv = uv;
+  #endif
+  #include <skinbase_vertex>
+  #include <begin_vertex>
+  #include <beginnormal_vertex>
+  #include <skinnormal_vertex>
+  #include <skinning_vertex>
+  vec4 wp = modelMatrix * vec4(transformed, 1.0);
   wp.x += sin(wp.y * 3.1 + uTime * 1.7) * uWave;
   wp.z += cos(wp.y * 2.7 + uTime * 1.3) * uWave;
   vY = wp.y;
   vec4 mv = viewMatrix * wp;
   vV = -mv.xyz;
-  vN = normalMatrix * normal;
+  vN = normalMatrix * objectNormal;
   gl_Position = projectionMatrix * mv;
 }`;
 // (divisiones con piso: en la placa del usuario isnan no anda)
@@ -114,6 +128,10 @@ uniform float uTime, uK, uCut, uDir, uEdge, uBase, uRim, uAlpha;
 uniform vec3 uColor, uRimColor;
 varying vec3 vN, vV;
 varying float vY;
+#ifdef AMAP
+uniform sampler2D uMap;
+varying vec2 vUv;
+#endif
 void main() {
   float s = (vY - uCut) * uDir;
   if (s > 0.0) discard;
@@ -125,16 +143,41 @@ void main() {
   float flick = 0.9 + 0.1 * sin(uTime * 11.0 + vY * 3.0);
   float edge = 1.0 - smoothstep(0.0, max(uEdge, 1e-3), -s);
   float shade = uAlpha < 0.0 ? 1.0 : 0.55 + 0.45 * clamp(n.y * 0.6 + 0.5, 0.0, 1.0);
-  vec3 col = uColor * uBase * shade * (0.72 + 0.28 * band) + uRimColor * fr * uRim + mix(uRimColor, vec3(1.0), 0.5) * edge * edge * 1.8;
+  vec3 base = uColor;
+  #ifdef AMAP
+  // (el cuerpo nuevo, net/gauchoSkin: su textura, teñida de la luz)
+  base *= 0.35 + 1.3 * texture2D(uMap, vUv).rgb;
+  #endif
+  vec3 col = base * uBase * shade * (0.72 + 0.28 * band) + uRimColor * fr * uRim + mix(uRimColor, vec3(1.0), 0.5) * edge * edge * 1.8;
   col = max(col, vec3(0.0)) * flick;
   if (uAlpha < 0.0) gl_FragColor = vec4(col * uK, 1.0);
   else gl_FragColor = vec4(col, clamp(uK * (uAlpha + fr * 0.5 + edge), 0.0, 1.0));
 }`;
 
+// El cuerpo nuevo (net/gauchoSkin) con la luz de ánima, en vez de las piezas
+// (el diseño viejo, que quedaba a la vista; y en el vacío los dos a la vez):
+// el modelo se queda con el material de la escena (gauchoSkin vuelve a las
+// piezas si el material del modelo no es el suyo: G.mat). false: sin modelo.
+function animaSkin(a, mat) {
+  const G = a?.gs;
+  if (!G) return false;
+  G.mesh.material = mat;
+  G.mat = mat;
+  G.on = true;
+  G.root.visible = true;
+  for (const o of G.blocky) o.visible = false;
+  return true;
+}
+// la textura del gaucho nuevo (la del material de un muñeco con modelo)
+const skinMap = (a) => a?.M?.gaucho?.map || null;
+
 // mode: 'add' (luz sumada), 'alpha' (cuerpo transparente) o 'solid' (opaco).
-function aniMat(T, { color = 0xffc070, rim = 0xffe8c0, base = 0.3, rimK = 1.5, edge = 0.25, wave = 0.008, cut = null, k = null, dir = 1, mode = 'add', alpha = 0.5 } = {}) {
+// map: la textura del cuerpo (el gaucho nuevo), teñida del color.
+function aniMat(T, { color = 0xffc070, rim = 0xffe8c0, base = 0.3, rimK = 1.5, edge = 0.25, wave = 0.008, cut = null, k = null, dir = 1, mode = 'add', alpha = 0.5, map = null } = {}) {
   return new THREE.ShaderMaterial({
+    defines: map ? { AMAP: '' } : {},
     uniforms: {
+      uMap: { value: map },
       uTime: T,
       uWave: { value: wave },
       uK: k || { value: 1 },
@@ -275,8 +318,24 @@ export default class CastleEnding extends CastleCine {
     this.whoEl = this.textEl.querySelector('.mdu-fcine__who');
     this.span = this.textEl.querySelector('span');
     // todo lo que va a aparecer se compila ya, en segundo plano
+    // (también el dragón con su material de deshacerse: se compilaba recién al
+    // final, un tirón; un momento a la vista, sin dibujar, y vuelve)
     g.post?.sweep?.();
+    const D = this.D;
+    const swap = [];
+    const vis0 = D?.root.visible;
+    if (D && this.dMat) {
+      D.root.visible = true;
+      D.root.traverse((o) => {
+        if (o.isMesh) {
+          swap.push([o, o.material]);
+          o.material = this.dMat;
+        }
+      });
+    }
     warmScene(g);
+    for (const [o, m] of swap) o.material = m;
+    if (D) D.root.visible = vis0;
     return this.script0();
   }
 
@@ -364,7 +423,9 @@ export default class CastleEnding extends CastleCine {
     const H = this.P(HAT[0], 0, HAT[1]);
     this.H = H;
     this.hat = new THREE.Group();
-    const hat = gn.head.children.find((o) => o.isGroup && Math.abs(o.position.y - 0.075) < 0.01);
+    // (con el cuerpo de verdad, su sombrero; si no, el de piezas)
+    const real = chiquiHat();
+    const hat = real || gn.head.children.find((o) => o.isGroup && Math.abs(o.position.y - 0.075) < 0.01);
     if (hat) {
       hat.removeFromParent();
       hat.position.set(0, 0, 0);
@@ -431,6 +492,8 @@ export default class CastleEnding extends CastleCine {
       // lo que se deshace al final (se prende recién ahí)
       K.cut = { value: -1e5 };
       K.dis = aniMat(this.T, { color: K.c, rim: WHITE, base: 1.1, rimK: 1.2, edge: 0.35, cut: K.cut, dir: -1, mode: 'solid' });
+      // (el del cuerpo nuevo: con su textura; si no, al deshacerse volvía el de piezas)
+      K.disSkin = aniMat(this.T, { color: K.c, rim: WHITE, base: 1.1, rimK: 1.2, edge: 0.35, cut: K.cut, dir: -1, mode: 'solid', map: skinMap(a) });
       return K;
     });
   }
@@ -449,12 +512,15 @@ export default class CastleEnding extends CastleCine {
     this.fK = { value: 1 };
     const mats = {};
     const byMat = new Map(Object.entries(fa.M).map(([k, m]) => [m, k]));
+    const map = skinMap(fa);
     fa.group.traverse((o) => {
-      if (!o.isMesh) return;
+      if (!o.isMesh || o === fa.gs?.mesh) return;
       const key = byMat.get(o.material) || 'poncho';
       mats[key] ||= aniMat(this.T, { color: TONE[key] ?? 0xffc070, rim: 0xffc870, base: key === 'eye' ? 0.3 : 0.95, rimK: 0.9, edge: 0.3, cut: this.fCut, k: this.fK, mode: 'solid' });
       o.material = mats[key];
     });
+    // (con el cuerpo nuevo: su textura, de luz dorada)
+    animaSkin(fa, aniMat(this.T, { color: 0xffd9a8, rim: 0xffc870, base: 0.95, rimK: 0.9, edge: 0.3, cut: this.fCut, k: this.fK, mode: 'solid', map }));
     // y encima, el mismo cuerpo hecho borde de luz (lo que lo hace ánima)
     // (su propio muñeco: repite la pose ya mezclada del de abajo, sin avanzarla)
     this.aura = new Avatars(g, null);
@@ -472,6 +538,7 @@ export default class CastleEnding extends CastleCine {
     au.group.traverse((o) => {
       if (o.isMesh) o.material = shell;
     });
+    animaSkin(au, shell);
     this.fierro = { r: F, a: fa, pose: { v: {}, want: {}, speed: 4 } };
     F.poseFn = (Q) => this.applyPose(this.fierro.pose, Q);
     this.fHalo = this.sprite(0xffc070, 1);
@@ -534,10 +601,13 @@ export default class CastleEnding extends CastleCine {
       av.tag.visible = false;
       const cut = { value: -1e5 };
       const k = { value: 1 };
-      const mat = aniMat(this.T, { color: K.c, rim: tmpC.set(K.c).lerp(new THREE.Color(1, 1, 1), 0.45).getHex(), base: 1, rimK: 1.3, edge: 0.6, cut, k, wave: 0.02, mode: 'alpha', alpha: 0.22 });
+      const opt = { color: K.c, rim: tmpC.set(K.c).lerp(new THREE.Color(1, 1, 1), 0.45).getHex(), base: 1, rimK: 1.3, edge: 0.6, cut, k, wave: 0.02, mode: 'alpha', alpha: 0.22 };
+      const mat = aniMat(this.T, opt);
       av.group.traverse((o) => {
         if (o.isMesh) o.material = mat;
       });
+      // (con el cuerpo nuevo: los caballeros de antes, con la textura del gaucho)
+      animaSkin(av, aniMat(this.T, { ...opt, map: skinMap(av) }));
       // atrás del gaucho, del lado contrario a Fierro
       const away = tmpV.copy(K.r.pos).sub(this.F).setY(0).normalize();
       const from = K.r.pos.clone().addScaledVector(away, 2.1);
@@ -927,12 +997,12 @@ export default class CastleEnding extends CastleCine {
       }],
       // 5. lo que viene
       [0, () => {
-        this.fPose({ shLp: -0.9, shRp: -0.9, shLr: 0.7, shRr: -0.7, elL: -0.25, elR: -0.25, headP: 0.05 }, 2.5);
+        this.fPose({ shLp: -0.9, shRp: -0.9, shLr: -0.6, shRr: 0.6, elL: -0.25, elR: -0.25, headP: 0.05 }, 2.5);
         this.glide(5, P(-2.35, 2.05, 5.8), P(-2.05, 2, 5.3), F.clone().setY(F.y + 1.4), F.clone().setY(F.y + 1.45), 36, 34);
         return this.line(0);
       }],
       [0.2, () => {
-        this.fPose({ shLp: -0.35, shRp: -0.35, shLr: 0.15, shRr: -0.15, elL: -0.4, elR: -0.4, headP: 0.12 }, 2);
+        this.fPose({ shLp: -0.35, shRp: -0.35, shLr: -0.08, shRr: 0.08, elL: -0.4, elR: -0.4, headP: 0.12 }, 2);
         const d = this.line(1);
         this.glide(d, F.clone().add(tmpW.set(0.65, 1.58, 2.6)), F.clone().add(tmpW.set(0.38, 1.6, 2.05)), F.clone().setY(F.y + 1.55), F.clone().setY(F.y + 1.6), 40, 36);
         // mira al cielo cuando dice dónde se esconde
@@ -1131,7 +1201,7 @@ export default class CastleEnding extends CastleCine {
     r.dead = false;
     this.fOn = true;
     this.fCut.value = F.y - 0.05;
-    this.fPose({ shLp: -0.5, shRp: -0.5, shLr: 0.35, shRr: -0.35, elL: -0.3, elR: -0.3, headP: 0.3 }, 20);
+    this.fPose({ shLp: -0.5, shRp: -0.5, shLr: -0.3, shRr: 0.3, elL: -0.3, elR: -0.3, headP: 0.3 }, 20);
     this.anim(secs, (k) => {
       this.fCut.value = F.y - 0.05 + smooth(k) * 2.35;
       // chispas en la línea que se va armando
@@ -1410,7 +1480,7 @@ export default class CastleEnding extends CastleCine {
       K.look = S.clone();
       this.pose(K.pose, { headP: -0.45 }, 1.5);
     }
-    this.fPose({ shRp: -0.7, shLp: -0.7, shLr: 0.35, shRr: -0.35, elL: -0.3, elR: -0.3, headP: -0.3 }, 1.8);
+    this.fPose({ shRp: -0.7, shLp: -0.7, shLr: -0.35, shRr: 0.35, elL: -0.3, elR: -0.3, headP: -0.3 }, 1.8);
     // desde abajo, delante de ellos: cómo suben
     this.glide(1.9, this.P(1.9, 0.7, 0.2), this.P(1.5, 0.8, -0.3), this.P(0, 2.4, 2.6), S.clone(), 52, 46);
     // de cerca, dando la vuelta a lo que gira
@@ -1587,6 +1657,7 @@ export default class CastleEnding extends CastleCine {
     a.group.traverse((o) => {
       if (o.isMesh) o.material = K.dis;
     });
+    animaSkin(a, K.disSkin);
     this.anim(2.2, (k) => {
       K.cut.value = y0 + smooth(k) * 2.3;
     }, () => {
@@ -2372,6 +2443,9 @@ export default class CastleEnding extends CastleCine {
       sh.group.traverse((o) => {
         if (o.isMesh) o.material = shMat;
       });
+      // (el borde va sobre el cuerpo nuevo: antes era el de piezas y se veían los
+      // dos; liso, brilla más que el de cajas: más bajo)
+      animaSkin(sh, aniMat(T, { color: c, rim: 0xffffff, base: 0.03, rimK: 0.45, edge: 0.01, k: shK, wave: 0 }));
       const K = { r, av, shell: sh, shK, M: av.M, c, k: 0, on: false, lift: 0, el: ELEMENTS[i], rgb: ELEM_RGB[ELEMENTS[i]], boltT: 1 };
       r.poseFn = (P) => {
         if (K.lift <= 0) return;

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import CastleCine, { smooth, lerp, uprightMate } from './castleCine';
 import Avatars from '../net/Avatars';
-import { buildChiqui, chiquiGiggle, chiquiGlitch } from '../world/Chiqui';
+import { buildChiqui, chiquiGiggle, chiquiGlitch, chiquiEmber } from '../world/Chiqui';
 import { EE } from '../config/map';
 
 // La escena del medio del juego: con los cuatro mates de la luz en sus
@@ -268,6 +268,7 @@ export default class CastleOrigin extends CastleCine {
     const crackMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.16, 0.04).multiplyScalar(2.4), transparent: true, opacity: 0, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending });
     let seed = 11;
     const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const cracks = [];
     for (let k = 0; k < 16; k++) {
       const a = r() * Math.PI * 2;
       const y = 0.32 + r() * 0.42;
@@ -276,7 +277,17 @@ export default class CastleOrigin extends CastleCine {
       c.position.set(Math.cos(a) * rad, y, Math.sin(a) * rad);
       c.rotation.set(r() - 0.5, -a, (r() - 0.5) * 1.6);
       gn.root.add(c);
+      cracks.push(c);
     }
+    // con el cuerpo de verdad: en el trono se frota las manos; las rajaduras
+    // son grietas de fuego en la piel (y las de piezas se esconden)
+    gn.idle = 'taunt';
+    gn.auto = false;
+    gn.onSkin(() => {
+      this.giantEmber = chiquiEmber(gn);
+      this.giantEmber.value = 0;
+      for (const c of cracks) c.visible = false;
+    });
     // el resplandor de adentro (sale por las rajaduras)
     const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: g.textures.dot, color: 0xff2a10, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0 }));
     core.scale.setScalar(0.9);
@@ -433,6 +444,7 @@ export default class CastleOrigin extends CastleCine {
     const K = this.knights[i];
     const from = K.r.pos.clone().setY(K.r.pos.y + 1.4);
     const at = TH.clone().setY(TH.y + 1.6);
+    this.giant.act('hit');
     if (i === 0) g.fx.fire(at, 0.9, 30);
     else if (i === 1) g.fx.blastCone(from, at.clone().sub(from).normalize(), 7);
     else if (i === 2) {
@@ -449,6 +461,7 @@ export default class CastleOrigin extends CastleCine {
   together(TH) {
     const g = this.g;
     const at = TH.clone().setY(TH.y + 1.7);
+    this.giant.act('scream', { at: 0.4 });
     this.knights.forEach((K) => g.fx.lightning(K.r.pos.clone().setY(K.r.pos.y + 1.4), at, K.c, 0.5));
     g.audio.thunder?.(at);
     g.fx.explosion(at, 2.4, [1, 0.9, 0.7]);
@@ -461,7 +474,11 @@ export default class CastleOrigin extends CastleCine {
   // Sale volando del trono y cae de rodillas en la alfombra.
   throwOff(TH, G) {
     const g = this.g;
-    this.fall = { t: 0, from: this.giant.root.position.clone(), to: G.clone().setY(G.y - 0.22 * GIANT) };
+    // (el de piezas se hunde para parecer arrodillado; el de verdad se arrodilla)
+    this.fall = { t: 0, from: this.giant.root.position.clone(), to: G.clone().setY(G.y - (this.giant.skin ? 0 : 0.22 * GIANT)) };
+    // (el de verdad no da la vuelta en el aire: grande, la cabeza hacía un
+    // círculo enorme a toda velocidad; vuela agarrándose y cae)
+    if (this.giant.skin) this.giant.act('hit', { at: 0.2, rate: 0.9 });
     chiquiGlitch(g.audio, 0.9);
   }
 
@@ -588,9 +605,16 @@ export default class CastleOrigin extends CastleCine {
         K.r.speed = W.t < 1 ? 1.4 : 0;
         if (W.t >= 1) K.walk = null;
       }
-      // miran al del medio (o a donde está)
+      // miran al del medio (o a donde está); caminando, para donde van (de
+      // costado, con el paso por lo que avanzan, patinaban) y al llegar giran
       const tgt = this.beaten ? G : this.TH;
-      if (K.on) K.r.yaw = Math.atan2(-(tgt.x - K.r.pos.x), -(tgt.z - K.r.pos.z));
+      if (K.on) {
+        const Wk = K.walk;
+        const want = Wk ? Math.atan2(-(Wk.to.x - Wk.from.x), -(Wk.to.z - Wk.from.z)) : Math.atan2(-(tgt.x - K.r.pos.x), -(tgt.z - K.r.pos.z));
+        let d = want - K.r.yaw;
+        d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2;
+        K.r.yaw += d * Math.min(1, dt * 6);
+      }
       K.lift += ((K.raise ? 1 : 0) - K.lift) * Math.min(1, dt * 3);
       K.bow += ((K.kneel ? 1 : 0) - K.bow) * Math.min(1, dt * 2.5);
       K.r.crouch = K.bow > 0.5;
@@ -613,13 +637,15 @@ export default class CastleOrigin extends CastleCine {
       Fl.t = Math.min(1, Fl.t + dt / 0.9);
       const p = gn.root.position.lerpVectors(Fl.from, Fl.to, Fl.t);
       p.y += Math.sin(Fl.t * Math.PI) * 1.4;
-      gn.root.rotation.x = Fl.t * Math.PI * 2 + Fl.t * 0.32;
+      gn.root.rotation.x = gn.skin ? Math.sin(Fl.t * Math.PI) * -0.25 : Fl.t * Math.PI * 2 + Fl.t * 0.32;
       if (Fl.t >= 1) {
         gn.halo.material.opacity = 0.2;
         gn.eyeK = 1;
-        gn.root.rotation.x = 0.32;
+        gn.root.rotation.x = gn.skin ? 0 : 0.32;
         gn.head.rotation.x = 0.45;
         for (const a of gn.arms) a.rotation.x = -0.75;
+        // (el de verdad: de rodilla, quieto)
+        gn.act('kneel', { at: 0.25, rate: 0, hold: true });
         this.crack = 0.55;
         g.fx.dust(tmpV.copy(G).setY(G.y + 0.1), UP, [0.45, 0.4, 0.35], 26);
         g.fx.explosion(tmpV.copy(G).setY(G.y + 0.2), 1.2, [0.35, 0.05, 0.03]);
@@ -632,6 +658,8 @@ export default class CastleOrigin extends CastleCine {
     // vencido: las rajaduras laten y se le va la oscuridad
     const beat = this.crack * (0.7 + 0.3 * Math.sin(t * 5));
     this.crackMat.opacity = beat;
+    // (en el trono ya se le ven las brasas, apenas: si no, a contraluz era una sombra)
+    if (this.giantEmber) this.giantEmber.value = Math.max(beat * 1.3, this.beaten ? 0 : 0.4);
     this.core.material.opacity = beat * 0.8;
     this.core.scale.setScalar(0.9 + beat * 0.6);
     if (this.beaten && gn.root.visible && !this.shrink) {

@@ -29,6 +29,9 @@ import { mesh, boxGeo, cylGeo, rboxGeo, mergeByMaterial } from './props';
 //  · Maleza Gaucha (Maizaster): la troje de maíz con los choclos entre las
 //    tablas, el techito de paja, los atados de chala seca y, en el hastial,
 //    dos ojos que miran desde lo oscuro (y parpadean).
+//  · Trotadora (Stamin-Up): la cinta del gimnasio parada, con las cintas de
+//    los costados que corren, las barandas con la toalla, la consola con el
+//    reloj de km/h y la alpargata con alas girando arriba.
 // Devuelve { group, sign, bulbs, front, anim }: sign (lo que se prende con la
 // luz), bulbs (los foquitos que titilan), front (el material de la etiqueta) y
 // anim(t, dt, on) para lo que se mueve (solo corre con el jugador cerca).
@@ -782,6 +785,122 @@ const BUILD = {
         eyes.scale.y = blink < 0 ? 0.1 : 1;
         eyes.position.x = Math.sin(t * 0.6) * 0.02;
         if (on) eyeMat.emissiveIntensity = 1.6 + Math.sin(t * 2.3) * 0.3;
+      },
+    };
+  },
+  stamin(g, P, label) {
+    const paint = std({ color: 0xf2a81c, metalness: 0.35, roughness: 0.38 });
+    const rubber = std({ color: 0x17181a, roughness: 0.92 });
+    const chrome = std({ color: 0xeef0f2, metalness: 1, roughness: 0.15 });
+    const foam = std({ color: 0x0e0e10, roughness: 0.75 });
+    // el gabinete pintado, con los costados de goma
+    g.add(mesh(rboxGeo(0.96, 1.92, 0.66, 0.08), paint, 0, 1.06, -0.02));
+    g.add(mesh(boxGeo(1.1, 0.12, 0.76), rubber, 0, 0.06, -0.01));
+    // las cintas de los costados: corren para abajo, como la de la trotadora
+    const beltTex = canvasTex(64, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#1c1d20';
+      ctx.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y += 16) {
+        ctx.fillStyle = '#34363b';
+        ctx.fillRect(0, y, w, 5);
+        ctx.fillStyle = '#0b0b0c';
+        ctx.fillRect(0, y + 5, w, 2);
+      }
+    });
+    beltTex.wrapS = beltTex.wrapT = THREE.RepeatWrapping;
+    beltTex.repeat.set(1, 3);
+    const belt = std({ map: beltTex, roughness: 0.85 });
+    for (const sx of [-1, 1]) {
+      g.add(mesh(boxGeo(0.035, 1.62, 0.44), belt, sx * 0.505, 1.07, 0.0));
+      for (const y of [0.24, 1.9]) g.add(mesh(cylGeo(0.05, 0.05, 0.5, 14), chrome, sx * 0.49, y, 0.0, Math.PI / 2));
+    }
+    const { front } = common(g, label, { z: 0.315, frame: chrome, frameW: 0.03, w: 0.78, h: 1.5, y: 1.08 });
+    // las barandas de adelante, con los puños de goma, que suben a la consola
+    for (const sx of [-1, 1]) {
+      g.add(mesh(cylGeo(0.025, 0.025, 1.7, 10), chrome, sx * 0.47, 1.17, 0.36));
+      g.add(mesh(cylGeo(0.036, 0.036, 0.42, 12), foam, sx * 0.47, 1.25, 0.36));
+    }
+    // la toalla colgada de la baranda izquierda
+    const towel = std({ color: 0xf4f1ea, roughness: 0.95, side: THREE.DoubleSide });
+    g.add(mesh(boxGeo(0.07, 0.44, 0.012), towel, -0.47, 1.7, 0.385, 0.06, 0, 0));
+    g.add(mesh(boxGeo(0.07, 0.38, 0.012), towel, -0.47, 1.73, 0.335, -0.05, 0, 0));
+    g.add(mesh(boxGeo(0.072, 0.025, 0.06), towel, -0.47, 1.93, 0.36));
+    // la consola arriba, inclinada: el reloj de la velocidad y la fila de luces
+    const con = new THREE.Group();
+    con.position.set(0, 2.18, 0.12);
+    con.rotation.x = 0.3;
+    con.add(mesh(rboxGeo(1.0, 0.4, 0.14, 0.05), rubber, 0, 0, 0));
+    const face = canvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#101214';
+      ctx.fillRect(0, 0, w, h);
+      ctx.translate(w / 2, h * 0.58);
+      // las rayitas del reloj, la zona roja al final
+      for (let i = 0; i <= 12; i++) {
+        const a = Math.PI * (1.15 + (i / 12) * 0.7);
+        ctx.strokeStyle = i > 9 ? '#ff4a2a' : '#ffd23a';
+        ctx.lineWidth = i % 3 ? 4 : 8;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * 92, Math.sin(a) * 92);
+        ctx.lineTo(Math.cos(a) * (i % 3 ? 76 : 66), Math.sin(a) * (i % 3 ? 76 : 66));
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#ffd23a';
+      ctx.font = 'bold 34px Impact, "Arial Black", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('km/h', 0, 46);
+    });
+    const dialMat = std({ color: 0x111111, map: face, emissive: 0xffffff, emissiveMap: face, emissiveIntensity: 0.1 });
+    const dial = mesh(new THREE.CircleGeometry(0.15, 28), dialMat, 0, 0.0, 0.072);
+    con.add(dial);
+    con.add(torus(0.152, 0.012, chrome, 0, 0, 0.072, 0, 0, 0, Math.PI * 2, 28));
+    const needle = new THREE.Group();
+    needle.position.set(0, -0.012, 0.078);
+    needle.add(mesh(boxGeo(0.012, 0.12, 0.006), std({ color: 0xff3a1a, emissive: 0xff3a1a, emissiveIntensity: 0.6 }), 0, 0.055, 0));
+    needle.add(mesh(cylGeo(0.016, 0.016, 0.012, 10), chrome, 0, 0, 0, Math.PI / 2));
+    con.add(needle);
+    // la pantallita roja de cada lado (el cartel: se prende con la luz)
+    const led = glow(0xff5a1a);
+    for (const sx of [-1, 1]) con.add(mesh(boxGeo(0.22, 0.09, 0.01), led, sx * 0.32, 0.05, 0.072));
+    const bulbs = [];
+    for (let i = 0; i < 6; i++) {
+      const b = sphere(0.022, std({ color: 0x222222, emissive: i < 4 ? 0x7dff4a : 0xff4a2a, emissiveIntensity: 0 }), -0.42 + i * 0.05 + (i > 2 ? 0.59 : 0), -0.09, 0.074, 1, 1, 0.5, 8);
+      con.add(b);
+      bulbs.push(b);
+    }
+    g.add(con);
+    // arriba de todo, la alpargata con alas (la del medallón), dando vueltas
+    const shoe = new THREE.Group();
+    const canvasWhite = std({ color: 0xfff4e2, roughness: 0.8 });
+    const jute = std({ color: 0xc89a4a, roughness: 0.95 });
+    const wingMat = std({ color: 0xf2c14e, metalness: 0.7, roughness: 0.3 });
+    shoe.add(shape([[-0.5, 0.3], [-0.47, -0.1], [-0.3, -0.06], [-0.12, -0.08], [0.1, -0.05], [0.28, 0.02], [0.42, 0.13], [0.55, 0.2], [0.57, 0.3]].map(([x, y]) => [x, -y]), 0.12, canvasWhite, 0, 0, 0, 0.32));
+    shoe.add(mesh(rboxGeo(0.37, 0.05, 0.13, 0.02), jute, 0.012, -0.112, 0));
+    for (const sz of [-1, 1]) {
+      const wing = new THREE.Group();
+      for (const [a, len] of [[2.05, 0.15], [2.4, 0.13], [2.75, 0.1]]) {
+        const f = mesh(boxGeo(len, 0.035, 0.012), wingMat, Math.cos(a) * len * 0.5, Math.sin(a) * len * 0.5, 0, 0, 0, a);
+        wing.add(f);
+      }
+      wing.position.set(-0.12, 0.0, sz * 0.065);
+      wing.rotation.y = sz * 0.35;
+      shoe.add(wing);
+    }
+    shoe.position.set(0, 2.46, 0.0);
+    mergeByMaterial(shoe);
+    g.add(shoe);
+    mergeByMaterial(g, [con, shoe]);
+    let sp = 0;
+    return {
+      sign: { material: led },
+      bulbs,
+      front,
+      anim: (t, dt, on) => {
+        // la cinta corre, la aguja sube y baja con el trote y la alpargata gira
+        sp += ((on ? 1 : 0.06) - sp) * Math.min(1, dt * 1.5);
+        beltTex.offset.y += dt * sp * 1.6;
+        needle.rotation.z = 0.95 - sp * (1.1 + Math.sin(t * 2.2) * 0.25 + Math.sin(t * 7.3) * 0.05);
+        shoe.rotation.y = t * (0.4 + sp * 0.9);
+        shoe.position.y = 2.46 + Math.abs(Math.sin(t * 4.2)) * 0.02 * sp;
       },
     };
   },

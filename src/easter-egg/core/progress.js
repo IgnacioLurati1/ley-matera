@@ -117,6 +117,7 @@ function sane(d) {
   for (const k of ['xp', 'bank', 'total', 'pesos', 'games']) out[k] = Math.max(0, Math.floor(+out[k] || 0));
   for (const k of ['megas', 'camos', 'eggs']) if (!out[k] || typeof out[k] !== 'object') out[k] = {};
   if (out.canasta && !Array.isArray(out.canasta)) out.canasta = null;
+  if (!out.logros || typeof out.logros !== 'object') out.logros = null;
   return out;
 }
 
@@ -405,6 +406,14 @@ export function setCanasta(ids) {
 }
 
 // ---------- camuflajes ----------
+// Los logros (core/logros.js): viven en el perfil, así van en la copia.
+export const logrosData = () => load().logros;
+export function setLogros(l, now = false) {
+  load().logros = l;
+  save(now);
+  emit('logros', l);
+}
+
 export const camoOf = (weaponId) => load().camos[weaponId] || null;
 export function setCamo(weaponId, camoId) {
   const d = load();

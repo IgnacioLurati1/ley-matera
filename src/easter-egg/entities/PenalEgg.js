@@ -18,6 +18,7 @@ import { fireflies } from '../fx/Fireflies';
 import { reachableSpot } from './reach';
 import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
 import PenalForge from './penalForge';
+import PenalMotin from './penalMotin';
 
 // Easter egg del penal: "Los Tres Gauchos". En tres celdas hay tres gauchos
 // presos (Anacleto en el pabellón, Cirilo en los calabozos, Benito en la
@@ -225,6 +226,11 @@ export default class PenalEgg {
     this.song = new SongEgg(game, 'penal');
     this.registerKnife();
     this.registerWater();
+    // el motín de cada 10 rondas (y el que hace saltar Anacleto): los muertos
+    // y las rondas lo buscan por g.defense (entities/penalMotin.js)
+    this.motin = new PenalMotin(game, this);
+    this.defense = this.motin;
+    game.defense = this.motin;
     this.mergeStatic();
     // atajos de prueba (solo, jugando): Alt+N el cuchillo, Alt+B el bote
     this.onKey = (e) => {
@@ -643,8 +649,14 @@ export default class PenalEgg {
     const g = new THREE.Group();
     g.position.set(x, y, z);
     g.rotation.y = EE.safe.rot;
-    g.add(mesh(boxGeo(0.9, 1.1, 0.8), M.iron, 0, 0.55, 0));
-    g.add(mesh(boxGeo(0.7, 0.8, 0.02), M.black, 0, 0.6, 0.39));
+    // hueca, con un estante: abierta se ve el mate adentro (antes era un
+    // bloque macizo y el mate quedaba tapado)
+    g.add(mesh(boxGeo(0.9, 1.1, 0.06), M.iron, 0, 0.55, -0.37));
+    for (const s of [-1, 1]) g.add(mesh(boxGeo(0.06, 1.1, 0.8), M.iron, s * 0.42, 0.55, 0));
+    g.add(mesh(boxGeo(0.9, 0.06, 0.8), M.iron, 0, 1.07, 0));
+    g.add(mesh(boxGeo(0.9, 0.12, 0.8), M.iron, 0, 0.06, 0));
+    g.add(mesh(boxGeo(0.78, 0.92, 0.01), M.black, 0, 0.58, -0.335));
+    g.add(mesh(boxGeo(0.78, 0.03, 0.62), M.iron, 0, 0.3, -0.03));
     const door = new THREE.Group();
     door.position.set(-0.4, 0, 0.41);
     door.add(mesh(boxGeo(0.8, 0.95, 0.06), M.metalGreen, 0.4, 0.58, 0));
@@ -658,7 +670,7 @@ export default class PenalEgg {
     this.safePos = new THREE.Vector3(x, y + 0.7, z);
     this.safeFront = new THREE.Vector3(x + front.x, y, z + front.z);
     this.mateObj = this.goldMate();
-    this.mateObj.position.set(x, y + 0.45, z);
+    this.mateObj.position.set(x, y + 0.315, z);
     this.mateObj.scale.setScalar(0.9);
     this.root.add(this.mateObj);
   }
@@ -813,6 +825,8 @@ export default class PenalEgg {
           if (this.freed[def.id]) return n === 3 && this.items.agua === 'held' ? { text: 'darle el agua embrujada a Benito', noCost: true } : null;
           const k = `k${n}`;
           if (this.keys[k] === 'held') return { text: `abrir la celda de ${def.name}`, noCost: true };
+          // (Cirilo espera a que pase el motín que hizo saltar Anacleto)
+          if (n === 2 && this.freed.g1 && this.motin?.eeLock()) return { text: 'Primero, el motín', noCost: true, info: true };
           if (!this.canTalk(n)) return { text: `${def.name} te mira en silencio desde la celda`, noCost: true, info: true };
           return { text: `hablar con ${def.name}`, noCost: true };
         },
@@ -933,6 +947,7 @@ export default class PenalEgg {
       pos: this.safePos,
       radius: 2.2,
       prompt: () => {
+        if (!this.safeOpen && this.step < 7) return { text: 'La caja fuerte del Alcaide', noCost: true, info: true };
         if (!this.safeOpen) return { text: 'La caja fuerte del Alcaide: cerradura eléctrica (dale corriente desde el gaucho life)', noCost: true, info: true };
         if (this.items.mate === 'safe') return { text: 'agarrar el mate dorado', noCost: true };
         return null;
@@ -1005,7 +1020,9 @@ export default class PenalEgg {
     // el rayo del gaucho life: la caja fuerte y la silla
     const vida = g.vida;
     if (vida) {
-      vida.addTarget({ pos: this.safePos, r: 0.8, on: () => !this.safeOpen, hit: () => this.openSafe() });
+      // (la caja fuerte, recién cuando Benito cuenta del mate dorado: antes un
+      // invitado la abrió en la ronda 1)
+      vida.addTarget({ pos: this.safePos, r: 0.8, on: () => !this.safeOpen && this.step >= 7, hit: () => this.openSafe() });
       vida.addTarget({ pos: this.chairPos, r: 0.9, on: () => this.chair === 'loaded', hit: () => this.shockChair() });
     }
   }
@@ -1020,6 +1037,7 @@ export default class PenalEgg {
 
   // Puede hablar con el gaucho n si ya salió el anterior.
   canTalk(n) {
+    if (n === 2 && this.motin?.eeLock()) return false;
     return n === 1 || this.freed[`g${n - 1}`];
   }
 
@@ -1086,11 +1104,18 @@ export default class PenalEgg {
     g.hud.achievement(`${c.def.name}, libre`, `Abriste la celda ${n === 1 ? 'del pabellón' : n === 2 ? 'de los calabozos' : 'de la enfermería'}`);
     if (n === 1) this.step = Math.max(this.step, 2);
     if (n === 2) this.step = Math.max(this.step, 4);
+    // Anacleto suelto hace saltar la alarma: si todavía no hubo motín, viene
+    // cuando él termina de hablar (entities/penalMotin.js)
+    if (n === 1) this.motin?.expectEarly();
     if (n === 3) {
       this.step = Math.max(this.step, 6);
       // antes de que hable Benito, la Voz devuelve la yerba de la granja
       g.later(2.5, () => this.startYerbaScene());
-    } else g.later(1.2, () => this.lines(id, LINES[id].freed));
+    } else
+      g.later(1.2, () => {
+        const t = this.lines(id, LINES[id].freed);
+        if (n === 1) this.motin?.afterRelease(t);
+      });
     this.netSync();
   }
 
@@ -2053,11 +2078,17 @@ export default class PenalEgg {
       boat: this.boat.netState(),
       lift: this.lift.netState(),
       sk: this.ghosts.netState(),
+      mo: this.motin.state(),
     };
   }
 
   applyRemote(m) {
     const g = this.g;
+    // el motín (entities/penalMotin.js); el estado entero también lo trae
+    if (m.mo || m.mwail) {
+      this.motin?.applyNet(m);
+      if (m.step === undefined) return;
+    }
     if (m.song) {
       this.song.applyRemote(m.song);
       return;
@@ -2348,6 +2379,7 @@ export default class PenalEgg {
       g.hud.setInventory(this.fight ? null : inv, false, INV);
     }
     this.updateBeam();
+    this.motin.update(dt);
     // los gauchos recuerdan lo que falta si pasa mucho sin avanzar
     if (!g.net?.guest && !this.fight && !this.scene) {
       this.voiceT -= dt;
@@ -2395,7 +2427,7 @@ export default class PenalEgg {
     const g = this.g;
     let at = null;
     const c = (id) => this.cells[id].front;
-    if (this.fight) at = null;
+    if (this.fight || this.motin?.eeLock()) at = null;
     else if (this.encierro?.state === 'ritual') at = this.encPos;
     else if (!this.freed.g1) at = !this.talked.g1 ? c('g1') : this.keys.k1 === 'ground' ? this.keyObjs.k1.pos : this.keys.k1 === 'held' ? c('g1') : this.dogs.find((d) => this.dogFed[d.i] < this.dogNeed(d.i))?.pos;
     else if (!this.freed.g2) at = !this.talked.g2 ? c('g2') : this.keys.k2 === 'ground' ? this.keyObjs.k2.pos : this.keys.k2 === 'held' ? c('g2') : !this.ghosts.nicanor ? this.ghosts.nic.pos : null;
@@ -2429,5 +2461,6 @@ export default class PenalEgg {
     this.lift.dispose();
     this.encM.dispose();
     this.papJug?.removeFromParent();
+    this.motin?.dispose();
   }
 }

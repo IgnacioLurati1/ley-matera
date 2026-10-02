@@ -30,7 +30,10 @@ export const ZONES = {
   P: { name: 'Las Mazmorras', sub: 'Nadie volvió a pedir yerba', y: 20, roof: 23.8, rects: [[83, 57, 92, 69]], floor: 'flagstoneDark', wall: 'castleStoneDark', ext: 'castleStone', ceil: 'caveRock', under: true, noBeams: true },
   I: { name: 'La Gruta del Glaciar', sub: 'Hielo de mil inviernos', y: 16, roof: 25, rects: [[84, 42, 99, 55]], floor: 'iceFloor', wall: 'ice', ext: 'caveRock', ceil: 'ice', under: true, noBeams: true },
   Q: { name: 'La Cueva del Mateendrache', sub: 'Algo respira en la oscuridad', y: 12, roof: 30, rects: [[80, 15, 100, 40]], floor: 'caveFloor', wall: 'caveRock', ext: 'caveRock', ceil: 'caveRock', under: true, noBeams: true },
-  J: { name: 'El Adarve', sub: 'La muralla que mira al valle', y: 32, rects: [[36, 62, 48, 64], [36, 65, 41, 68], [55, 62, 67, 64], [62, 65, 67, 68]], floor: 'snowPave', cliff: 'castleStone', outdoor: true, edge: 'rail', h: 1.3 },
+  // (el adarve sin merlones, con el parapeto más bajo: si no, desde arriba no
+  // se veía el valle ni las escaleras del asedio; world/Castle.js 'puente'; y
+  // en los rincones de los cañones del asedio, más bajo todavía: lowRail)
+  J: { name: 'El Adarve', sub: 'La muralla que mira al valle', y: 32, rects: [[36, 62, 48, 64], [36, 65, 41, 68], [55, 62, 67, 64], [62, 65, 67, 68]], floor: 'snowPave', cliff: 'castleStone', outdoor: true, edge: 'rail', h: 1.3, rail: 'puente', lowRail: { h: 0.6, rects: [[35, 65, 42, 69], [61, 65, 68, 69]] } },
   L: { name: 'La Barbacana', sub: 'El rastrillo y el puente levadizo', y: 24, roof: 30.4, rects: [[50, 63, 53, 70]], floor: 'flagstone', wall: 'castleStoneDark', ext: 'castleStone', ceil: 'castleStoneDark', noBeams: true },
   M: { name: 'Las Termas del Inca', sub: 'El agua sale caliente de la montaña', y: 20, rects: [[50, 72, 53, 76, 20, 0, 2], [50, 77, 53, 81, 20, 0, 1], [40, 82, 63, 92]], floor: 'snow', cliff: 'rock', outdoor: true, edge: 'rail', rail: 'roca' },
 };
@@ -153,14 +156,15 @@ export const WALL_BUYS = [
   { weapon: 'vidrio', cell: [34, 57], face: [0, -1] },
   { weapon: 'lata', cell: [75, 51], face: [-1, 0] },
   { weapon: 'algarrobo', cell: [41, 42], face: [1, 0] },
-  { weapon: 'granadas', cell: [24, 57], face: [0, -1] },
   { weapon: 'bowie', cell: [43, 26], face: [1, 0] },
 ];
 
 export const PERK_SPOTS = [
   { perk: 'revive', cell: [47, 45], face: [0, 1] },
   { perk: 'speed', cell: [32, 45], face: [0, 1] },
-  { perk: 'doubletap', cell: [27, 47], face: [-1, 0] },
+  // (en el Palenque, contra la pared de la herrería: en la herrería quedaban
+  // dos perks juntos; out: delante del zócalo)
+  { perk: 'doubletap', cell: [24, 57], face: [0, 1], out: 0.08 },
   { perk: 'jugg', cell: [76, 57], face: [0, 1] },
   // (en la esquina de la biblioteca: corrida al medio entre la pared este y la
   // pilastra, que pegada a la pared se le metía el zócalo por el costado)
@@ -171,6 +175,9 @@ export const PERK_SPOTS = [
   // herramientas (delante del zócalo; en la pared del palenque tapaba el
   // cartel de las granadas y rozaba el arco de la puerta)
   { perk: 'dragon', cell: [15, 47], face: [1, 0], out: 0.07 },
+  // Stamin-Up (la Trotadora), en el Gran Salón (no tenía ninguno): pared
+  // oeste, entre la armadura y el arco
+  { perk: 'stamin', cell: [62, 36], face: [-1, 0] },
 ];
 
 export const POWER = { cell: [49, 32], face: [0, 1] };
@@ -267,8 +274,25 @@ export const EE = {
   cumbre: [51.5, 14.2, Math.PI / 2],
   jura: [57.2, 14.2],
   // el Chiquitijuein en el adarve (x, y, z) y de dónde salen los Caballeros Negros
-  chiqui: [44.5, 32, 62.6],
+  // (parado arriba de la almena que da al patio: detrás del parapeto, desde el
+  // patio no se le veía más que la punta del sombrero)
+  chiqui: [44.5, 33.08, 61.5],
   caballeros: [52, 60.4],
+  // el asedio de cada 10 rondas (entities/castle/Asedio.js): las escaleras de
+  // asalto (x, z de la cara del muro, z del pie, z donde pisan el adarve), los
+  // calderos de los matacanes (x, z, para qué lado vuelcan), las catapultas del
+  // valle (x, z), los cañones del adarve, el rastrillo (puerta), de dónde sube
+  // la horda por la barbacana, el frente del rastrillo y el cofre del botín
+  asedio: {
+    escaleras: [[44, 66.05, 68.6, 64.4], [47.2, 66.05, 68.6, 64.4], [56.6, 66.05, 68.6, 64.4], [59.8, 66.05, 68.6, 64.4]],
+    calderos: [[48.35, 63, 1], [55.65, 63, -1]],
+    catapultas: [[33.5, 90], [51.5, 98.6], [70, 90]],
+    canones: [[36.6, 68.2], [66.5, 68.2]],
+    puerta: 14,
+    barbacana: [51.5, 70.2],
+    frente: [51.5, 63.4],
+    cofre: [52, 58.4],
+  },
 };
 
 const R90 = Math.PI / 2;

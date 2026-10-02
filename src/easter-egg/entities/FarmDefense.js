@@ -684,7 +684,11 @@ export default class FarmDefense {
     this.saidLost = false;
     this.saidAll = false;
     // la horda: un poco más de muertos, de a montones, y el Cuervo con ellos
-    R.total = R.toSpawn = Math.round(R.total * 1.15);
+    // (con más jugadores, todavía más: +25% y 4 más a la vez por cada otro;
+    // pedido del usuario 2026-10-01)
+    const extra = Math.max(0, this.ee.players() - 1);
+    R.total = R.toSpawn = Math.round(R.total * (1.15 + extra * 0.25));
+    R.capBonus = (R.capBonus || 0) + extra * 4;
     R.delay = Math.max(0.25, R.delay * 0.5);
     R.spawnT = 6;
     R.bossPending = false;

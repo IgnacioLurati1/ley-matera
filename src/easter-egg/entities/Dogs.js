@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import CarpinchoSkin from './carpinchoSkin';
 
 // Carpinchos endemoniados de las rondas especiales (el lugar de los perros
 // del original). Por dentro son "zombies" del mismo grupo (así las armas, los
 // puntos, las rondas y el online los tratan igual); acá solo se dibujan: un
 // carpincho barrigón de patas cortas y cabezota cuadrada, con ojos que
-// brillan, animado a mano (trote, embestida y caída).
+// brillan, animado a mano (trote, embestida y caída). Con el cuerpo de
+// verdad (entities/carpinchoSkin.js) esos mismos números mueven sus huesos y
+// las piezas se esconden.
 
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 const tmpM = new THREE.Matrix4();
@@ -88,9 +91,16 @@ export default class DogRig {
     }
     this.all = [this.body, this.head, this.jaw, this.upper, this.lower, this.tail, this.eyes];
     this.last = game.time;
+    this.skin = new CarpinchoSkin(game, eyeMat);
   }
 
   hide(slot) {
+    this.zero(slot);
+    this.skin.hide(slot);
+  }
+
+  // Las piezas de uno, escondidas.
+  zero(slot) {
     this.body.setMatrixAt(slot, ZERO);
     this.head.setMatrixAt(slot, ZERO);
     this.jaw.setMatrixAt(slot, ZERO);
@@ -174,6 +184,14 @@ export default class DogRig {
       tmpV.set(z.pos.x, z.baseY || 0, z.pos.z);
       const s = z.scale || 1;
       tmpM.compose(tmpV, tmpQ, tmpS(s));
+      // con cuerpo de verdad: los mismos números en sus huesos (las piezas, escondidas)
+      if (this.skin.pose(z.slot, { M: tmpM, s, y, headP, jawA, legs, bend })) {
+        if (!z.dogSkin) this.zero(z.slot);
+        z.dogSkin = true;
+        continue;
+      }
+      if (z.dogSkin) this.skin.hide(z.slot);
+      z.dogSkin = false;
       // cuerpo
       this.body.setMatrixAt(z.slot, local(tmpM, 0, HIP_Y + 0.1 + y, 0, -0.06, 0, 0));
       // cabeza y mandíbula

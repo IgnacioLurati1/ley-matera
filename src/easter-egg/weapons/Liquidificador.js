@@ -61,11 +61,20 @@ const cache = {};
 const once = (k, make) => cache[k] || (cache[k] = make());
 
 // ---------------- texturas ----------------
-// El hierro tiznado: hollín, chorreaduras de óxido y rajaduras (oscuras en el
-// color, encendidas en el emisivo: por ahí se escapa la luz de adentro).
+// El hierro de la pava: tiznado y martillado, con chorreaduras de óxido, una
+// guarda de fileteado de bronce en la panza y rajaduras (oscuras en el color,
+// encendidas en el emisivo: por ahí se escapa la luz de adentro).
+//  · map: el color; glow: el emisivo (las rajaduras y el calor de abajo);
+//  · orm: rugosidad (verde) y metal (azul): el hollín mate, el bronce liso;
+//  · normal: los martillazos y el relieve de la guarda.
+// La v del torno va de abajo para arriba: la guarda va entre BAND[0] y BAND[1]
+// (la parte baja de la panza, en el perfil BODY), y como la vuelta es mucho
+// más larga que el alto de la guarda, lo de la guarda se dibuja angosto (SQ).
+const BAND = [0.335, 0.445];
+const SQ = 0.4;
 function sootTextures() {
   return once('soot', () => {
-    const S = 256;
+    const S = 512;
     const mk = () => {
       const c = document.createElement('canvas');
       c.width = c.height = S;
@@ -73,46 +82,165 @@ function sootTextures() {
     };
     const cc = mk();
     const ce = mk();
+    const co = mk();
+    const ch = mk();
     const x = cc.getContext('2d');
     const y = ce.getContext('2d');
-    x.fillStyle = '#1c1915';
+    const o = co.getContext('2d');
+    const h = ch.getContext('2d');
+    x.fillStyle = '#221e19';
     x.fillRect(0, 0, S, S);
     y.fillStyle = '#000';
     y.fillRect(0, 0, S, S);
+    // (rugosidad 0,6 y metal 0,55)
+    o.fillStyle = 'rgb(0,153,140)';
+    o.fillRect(0, 0, S, S);
+    h.fillStyle = '#808080';
+    h.fillRect(0, 0, S, S);
     let seed = 11;
     const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    // (lo que se dibuja cerca del borde, también del otro lado: la vuelta no tiene costura)
+    const wrap = (fn) => {
+      for (const dx of [-S, 0, S]) fn(dx);
+    };
     // manchas de hollín más claras y más oscuras
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 120; i++) {
       const px = r() * S;
       const py = r() * S;
-      const rad = 8 + r() * 30;
-      const gr = x.createRadialGradient(px, py, 0, px, py, rad);
-      const v = r() < 0.5 ? '8,7,6' : '52,46,40';
-      gr.addColorStop(0, `rgba(${v},0.35)`);
-      gr.addColorStop(1, `rgba(${v},0)`);
+      const rad = 16 + r() * 60;
+      const v = r() < 0.5 ? '8,7,6' : '58,50,42';
+      wrap((dx) => {
+        const gr = x.createRadialGradient(px + dx, py, 0, px + dx, py, rad);
+        gr.addColorStop(0, `rgba(${v},0.32)`);
+        gr.addColorStop(1, `rgba(${v},0)`);
+        x.fillStyle = gr;
+        x.fillRect(px + dx - rad, py - rad, rad * 2, rad * 2);
+      });
+    }
+    for (let i = 0; i < 7000; i++) {
+      const v = (14 + r() * 46) | 0;
+      x.fillStyle = `rgba(${v},${(v * 0.92) | 0},${(v * 0.8) | 0},${0.25 + r() * 0.5})`;
+      x.fillRect(r() * S, r() * S, 1 + r() * 2.5, 1 + r() * 2.5);
+    }
+    // los martillazos: hoyitos parejos, con el borde gastado un poco más claro
+    for (let i = 0; i < 700; i++) {
+      const px = r() * S;
+      const py = r() * S;
+      const rad = 5 + r() * 9;
+      wrap((dx) => {
+        const gr = h.createRadialGradient(px + dx, py, 0, px + dx, py, rad);
+        gr.addColorStop(0, 'rgba(40,40,40,0.55)');
+        gr.addColorStop(0.75, 'rgba(110,110,110,0.25)');
+        gr.addColorStop(1, 'rgba(128,128,128,0)');
+        h.fillStyle = gr;
+        h.fillRect(px + dx - rad, py - rad, rad * 2, rad * 2);
+        if (r() < 0.4) {
+          x.strokeStyle = 'rgba(90,80,66,0.18)';
+          x.lineWidth = 1;
+          x.beginPath();
+          x.arc(px + dx, py, rad * 0.8, 0, Math.PI * 2);
+          x.stroke();
+        }
+      });
+    }
+    // chorreaduras de óxido: más ásperas y sin brillo de metal
+    for (let i = 0; i < 34; i++) {
+      const px = r() * S;
+      const py = r() * S * 0.7;
+      const w = 2 + r() * 4;
+      const len = 30 + r() * 120;
+      const gr = x.createLinearGradient(0, py, 0, py + len);
+      gr.addColorStop(0, `rgba(110,58,26,${0.2 + r() * 0.25})`);
+      gr.addColorStop(1, 'rgba(110,58,26,0)');
       x.fillStyle = gr;
-      x.fillRect(px - rad, py - rad, rad * 2, rad * 2);
+      x.fillRect(px, py, w, len);
+      o.fillStyle = 'rgba(0,235,60,0.6)';
+      o.fillRect(px, py, w, len * 0.6);
     }
-    for (let i = 0; i < 2200; i++) {
-      const v = (14 + r() * 42) | 0;
-      x.fillStyle = `rgba(${v},${(v * 0.92) | 0},${(v * 0.8) | 0},${0.3 + r() * 0.5})`;
-      x.fillRect(r() * S, r() * S, 1 + r() * 2, 1 + r() * 2);
+    // el borde de abajo, quemado del fuego
+    const burn = x.createLinearGradient(0, S, 0, S * 0.72);
+    burn.addColorStop(0, 'rgba(6,5,4,0.85)');
+    burn.addColorStop(1, 'rgba(6,5,4,0)');
+    x.fillStyle = burn;
+    x.fillRect(0, S * 0.72, S, S * 0.28);
+    // ---- la guarda de fileteado: una ola que se enrosca en espirales, hojas y puntos ----
+    const y0 = S * (1 - BAND[1]);
+    const y1 = S * (1 - BAND[0]);
+    const mid = (y0 + y1) / 2;
+    const Hb = y1 - y0;
+    const N = 7;
+    const P = S / N;
+    const strokes = [];
+    // las dos líneas del borde
+    for (const yy of [y0 + Hb * 0.06, y1 - Hb * 0.06]) strokes.push([[0, yy], [S, yy]]);
+    for (const yy of [y0 + Hb * 0.16, y1 - Hb * 0.16]) strokes.push({ thin: true, pts: [[0, yy], [S, yy]] });
+    // la ola
+    const wave = [];
+    for (let i = 0; i <= 280; i++) {
+      const u = i / 280;
+      wave.push([u * S, mid + Math.sin(u * N * Math.PI * 2) * Hb * 0.17]);
     }
-    // chorreaduras de óxido (la v del torno va de abajo para arriba)
+    strokes.push(wave);
+    // en cada cresta y cada valle, una espiral que sale de la ola
+    for (let k = 0; k < N * 2; k++) {
+      const up = k % 2 === 0;
+      const cx = (k + 0.5) * (P / 2) + (up ? 0.12 : -0.12) * P;
+      const cy = mid + (up ? -1 : 1) * Hb * 0.04;
+      const pts = [];
+      const R0 = Hb * 0.27;
+      for (let i = 0; i <= 60; i++) {
+        const t = i / 60;
+        const a = (up ? -1 : 1) * (Math.PI * 0.5 + t * Math.PI * 3.2);
+        const rr = R0 * (1 - t * 0.88);
+        pts.push([cx + Math.cos(a) * rr * SQ, cy + Math.sin(a) * rr]);
+      }
+      strokes.push(pts);
+      // la hojita del otro lado y un punto
+      strokes.push({ leaf: true, cx: cx + P * 0.18, cy: mid + (up ? 1 : -1) * Hb * 0.22, up });
+      strokes.push({ dot: true, cx: cx - P * 0.16, cy: mid + (up ? 1 : -1) * Hb * 0.25 });
+    }
+    const draw = (ctx, color, lw, dx = 0) => {
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const s of strokes) {
+        if (Array.isArray(s) || s.thin) {
+          const pts = Array.isArray(s) ? s : s.pts;
+          ctx.lineWidth = s.thin ? lw * 0.45 : lw;
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0] + dx, pts[0][1]);
+          for (const p of pts) ctx.lineTo(p[0] + dx, p[1]);
+          ctx.stroke();
+        } else if (s.leaf) {
+          ctx.beginPath();
+          ctx.ellipse(s.cx + dx, s.cy, Hb * 0.13 * SQ + lw * 0.3, Hb * 0.07 + lw * 0.3, s.up ? 0.5 : -0.5, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (s.dot) {
+          ctx.beginPath();
+          ctx.arc(s.cx + dx, s.cy, Hb * 0.04 + lw * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    };
+    for (const dx of [-S, 0, S]) {
+      draw(x, '#0e0a06', 5.5, dx);
+      draw(x, '#a8782e', 3.2, dx);
+      draw(x, '#e8c070', 1.1, dx);
+      draw(o, 'rgb(0,70,255)', 4, dx);
+      draw(h, '#e0e0e0', 4.2, dx);
+    }
+    // ---- las rajaduras (no por la guarda): caminos quebrados que se abren ----
     for (let i = 0; i < 16; i++) {
-      x.fillStyle = `rgba(96,54,28,${0.12 + r() * 0.2})`;
-      x.fillRect(r() * S, r() * S * 0.6, 1.5 + r() * 2.5, 20 + r() * 70);
-    }
-    // rajaduras: caminos quebrados
-    for (let i = 0; i < 10; i++) {
       let px = r() * S;
-      let py = r() * S;
+      let py = r() < 0.5 ? y1 + 8 + r() * (S - y1 - 30) : 12 + r() * (y0 - 30);
       let a = r() * Math.PI * 2;
       const pts = [[px, py]];
-      for (let j = 0; j < 11; j++) {
-        a += (r() - 0.5) * 1.4;
-        px += Math.cos(a) * (5 + r() * 9);
-        py += Math.sin(a) * (5 + r() * 9);
+      for (let j = 0; j < 14; j++) {
+        a += (r() - 0.5) * 1.3;
+        px += Math.cos(a) * (6 + r() * 10);
+        py = Math.max(4, Math.min(S - 4, py + Math.sin(a) * (6 + r() * 10)));
+        if (py > y0 - 4 && py < y1 + 4) break;
         pts.push([px, py]);
       }
       const path = (ctx) => {
@@ -121,25 +249,60 @@ function sootTextures() {
         for (const p of pts) ctx.lineTo(p[0], p[1]);
       };
       x.strokeStyle = 'rgba(0,0,0,0.9)';
-      x.lineWidth = 2.4;
+      x.lineWidth = 3;
       path(x);
       x.stroke();
-      y.strokeStyle = 'rgba(255,255,255,0.16)';
-      y.lineWidth = 7;
+      h.strokeStyle = 'rgba(20,20,20,0.9)';
+      h.lineWidth = 2.5;
+      path(h);
+      h.stroke();
+      y.strokeStyle = 'rgba(255,255,255,0.13)';
+      y.lineWidth = 11;
+      path(y);
+      y.stroke();
+      y.strokeStyle = 'rgba(255,255,255,0.45)';
+      y.lineWidth = 4;
       path(y);
       y.stroke();
       y.strokeStyle = '#fff';
-      y.lineWidth = 1.3;
+      y.lineWidth = 1.4;
       path(y);
       y.stroke();
     }
-    const tex = (c) => {
+    // el calor de abajo, apenas
+    const heat = y.createLinearGradient(0, S, 0, S * 0.8);
+    heat.addColorStop(0, 'rgba(255,255,255,0.1)');
+    heat.addColorStop(1, 'rgba(255,255,255,0)');
+    y.fillStyle = heat;
+    y.fillRect(0, S * 0.8, S, S * 0.2);
+    // el relieve (alto en gris) pasado a normales
+    const hd = h.getImageData(0, 0, S, S).data;
+    const nc = mk();
+    const nx = nc.getContext('2d');
+    const out = nx.createImageData(S, S);
+    const at = (i, j) => hd[((((j + S) % S) * S + ((i + S) % S)) * 4)] / 255;
+    const K = 2.2;
+    for (let j = 0; j < S; j++) {
+      for (let i = 0; i < S; i++) {
+        const dx = (at(i + 1, j) - at(i - 1, j)) * K * SQ;
+        const dy = (at(i, j + 1) - at(i, j - 1)) * K;
+        const l = Math.hypot(dx, dy, 1);
+        const q = (j * S + i) * 4;
+        out.data[q] = ((-dx / l) * 0.5 + 0.5) * 255;
+        out.data[q + 1] = ((dy / l) * 0.5 + 0.5) * 255;
+        out.data[q + 2] = ((1 / l) * 0.5 + 0.5) * 255;
+        out.data[q + 3] = 255;
+      }
+    }
+    nx.putImageData(out, 0, 0);
+    const tex = (c, srgb) => {
       const t = new THREE.CanvasTexture(c);
-      t.colorSpace = THREE.SRGBColorSpace;
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = 4;
       return t;
     };
-    return { map: tex(cc), glow: tex(ce) };
+    return { map: tex(cc, true), glow: tex(ce, true), orm: tex(co, false), normal: tex(nc, false) };
   });
 }
 
@@ -211,27 +374,168 @@ function sludgeTextures() {
 const BODY = [[0, 0], [0.036, 0], [0.046, 0.003], [0.053, 0.013], [0.056, 0.028], [0.054, 0.045], [0.046, 0.06], [0.035, 0.07], [0.028, 0.074], [0.027, 0.078]];
 const LID = [[0.0285, 0.077], [0.03, 0.079], [0.027, 0.084], [0.017, 0.089], [0.008, 0.091], [0, 0.092]];
 
+// El hierro de la pava (el mismo en la mano y en el mundo): la luz de
+// adentro (verde, o azul la mejorada) por las rajaduras; glow 0: apagada.
+function sootMat(col, glow = 0.6) {
+  const { map, glow: gm, orm, normal } = sootTextures();
+  return new THREE.MeshStandardMaterial({ map, normalMap: normal, normalScale: new THREE.Vector2(0.9, 0.9), roughnessMap: orm, metalnessMap: orm, roughness: 1, metalness: 1, emissiveMap: gm, emissive: col, emissiveIntensity: glow });
+}
+
 function pavaMats(T, up) {
   return once(`pava${up ? 1 : 0}`, () => {
-    const { map, glow } = sootTextures();
     const col = up ? GLOW_UP : GLOW;
-    const soot = new THREE.MeshStandardMaterial({ map, roughness: 0.58, metalness: 0.55, emissiveMap: glow, emissive: col, emissiveIntensity: 0.6 });
+    const soot = sootMat(col);
+    const M = VM.mats(T);
     return {
       // mejorada: el cuerpo lleva el camuflaje del Pack-a-Pava; la tapa sigue tiznada
-      body: up ? VM.mats(T).camo : soot,
+      body: up ? M.camo : soot,
       soot,
       rim: new THREE.MeshStandardMaterial({ color: 0x2c2723, roughness: 0.38, metalness: 0.85 }),
+      // los flejes, los remaches, el remate y las virolas
+      brass: new THREE.MeshStandardMaterial({ color: 0xc08a3e, roughness: 0.3, metalness: 1 }),
+      // el mango: cuero con tientos
+      leather: M.leather,
+      tiento: new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 0.85 }),
       glow: new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(2.6), toneMapped: false }),
       // guante de cuero chamuscado (la pava quema)
       glove: new THREE.MeshStandardMaterial({ color: 0x241a13, roughness: 0.92 }),
       // el agua que hierve adentro (se ve por la mirilla) y la resistencia de cobre
       brew: new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(0.9), toneMapped: false }),
-      coil: new THREE.MeshStandardMaterial({ color: 0x7a3a18, roughness: 0.45, metalness: 0.75, emissive: col, emissiveIntensity: 0.2 }),
+      coil: new THREE.MeshStandardMaterial({ color: 0xb4602e, roughness: 0.32, metalness: 1, emissive: col, emissiveIntensity: 0.05 }),
       stream: new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(1.5), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
       dial: new THREE.MeshBasicMaterial({ map: dialTexture() }),
       col,
     };
   });
+}
+
+// La pava en sí (sin la mano): el cuerpo, los flejes y remaches de bronce, la
+// tapa con su bisagra y el remate con la piedra que brilla, el pico con su
+// collar y el asa con el mango de cuero y tientos. La usan la de la mano
+// (buildPava) y la del easter egg de los esteros (pavaProp).
+// P: body, soot, rim, brass, glow, leather, tiento.
+export function pavaKettle(P, seg = 40) {
+  const kettle = new THREE.Group();
+  kettle.add(VM.lathe(BODY, P.body, seg));
+  // flejes: el del fondo y el de la cintura, con su fila de remaches
+  for (const [y, r] of [[0.004, 0.047], [0.045, 0.0545]]) {
+    const t = VM.tor(r, 0.0024, P.brass, 6, 40);
+    t.rotation.x = Math.PI / 2;
+    t.position.y = y;
+    kettle.add(t);
+  }
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    const rv = VM.sph(0.0018, P.brass, 6, 4);
+    rv.position.set(Math.cos(a) * 0.0565, 0.045, Math.sin(a) * 0.0565);
+    kettle.add(rv);
+  }
+  // la tapa, con la bisagra atrás (se abre al cargarla)
+  const lidPivot = new THREE.Group();
+  lidPivot.position.set(0, 0.078, 0.028);
+  kettle.add(lidPivot);
+  const lid = new THREE.Group();
+  lid.position.set(0, -0.078, -0.028);
+  lidPivot.add(lid);
+  lid.add(VM.lathe(LID, P.soot, Math.round(seg * 0.8)));
+  const lr = VM.tor(0.0298, 0.0015, P.brass, 6, 32);
+  lr.rotation.x = Math.PI / 2;
+  lr.position.y = 0.0792;
+  lid.add(lr);
+  // el remate: un pie de bronce y la piedra que brilla, agarrada con cuatro garras
+  const foot = VM.cyl(0.0036, 0.006, 0.0032, P.brass, 14);
+  foot.position.y = 0.0925;
+  lid.add(foot);
+  const knob = VM.sph(0.0046, P.glow, 12, 10);
+  knob.position.y = 0.0972;
+  lid.add(knob);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const cl = VM.box(0.0013, 0.0062, 0.0013, P.brass);
+    cl.position.set(Math.cos(a) * 0.0044, 0.0968, Math.sin(a) * 0.0044);
+    cl.rotation.set(Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45);
+    lid.add(cl);
+  }
+  // la juntura de la tapa: una línea de luz
+  const seam = VM.tor(0.0287, 0.0011, P.glow, 4, 32);
+  seam.rotation.x = Math.PI / 2;
+  seam.position.y = 0.0776;
+  kettle.add(seam);
+  // el pico: sale de abajo, adelante, y sube; nace en un collar de bronce
+  const spout = taperTube([new THREE.Vector3(0, 0.022, -0.044), new THREE.Vector3(0, 0.036, -0.068), new THREE.Vector3(0, 0.058, -0.088), new THREE.Vector3(0, 0.08, -0.1)], 0.012, 0.0062, P.body);
+  kettle.add(spout.mesh);
+  for (let t = 0; t < 0.6; t += 0.02) {
+    const c = spout.path.getPointAt(t);
+    if (Math.hypot(c.x, c.z) < VM.profileRadius(BODY, c.y)) continue;
+    const collar = VM.tor(0.0118 - t * 0.004, 0.0021, P.brass, 6, 20);
+    collar.quaternion.setFromUnitVectors(Z_AXIS, spout.path.getTangentAt(t).normalize());
+    collar.position.copy(c);
+    kettle.add(collar);
+    break;
+  }
+  const end = spout.path.getPointAt(1);
+  const tan = spout.path.getTangentAt(1).normalize();
+  const lip = VM.tor(0.0064, 0.0017, P.brass, 6, 16);
+  lip.quaternion.setFromUnitVectors(Z_AXIS, tan);
+  lip.position.copy(end);
+  kettle.add(lip);
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.0056, 14), P.glow);
+  hole.quaternion.setFromUnitVectors(Z_AXIS, tan);
+  hole.position.copy(end).addScaledVector(tan, -0.0008);
+  kettle.add(hole);
+  const muzzle = new THREE.Object3D();
+  muzzle.position.copy(end).addScaledVector(tan, 0.006);
+  kettle.add(muzzle);
+  // el asa: un arco de adelante para atrás por arriba de la tapa, con el mango
+  // de cuero envuelto en tientos y virolas de bronce
+  const handle = VM.tor(0.048, 0.0032, P.rim, 6, 24, Math.PI);
+  handle.rotation.y = Math.PI / 2;
+  handle.position.y = 0.062;
+  kettle.add(handle);
+  const grip = VM.cyl(0.0072, 0.0072, 0.034, P.leather, 12);
+  grip.rotation.x = Math.PI / 2;
+  grip.position.y = 0.11;
+  kettle.add(grip);
+  for (let i = 0; i < 5; i++) {
+    const t = VM.tor(0.0075, 0.0011, P.tiento, 5, 14);
+    t.position.set(0, 0.11, -0.0136 + i * 0.0068);
+    kettle.add(t);
+  }
+  for (const sd of [-1, 1]) {
+    const cap = VM.cyl(0.0084, 0.0084, 0.003, P.brass, 14);
+    cap.rotation.x = Math.PI / 2;
+    cap.position.set(0, 0.11, sd * 0.0185);
+    kettle.add(cap);
+    const rv = VM.sph(0.0046, P.brass, 8, 6);
+    rv.position.set(0, 0.062, sd * 0.048);
+    kettle.add(rv);
+  }
+  return { kettle, lidPivot, knob, end, tan, hole, muzzle, spout: spout.path };
+}
+
+// La pava del easter egg de los esteros (entities/esteros/common.js): la misma
+// de la mano, de tamaño real. hot: la del altar (con la luz por las rajaduras,
+// la juntura, la piedra y el pico); si no, la hundida: helada y apagada, con el
+// bronce oscurecido por el barro.
+export function pavaProp(hot = false) {
+  const P = once(`pavaProp${hot ? 1 : 0}`, () => {
+    const soot = sootMat(GLOW, hot ? 0.45 : 0);
+    return {
+      body: soot,
+      soot,
+      rim: new THREE.MeshStandardMaterial({ color: 0x2c2723, roughness: 0.4, metalness: 0.85 }),
+      brass: hot ? new THREE.MeshStandardMaterial({ color: 0xc08a3e, roughness: 0.32, metalness: 1 }) : new THREE.MeshStandardMaterial({ color: 0x5c5434, roughness: 0.62, metalness: 0.8 }),
+      glow: hot ? new THREE.MeshBasicMaterial({ color: new THREE.Color(GLOW).multiplyScalar(2.2), toneMapped: false }) : new THREE.MeshStandardMaterial({ color: 0x101412, roughness: 0.35, metalness: 0.6 }),
+      leather: new THREE.MeshStandardMaterial({ color: 0x4a2a18, roughness: 0.8 }),
+      tiento: new THREE.MeshStandardMaterial({ color: 0x24160d, roughness: 0.85 }),
+    };
+  });
+  const K = pavaKettle(P, 32);
+  K.kettle.scale.setScalar(2.8);
+  const g = new THREE.Group();
+  g.add(K.kettle);
+  g.userData.body = K.kettle.children[0];
+  return g;
 }
 
 // La esfera del manómetro: marcas, la zona colorada y "PRESIÓN".
@@ -308,89 +612,45 @@ function taperTube(pts, r0, r1, mat, seg = 14, rs = 10) {
   return { mesh: new THREE.Mesh(g, mat), path };
 }
 
+// cuánto va girada la pava en la mano (0: el pico derecho para adelante)
+const KETTLE_YAW = 0.2;
+
 function buildPava(up, T) {
   const M = VM.mats(T);
   const P = pavaMats(T, up);
   const mate = new THREE.Group();
-  // la pava va girada: el pico sale hacia la izquierda, que se vea de perfil
+  // la pava mira al frente: el pico apunta adelante, apenas hacia la mira
   // (la mano no gira: el cuerpo es redondo)
-  const kettle = new THREE.Group();
-  kettle.rotation.y = 0.85;
+  const K = pavaKettle(P);
+  const { kettle, lidPivot, knob, end, tan, hole, muzzle, spout } = K;
+  kettle.rotation.y = KETTLE_YAW;
   mate.add(kettle);
-  kettle.add(VM.lathe(BODY, P.body, 28));
-  // flejes: el del fondo y el de la cintura
-  for (const [y, r] of [[0.004, 0.047], [0.045, 0.0545]]) {
-    const t = VM.tor(r, 0.0022, P.rim, 6, 32);
-    t.rotation.x = Math.PI / 2;
-    t.position.y = y;
-    kettle.add(t);
-  }
-  // la tapa, con la bisagra atrás (se abre al cargarla)
-  const lidPivot = new THREE.Group();
-  lidPivot.position.set(0, 0.078, 0.028);
-  kettle.add(lidPivot);
-  const lid = VM.lathe(LID, P.soot, 24);
-  lid.position.set(0, -0.078, -0.028);
-  lidPivot.add(lid);
-  const knob = VM.sph(0.0072, P.glow, 10, 8);
-  knob.position.set(0, 0.0955 - 0.078, -0.028);
-  lidPivot.add(knob);
-  // la juntura de la tapa: una línea de luz
-  const seam = VM.tor(0.0287, 0.0011, P.glow, 4, 32);
-  seam.rotation.x = Math.PI / 2;
-  seam.position.y = 0.0776;
-  kettle.add(seam);
-  // el pico: sale de abajo, adelante, y sube
-  const spout = taperTube([new THREE.Vector3(0, 0.022, -0.044), new THREE.Vector3(0, 0.036, -0.068), new THREE.Vector3(0, 0.058, -0.088), new THREE.Vector3(0, 0.08, -0.1)], 0.012, 0.0062, P.body);
-  kettle.add(spout.mesh);
-  const end = spout.path.getPointAt(1);
-  const tan = spout.path.getTangentAt(1).normalize();
-  const lip = VM.tor(0.0064, 0.0016, P.rim, 6, 16);
-  lip.quaternion.setFromUnitVectors(Z_AXIS, tan);
-  lip.position.copy(end);
-  kettle.add(lip);
-  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.0056, 14), P.glow);
-  hole.quaternion.setFromUnitVectors(Z_AXIS, tan);
-  hole.position.copy(end).addScaledVector(tan, -0.0008);
-  kettle.add(hole);
-  const muzzle = new THREE.Object3D();
-  muzzle.position.copy(end).addScaledVector(tan, 0.006);
-  kettle.add(muzzle);
   // el resplandor del pico (se ve de cualquier lado)
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.dot, color: new THREE.Color(P.col).multiplyScalar(1.3), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, toneMapped: false, opacity: 0.7 }));
   halo.position.copy(end).addScaledVector(tan, 0.004);
-  halo.scale.setScalar(0.028);
+  halo.scale.setScalar(0.018);
   kettle.add(halo);
-  // el asa: un arco de adelante para atrás por arriba de la tapa, con mango de madera
-  const handle = VM.tor(0.042, 0.0032, P.rim, 6, 20, Math.PI);
-  handle.rotation.y = Math.PI / 2;
-  handle.position.y = 0.062;
-  kettle.add(handle);
-  const grip = VM.cyl(0.0068, 0.0068, 0.04, M.woodDark, 10);
-  grip.rotation.x = Math.PI / 2;
-  grip.position.y = 0.104;
-  kettle.add(grip);
-  for (const s of [-1, 1]) {
-    const rv = VM.sph(0.004, P.rim, 8, 6);
-    rv.position.set(0, 0.062, s * 0.044);
-    kettle.add(rv);
-  }
   // la mano (con guante) la sostiene desde abajo, como a un mate
   mate.add(VM.cupHand({ ...M, skin: P.glove, nail: P.glove }, (y) => VM.profileRadius(BODY, y), 0.074));
-  // (el costado de la pava que ve el jugador, en el espacio de la pava: el pico
-  // sale hacia la izquierda y un poco para atrás)
-  const face = new THREE.Vector3(-0.964, 0, 0.267);
+  // (el costado de la pava que ve el jugador, en el espacio de la pava: la
+  // mirilla y el manómetro van siempre de este lado, gire como gire)
+  const face = new THREE.Vector3(-0.964, 0, 0.267).applyAxisAngle(Y_AXIS, 0.85 - KETTLE_YAW);
   const onBody = (dir, y, out = 0) => dir.clone().multiplyScalar(VM.profileRadius(BODY, y) + out).setY(y);
-  // la resistencia de cobre enroscada abajo (se prende al tirar y al hervir)
+  // la resistencia de cobre, enroscada en el pico como un serpentín (se
+  // prende al tirar y al hervir)
   const helix = [];
-  for (let i = 0; i <= 96; i++) {
-    const u = i / 96;
-    const a = u * Math.PI * 2 * 3.5;
-    const y = 0.009 + u * 0.024;
-    const r = VM.profileRadius(BODY, y) + 0.0022;
-    helix.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+  const ref = new THREE.Vector3(1, 0, 0);
+  for (let i = 0; i <= 120; i++) {
+    const u = 0.2 + (i / 120) * 0.55;
+    const c = spout.getPointAt(u);
+    const tg = spout.getTangentAt(u).normalize();
+    const n = new THREE.Vector3().crossVectors(tg, ref).normalize();
+    const bn = new THREE.Vector3().crossVectors(tg, n);
+    const a = (i / 120) * Math.PI * 2 * 5.5;
+    const r = 0.012 + (0.0062 - 0.012) * u + 0.0021;
+    helix.push(c.addScaledVector(n, Math.cos(a) * r).addScaledVector(bn, Math.sin(a) * r));
   }
-  kettle.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(helix), 140, 0.0016, 6), P.coil));
+  kettle.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(helix), 220, 0.0013, 6), P.coil));
   // la mirilla: un ojo de buey de bronce con el agua que hierve adentro
   const port = new THREE.Group();
   port.position.copy(onBody(face, 0.03, -0.0012));
@@ -1035,9 +1295,9 @@ export default class Liquidificador {
     // el brillo: late, sube al tirar y a pleno cuando hierve
     const hot = this.kick + boil * 1.4;
     P.soot.emissiveIntensity = 0.45 + Math.sin(t * 2.1) * 0.12 + Math.sin(t * 7.3) * 0.05 + hot * 0.7;
-    M.coil.emissiveIntensity = 0.15 + Math.max(0, Math.sin(t * 1.7)) * 0.1 + hot * 1.1;
+    M.coil.emissiveIntensity = 0.05 + Math.max(0, Math.sin(t * 1.7)) * 0.08 + hot * 1.1;
     P.halo.material.opacity = 0.5 + Math.sin(t * 3.1) * 0.12 + this.kick * 0.4 + boil * 0.4;
-    P.halo.scale.setScalar(0.026 + this.kick * 0.02 + boil * 0.02);
+    P.halo.scale.setScalar(0.018 + this.kick * 0.018 + boil * 0.018);
     // la mirilla: burbujas que suben (más rápido hirviendo)
     const speed = 0.5 + hot * 1.5;
     this.bubT = (this.bubT || 0) + dt * speed;

@@ -4,6 +4,7 @@ import Arena from './Arena';
 import { mesh, boxGeo, cylGeo, mergeByMaterial } from './props';
 import { EE } from '../config/map';
 import { depthPrepass } from '../fx/prepass';
+import { skinBoneAt } from '../entities/bossSkin';
 
 // El Prado: el claro redondo en el maizal donde termina la granja. Se abre
 // cuando la yerba está empaquetada; al ofrecerla en el centro sale de la
@@ -27,6 +28,12 @@ const tmpQ = new THREE.Quaternion();
 const tmpS = new THREE.Vector3();
 const tmpP = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
+// los zapallos: más lentos (eran 19 m/s: de cerca no se podían esquivar,
+// pedido del usuario 2026-10-01) y en arco, tirados con la mano (caen sobre la
+// cabeza del que apunta); de cerca tardan por lo menos PUMP_MIN s en llegar
+const PUMP_SPEED = 10.5;
+const PUMP_GRAV = 7;
+const PUMP_MIN = 0.7;
 const ease = (k) => k * k * (3 - 2 * k);
 
 export default class Prado extends Arena {
@@ -43,7 +50,9 @@ export default class Prado extends Arena {
     this.bossHp = 140000;
     // más lento que el Mandinga: es enorme y es de paja (igual, ya no se lo
     // deja atrás caminando para atrás)
-    this.speeds = [3.1, 3.6, 4.1];
+    // (la última fase era 4,1: con los zapallos y la lluvia, demasiado)
+    this.speeds = [3.1, 3.6, 3.7];
+    this.fireSpeed = PUMP_SPEED;
     // (el 50% es el maizal: buildGrass)
     this.wards = [0.75, 0.25];
     this.rainColor = 0x8a3aff;
@@ -138,6 +147,59 @@ export default class Prado extends Arena {
   onBossDead() {
     super.onBossDead();
     this.setGrass('wither');
+  }
+
+  // La última fase (menos del 25%) más llevadera (pedido del usuario
+  // 2026-10-01): era abanico de 3 zapallos dos veces cada 1,9 s y lluvia cada
+  // 6 s; ahora de a 2, cada 2,8 s, y la lluvia cada 9 s.
+  lastPhase() {
+    const b = this.boss;
+    return !!b && b.hp / b.maxHp < 0.25;
+  }
+
+  ranged(b, k) {
+    super.ranged(b, k);
+    if (k < 0.25) this.fireT = 2.8;
+  }
+
+  // (el zapallo sale de la mano que lo tira, si tiene el cuerpo de verdad: la
+  // derecha, arriba de la cabeza; y va en arco)
+  fireball(from, spread = 1) {
+    const g = this.g;
+    spread = this.lastPhase() ? Math.min(spread, 2) : spread;
+    const hand = skinBoneAt(g.zombies, 'RightHand', tmpP);
+    if (hand) from = hand.clone();
+    for (const tp of this.standing()) {
+      const dx = tp.x - from.x;
+      const dz = tp.z - from.z;
+      const d = Math.max(1, Math.hypot(dx, dz));
+      const tf = Math.max(PUMP_MIN, d / this.fireSpeed);
+      const vy = (tp.y + 1.5 - from.y + 0.5 * PUMP_GRAV * tf * tf) / tf;
+      for (let i = 0; i < spread; i++) {
+        const vel = new THREE.Vector3(dx / d, 0, dz / d).applyAxisAngle(UP, (i - (spread - 1) / 2) * 0.22).multiplyScalar(d / tf);
+        vel.y = vy;
+        this.spawnFireball(from, vel);
+        g.net?.event('fireball', { x: +from.x.toFixed(2), y: +from.y.toFixed(2), z: +from.z.toFixed(2), vx: +vel.x.toFixed(2), vy: +vel.y.toFixed(2), vz: +vel.z.toFixed(2) });
+      }
+    }
+  }
+
+  // (el invitado no sabe cuándo arma el tiro: ve el final, cuando sale)
+  spawnFireball(from, vel) {
+    super.spawnFireball(from, vel);
+    const b = this.g.zombies.boss;
+    if (this.g.net?.guest && b?.kind === 'scarecrow') b.castAt = this.g.time;
+  }
+
+  // los zapallos caen (en todas las compus igual)
+  updateFireballs(dt) {
+    for (const f of this.fireballs) f.vel.y -= PUMP_GRAV * dt;
+    super.updateFireballs(dt);
+  }
+
+  fireRain() {
+    super.fireRain();
+    if (this.lastPhase()) this.rainT = 9;
   }
 
   // (anfitrión) Cada tanto se mete bajo tierra y el cuervo marca a uno
@@ -564,9 +626,11 @@ export default class Prado extends Arena {
     if (!this.pumpkinMat) {
       this.pumpkinMat = new THREE.MeshStandardMaterial({ color: 0xd8641a, emissive: 0xff5a10, emissiveIntensity: 1.6, roughness: 0.6 });
       this.pumpkinGeo = new THREE.SphereGeometry(0.3, 12, 8).scale(1.2, 0.85, 1.2);
+      // (uno solo: antes cada zapallo dejaba el suyo en la placa)
+      this.stemGeo = new THREE.CylinderGeometry(0.03, 0.04, 0.12, 5);
     }
     const m = new THREE.Mesh(this.pumpkinGeo, this.pumpkinMat);
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.12, 5), this.g.world.M.log);
+    const stem = new THREE.Mesh(this.stemGeo, this.g.world.M.log);
     stem.position.y = 0.3;
     m.add(stem);
     return m;

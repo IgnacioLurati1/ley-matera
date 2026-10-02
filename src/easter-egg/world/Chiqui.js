@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { assetUrl } from '../../lib/assets';
+import { skinLook } from '../entities/bossSkin';
 
 // El Chiquitijuein: un duende como los del norte (no llega al metro), casi
 // todo sombrero. Poncho oscuro con guarda y flecos, piernitas flacas, brazos
@@ -8,6 +12,13 @@ import * as THREE from 'three';
 //
 // Lo usan la cinemática del final (ui/TowerCinematic.js) y las apariciones en
 // la explanada durante la partida (ChiquiSightings, desde world/Tower.js).
+//
+// Con el cuerpo de verdad (el modelo de Meshy, más abajo: "el cuerpo de
+// verdad") las piezas se esconden y quedan los brillos de los ojos, el humo,
+// la sombra y el bastón (que va en la mano). Lo de afuera sigue igual: la
+// cabeza (rotation/lookAt) gira la cabeza del modelo, y los clips van solos
+// (parado, caminando o corriendo según lo que se mueve la raíz) o los pide el
+// que lo usa con act()/mode.
 
 // El poncho: lana negra con la guarda colorada y ocre cerca del borde.
 function ponchoTexture() {
@@ -182,6 +193,11 @@ export function buildChiqui(tex) {
   gourd.scale.set(1, 1.2, 1);
   gourd.position.set(-0.19, 0.3, 0.14);
   root.add(gourd);
+  // las piezas (se esconden cuando llega el cuerpo de verdad)
+  const proc = [];
+  root.traverse((o) => {
+    if (o.isMesh && !staff.getObjectById(o.id)) proc.push(o);
+  });
   // la sombra
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.42, 18).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex.dot, color: 0x000000, transparent: true, opacity: 0.7, depthWrite: false }));
   shadow.position.y = 0.012;
@@ -195,7 +211,7 @@ export function buildChiqui(tex) {
     root.add(w);
     wisps.push(w);
   }
-  return {
+  const R = {
     root,
     head,
     eyes,
@@ -207,11 +223,37 @@ export function buildChiqui(tex) {
     staff,
     wisps,
     eyeK: 1,
+    // el cuerpo de verdad (null hasta que llega) y lo que se le pide:
+    // idle (el clip de parado), auto (false: no camina ni corre solo), mode
+    // (un clip que queda puesto; si no es de los que se repiten, se queda en
+    // el último cuadro)
+    skin: null,
+    idle: 'idle',
+    auto: true,
+    mode: null,
+    M0: M,
+    proc,
+    // Un clip de una vez (o uno de los que se repiten, por `until` segundos):
+    // at = desde dónde, delay = cuánto espera antes, rate, hold = se queda en
+    // el último cuadro hasta stop().
+    act(name, o = {}) {
+      this.one = { name, t: o.at || 0, wait: o.delay || 0, rate: o.rate ?? 1, hold: !!o.hold, until: o.until ?? null };
+    },
+    stop() {
+      this.one = null;
+    },
+    one: null,
+    // Cuando llega el cuerpo de verdad (o ya, si ya está).
+    onSkin(cb) {
+      if (this.skin) cb(this);
+      else (this.skinWait ||= []).push(cb);
+    },
     // Cada cuadro: los ojos parpadean, el humo sube y el poncho respira.
     update(dt, t) {
+      driveSkin(this, dt);
       // parpadea... salvo cuando te mira fijo
       const blink = this.eyeK < 1.05 && (Math.sin(t * 1.7) > 0.985 || Math.sin(t * 2.9 + 1) > 0.992) ? 0 : 1;
-      for (const e of this.eyes) e.visible = blink > 0;
+      for (const e of this.eyes) e.visible = !this.skin && blink > 0;
       for (const gl of this.glows) gl.material.opacity = blink * Math.min(1, 0.5 + this.eyeK * 0.35) * (0.85 + Math.sin(t * 9) * 0.1);
       poncho.scale.set(1 + Math.sin(t * 2.1) * 0.012, 1, 1 + Math.sin(t * 2.1) * 0.012);
       for (const w of this.wisps) {
@@ -224,7 +266,437 @@ export function buildChiqui(tex) {
       }
     },
   };
+  // el cuerpo de verdad: ya, si está bajado; si no, cuando llegue
+  if (SK.gltf) attachSkin(R);
+  else loadChiquiSkin()?.then((gl) => gl && attachSkin(R));
+  return R;
 }
+
+// ---------------- el cuerpo de verdad ----------------
+// El Chiquitijuein de Meshy: la malla con piel y esqueleto, las texturas PBR
+// y los clips de su biblioteca (armado fuera del juego: tools/modelos). Trae
+// en userData.chiqui las medidas: los ojos, la mano del bastón, lo que dura y
+// lo que avanza cada clip, el momento del golpe de los de una vez y dónde van
+// las gemas del coloso. Se baja con el primero que se arma y lo comparten
+// todos (cada uno con su copia del esqueleto).
+const SKIN_URL = '/assets/sotano/modelos/chiqui/modelo.glb';
+const SK = { p: null, gltf: null, meta: null, hat: null };
+const FADE = 0.25;
+// cuándo camina y cuándo corre (lo que avanza la raíz, en alturas del bicho por segundo)
+const WALK_V = 0.08;
+const RUN_ON = 0.95;
+const RUN_OFF = 0.7;
+
+export function loadChiquiSkin() {
+  if (typeof window !== 'undefined' && window.__chiquiSkinOff) return null;
+  SK.p ||= new Promise((ok) => {
+    new GLTFLoader().load(
+      assetUrl(SKIN_URL),
+      (gl) => {
+        gl.scene.traverse((o) => {
+          if (o.userData?.chiqui) SK.meta = o.userData.chiqui;
+          if (o.name === 'sombrero') SK.hat = o;
+          // (la luz de los personajes: entities/bossSkin.js skinLook)
+          else if (o.isSkinnedMesh) skinLook(o.material);
+        });
+        SK.clips = Object.fromEntries(gl.animations.map((c) => [c.name, c]));
+        SK.gltf = gl;
+        ok(gl);
+      },
+      undefined,
+      () => ok(null),
+    );
+  });
+  return SK.p;
+}
+
+// Las medidas del modelo (null hasta que llega).
+export const chiquiMeta = () => SK.meta;
+
+// El sombrero suelto del modelo (para el final: queda tirado en la plaza), con
+// el origen en el medio de la base de la copa. null si el modelo no está.
+// (como el de piezas: el ala derecha y las puntas 0,075 abajo del origen)
+export function chiquiHat() {
+  if (!SK.hat) return null;
+  if (!SK.hatT) {
+    const m = SK.hat.clone();
+    m.visible = true;
+    m.position.set(0, 0, 0);
+    m.scale.setScalar(1);
+    // el modelo lo tiene echado para atrás: lo que sube el ala de adelante
+    // respecto de la de atrás
+    const pos = m.geometry.attributes.position;
+    let yf = 0;
+    let nf = 0;
+    let yb = 0;
+    let nb = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const z = pos.getZ(i);
+      if (Math.abs(pos.getX(i)) > 0.06) continue;
+      if (z > 0.18) {
+        yf += pos.getY(i);
+        nf++;
+      } else if (z < -0.18) {
+        yb += pos.getY(i);
+        nb++;
+      }
+    }
+    m.rotation.set(nf && nb ? Math.atan2(yf / nf - yb / nb, 0.4) : 0, 0, 0);
+    const T = new THREE.Group();
+    T.add(m);
+    T.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(m, true);
+    m.position.set(-(box.min.x + box.max.x) / 2, -box.min.y - 0.075, -(box.min.z + box.max.z) / 2);
+    SK.hatT = T;
+  }
+  return SK.hatT.clone();
+}
+
+// Le pone el cuerpo de verdad a un Chiquitijuein armado con buildChiqui.
+function attachSkin(R) {
+  const meta = SK.meta;
+  const model = cloneSkinned(SK.gltf.scene);
+  model.name = 'chiquiSkin';
+  const bones = {};
+  let body = null;
+  const eyes = [];
+  model.traverse((o) => {
+    if (o.isBone) bones[o.name] = o;
+    if (o.isSkinnedMesh) body = o;
+    if (o.name === 'eyeA' || o.name === 'eyeB') eyes.push(o);
+  });
+  model.getObjectByName('sombrero')?.removeFromParent();
+  if (!body || !meta) return;
+  body.frustumCulled = false;
+  body.castShadow = true;
+  body.userData.chiquiSkin = true;
+  // (el esqueleto en reposo, con el modelo en el origen: para anclar cosas al cuerpo)
+  model.updateMatrixWorld(true);
+  const bind = {};
+  for (const [n, b] of Object.entries(bones)) bind[n] = b.matrixWorld.clone();
+  // las piezas se esconden; si ya les cambiaron el material (la estatua de
+  // piedra del desafío), el cuerpo lleva el mismo
+  for (const m of R.proc) m.visible = false;
+  const pm = R.proc[0]?.material;
+  if (pm && pm !== R.M0) body.material = pm;
+  R.root.add(model);
+  const mixer = new THREE.AnimationMixer(model);
+  const S = {
+    model,
+    body,
+    bones,
+    bind,
+    eyes,
+    head: bones.Head,
+    neck: bones.neck,
+    front: bones.headfront,
+    hand: bones[meta.hand] || bones.RightHand,
+    mixer,
+    acts: {},
+    layers: [],
+    v: 0,
+    run: false,
+    last: null,
+    grip: null,
+  };
+  R.skin = S;
+  // el bastón en la mano: parado al lado del pie en el primer cuadro de estar
+  // parado, y de ahí sigue a la mano
+  poseSkin(R, 0);
+  R.root.updateMatrixWorld(true);
+  const inv = tmpM.copy(R.root.matrixWorld).invert();
+  const handM = tmpN.multiplyMatrices(inv, S.hand.matrixWorld);
+  const hp = tmpV.setFromMatrixPosition(handM);
+  const staffM = new THREE.Matrix4().compose(tmpW.set(hp.x, 0, hp.z + 0.02), tmpQ.setFromEuler(tmpE.set(0.04, 0, 0.05)), tmpS.set(1, 1, 1));
+  S.grip = handM.invert().multiply(staffM);
+  followStaff(R);
+  R.root.updateMatrixWorld(true);
+  placeEyes(R);
+  for (const cb of R.skinWait || []) cb(R);
+  R.skinWait = null;
+}
+
+// Un ancla pegada al cuerpo: un Object3D colgado del hueso `bone` en el punto
+// `p` (medidas del modelo, en reposo), con la escala y los ejes del bicho.
+export function chiquiAnchor(R, bone, p) {
+  const S = R.skin;
+  const b = S.bones[bone];
+  const a = new THREE.Object3D();
+  tmpM.copy(S.bind[bone]).invert().multiply(tmpN.makeTranslation(p[0], p[1], p[2]));
+  tmpM.decompose(a.position, a.quaternion, a.scale);
+  b.add(a);
+  return a;
+}
+
+// El brasero del coloso: el cuerpo con grietas de fuego (en el espacio del
+// modelo, así siguen a la piel) y la guarda del poncho encendida. Devuelve el
+// uniforme de cuánto brilla.
+export function chiquiEmber(R, color = 0xff4214) {
+  const S = R.skin;
+  if (!S) return null;
+  const U = { uEmber: { value: 1 }, uEmberCol: { value: new THREE.Color(color) }, uGeo: { value: 1 } };
+  // (la malla puede venir en otra escala que el modelo: la de su bindMatrix)
+  U.uGeo.value = tmpS.setFromMatrixScale(S.body.bindMatrix).x || 1;
+  const m = S.body.material.clone();
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, U);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uGeo;\nvarying vec3 vChiq;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvChiq = position * uGeo;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>\nuniform float uEmber;\nuniform vec3 uEmberCol;\nvarying vec3 vChiq;\n${CRACK_GLSL}`)
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        // (la cara y el sombrero quedan como son: las grietas, del cuello para abajo)
+        float low = 1.0 - smoothstep(0.66, 0.72, vChiq.y);
+        float ck = chCrack(vChiq * 24.0) * smoothstep(0.5, 0.72, chNoise(vChiq * 6.0 + 7.3)) * low;
+        vec3 dcol = diffuseColor.rgb;
+        // (la guarda: solo los colorados bien saturados del poncho; la piel
+        // rosada y la cinta del sombrero, del modelo facetado, no)
+        float guarda = smoothstep(0.1, 0.22, dcol.r - max(dcol.g, dcol.b)) * smoothstep(0.65, 0.85, 1.0 - max(dcol.g, dcol.b) / max(dcol.r, 0.001)) * low;
+        totalEmissiveRadiance += uEmberCol * uEmber * (ck * 1.8 + guarda * 1.1);`,
+      );
+  };
+  m.customProgramCacheKey = () => 'chiquiEmber';
+  // (la copia trae la marca del original: la luz de los personajes, de nuevo encima)
+  delete m.userData.skinLook;
+  skinLook(m);
+  S.body.material = m;
+  return U.uEmber;
+}
+
+const CRACK_GLSL = `
+vec3 chH3(vec3 p) {
+  p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));
+  return fract(sin(p) * 43758.5453);
+}
+// las grietas: el borde entre dos celdas (F2 - F1 chico)
+float chCrack(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  float d1 = 8.0;
+  float d2 = 8.0;
+  for (int x = -1; x <= 1; x++)
+    for (int y = -1; y <= 1; y++)
+      for (int z = -1; z <= 1; z++) {
+        vec3 g = vec3(float(x), float(y), float(z));
+        vec3 r = g + chH3(i + g) - f;
+        float d = dot(r, r);
+        if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+      }
+  return 1.0 - smoothstep(0.0, 0.045, sqrt(d2) - sqrt(d1));
+}
+// manchas suaves (dónde hay grietas y dónde no)
+float chNoise(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = mix(mix(chH3(i).x, chH3(i + vec3(1, 0, 0)).x, f.x), mix(chH3(i + vec3(0, 1, 0)).x, chH3(i + vec3(1, 1, 0)).x, f.x), f.y);
+  float b = mix(mix(chH3(i + vec3(0, 0, 1)).x, chH3(i + vec3(1, 0, 1)).x, f.x), mix(chH3(i + vec3(0, 1, 1)).x, chH3(i + vec3(1, 1, 1)).x, f.x), f.y);
+  return mix(a, b, f.z);
+}
+`;
+
+// Qué clip va (y cómo se funden) y lo de afuera: la cabeza, el bastón y los ojos.
+function driveSkin(R, dt) {
+  const S = R.skin;
+  if (!S || !R.root.visible) return;
+  const C = SK.meta.clips;
+  // lo que avanza la raíz (de costado, en alturas del bicho); un salto de
+  // golpe (se teletransporta) no cuenta
+  R.root.updateWorldMatrix(true, false);
+  tmpV.setFromMatrixPosition(R.root.matrixWorld);
+  const sc = tmpS.setFromMatrixScale(R.root.matrixWorld).x || 1;
+  let v = 0;
+  if (S.last && dt > 0) {
+    const d = Math.hypot(tmpV.x - S.last.x, tmpV.z - S.last.z) / sc;
+    v = d > 1.5 ? 0 : d / dt;
+  }
+  (S.last ||= new THREE.Vector3()).copy(tmpV);
+  S.v += (Math.min(10, v) - S.v) * Math.min(1, dt * 5);
+  // el de una vez
+  const O = R.one;
+  if (O) {
+    if (O.wait > 0) O.wait -= dt;
+    else O.t += dt * O.rate;
+    const end = O.until ?? (C[O.name]?.loop ? Infinity : C[O.name]?.dur ?? 0);
+    if (!O.hold && O.t >= end - FADE) R.one = null;
+    if (!C[O.name]) R.one = null;
+  }
+  let name;
+  let t = null;
+  let rate = 1;
+  if (R.one && R.one.wait <= 0) {
+    name = R.one.name;
+    t = R.one.hold ? Math.min(R.one.t, C[name].dur - 1e-3) : R.one.t;
+  } else if (R.mode && C[R.mode]) name = R.mode;
+  else {
+    S.run = R.auto !== false && (S.run ? S.v > RUN_OFF : S.v > RUN_ON);
+    if (S.run) {
+      name = 'run';
+      rate = Math.max(0.7, Math.min(2.2, S.v / (C.run.stride || 2)));
+    } else if (R.auto !== false && S.v > WALK_V) {
+      name = 'walk';
+      rate = Math.max(0.45, Math.min(2.2, S.v / (C.walk.speed || 0.2)));
+    } else {
+      name = R.idle && C[R.idle] ? R.idle : 'idle';
+      if (name === 'taunt' || (name === 'idle' && R.vary)) [name, t] = idleMix(R, dt);
+    }
+  }
+  // (el mixer solo escribe un hueso cuando el clip le cambia el valor: con el
+  // clip quieto -de rodillas, un cuadro fijo- el giro de la cabeza del cuadro
+  // anterior quedaba y se le sumaba otra vez: la cabeza daba vueltas a toda
+  // velocidad. Se vuelve a lo del clip antes de mezclar.)
+  if (S.turned) {
+    S.neck.quaternion.copy(S.neckBase);
+    S.head.quaternion.copy(S.headBase);
+    S.turned = false;
+  }
+  poseSkin(R, dt, name, t, rate);
+  // la cabeza: el giro que le dieron a la de piezas (rotation, lookAt), un
+  // poco en el cuello y el resto en la cabeza
+  const hq = R.head.quaternion;
+  if (Math.abs(hq.w) < 0.99999) {
+    (S.neckBase ||= new THREE.Quaternion()).copy(S.neck.quaternion);
+    (S.headBase ||= new THREE.Quaternion()).copy(S.head.quaternion);
+    S.turned = true;
+    R.root.updateMatrixWorld(true);
+    R.root.getWorldQuaternion(tmpQ);
+    const hw = S.head.getWorldQuaternion(tmpQ2);
+    // (en el mundo: R · giro · R⁻¹)
+    tmpQ3.copy(tmpQ).multiply(hq).multiply(tmpQ4.copy(tmpQ).invert());
+    tmpQ5.identity().slerp(tmpQ3, 0.3);
+    const nw = S.neck.getWorldQuaternion(tmpQ6);
+    const np = S.neck.parent.getWorldQuaternion(tmpQ7);
+    S.neck.quaternion.copy(np.invert().multiply(tmpQ5.multiply(nw)));
+    S.neck.updateMatrixWorld(true);
+    const want = tmpQ3.multiply(hw);
+    S.head.quaternion.copy(S.neck.getWorldQuaternion(tmpQ7).invert().multiply(want));
+  }
+  followStaff(R);
+  R.root.updateMatrixWorld(true);
+  placeEyes(R);
+}
+
+// Parado sin hacer nada (idle 'taunt': el trono, el coloso; o vary): no se
+// frota las manos todo el tiempo. Respira un rato y hace uno de sus gestos
+// (niega con el dedo, se encoge de hombros, la mano en la cintura, un saltito,
+// un bailecito, festeja, un pase de magia); frotarse las manos, cada tanto
+// nomás. Con 'taunt' arranca frotándoselas (así lo presenta la escena).
+const GESTURES = [
+  ['wag', 3],
+  ['shrug', 3],
+  ['hip', 3],
+  ['hop', 2],
+  ['jig', 2],
+  ['victory', 1.5],
+  ['genie', 1],
+];
+const RUB_GAP = 25;
+function idleMix(R, dt) {
+  const C = SK.meta.clips;
+  const M = (R.skin.mix ||= { name: null, t: 0, rest: 0, rub: -RUB_GAP, clock: 0, last: null, prev: [] });
+  M.clock += dt;
+  if (M.name) {
+    M.t += dt;
+    // (las manos, dos vueltas del clip)
+    if (M.t < C[M.name].dur * (M.name === 'taunt' ? 2 : 1) - FADE) return [M.name, M.t];
+    M.last = M.name;
+    // (los dos últimos no se repiten)
+    M.prev = [M.name, M.prev[0]];
+    M.name = null;
+    M.rest = 3 + Math.random() * 4;
+  }
+  M.rest -= dt;
+  const first = R.idle === 'taunt' && M.last == null;
+  if (M.rest > 0 && !first) return ['idle', null];
+  let pick = null;
+  if (first || (M.clock - M.rub > RUB_GAP && Math.random() < 0.3)) pick = 'taunt';
+  else {
+    const list = GESTURES.filter(([n]) => C[n] && !M.prev.includes(n));
+    let r = Math.random() * list.reduce((a, [, w]) => a + w, 0);
+    for (const [n, w] of list) if ((r -= w) <= 0 && !pick) pick = n;
+    pick ||= list[0]?.[0] || 'idle';
+  }
+  if (pick === 'taunt') M.rub = M.clock;
+  M.name = pick;
+  M.t = 0;
+  return [pick, 0];
+}
+
+// Las capas (una por clip; la de arriba entra en FADE s y las otras se van) y
+// el cuadro de cada una.
+function poseSkin(R, dt, name = R.idle || 'idle', t = null, rate = 1) {
+  const S = R.skin;
+  const C = SK.meta.clips;
+  let top = S.layers[S.layers.length - 1];
+  if (!top || top.name !== name || (t != null && Math.abs(t - top.t) > 0.3)) {
+    // (el mismo clip más abajo se saca: no puede estar dos veces)
+    S.layers = S.layers.filter((L) => L.name !== name);
+    top = { name, t: t ?? 0, w: S.layers.length ? 0 : 1, rate };
+    S.layers.push(top);
+  }
+  top.rate = rate;
+  for (const L of S.layers) {
+    if (L === top && t != null) L.t = t;
+    else L.t += dt * L.rate;
+  }
+  top.w = Math.min(1, top.w + dt / FADE);
+  const others = S.layers.reduce((a, L) => a + (L === top ? 0 : L.w), 0);
+  for (const L of S.layers) if (L !== top) L.w = others > 0 ? (L.w / others) * (1 - top.w) : 0;
+  S.layers = S.layers.filter((L) => L === top || L.w > 1e-3);
+  for (const [n, a] of Object.entries(S.acts)) if (!S.layers.some((L) => L.name === n)) a.enabled = false;
+  for (const L of S.layers) {
+    let a = S.acts[L.name];
+    if (!a) {
+      a = S.acts[L.name] = S.mixer.clipAction(SK.clips[L.name]);
+      a.play();
+      a.timeScale = 0;
+    }
+    const c = C[L.name];
+    a.enabled = true;
+    a.time = c.loop ? ((L.t % c.dur) + c.dur) % c.dur : Math.max(0, Math.min(c.dur - 1e-3, L.t));
+    a.setEffectiveWeight(L.w);
+  }
+  S.mixer.update(0);
+}
+
+// El bastón: sigue a la mano (si todavía es del bicho: el final lo tira al piso).
+function followStaff(R) {
+  const S = R.skin;
+  if (R.staff.parent !== R.root || !S.grip) return;
+  R.root.updateMatrixWorld(true);
+  tmpM.copy(R.root.matrixWorld).invert().multiply(S.hand.matrixWorld).multiply(S.grip);
+  tmpM.decompose(R.staff.position, R.staff.quaternion, tmpS);
+}
+
+// Los brillos de los ojos (y el resplandor) van donde están los ojos del modelo.
+function placeEyes(R) {
+  const S = R.skin;
+  S.head.getWorldPosition(tmpV);
+  const fw = S.front.getWorldPosition(tmpW).sub(tmpV).normalize();
+  const sc = tmpS.setFromMatrixScale(R.root.matrixWorld).x || 1;
+  R.head.updateWorldMatrix(true, false);
+  const mid = tmpU.set(0, 0, 0);
+  S.eyes.forEach((e, i) => {
+    e.getWorldPosition(tmpV).addScaledVector(fw, 0.012 * sc);
+    mid.add(tmpV);
+    if (R.glows[i]) R.head.worldToLocal(R.glows[i].position.copy(tmpV));
+  });
+  if (S.eyes.length) R.head.worldToLocal(R.halo.position.copy(mid.multiplyScalar(1 / S.eyes.length)).addScaledVector(fw, 0.02 * sc));
+}
+
+const tmpM = new THREE.Matrix4();
+const tmpN = new THREE.Matrix4();
+const tmpE = new THREE.Euler();
+const tmpQ = new THREE.Quaternion();
+const tmpQ2 = new THREE.Quaternion();
+const tmpQ3 = new THREE.Quaternion();
+const tmpQ4 = new THREE.Quaternion();
+const tmpQ5 = new THREE.Quaternion();
+const tmpQ6 = new THREE.Quaternion();
+const tmpQ7 = new THREE.Quaternion();
+const tmpS = new THREE.Vector3();
+const tmpU = new THREE.Vector3();
 
 // ---------------- la risa ----------------
 // Un ruido para cada contexto de audio (la risa es independiente del motor).

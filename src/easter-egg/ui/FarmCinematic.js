@@ -4,8 +4,9 @@ import Avatars from '../net/Avatars';
 import { buildVoz, updateVoz } from './voz';
 import { warmScene } from './cineWarm';
 import { crewIds } from './cineCrew';
-import { scarecrowProp, scarecrowPose, scarecrowFallTravel } from '../entities/skins/scarecrow';
+import { scarecrowProp, scarecrowPose, scarecrowFallEnd } from '../entities/skins/scarecrow';
 import { preloadBossSkin } from '../entities/bossSkin';
+import { prefetchTrack } from '../core/music';
 
 // Final de La Tapera, adentro del juego, en el Prado. El Espantapájaros queda
 // de rodillas, levanta la cabeza al cielo y dice lo que nadie entiende todavía:
@@ -38,9 +39,18 @@ const POSE = {
 // las partes del cuerpo por donde se prende (cadera, torso, cabeza, brazos, manos)
 const FIRE_PARTS = [1, 2, 0, 3, 4, 5, 6];
 // la pila de paja donde se hunde: un poco más grande (tapa al gigante tirado)
-// y adelante de la cadera de donde cae (m)
 const PILE_K = 1.35;
-const PILE_FWD = 0.6;
+// la caída de boca (skins/scarecrow.js, 1,05 s y el rebote) y, ya tirado, se
+// hunde: cuándo empieza y cuánto tarda (s desde que se cae); la pila crece
+// desde que pega en el piso
+const SINK_AT = 1.5;
+const SINK_DUR = 2.2;
+const PILE_AT = 0.95;
+// "...su camino todavía sigue": el final de la canción de la entrada (la que
+// usa la intro de La Tapera, intro-granja.mp3, 26,9 s): desde la última frase
+// (a 103 bpm, 8 tiempos) hasta el golpe del final, que cae con la placa
+// (pedido del usuario 2026-10-01)
+const SONG_AT = 16.3;
 const EMBER = new THREE.Color(0xff5a10);
 const CHAR = new THREE.Color(0x1a120c);
 
@@ -179,6 +189,7 @@ export default class FarmCinematic {
     this.look = 'fire';
     g.audio.setCine(true);
     this.script = this.buildScript();
+    prefetchTrack('intro-granja');
     // todo lo que va a aparecer se compila ya, en segundo plano
     warmScene(g);
   }
@@ -268,7 +279,8 @@ export default class FarmCinematic {
       a.M.poncho.color.copy(own.poncho.color);
       for (const m of Object.values(own)) m.dispose();
       // la Hoz de la Muerte en la mano (el modelo ya armado de la partida; si no está, el mate de siempre)
-      this.people.setGun(a, 'hoz', 1);
+      // (la de oro si el equipo tiene el bastón del Yasy)
+      this.people.setGun(a, 'hoz', 1, this.g.player?.baston ? 'oro' : '');
       // la hoz baja y la cabeza mira lo que pasa (arriba, cuando baja la Voz)
       r.poseFn = (P) => {
         P.shRp = -0.45;
@@ -314,7 +326,8 @@ export default class FarmCinematic {
       }],
       [0, () => {
         this.collapse();
-        return 2.6;
+        // (se cae de boca y después se hunde: SINK_AT + SINK_DUR)
+        return 4;
       }],
       // los segadores miran la pila... y arriba se abre una luz
       [0, () => {
@@ -365,12 +378,14 @@ export default class FarmCinematic {
         this.look = 'sky';
         this.shotCrane();
         this.say('entidad', '...su camino todavía sigue.');
+        g.music?.play('intro-granja', { at: SONG_AT, fadeIn: 0.2, while: (G) => G.state === 'won' && !this.done });
         this.later(4.4, () => {
           this.hideText();
           this.el.classList.add('is-title');
         });
-        this.later(7.6, () => this.el.classList.add('is-fade'));
-        return 9.4;
+        // (el golpe del final de la canción, a los 9,6 s, con la placa a oscuras)
+        this.later(8.4, () => this.el.classList.add('is-fade'));
+        return 10.6;
       }],
       [0, () => {
         this.finish();
@@ -430,11 +445,11 @@ export default class FarmCinematic {
     // (el pecho del cuerpo de verdad, si lo tiene: el de piezas queda un poco corrido)
     const SP = scarecrowPose();
     if (SP) this.chest.copy(SP.chest);
-    if (this.rigCrow) {
-      // (el del hombro del cuerpo de verdad, si lo tiene)
-      (scarecrowProp('crow') || this.rigCrow).getWorldPosition(tmpV);
-      this.rigCrow.visible = false;
-    } else tmpV.copy(this.chest);
+    // (el del hombro, primero: solo el de piezas lo tiene; el cuerpo de verdad
+    // ya no lleva cuervo en el hombro)
+    if (this.rigCrow && !SP) this.rigCrow.getWorldPosition(tmpV);
+    else tmpV.copy(this.chest);
+    if (this.rigCrow) this.rigCrow.visible = false;
     for (const [i, c] of this.crows.entries()) {
       c.from = i === 0 ? tmpV.clone() : this.chest.clone().add(tmpU.set((Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.6));
       c.obj.visible = true;
@@ -452,15 +467,10 @@ export default class FarmCinematic {
     const g = this.g;
     this.fallT = this.t;
     this.scPose = 'fall';
-    // la pila, donde queda tirado: la cadera al final de la caída y un poco más
-    // allá (se hunde ahí mismo, no al lado)
-    const now = scarecrowPose();
-    if (now) {
-      const tr = scarecrowFallTravel(this.sc?.yaw ?? this.yaw0);
-      const end = now.hips.clone().add(tr);
-      if (tr.lengthSq() > 0.01) end.addScaledVector(tr.normalize(), PILE_FWD);
-      this.pile.position.set(end.x, 0, end.z);
-    }
+    // la pila, donde queda tirado: debajo del pecho cuando termina de caerse de
+    // boca (se hunde ahí mismo, no al lado)
+    const end = scarecrowFallEnd();
+    if (end) this.pile.position.set(end.x, 0, end.z);
     if (this.rigFork) {
       // (la del cuerpo de verdad, si lo tiene: esa es la que se ve)
       const src = scarecrowProp('fork') || this.rigFork;
@@ -604,7 +614,7 @@ export default class FarmCinematic {
   // De costado: arde y la cámara sube con los cuervos.
   shotBurn() {
     const S = this.S;
-    this.shot(7.8, (u) => {
+    this.shot(9.2, (u) => {
       const e = smooth(u);
       this.rigPt(tmpV, -6.2 - e * 0.5, 2.1 + e * 1.8, 5.4 + e * 0.6);
       const b = this.burstT != null ? this.t - this.burstT : -1;
@@ -801,9 +811,9 @@ export default class FarmCinematic {
       }
     }
     if (this.fallT != null) {
-      const k = clamp01((t - this.fallT - 0.8) / 2.6);
+      const k = clamp01((t - this.fallT - SINK_AT) / SINK_DUR);
       P.rootY = -Math.pow(k, 1.4) * 3.2;
-      this.pile.scale.setScalar(Math.max(0.001, smooth(clamp01((t - this.fallT - 0.4) / 1.8))) * PILE_K);
+      this.pile.scale.setScalar(Math.max(0.001, smooth(clamp01((t - this.fallT - PILE_AT) / 1.8))) * PILE_K);
       if (k >= 1) {
         this.scGone = true;
         g.zombies.bossRig.rig.visible = false;

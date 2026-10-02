@@ -265,26 +265,29 @@ export default class Activities {
           this.root.add(p);
           return new THREE.Vector3(x, ry, z);
         });
-      } else if (def.kind !== 'scald') {
-        // (las duchas hirvientes largan el agua por las regaderas: no llevan rejillas)
+      } else if (def.kind !== 'scald' && !def.own) {
+        // (las duchas hirvientes largan el agua por las regaderas: no llevan
+        // rejillas; las de `own` traen su dibujo: la Llamarada Votiva del Monumento)
         const [x0, z0, x1, z1] = def.rect;
         for (let x = x0 + 0.4; x < x1 - 0.2; x += 0.8) {
           for (let z = z0 + 0.4; z < z1 - 0.2; z += 0.8) this.root.add(mesh(boxGeo(0.5, 0.02, 0.5), M.iron, x, ry + 0.012, z));
         }
       }
+      // (en el motín del penal se corta la luz: las eléctricas no andan)
+      const lit = () => g.world.power && !g.defense?.cut;
       g.interact.add({
         kind: 'trap',
         pos: new THREE.Vector3(a.x, fy + 1.3, a.z),
         radius: 1.9,
         prompt: () => {
-          if (def.power && !g.world.power) return { text: 'La trampa necesita luz', noCost: true, info: true };
+          if (def.power && !lit()) return { text: 'La trampa necesita luz', noCost: true, info: true };
           if (trap.state === 'on') return null;
           if (trap.state === 'cool') return { text: 'La trampa se está enfriando...', noCost: true, info: true };
           return `activar ${def.name}`;
         },
-        cost: () => (trap.state === 'idle' && (!def.power || g.world.power) ? TRAP_COST : 1),
+        cost: () => (trap.state === 'idle' && (!def.power || lit()) ? TRAP_COST : 1),
         use: () => {
-          if (trap.state !== 'idle' || (def.power && !g.world.power)) return false;
+          if (trap.state !== 'idle' || (def.power && !lit())) return false;
           this.fireTrap(trap);
           return true;
         },

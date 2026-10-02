@@ -51,6 +51,65 @@
 }
 .mdu-hud[data-map='molino'] .mdu-loc b { color: #e9dcbc; text-shadow: 0 0 14px rgba(120, 0, 0, 0.55), var(--shadow); }
 .mdu-hud[data-map='molino'] .mdu-loc span { color: #cfe0a8; }
+/* la Noche de la Luz Mala (entities/LuzMala.js): el cartel con una luz por
+   cada luz mala (apagada, gris; la del Capataz, roja), el viñeteado de la
+   noche cerrada y el encandilado cuando una te toca */
+.mdu-lmn {
+  position: absolute;
+  left: 50%;
+  top: 46px;
+  transform: translateX(-50%);
+  display: none;
+  text-align: center;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.mdu-lmn.is-on { display: block; animation: mdu-lmn-in 2.2s ease-out both; }
+.mdu-lmn b {
+  display: block;
+  font-weight: normal;
+  font-family: 'Creepster', 'Special Elite', serif;
+  font-size: clamp(17px, 2.3vw, 28px);
+  letter-spacing: 2px;
+  color: #e4ffb0;
+  text-shadow: 0 0 8px #6aff3a, 0 0 22px rgba(90, 255, 50, 0.55), 0 2px 3px #000;
+  animation: mdu-lmn-flick 3.1s infinite;
+}
+.mdu-lmn i { display: flex; justify-content: center; gap: 10px; margin-top: 7px; }
+.mdu-lmn i s {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fbffe8 0 22%, #c4ff6a 42%, rgba(90, 255, 40, 0) 72%);
+  box-shadow: 0 0 10px 3px rgba(150, 255, 90, 0.55);
+  animation: mdu-lmn-dot 1.4s infinite;
+}
+.mdu-lmn i s:nth-child(2n) { animation-delay: -0.5s; }
+.mdu-lmn i s:nth-child(3n) { animation-delay: -0.9s; }
+.mdu-lmn i s.is-wait { opacity: 0.25; animation: none; }
+.mdu-lmn i s.is-out { background: rgba(30, 24, 18, 0.9); box-shadow: inset 0 0 0 1px rgba(170, 150, 120, 0.55); opacity: 0.8; animation: none; }
+.mdu-lmn i s.is-cap { background: radial-gradient(circle, #fff 0 18%, #b4ff5a 40%, #ff3a1a 74%, rgba(255, 40, 10, 0) 78%); box-shadow: 0 0 14px 5px rgba(255, 70, 30, 0.6); }
+.mdu-hud:has(.mdu-bossbar.is-on) .mdu-lmn { top: 84px; }
+.mdu-hud:has(.mdu-lmn.is-on) .mdu-loc { top: 112px; }
+@keyframes mdu-lmn-in { 0% { opacity: 0; transform: translateX(-50%) scale(1.25); filter: blur(6px); } 35% { opacity: 1; } 100% { opacity: 1; transform: translateX(-50%) scale(1); filter: none; } }
+@keyframes mdu-lmn-flick { 0%, 100% { opacity: 1; } 46% { opacity: 1; } 48% { opacity: 0.55; } 50% { opacity: 1; } 83% { opacity: 0.85; } }
+@keyframes mdu-lmn-dot { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.82); opacity: 0.8; } }
+.mdu-lmv {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 3s ease;
+  background: radial-gradient(ellipse at 50% 52%, transparent 42%, rgba(3, 12, 6, 0.5) 78%, rgba(1, 6, 3, 0.86) 100%);
+}
+.mdu-lmv.is-on { opacity: 1; }
+.mdu-lmb {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(246, 255, 220, 0.97), rgba(170, 255, 120, 0.75) 38%, rgba(40, 100, 30, 0.5) 100%);
+}
 
 /* ---------------- La Tapera: el atardecer en la chacra ---------------- */
 .mdu-hud[data-map='granja'] {
@@ -157,6 +216,58 @@
 .mdu-hud[data-map='penal'] .mdu-ach small { color: #8fb6c8; }
 .mdu-hud[data-map='penal'] .mdu-inv i,
 .mdu-hud[data-map='penal'] .mdu-parts i { border-radius: 0; }
+/* el motín (entities/penalMotin.js): el cartel colorado debajo del gaucho
+   life, el golpe grande del medio y la pantalla que late con la sirena */
+.mdu-motin {
+  position: absolute;
+  left: 28px;
+  top: 250px;
+  display: none;
+  width: 200px;
+  padding: 7px 10px 8px;
+  background: linear-gradient(180deg, rgba(48, 6, 3, 0.8), rgba(14, 3, 3, 0.72));
+  border: 1px solid rgba(255, 70, 40, 0.55);
+  box-shadow: 0 0 18px rgba(255, 40, 20, 0.25), inset 0 0 14px rgba(255, 40, 20, 0.16);
+  font-family: 'Stardos Stencil', 'Special Elite', serif;
+  color: #ffd8c8;
+  pointer-events: none;
+}
+.mdu-motin.is-on { display: block; }
+.mdu-motin > b { display: flex; align-items: center; gap: 8px; font-size: 21px; letter-spacing: 5px; color: #ff4a2a; text-shadow: 0 0 10px rgba(255, 40, 10, 0.85), 0 2px 0 #1a0200; }
+.mdu-motin > b i { width: 11px; height: 11px; border-radius: 50%; background: #ff2a10; box-shadow: 0 0 10px #ff2a10, 0 0 3px #fff inset; animation: mdu-motin-blink 0.7s steps(2) infinite; }
+.mdu-motin small { display: block; margin-top: 3px; font-size: 11px; letter-spacing: 1px; color: rgba(255, 200, 180, 0.75); }
+.mdu-motin__bar { height: 8px; margin: 3px 0 0; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 90, 60, 0.5); }
+.mdu-motin__bar s { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #7a0c04, #ff4a1a); transition: width 0.3s; }
+.mdu-motin ul { list-style: none; display: flex; gap: 6px; margin: 8px 0 0; padding: 0; }
+.mdu-motin li { flex: 1; text-align: center; font-size: 10px; letter-spacing: 0.4px; color: rgba(255, 190, 170, 0.7); }
+.mdu-motin li i { display: block; width: 24px; height: 20px; margin: 0 auto 3px; border: 1px solid rgba(255, 110, 70, 0.7); background: linear-gradient(180deg, #2a1208, #120604); animation: mdu-motin-spark 0.9s infinite; }
+.mdu-motin li i::before { content: '⚡'; display: block; font-size: 13px; line-height: 19px; color: #ff8a3a; }
+.mdu-motin li.is-on { color: #bfe8ff; }
+.mdu-motin li.is-on i { border-color: #7fd0ff; background: radial-gradient(#d8f4ff, #3a9cff 60%, #0a2a50); box-shadow: 0 0 10px rgba(90, 184, 255, 0.9); animation: none; }
+.mdu-motin li.is-on i::before { color: #fff; }
+.mdu-motin__boss { margin: 7px 0 0; font-size: 12px; letter-spacing: 1px; color: rgba(255, 200, 180, 0.8); }
+.mdu-motin__boss.is-1 { color: #ff6a4a; text-shadow: 0 0 8px rgba(255, 60, 20, 0.7); }
+.mdu-motin__boss.is-2 { color: rgba(200, 200, 200, 0.6); text-decoration: line-through; }
+.mdu-motin em { display: block; margin-top: 5px; font-style: normal; font-size: 11px; letter-spacing: 0.5px; color: #9fd0ff; text-shadow: 0 0 6px rgba(90, 184, 255, 0.6); }
+.mdu-motin-banner { position: absolute; left: 50%; top: 32%; transform: translate(-50%, -50%); display: none; text-align: center; white-space: nowrap; pointer-events: none; }
+.mdu-motin-banner.is-on { display: block; animation: mdu-motin-slam 3.8s cubic-bezier(0.2, 1.3, 0.4, 1) forwards; }
+.mdu-motin-banner b { display: block; font-family: 'Stardos Stencil', 'Special Elite', serif; font-weight: 700; font-size: clamp(48px, 9vw, 124px); letter-spacing: 0.12em; color: #ff3418; text-shadow: 0 0 34px rgba(255, 30, 10, 0.9), 0 5px 0 #2a0400; }
+.mdu-motin-banner span { display: block; margin-top: 4px; font-family: 'Stardos Stencil', 'Special Elite', serif; font-size: clamp(14px, 1.7vw, 22px); letter-spacing: 0.2em; text-transform: uppercase; color: #ffd0c0; text-shadow: 0 0 10px rgba(0, 0, 0, 0.9), 0 0 14px rgba(255, 40, 10, 0.6); }
+.mdu-motin-banner.is-win b { color: #9fd8ff; font-size: clamp(36px, 6.5vw, 88px); text-shadow: 0 0 30px rgba(90, 184, 255, 0.9), 0 5px 0 #021428; }
+.mdu-motin-banner.is-win span { color: #d8f0ff; text-shadow: 0 0 10px rgba(0, 0, 0, 0.9), 0 0 14px rgba(90, 184, 255, 0.6); }
+.mdu-motin-flash { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 40%, rgba(255, 16, 0, 0.42)); }
+.mdu-motin-flash.is-on { animation: mdu-motin-pulse 1.5s ease-in-out 6; }
+@keyframes mdu-motin-slam {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(2.6); }
+  9% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  14% { transform: translate(calc(-50% + 6px), calc(-50% - 3px)) scale(1.02); }
+  19% { transform: translate(-50%, -50%) scale(1); }
+  82% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+}
+@keyframes mdu-motin-blink { 50% { opacity: 0.15; } }
+@keyframes mdu-motin-spark { 0%, 100% { box-shadow: 0 0 3px rgba(255, 120, 40, 0.4); } 40% { box-shadow: 0 0 12px rgba(255, 190, 80, 0.95); } }
+@keyframes mdu-motin-pulse { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
 
 /* ---------------- Revelaciones Materas: la torre ---------------- */
 .mdu-hud[data-map='torre'] {
@@ -981,3 +1092,183 @@
   --sub-info: #c4dccd;
   --sub-rule: rgba(150, 230, 180, 0.4);
 }
+
+/* ---------------- Der Mateendrache: el asedio (entities/castle/Asedio.js) ----------------
+   El cartel de la izquierda: el rastrillo (la barra, que se congela con el
+   hielo y se pone roja cuando lo rompen), las tres catapultas y las cuatro
+   escaleras. Y la tarjeta grande del principio y del final. */
+.mdu-asedio {
+  position: absolute;
+  left: 24px;
+  top: 158px;
+  display: none;
+  min-width: 168px;
+  padding: 7px 12px 8px;
+  background: linear-gradient(180deg, rgba(34, 10, 6, 0.78), rgba(10, 6, 8, 0.72));
+  border: 1px solid rgba(232, 150, 90, 0.45);
+  border-left: 3px solid #a0261a;
+  border-radius: 3px;
+  color: #f4e2c8;
+  text-shadow: 0 1px 2px #000;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55), inset 0 0 18px rgba(120, 20, 6, 0.35);
+}
+.mdu-asedio.is-on { display: block; animation: mdu-as-in 0.6s ease-out; }
+@keyframes mdu-as-in { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+.mdu-asedio > b {
+  display: block;
+  font-family: 'UnifrakturMaguntia', 'Cinzel', serif;
+  font-weight: normal;
+  font-size: 22px;
+  letter-spacing: 1px;
+  color: #ffcf8a;
+  text-shadow: 0 0 10px rgba(255, 90, 30, 0.55), 0 2px 0 #1a0402;
+}
+.mdu-asedio .as-gate { display: flex; align-items: center; gap: 7px; margin-top: 4px; }
+.mdu-asedio .as-grate {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  background:
+    repeating-linear-gradient(90deg, #c9b9a0 0 2px, transparent 2px 5px),
+    repeating-linear-gradient(180deg, transparent 0 5px, #c9b9a0 5px 7px);
+  clip-path: polygon(0 18%, 50% 0, 100% 18%, 100% 100%, 0 100%);
+}
+.mdu-asedio .as-bar { flex: 1; height: 7px; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(232, 190, 140, 0.4); border-radius: 2px; overflow: hidden; }
+.mdu-asedio .as-bar s { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #7a2a12, #e08a3a 60%, #ffd08a); transition: width 0.25s; }
+.mdu-asedio .as-gate.is-ice .as-bar s { background: linear-gradient(90deg, #2a6a9a, #8ad4ff 60%, #e8f8ff); box-shadow: 0 0 8px #8ad4ff; }
+.mdu-asedio .as-gate.is-hit .as-bar { border-color: #fff; }
+.mdu-asedio .as-gate.is-broken .as-grate { background: #ff4a2a; }
+.mdu-asedio .as-gate.is-broken .as-bar { border-color: #ff4a2a; animation: mdu-as-blink 0.8s steps(2) infinite; }
+@keyframes mdu-as-blink { 50% { border-color: transparent; } }
+.mdu-asedio .as-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; gap: 10px; }
+.mdu-asedio svg { fill: none; stroke: #f0c890; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.mdu-asedio .as-cats svg { width: 22px; height: 15px; margin-right: 3px; }
+.mdu-asedio .as-cats svg.is-dead { stroke: #6a5a50; opacity: 0.55; }
+.mdu-asedio .as-lads svg { width: 9px; height: 15px; margin-left: 3px; stroke: #5a4a40; }
+.mdu-asedio .as-lads svg.is-up { stroke: #ff6a3a; filter: drop-shadow(0 0 3px #ff4a1a); }
+.mdu-asedio small { display: block; margin-top: 4px; font-family: 'Cinzel', 'Special Elite', serif; font-size: 11px; color: #ffb27a; letter-spacing: 0.03em; }
+.mdu-asedio small:empty { display: none; }
+.mdu-asedio-card {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%);
+  display: none;
+  text-align: center;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.mdu-asedio-card.is-on { display: block; animation: mdu-as-card 4.6s ease-in-out forwards; }
+.mdu-asedio-card b {
+  display: block;
+  font-family: 'UnifrakturMaguntia', 'Cinzel', serif;
+  font-weight: normal;
+  font-size: 64px;
+  color: #ffd9a0;
+  letter-spacing: 3px;
+  text-shadow: 0 0 22px rgba(255, 70, 20, 0.85), 0 0 60px rgba(160, 20, 4, 0.7), 0 3px 0 #1a0402;
+}
+.mdu-asedio-card span {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 3px 14px;
+  font-family: 'Cinzel', 'Special Elite', serif;
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #f4dcc0;
+  border-top: 1px solid rgba(255, 160, 90, 0.6);
+  border-bottom: 1px solid rgba(255, 160, 90, 0.6);
+  text-shadow: 0 1px 3px #000;
+}
+@keyframes mdu-as-card {
+  0% { opacity: 0; transform: translateX(-50%) scale(1.25); filter: blur(6px); }
+  12% { opacity: 1; transform: translateX(-50%) scale(1); filter: none; }
+  78% { opacity: 1; transform: translateX(-50%) scale(1.03); }
+  100% { opacity: 0; transform: translateX(-50%) scale(1.06); }
+}
+
+/* ---------------- Monumento al Mate: el Monumento a la Bandera ---------------- */
+/* el travertino de noche, el celeste y blanco de las banderas del Patio y el
+   oro del sol; letras romanas talladas, como las frases del Propileo. */
+.mdu-hud[data-map='monumento'] {
+  --red: #e8f2ff;
+  --red-hi: #ff6a52;
+  --gold: #f6c34a;
+  --tally: #cfe4f8;
+  --plate: rgba(8, 14, 26, 0.55);
+  --subbg: rgba(8, 14, 26, 0.76);
+  color: #eef4fb;
+}
+.mdu-hud[data-map='monumento'] .mdu-round { font-family: 'Cinzel', 'Special Elite', serif; }
+.mdu-hud[data-map='monumento'] .mdu-round__num {
+  font-size: 100px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #f4f7fb;
+  text-shadow: 0 0 20px rgba(116, 172, 223, 0.6), 0 3px 0 #0a1424;
+}
+/* las rayitas: celestes y blancas, como las franjas */
+.mdu-hud[data-map='monumento'] .mdu-tally path { stroke-width: 5; filter: drop-shadow(0 0 4px rgba(116, 172, 223, 0.55)); }
+.mdu-hud[data-map='monumento'] .mdu-tally path:nth-child(even) { stroke: #9cc8ee; }
+.mdu-hud[data-map='monumento'] .mdu-points {
+  font-family: 'Cinzel', 'Special Elite', serif;
+  font-weight: 700;
+  font-size: 30px;
+  color: #f8f2e2;
+  text-shadow: 0 0 12px rgba(246, 195, 74, 0.45), var(--shadow);
+}
+.mdu-hud[data-map='monumento'] .mdu-popups span { color: #f6d27a; }
+.mdu-hud[data-map='monumento'] .mdu-popups span.is-neg { color: #ff7a62; }
+.mdu-hud[data-map='monumento'] .mdu-mag b { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 700; font-size: 34px; color: #f4f7fb; }
+.mdu-hud[data-map='monumento'] .mdu-mag b.is-empty { color: #ff6a52; }
+.mdu-hud[data-map='monumento'] .mdu-mag span { font-family: 'Cinzel', 'Special Elite', serif; }
+.mdu-hud[data-map='monumento'] .mdu-wname { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 700; color: #cfe0f2; letter-spacing: 0.03em; }
+/* el punto de la sala: una escarapela (celeste, blanco, celeste) */
+.mdu-hud[data-map='monumento'] .mdu-room::before {
+  width: 11px;
+  height: 11px;
+  margin-top: -5.5px;
+  left: -1px;
+  background: radial-gradient(circle, #74acdf 0 26%, #f4f2ec 30% 58%, #74acdf 62% 100%);
+  box-shadow: 0 0 6px rgba(116, 172, 223, 0.9);
+}
+.mdu-hud[data-map='monumento'] .mdu-loc b {
+  font-family: 'Cinzel', 'Special Elite', serif;
+  font-weight: 700;
+  font-size: 34px;
+  letter-spacing: 0.06em;
+  color: #f4f7fb;
+  text-shadow: 0 0 16px rgba(116, 172, 223, 0.55), 0 2px 0 #0a1424;
+}
+.mdu-hud[data-map='monumento'] .mdu-loc span { font-family: 'Cinzel', 'Special Elite', serif; color: #a8c8e8; letter-spacing: 0.05em; }
+.mdu-hud[data-map='monumento'] .mdu-toast { color: #eef6ff; text-shadow: 0 0 14px rgba(116, 172, 223, 0.85), var(--shadow); }
+.mdu-hud[data-map='monumento'] .mdu-ach { border-color: #c8a24a; background: linear-gradient(180deg, rgba(14, 22, 40, 0.94), rgba(6, 10, 20, 0.94)); }
+.mdu-hud[data-map='monumento'] .mdu-ach small { color: #a8c8e8; }
+.mdu-hud[data-map='monumento'] .mdu-revive b { font-family: 'Cinzel', 'Special Elite', serif; }
+.mdu-hud[data-map='monumento'] .mdu-scores {
+  --board-title: 'Cinzel';
+  --board-line: rgba(116, 172, 223, 0.3);
+  --board-bg: rgba(10, 16, 30, 0.93);
+  --board-bg2: rgba(4, 8, 16, 0.9);
+}
+.mdu-hud[data-map='monumento'] .mdu-scores header b { color: #f4f7fb; }
+/* el escudo (la barra celeste y blanca) y las piezas en un pliego de bronce */
+.mdu-hud[data-map='monumento'] .mdu-shield {
+  --sh-c: #eef4fb;
+  --sh-dim: rgba(160, 190, 220, 0.4);
+  --sh-bar: linear-gradient(180deg, #74acdf 0 33%, #f4f2ec 33% 66%, #74acdf 66%);
+  --sh-glow: rgba(116, 172, 223, 0.45);
+  --sh-font: 'Cinzel', 'Special Elite', serif;
+}
+.mdu-hud[data-map='monumento'] .mdu-plan {
+  --pl-bg: linear-gradient(180deg, #3a2e1e, #241c12 70%, #18120c);
+  --pl-ink: #f4ead2;
+  --pl-dim: rgba(220, 200, 160, 0.3);
+  --pl-got: #f6c34a;
+  --pl-font: 'Cinzel', 'Special Elite', serif;
+  border-radius: 3px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(200, 160, 80, 0.35);
+}
+.mdu-hud[data-map='monumento'] .mdu-plan li.is-got { border-color: #f6c34a; background: linear-gradient(180deg, rgba(116, 172, 223, 0.22), rgba(116, 172, 223, 0.04)); color: #f4f7fb; }

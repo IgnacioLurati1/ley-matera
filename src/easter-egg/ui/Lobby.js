@@ -79,6 +79,9 @@ export default class Lobby {
       const el = this.el.querySelector(`[data-${k}]`);
       if (el) el.hidden = k !== which;
     }
+    // "Empezar la partida" es solo del anfitrión (antes, el que había creado
+    // una sala y se unió a otra lo seguía viendo)
+    this.el.querySelector('[data-act="start"]').hidden = !this.net?.host;
   }
 
   // En la sala: el anfitrión elige el mapa; los invitados ven cuál es.
@@ -186,6 +189,7 @@ export default class Lobby {
         return;
       }
       if (a === 'start') {
+        if (!this.net?.host) return;
         this.menus.show(null);
         g.startGame();
         return;

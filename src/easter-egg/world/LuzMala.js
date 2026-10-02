@@ -108,7 +108,8 @@ export default class LuzMala {
 
   spawn() {
     const g = this.g;
-    if (this.state !== 'off' || g.state !== 'playing') return false;
+    // (en la Noche de la Luz Mala del molino no sale esta: entities/LuzMala.js)
+    if (this.state !== 'off' || g.state !== 'playing' || g.defense?.noLuz) return false;
     const p = this.pickPoint(null, 12, 22);
     if (!p) return false;
     this.hops = 0;

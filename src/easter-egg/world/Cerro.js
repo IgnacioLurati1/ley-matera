@@ -65,7 +65,8 @@ export default class Cerro extends Arena {
     this.bossName = 'El Gauchito Gil';
     this.bossHp = 230000;
     this.wards = [0.8, 0.55, 0.3];
-    this.speeds = [3.6, 4.4, 5];
+    // (no corre: camina; el paso le da hasta ~4,3 m/s, entities/skins/gil.js)
+    this.speeds = [3.3, 3.8, 4.2];
     this.rainColor = 0xff2020;
     this.fireColor = 0xff3020;
     this.rainBoom = [1, 0.15, 0.1];

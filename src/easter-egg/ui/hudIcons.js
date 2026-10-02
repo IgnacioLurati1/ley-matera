@@ -68,6 +68,18 @@ export const SHIELD_ICONS = {
     </g>
     <path d="M13.8 12 V14.6 M20 11.4 V14 M26.2 12 V14.6 M13.8 17.4 V20.2 M20 17.2 V20 M26.2 17.4 V20.2 M13.8 23 V25.8 M20 22.8 V25.6 M26.2 23 V25.8" stroke="#9a9a5c" stroke-width="0.9" stroke-linecap="round"/>
     <path d="M9 9.5 Q20 6.5 31 9.5 V28.5 Q31 36.5 20 40.5 Q9 36.5 9 28.5 Z" fill="none" stroke="#dcc48e" stroke-width="1.3" stroke-dasharray="1.8 2.2"/>`,
+  // el Monumento: el escudo del Ejército del Norte (óvalo de quebracho con la
+  // chapa celeste y blanca, el borde de bronce y el sol arriba)
+  monumento: `
+    <ellipse cx="20" cy="25" rx="15.5" ry="18" fill="#5a3a22" stroke="#140a04" stroke-width="1.4"/>
+    <path d="M7.5 25 A12.5 15 0 0 1 32.5 25 Z" fill="#74acdf"/>
+    <path d="M7.5 25 A12.5 15 0 0 0 32.5 25 Z" fill="#f2efe6"/>
+    <ellipse cx="20" cy="25" rx="12.5" ry="15" fill="none" stroke="#c89a48" stroke-width="1.8"/>
+    <path d="M14 30 L20 26 L26 30" fill="none" stroke="#5a3a22" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M20 26 V15" stroke="#5a3a22" stroke-width="1.2"/>
+    <path d="M17.6 15.6 Q18.5 12.4 21.5 12.6 Q23.6 13 22.6 15.2 Z" fill="#c8202a"/>
+    <circle cx="20" cy="6.2" r="3" fill="#f6b40e" stroke="#85340a" stroke-width="0.6"/>
+    <path d="M20 1.4 V2.6 M15.6 3.2 L16.6 4 M24.4 3.2 L23.4 4 M14 6.2 H15.2 M24.8 6.2 H26" stroke="#f6b40e" stroke-width="1" stroke-linecap="round"/>`,
 };
 
 // Las rajaduras: la primera a los dos tercios del aguante, la segunda al tercio.

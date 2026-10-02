@@ -239,7 +239,6 @@ export const WALL_BUYS = [
   { weapon: 'vidrio', cell: [50, 25], face: [1, 0] },
   { weapon: 'lata', cell: [40, 43], face: [0, 1] },
   { weapon: 'algarrobo', cell: [54, 39], face: [0, -1] },
-  { weapon: 'granadas', cell: [50, 37], face: [-1, 0] },
   { weapon: 'bowie', cell: [15, 51], face: [-1, 0] },
 ];
 
@@ -253,6 +252,9 @@ export const PERK_SPOTS = [
   { perk: 'mule', cell: [71, 37], face: [-1, 0] },
   // Maleza Gaucha (Maizaster), en la huerta, contra la pared de la atahona
   { perk: 'maiz', cell: [13, 43], face: [0, -1] },
+  // Stamin-Up (la Trotadora), en la cocina del rancho, contra la pared sur (en
+  // la norte quedaba pegada al frasco del estante)
+  { perk: 'stamin', cell: [30, 53], face: [0, -1] },
 ];
 
 // La luz: el grupo electrógeno del galpón. El Pack-a-Pava, en el establo.
@@ -311,8 +313,10 @@ const MATORRAL = {
   plant: CAMPS[0].at,
   camps: CAMPS,
   trails: K_TRAILS,
-  secs: 180,
-  warn: 30,
+  // (90 s desde que entra el primero: el tiempo para saquear los cofres de
+  // los campamentos, entities/matorralChests.js; era 180)
+  secs: 90,
+  warn: 20,
   speed: 3.4,
   regrow: 3,
 };
@@ -500,7 +504,7 @@ export const ACT = {
   radios: RADIOS,
   parts: PARTS,
   bench: BENCH,
-  shield: { name: 'Escudo de paja', hp: 800, where: 'la mesa de trabajo del patio', plan: 'ESCUDO: paja + arpillera + alambre', up: { name: 'Escudo de paja electrificado', hp: 1300, prop: 'zap', kind: 'fence', trap: 'boyero', pos: [75.26, 46.4], rot: -Math.PI / 2, need: 10 } },
+  shield: { name: 'Escudo de paja', hp: 800, where: 'la mesa de trabajo del patio', plan: 'ESCUDO: paja + arpillera + alambre', up: { name: 'Escudo de paja electrificado', hp: 1300, prop: 'zap', kind: 'fence', trap: 'boyero', pos: [75.26, 46.4], rot: -Math.PI / 2, need: 8 } },
   radioAch: ['Oyente de Radio Misiones', 'Escuchaste las tres transmisiones de la chacra'],
 };
 

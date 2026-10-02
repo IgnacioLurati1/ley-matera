@@ -669,11 +669,12 @@ export default class FarmEgg {
       cost: () => 0,
       use: () => {
         if (!this.hozBuilt || g.weapons.has('hoz')) return false;
-        g.weapons.give('hoz');
+        // (después de la forja sale ya convertida)
+        g.weapons.give('hoz', this.papDone ? 1 : 0);
         g.audio.powerupGrab();
         g.hud.subtitle(
           this.papDone
-            ? 'Tu hoz. En el Pack-a-Pava se convierte en la Hoz de la Muerte, gratis.'
+            ? 'Tu Hoz de la Muerte.'
             : this.bloodOk
               ? 'La hoz: clic izquierdo para cortar. Ya tomó sangre: llevala al Pack-a-Pava del establo.'
               : 'La hoz: clic izquierdo para cortar. La hoja está seca: liquidá muertos con ella para que tome sangre y después llevala al Pack-a-Pava del establo.',
@@ -917,6 +918,7 @@ export default class FarmEgg {
       g.hud.achievement('La Hoz de la Muerte', 'La hoja tomó sangre en el Pack-a-Pava');
       // la hoz de un invitado vuelve a sus manos
       if (g.net?.host && this.papBy != null && this.papBy !== g.net.id) g.net.net.to(this.papBy, { t: 'hozup' });
+      this.forgeAll();
       // la cosecha: si todavía no hubo defensa del yerbal, viene ahora (después
       // de la voz) y no se corta nada hasta que termine (defense.harvestLock)
       const wait = this.defense.expectEarly();
@@ -1469,6 +1471,18 @@ export default class FarmEgg {
     this.g.weapons.drop('hoz');
   }
 
+  // La forja terminó: la hoz de cada uno ya es la Hoz de la Muerte, en la mano
+  // o guardada (la defensa del yerbal llega enseguida: no da tiempo a pasar
+  // por la máquina). La que está adentro de la máquina vuelve con receiveHoz.
+  forgeAll() {
+    const W = this.g.weapons;
+    const i = W.slots.findIndex((s) => s.id === 'hoz');
+    if (i < 0 || W.slots[i].up) return;
+    if (i === W.cur) W.give('hoz', 1);
+    else W.slots[i].up = 1;
+    this.g.audio.powerupGrab();
+  }
+
   // El ritual terminó y la máquina te devuelve la Hoz de la Muerte.
   receiveHoz() {
     const g = this.g;
@@ -1600,7 +1614,11 @@ export default class FarmEgg {
     if (m.blood !== undefined) this.blood = m.blood;
     if (m.bok !== undefined) this.bloodOk = !!m.bok;
     if (m.wisp) this.spawnWisp(...m.wisp);
-    if (m.pap) this.papRitual = m.pap;
+    if (m.pap) {
+      const was = this.papRitual;
+      this.papRitual = m.pap;
+      if (m.pap === 'done' && was !== 'done') this.forgeAll();
+    }
     if (m.harv) m.harv.forEach((c, i) => {
       if (c && !this.harvested[i]) this.cutFx(i);
       this.harvested[i] = !!c;

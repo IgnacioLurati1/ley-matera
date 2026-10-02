@@ -341,6 +341,25 @@ const algaeShoulders = () =>
   ]);
 
 // ---------------- los mapas ----------------
+// El Monumento: los realistas de 1812 (el chacó alto con chapa y pompón, el
+// correaje blanco cruzado) y los marineros de la flotilla de Montevideo (el
+// bonete de lana y la faja), salidos del río; empapados y con verdín.
+const shako = () =>
+  merge([
+    new THREE.CylinderGeometry(0.118, 0.106, 0.2, 14).translate(0, 0.075, 0),
+    new THREE.CylinderGeometry(0.122, 0.122, 0.018, 14).translate(0, 0.18, 0),
+    new THREE.CylinderGeometry(0.108, 0.108, 0.008, 14, 1, false, -Math.PI / 2, Math.PI).scale(1, 1, 0.7).rotateX(0.18).translate(0, -0.02, 0.08),
+    new THREE.BoxGeometry(0.07, 0.07, 0.01).rotateZ(Math.PI / 4).translate(0, 0.08, 0.113),
+    new THREE.SphereGeometry(0.032, 8, 6).scale(1, 1.4, 1).translate(0, 0.22, 0.085),
+  ]);
+const bonete = () =>
+  merge([
+    new THREE.CylinderGeometry(0.11, 0.122, 0.09, 14).translate(0, 0.03, 0),
+    new THREE.SphereGeometry(0.105, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.75, 1).translate(0, 0.07, -0.01),
+    new THREE.TorusGeometry(0.118, 0.016, 6, 16).rotateX(Math.PI / 2).translate(0, -0.012, 0),
+  ]);
+const faja = () => new THREE.CylinderGeometry(0.235, 0.232, 0.09, 16, 1, true).scale(1, 1, 0.66).translate(0, -0.23, 0);
+
 const HAIR = [0x1a1410, 0x3a2a1a, 0x6a6a64, 0x2a2a2a];
 const steel = (mk, T) => mk(T.grime, { metalness: 0.45, roughness: 0.45 });
 
@@ -508,6 +527,48 @@ const LOOKS = {
       };
       const hat = soldier && r() < 0.75;
       return { colors, hat, flags: { hair: !hat && r() < 0.75, belts: soldier && r() < 0.8, poncho: !soldier && r() < 0.7, scarf: !soldier && r() < 0.4, algae: r() < 0.55, algaeH: r() < 0.4 } };
+    },
+  },
+  monumento: {
+    // dorados, como el sol de las banderas
+    eyes: 0xffc838,
+    eyeGlow: 1.8,
+    geo: { hat: shako, bonete, belts: crossBelt, faja, algae: algaeHead, algaeS: algaeShoulders },
+    hatMat: 'cloth',
+    mats: {
+      cloth: (mk) => mk(mudTex(), { roughness: 0.55 }),
+      pants: (mk) => mk(mudTex(), { roughness: 0.62 }),
+      skin: (mk, T) => mk(T.zskin, { roughness: 0.45 }),
+      algae: (mk, T) => mk(T.grime, { roughness: 0.35 }),
+      wool: (mk) => mk(ponchoTex(), { roughness: 0.7 }),
+    },
+    base: ['hair', 'scarf'],
+    parts: [
+      { key: 'bonete', parts: [2], color: 'cap', mat: 'wool', need: 'bonete' },
+      { key: 'belts', parts: [1], color: 'belt', mat: 'leather', need: 'belts' },
+      { key: 'faja', parts: [1], color: 'sash', mat: 'wool', need: 'faja' },
+      { key: 'algae', parts: [2], color: 'algae', mat: 'algae', need: 'algaeH' },
+      { key: 'algaeS', parts: [1], color: 'algae', mat: 'algae', need: 'algae' },
+    ],
+    dress(r) {
+      // seis de cada diez son realistas (casaca azul o blanca con vivos colorados); los demás, marineros
+      const soldier = r() < 0.6;
+      const colors = {
+        skin: pick(r, [0x8e9a96, 0x86928e, 0x9aa29c, 0x7e8a86, 0x929a90]),
+        shirt: soldier ? pick(r, [0x23304a, 0x2a3a5a, 0xd8d2c2, 0xc8c0ae, 0x6a1e1a]) : pick(r, [0xd8d4c8, 0xb8c4cc, 0x9aa6b0, 0xe0dccf]),
+        pants: soldier ? pick(r, [0xd8d0c0, 0xc8c0ac, 0x2a2e3a]) : pick(r, [0x2a3040, 0x4a5058, 0x3a3428]),
+        boots: pick(r, [0x14100c, 0x241a12, 0x2e241a]),
+        hat: pick(r, [0x14141a, 0x1e1e26, 0x2a2622]),
+        cap: pick(r, [0x7a1a16, 0x2a3a5a, 0x8a2a1a]),
+        sash: pick(r, [0x9a1a14, 0x2a3a6a, 0x6a1a1a]),
+        belt: pick(r, [0xe8e2d2, 0xdcd4c2, 0xd0c8b4]),
+        scarf: pick(r, [0x9a1a14, 0xd8d0c0, 0x2a3a5a]),
+        algae: pick(r, [0x4e7a2c, 0x5a8a34, 0x3e6a28]),
+        hair: pick(r, HAIR),
+      };
+      const hat = soldier && r() < 0.8;
+      const bon = !soldier && r() < 0.7;
+      return { colors, hat, flags: { bonete: bon, hair: !hat && !bon && r() < 0.75, belts: soldier && r() < 0.85, faja: !soldier && r() < 0.8, scarf: !soldier && r() < 0.45, algae: r() < 0.4, algaeH: r() < 0.25 } };
     },
   },
 };

@@ -4,6 +4,7 @@ import { getMats } from '../weapons/viewmodels';
 import { mesh, boxGeo, cylGeo } from './props';
 import PapTermas from './papTermas';
 import PapYacare from './papYacare';
+import PapLlama from './papLlama';
 
 // Antes de usar el Pack-a-Pava hay que prepararlo, y cada mapa tiene su vuelta
 // (corta, pero no al toque):
@@ -53,7 +54,7 @@ export default class PapQuest {
     this.pap = game.interact.pap;
     this.papIt = game.interact.list.find((it) => it.kind === 'pap');
     this.done = false;
-    this.kind = { granja: 'gallina', penal: 'llaves', torre: 'roldana', castillo: 'termas', esteros: 'yacare' }[MAP_ID] || 'pavitas';
+    this.kind = { granja: 'gallina', penal: 'llaves', torre: 'roldana', castillo: 'termas', esteros: 'yacare', monumento: 'llama' }[MAP_ID] || 'pavitas';
     if (this.kind === 'pavitas') this.buildPavitas();
     else if (this.kind === 'gallina') this.buildHen();
     else if (this.kind === 'llaves') this.buildKeys();
@@ -62,6 +63,8 @@ export default class PapQuest {
     // el estero: el yacaré enroscado en la máquina (world/papYacare.js; usa
     // los mismos ganchos que las termas)
     else if (this.kind === 'yacare') this.termas = new PapYacare(this);
+    // el Monumento: la Llama Votiva (world/papLlama.js: el cañón, la antorcha, la pesca y la pava)
+    else if (this.kind === 'llama') this.termas = new PapLlama(this);
     else this.buildHoist();
     // lo que dice la máquina mientras no está lista (la de verdad no dice nada)
     const it = this.papIt;
@@ -179,8 +182,8 @@ export default class PapQuest {
   }
 
   // Lo que manda un invitado (las pavitas: el que le pegó fue él).
-  onGuest(m) {
-    if (this.termas) return this.termas.onGuest(m);
+  onGuest(m, from) {
+    if (this.termas) return this.termas.onGuest(m, from);
     if (m.pv != null && this.pavitas?.[m.pv | 0]) this.knockPavita(m.pv | 0, +m.dx || 0, +m.dz || 0);
   }
 

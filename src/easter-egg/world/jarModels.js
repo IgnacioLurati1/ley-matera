@@ -15,11 +15,13 @@ import * as THREE from 'three';
 //    un dragón de hierro sobre una ménsula de granito. Almas de hielo.
 //  · esteros: botellón con cintas coloradas del Gauchito Gil, velas rojas y
 //    ofrendas en una tabla atada con tiento. Almas coloradas.
+//  · monumento: urna votiva de bronce con campana de vidrio, sobre una
+//    ménsula de travertino, con la escarapela y una rama de laurel. Almas celestes.
 // Devuelve { obj, soul, y0, h, rgb, top, anim }: la columna de almas (soul)
 // crece de y0 hasta y0 + h; top es la altura a la que vuelan las almas; anim
 // (dt, t, fill) mueve lo que se mueve.
 
-export const JAR_STYLE = { molino: 'molino', granja: 'granja', penal: 'penal', torre: 'torre', castillo: 'castillo', esteros: 'esteros' };
+export const JAR_STYLE = { molino: 'molino', granja: 'granja', penal: 'penal', torre: 'torre', castillo: 'castillo', esteros: 'esteros', monumento: 'monumento' };
 
 const lathe = (pts, seg = 28) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
 function mesh(geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) {
@@ -357,6 +359,33 @@ const BUILD = {
         });
       },
     };
+  },
+
+  // La urna votiva del Monumento: bronce verde con campana de vidrio.
+  monumento(M, i, label) {
+    const K = mats(M);
+    const g = new THREE.Group();
+    const trav = M.travertino || K.stone;
+    const bronze = M.bronze || K.brass;
+    // la ménsula de travertino, con su moldura
+    g.add(box(0.62, 0.08, 0.48, trav, 0, 1.1, -0.04));
+    g.add(box(0.56, 0.05, 0.42, trav, 0, 1.05, -0.06));
+    g.add(box(0.2, 0.32, 0.2, trav, 0, 0.88, -0.18));
+    // el pie de bronce y la urna
+    g.add(mesh(lathe([[0, 0], [0.16, 0], [0.16, 0.03], [0.1, 0.06], [0.07, 0.12], [0.12, 0.16], [0.17, 0.2], [0.17, 0.22], [0, 0.22]], 24), bronze, 0, 1.14, 0));
+    // la campana de vidrio arriba (adentro, las almas)
+    g.add(mesh(lathe([[0, 0], [0.15, 0], [0.155, 0.04], [0.152, 0.28], [0.12, 0.36], [0.06, 0.4], [0, 0.41]], 28), K.glassClear, 0, 1.36, 0)).children.at(-1).renderOrder = 3;
+    g.add(mesh(new THREE.SphereGeometry(0.03, 10, 8), bronze, 0, 1.79, 0));
+    // la escarapela al frente de la ménsula y la rama de laurel
+    const cel = new THREE.MeshStandardMaterial({ color: 0x74acdf, roughness: 0.5 });
+    const bla = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.5 });
+    g.add(cyl(0.06, 0.06, 0.008, cel, 0, 1.1, 0.205, 20, Math.PI / 2));
+    g.add(cyl(0.04, 0.04, 0.01, bla, 0, 1.1, 0.207, 20, Math.PI / 2));
+    g.add(cyl(0.02, 0.02, 0.012, cel, 0, 1.1, 0.209, 16, Math.PI / 2));
+    for (let k = 0; k < 7; k++) g.add(mesh(new THREE.PlaneGeometry(0.05, 0.022), K.leaf, -0.2 + k * 0.035, 1.152, 0.1 - k * 0.012, -Math.PI / 2, 0, 0.4 + k * 0.3));
+    g.add(mesh(new THREE.PlaneGeometry(0.16, 0.08), new THREE.MeshStandardMaterial({ map: label, roughness: 1, transparent: true }), 0.0, 1.0, 0.152));
+    const soul = soulMesh(0.13);
+    return { obj: g, soul, y0: 1.4, h: 0.26, rgb: [0.45, 0.76, 1], top: 1.7, anim: () => {} };
   },
 };
 

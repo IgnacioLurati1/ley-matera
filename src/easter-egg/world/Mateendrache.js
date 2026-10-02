@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { assetUrl } from '../../lib/assets';
+import { skinLook } from '../entities/bossSkin';
 
 // El Mateendrache: el dragón de piedra y yerba que duerme encadenado abajo
 // del castillo. Escamas de piedra verde con yerba entre las juntas, el pecho
@@ -13,6 +17,11 @@ import * as THREE from 'three';
 // (dos huesos, hasta el piso) y las alas son una membrana que se rearma entre
 // los dedos. Mira hacia +z; el origen es el centro del cuerpo, a la altura
 // del piso.
+//
+// El cuerpo de verdad (modelo de Meshy con huesos puestos por código, ver
+// "el cuerpo de verdad" abajo): el de piezas sigue calculando todo (el lomo,
+// las patas, las alas, la cabeza) y no se dibuja; cada cuadro sus poses
+// mueven los huesos del modelo.
 
 const N = 30;
 const SP = 0.56;
@@ -27,6 +36,63 @@ const UP = new THREE.Vector3(0, 1, 0);
 const X = new THREE.Vector3(1, 0, 0);
 const smooth = (u) => u * u * (3 - 2 * u);
 const clamp01 = (u) => Math.max(0, Math.min(1, u));
+const Z = new THREE.Vector3(0, 0, 1);
+const tmpF = new THREE.Vector3();
+const tmpA = new THREE.Vector3();
+const tmpH = new THREE.Vector3();
+const tmpD = new THREE.Vector3();
+const tmpN = new THREE.Vector3();
+const tmpQ2 = new THREE.Quaternion();
+const tmpAim = new THREE.Quaternion();
+// mirando a algo, el cuello se curva hacia ahí: cuánto del giro lleva el
+// cuello (el resto, la cabeza) y hasta cuánto (rad)
+const NECK_K = 0.75;
+const NECK_MAX = 1.6;
+const nkA = new THREE.Vector3();
+const nkB = new THREE.Vector3();
+const nkL = new THREE.Vector3();
+const nkQ = new THREE.Quaternion();
+const nkQ2 = new THREE.Quaternion();
+const nkI = new THREE.Quaternion();
+
+// ---------------- el cuerpo de verdad ----------------
+// El Mateendrache de Meshy (el modelo, sin esqueleto de fábrica: los huesos,
+// los pesos y las medidas se los puso tools/modelos a imagen del de piezas).
+// Trae en userData.dragon los largos de cada segmento, dónde van las patas y
+// las alas en su hueso del lomo, la boca, los ojos y el pecho. Se baja con el
+// primero que se arma y lo comparten todos.
+const SKIN_URL = '/assets/sotano/modelos/mateendrache/modelo.glb';
+const SK = { p: null, gltf: null };
+// la cola del modelo es más larga que la de piezas: se acorta un poco
+const TAIL_K = 0.8;
+// cuánto abre la boca (rad por unidad de `jaw`; la de piezas abre 0,55)
+const JAW_OPEN = 0.16;
+
+export function loadDragonSkin() {
+  if (typeof window !== 'undefined' && window.__dragonSkinOff) return null;
+  SK.p ||= new Promise((ok) => {
+    new GLTFLoader().load(
+      assetUrl(SKIN_URL),
+      (gl) => {
+        SK.gltf = gl;
+        ok(gl);
+      },
+      undefined,
+      () => ok(null),
+    );
+  });
+  return SK.p;
+}
+
+// Un marco que mira hacia `dir` (z) con `ref` para el giro (como frame(), con otra referencia).
+function aim(dir, ref) {
+  const z = tmpFz.copy(dir).normalize();
+  const x = tmpFx.crossVectors(ref, z);
+  if (x.lengthSq() < 1e-8) x.copy(X);
+  x.normalize();
+  const y = tmpFy.crossVectors(z, x).normalize();
+  return tmpAim.setFromRotationMatrix(tmpM.makeBasis(x, y, z));
+}
 
 // El grosor del cuerpo en cada segmento (0 la nuca, N-1 la punta de la cola).
 function radius(i) {
@@ -287,6 +353,9 @@ export default class Mateendrache {
     });
     for (const W of this.wings) W.mem.frustumCulled = false;
     this.update(0);
+    // el cuerpo de verdad: ya, si está bajado; si no, cuando llegue
+    if (SK.gltf) this.attachSkin();
+    else loadDragonSkin()?.then((gl) => gl && !this.disposed && this.attachSkin());
   }
 
   mats() {
@@ -488,6 +557,7 @@ export default class Mateendrache {
       if (this.from && k < 1) this.P[i].lerpVectors(this.from[i], target[i], k);
       else this.P[i].copy(target[i]);
     }
+    this.neckBend(dt);
     // el marco de cada segmento: mira hacia la cabeza
     for (let i = 0; i < N; i++) {
       const a = this.P[Math.max(0, i - 1)];
@@ -504,6 +574,29 @@ export default class Mateendrache {
     this.updateHead(dt, t);
     this.updateLegs();
     this.updateWings(t);
+    this.driveSkin(glow);
+  }
+
+  // Mirando a algo (tirar fuego al cielo, al que jura...): el cuello se curva
+  // hacia ahí, más cerca de la cabeza que de la base. Antes giraba solo la
+  // cabeza y, mirando para arriba, el cuello parecía quebrado.
+  neckBend(dt) {
+    // (window.__neckBendOff: como antes, para comparar)
+    const on = this.lookAt && this.pose !== 'sleep' && !window.__neckBendOff ? 1 : 0;
+    this.lookK = (this.lookK || 0) + (on - (this.lookK || 0)) * Math.min(1, dt * 2.5);
+    if (this.lookAt) nkL.copy(this.lookAt);
+    else if (this.lookK < 0.01) return;
+    this.root.worldToLocal(tmpA.copy(nkL));
+    const B = this.P[NECK];
+    nkA.subVectors(this.P[0], B).normalize();
+    nkB.subVectors(tmpA, B).normalize();
+    nkQ.setFromUnitVectors(nkA, nkB);
+    const ang = 2 * Math.acos(Math.min(1, Math.abs(nkQ.w)));
+    const k = this.lookK * NECK_K * (ang > NECK_MAX ? NECK_MAX / ang : 1);
+    for (let i = 0; i < NECK; i++) {
+      nkQ2.copy(nkI).slerp(nkQ, k * ((NECK - i) / NECK) ** 0.7);
+      this.P[i].sub(B).applyQuaternion(nkQ2).add(B);
+    }
   }
 
   updateHead(dt, t) {
@@ -551,6 +644,8 @@ export default class Mateendrache {
       } else T.y = 0;
       if (this.pose !== 'fly') T.addScaledVector(this.F[L.seg], L.front ? 0.25 : -0.1);
       const knee = ik(A, T, L.l1, L.l2, tmpU.copy(this.F[L.seg]).multiplyScalar(L.front ? -1 : 1).add(side.multiplyScalar(0.4)));
+      (L.A ||= new THREE.Vector3()).copy(A);
+      (L.T ||= new THREE.Vector3()).copy(T);
       bone(L.up, A, knee, L.r);
       bone(L.lo, knee, T, L.r * 0.75);
       L.foot.position.copy(T);
@@ -571,6 +666,9 @@ export default class Mateendrache {
       W.anchor.position.copy(S.o.position).addScaledVector(tmpU.set(0, 1, 0).applyMatrix4(tmpM), S.r * 0.6);
       W.anchor.quaternion.setFromRotationMatrix(tmpM);
       const pts = wingPoints(spread, flap * W.side, W.side);
+      // (para el cuerpo de verdad: los puntos quedan guardados, wingPoints los pisa)
+      W.cur ||= pts.map(() => new THREE.Vector3());
+      pts.forEach((p, i) => W.cur[i].copy(p));
       const pos = W.geo.attributes.position;
       pts.forEach((p, i) => pos.setXYZ(i, p.x, p.y, p.z));
       pos.needsUpdate = true;
@@ -594,13 +692,166 @@ export default class Mateendrache {
     }
   }
 
+  // ---------------- el cuerpo de verdad ----------------
+  // Le pone el modelo de Meshy (una copia por dragón) y esconde las piezas.
+  attachSkin() {
+    const model = cloneSkinned(SK.gltf.scene);
+    const bones = {};
+    let mesh = null;
+    let meta = null;
+    model.traverse((o) => {
+      if (o.userData?.dragon) meta = o.userData.dragon;
+      if (o.isBone) bones[o.name] = o;
+      if (o.isSkinnedMesh) mesh = o;
+    });
+    if (!mesh || !meta) return;
+    mesh.frustumCulled = false;
+    mesh.castShadow = false;
+    // (su propio material: el pecho late con las brasas de este dragón)
+    mesh.material = mesh.material.clone();
+    // (la luz de los personajes: entities/bossSkin.js; las alas, finitas, de
+    // canto agarraban el contorno y la luz de frente y quedaban plateadas)
+    delete mesh.material.userData.skinLook;
+    skinLook(mesh.material, { rim: 0.3, key: 0.7 });
+    this.procMeshes = [];
+    this.root.traverse((o) => {
+      if (o.isMesh && o.visible) {
+        o.visible = false;
+        this.procMeshes.push(o);
+      }
+    });
+    this.root.add(model);
+    // los ojos: dos brasas ámbar en la cabeza (despierto)
+    const eyeG = new THREE.SphereGeometry(0.085, 10, 8);
+    const eyes = meta.eyes.map((p) => {
+      const e = new THREE.Mesh(eyeG, this.M.eye);
+      e.position.fromArray(p);
+      e.scale.set(0.8, 1, 1.1);
+      bones.head.add(e);
+      return e;
+    });
+    // (de cada hueso: su giro de reposo, para las cuentas de cada cuadro)
+    this.skin = {
+      model,
+      mesh,
+      meta,
+      bones,
+      eyes,
+      P: Array.from({ length: N }, () => new THREE.Vector3()),
+      legs: meta.legs.map((L) => ({ ...L, rest: L.names.map((n) => bones[n].quaternion.clone()) })),
+    };
+    this.update(0);
+  }
+
+  // Cada cuadro, después de las piezas: el lomo con los largos del modelo
+  // (desde el pecho, hacia la cabeza y hacia la cola, siguiendo la curva de
+  // las piezas), la cabeza y la mandíbula, las patas hasta el piso y las alas
+  // con los ángulos de las de piezas. Los segmentos de las piezas quedan donde
+  // está el cuerpo (las cadenas de la cueva se atan ahí).
+  driveSkin(glow) {
+    const S = this.skin;
+    if (!S) return;
+    const m = S.meta;
+    const B = S.bones;
+    const Pn = S.P;
+    const A = NECK + 3;
+    const flying = this.pose === 'fly';
+    Pn[A].copy(this.P[A]);
+    for (let i = A - 1; i >= 0; i--) Pn[i].subVectors(this.P[i], this.P[i + 1]).normalize().multiplyScalar(m.segLen[i + 1]).add(Pn[i + 1]);
+    for (let i = A + 1; i < N; i++) {
+      Pn[i].subVectors(this.P[i], this.P[i - 1]).normalize().multiplyScalar(m.segLen[i] * (i > HIP ? TAIL_K : 1)).add(Pn[i - 1]);
+      // (la cola del modelo es más larga: que no se meta en el piso)
+      if (!flying) Pn[i].y = Math.max(Pn[i].y, 0.35);
+    }
+    for (let i = 0; i < N; i++) {
+      const b = B['s' + i];
+      b.position.copy(Pn[i]);
+      frame(this.F[i], tmpM);
+      b.quaternion.setFromRotationMatrix(tmpM);
+      this.segs[i].o.position.copy(Pn[i]);
+    }
+    // la cabeza (en la nuca, con el giro de la de piezas) y la mandíbula (se
+    // abre apenas: la boca del modelo es cerrada)
+    const H = B.head;
+    H.position.copy(Pn[0]);
+    H.quaternion.copy(this.head.quaternion);
+    this.head.position.copy(Pn[0]).addScaledVector(this.F[0], 0.35);
+    B.jaw.position.fromArray(m.jaw).applyQuaternion(H.quaternion).add(H.position);
+    B.jaw.quaternion.copy(H.quaternion).multiply(tmpQ.setFromAxisAngle(X, this.jaw * JAW_OPEN));
+    // las patas: la cadera pegada a su hueso del lomo; el pie donde lo pone
+    // la de piezas (corrido lo mismo que la cadera), plano, mirando adelante
+    this.legs.forEach((L, li) => {
+      const SL = S.legs[li];
+      const sb = B['s' + SL.seg];
+      const hip = tmpV.fromArray(SL.hip).applyQuaternion(sb.quaternion).add(sb.position);
+      const fwd = tmpF.copy(this.F[SL.seg]);
+      fwd.y = 0;
+      if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, 1);
+      fwd.normalize();
+      const yaw = tmpQ2.setFromUnitVectors(Z, fwd);
+      const T = tmpW.copy(L.T).add(hip).sub(L.A);
+      if (!flying) T.y = L.T.y;
+      // el tobillo, detrás del pie (el pie del modelo, girado con el cuerpo)
+      const foot = tmpU.fromArray(SL.foot).applyQuaternion(yaw);
+      const ankle = tmpA.copy(T).sub(foot);
+      if (!flying) ankle.y = Math.max(ankle.y, -foot.y);
+      const hint = tmpH.copy(fwd).multiplyScalar(SL.front ? -1 : 1);
+      const knee = ik(hip, ankle, SL.len[0], SL.len[1], hint);
+      const b0 = B[SL.names[0]];
+      const b1 = B[SL.names[1]];
+      const b2 = B[SL.names[2]];
+      b0.position.copy(hip);
+      b0.quaternion.copy(aim(tmpD.subVectors(knee, hip), fwd));
+      b1.position.copy(knee);
+      b1.quaternion.copy(aim(tmpD.subVectors(ankle, knee), fwd));
+      b2.position.copy(ankle);
+      b2.quaternion.copy(yaw).multiply(SL.rest[2]);
+    });
+    // las alas: el hombro pegado al lomo; brazo, antebrazo y dedos con las
+    // direcciones de las de piezas y los largos del modelo
+    this.wings.forEach((W, wi) => {
+      const SW = m.wings[wi];
+      if (!W.cur) return;
+      const sb = B['s' + SW.seg];
+      const q = W.anchor.quaternion;
+      const p = W.cur;
+      const dir = (a, b, out) => out.subVectors(p[b], p[a]).applyQuaternion(q).normalize();
+      const n = tmpN.subVectors(p[2], p[0]).cross(tmpD.subVectors(p[5], p[2])).applyQuaternion(q).normalize();
+      if (SW.nFlip) n.negate();
+      const sh = tmpV.fromArray(SW.sh).applyQuaternion(sb.quaternion).add(sb.position);
+      const bArm = B[SW.names[0]];
+      const bFore = B[SW.names[1]];
+      bArm.position.copy(sh);
+      bArm.quaternion.copy(aim(dir(0, 1, tmpD), n));
+      bFore.position.copy(sh).addScaledVector(tmpD, SW.len[0]);
+      bFore.quaternion.copy(aim(dir(1, 2, tmpD), n));
+      const wrist = tmpW.copy(bFore.position).addScaledVector(tmpD, SW.len[1]);
+      [3, 5, 7].forEach((tip, k) => {
+        const bf = B[SW.names[2 + k]];
+        bf.position.copy(wrist);
+        bf.quaternion.copy(aim(dir(2, tip, tmpD), n));
+      });
+    });
+    // el pecho late y los ojos se prenden despierto
+    S.mesh.material.emissiveIntensity = glow;
+    const awake = this.pose !== 'sleep' || this.eyes > 0;
+    for (const e of S.eyes) e.visible = awake;
+    S.model.updateMatrixWorld(true);
+  }
+
   // Dónde está la boca (en el mundo), para el chorro y el vapor.
   mouthPos(out = new THREE.Vector3()) {
+    if (this.skin) {
+      const H = this.skin.bones.head;
+      H.updateWorldMatrix(true, false);
+      return out.fromArray(this.skin.meta.mouth).applyMatrix4(H.matrixWorld);
+    }
     return out.set(0, -0.05, 1.7).applyMatrix4(this.head.matrixWorld);
   }
 
   mouthDir(out = new THREE.Vector3()) {
-    return out.set(0, -0.15, 1).applyQuaternion(this.head.getWorldQuaternion(tmpQ)).normalize();
+    const q = this.skin ? this.skin.bones.head.getWorldQuaternion(tmpQ) : this.head.getWorldQuaternion(tmpQ);
+    return out.set(0, -0.15, 1).applyQuaternion(q).normalize();
   }
 
   chestPos(out = new THREE.Vector3()) {
@@ -608,6 +859,7 @@ export default class Mateendrache {
   }
 
   dispose() {
+    this.disposed = true;
     this.root.removeFromParent();
     this.root.traverse((o) => {
       if (o.geometry) o.geometry.dispose();

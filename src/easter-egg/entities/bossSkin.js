@@ -241,7 +241,7 @@ function load(zs, skin) {
         });
         Rr.compileAsync?.(root, zs.g.camera, S.scene).catch(() => {});
       }
-      S.warm = 3;
+      S.warm = 6;
       WARM.add(S);
     },
     undefined,
@@ -256,25 +256,45 @@ function load(zs, skin) {
 // Los recién cargados que todavía no se dibujaron (ver load).
 const WARM = new Set();
 function warmUp(zs) {
+  // (no durante la intro: con la luz de la escena la cuenta de luces es otra y
+  // los programas que se compilan no sirven para el juego)
+  if (zs.g.intro?.active) return;
   for (const S of WARM) {
     if (S.scene !== zs.g.scene || LOADED[S.skin.kind] !== S) {
       WARM.delete(S);
       continue;
     }
-    if (S === shown) {
+    // (el del jefe del mapa cuenta como a la vista aunque el jefe no esté:
+    // solo se deja de calentar cuando aparece de verdad)
+    if (S === shown && zs.bossRig?.rig.visible) {
       WARM.delete(S);
       continue;
     }
     if (S.warm-- > 0) {
-      const c = zs.g.camera.position;
       S.root.visible = true;
-      S.root.position.set(c.x, c.y - 300, c.z);
+      // (abajo del piso: el del jugador y el de una lámpara, warmSpot)
+      S.root.position.copy(warmSpot(zs.g, S.warm));
       S.root.updateMatrixWorld(true);
     } else {
       S.root.visible = false;
       WARM.delete(S);
     }
   }
+}
+
+// Dónde calentar un cuerpo con huesos (los jefes y el Cuervo, crowSkin.js)
+// sin que se vea: muy abajo de la cámara (en la torre, unos metros abajo ya
+// es el piso de abajo). Las sombras van guardadas (fx/Epic.js) y se rehacen
+// solo cuando se pide: se pide en estos cuadros y, con k impar, también la de
+// las lámparas prendidas. Estos cuerpos no se recortan por vista, así que
+// entran igual a la sombra de la luna y a las de lámpara, y sus programas se
+// compilan acá. Sin esto trababa la primera vez que aparecía o pasaba cerca de un fuego.
+const warmAt = new THREE.Vector3();
+export function warmSpot(g, k) {
+  if (g.renderer?.shadowMap) g.renderer.shadowMap.needsUpdate = true;
+  if (k % 2) for (const l of g.post?.epic?.pool || []) if (l.intensity > 0 && l.castShadow && l.shadow?.map) l.shadow.needsUpdate = true;
+  const c = g.camera.position;
+  return warmAt.set(c.x, c.y - 300, c.z);
 }
 
 // Las herramientas que usan los archivos de cada jefe.
@@ -373,8 +393,22 @@ export function skinBoneAt(zs, name, out) {
 // (kind: uno o una lista; los que no tienen modelo se ignoran)
 export function preloadBossSkin(zs, kind) {
   for (const k of Array.isArray(kind) ? kind : [kind]) {
+    // (el Cuervo tiene lo suyo: entities/crowSkin.js; se vuelve a calentar
+    // con las luces de ahora, la de su ronda)
+    if (k === 'crow') {
+      const C = zs?.g?.crow;
+      if (C?.skin?.state === 2 && !C.rig.visible) C.skin.warm();
+      continue;
+    }
     const skin = SKINS[k];
-    if (skin && zs?.g?.scene && zs.bossRig && !fresh(zs, k)) load(zs, skin);
+    if (!skin || !zs?.g?.scene || !zs.bossRig) continue;
+    const S = fresh(zs, k);
+    if (!S) load(zs, skin);
+    else if (S.state === 2 && (S !== shown || !zs.bossRig.rig.visible) && !WARM.has(S)) {
+      // ya estaba: se vuelve a calentar con las luces de ahora (la ronda del jefe)
+      S.warm = 6;
+      WARM.add(S);
+    }
   }
 }
 
@@ -404,11 +438,13 @@ export function updateBossSkin(zs, dt) {
   shown = on ? S : null;
   if (!on) return;
   const root = S.root;
-  root.visible = R.rig.visible;
-  if (!root.visible) {
+  if (!R.rig.visible) {
     S.layers.length = 0;
+    // (calentándose abajo del piso sigue a la vista: warmUp)
+    if (!WARM.has(S)) root.visible = false;
     return;
   }
+  root.visible = true;
   const parts = R.parts;
   for (let i = 0; i < 13; i++) parts[i].matrix.decompose(pp[i], pq[i], i === 0 ? ps : v);
   const s = (RIG_LEG * ps.y) / S.legLen;
@@ -432,6 +468,13 @@ export function updateBossSkin(zs, dt) {
   if (boss) want = skin.pick(boss, ctx) || want;
   else if (cine) want = skin.cine(cine, ctx) || want;
   if (want.key !== 'rig' && !S.clips[want.key]) want = { key: 'rig' };
+  // (escondido: ni el modelo ni las piezas; el que lo pide sabe por qué, la escena)
+  if (want.hidden) {
+    root.visible = false;
+    S.layers.length = 0;
+    S.last = null;
+    return;
+  }
   S.up = (S.up || 0) + ((want.up || 0) - (S.up || 0)) * Math.min(1, dt * 10);
   const top = layer(S, want.key, want.t, dt);
   // (sin subir: el salto de una escena que ya lleva el arco; queda en la capa aunque se vaya)

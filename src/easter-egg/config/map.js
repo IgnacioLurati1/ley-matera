@@ -4,6 +4,7 @@ import * as penal from './maps/penal';
 import * as esteros from './maps/esteros';
 import * as torre from './maps/torre';
 import * as castillo from './maps/castillo';
+import * as monumento from './maps/monumento';
 import { shapeRuns } from '../world/esterosGround';
 
 // Mapa en juego. Cada mapa es un módulo de config/maps/ con la misma forma;
@@ -11,7 +12,7 @@ import { shapeRuns } from '../world/esterosGround';
 // mapa actual (las exportaciones con `let` son enlaces vivos). Se cambia con
 // useMap() antes de armar el mundo (Game.buildScene).
 
-export const MAPS = { molino, granja, penal, esteros, torre, castillo };
+export const MAPS = { molino, granja, penal, esteros, torre, castillo, monumento };
 // Para el menú: nombre corto y una línea.
 export const MAP_LIST = [
   { id: 'molino', name: 'El Molino', sub: 'Un molino yerbatero abandonado en Misiones' },
@@ -20,6 +21,7 @@ export const MAP_LIST = [
   { id: 'esteros', name: 'Mate no Numa', sub: 'Los Esteros del Iberá, bajo la luna llena' },
   { id: 'torre', name: 'Revelaciones Materas', sub: 'Una torre de quince pisos en el ojo del remolino' },
   { id: 'castillo', name: 'Der Mateendrache', sub: 'Un castillo en la cordillera nevada, donde duerme el dragón' },
+  // (el mapa bonus, el Monumento, todavía no se publica: queda fuera de la lista)
 ];
 
 // Modos de juego de cada mapa (por ahora solo la torre tiene otro): el de

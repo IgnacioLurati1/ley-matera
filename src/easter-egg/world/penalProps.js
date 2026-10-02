@@ -127,10 +127,18 @@ const BUILDERS = {
     B(g, L + 0.14, 0.14, front - back + 0.1, wall, 0, H + 0.07, (front + back) / 2);
     for (let k = 0; k < n; k++) {
       const cx = -L / 2 + (k + 0.5) * w;
-      bars(g, M, cx - w / 2 + 0.08, cx + w / 2 - 0.08, front, H - 0.05);
-      // la puerta: un marco más grueso y el candado
-      B(g, 0.05, H - 0.1, 0.07, M.iron, cx + 0.45, H / 2, front + 0.02);
-      B(g, 0.12, 0.16, 0.06, M.brass, cx + 0.38, 1.1, front + 0.05);
+      // la reja con el hueco de la puerta y sus dos marcos: la hoja (con el
+      // candado) la arma el motín del penal en la bisagra marcada, para poder
+      // reventarla (entities/penalMotin.js)
+      bars(g, M, cx - w / 2 + 0.08, cx - 0.38, front, H - 0.05);
+      bars(g, M, cx + 0.48, cx + w / 2 - 0.08, front, H - 0.05);
+      B(g, 0.05, H - 0.1, 0.07, M.iron, cx - 0.385, H / 2, front + 0.02);
+      B(g, 0.05, H - 0.1, 0.07, M.iron, cx + 0.465, H / 2, front + 0.02);
+      const hinge = new THREE.Object3D();
+      hinge.name = 'celdaPuerta';
+      hinge.userData.dynamic = true;
+      hinge.position.set(cx - 0.36, 0, front);
+      g.add(hinge);
       cot(g, M, cx - w / 2 + 0.55, -0.2, 0, true);
       bucket(g, M, cx + w / 2 - 0.35, 0, back + 0.35);
       if (r() < 0.5) R(g, 0.5, 0.06, 0.4, M.redCloth || M.leather, cx + 0.3, 0.03, -0.5, 0.02, r());

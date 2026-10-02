@@ -1184,7 +1184,7 @@ function buildHoz(upgraded, T, gold = false) {
   const M = mats(T);
   const g = new THREE.Group();
   const death = !!upgraded;
-  GLOW_GOLD ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc84a).multiplyScalar(1.4), toneMapped: false });
+  GLOW_GOLD ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc84a).multiplyScalar(1.05), toneMapped: false });
   GLOW_HOZ ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0x7affb0).multiplyScalar(1.3), toneMapped: false });
   RUNE_HOZ ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0xb05aff).multiplyScalar(1.2), toneMapped: false });
   const glowMat = gold ? GLOW_GOLD : GLOW_HOZ;
@@ -1578,14 +1578,77 @@ export function buildGrenade(T, kind = 'frag') {
     g.add(handle);
     return g;
   }
-  const pack = box(0.05, 0.08, 0.03, new THREE.MeshStandardMaterial({ color: 0xb3151d, roughness: 0.6 }));
-  g.add(pack);
-  const band = box(0.051, 0.02, 0.031, M.plasticWhite);
-  g.add(band);
-  const fuse = cyl(0.002, 0.002, 0.03, M.dark, 4);
-  fuse.position.y = 0.05;
+  // La bomba de yerba: un paquete de yerba de papel (amarillo, con la franja
+  // colorada y la hoja), atado en cruz con piolín, el doblez de arriba y la
+  // mecha retorcida con la chispa en la punta ('nadeSpark', titila en la
+  // mano y volando).
+  const paper = new THREE.MeshStandardMaterial({ map: yerbaPackTex(T), roughness: 0.85 });
+  g.add(box(0.052, 0.078, 0.032, paper));
+  // el doblez del papel, arriba
+  const fold = box(0.05, 0.008, 0.028, paper);
+  fold.position.set(0, 0.042, -0.002);
+  fold.rotation.x = 0.18;
+  g.add(fold);
+  // el piolín en cruz
+  const twine = new THREE.MeshStandardMaterial({ color: 0xc9a46a, roughness: 1 });
+  const t1 = box(0.056, 0.005, 0.036, twine);
+  t1.position.y = -0.008;
+  g.add(t1);
+  const t2 = box(0.005, 0.084, 0.036, twine);
+  g.add(t2);
+  // la mecha, retorcida hacia arriba
+  const path = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0.044, 0), new THREE.Vector3(0.004, 0.058, 0.002), new THREE.Vector3(-0.002, 0.07, 0.004), new THREE.Vector3(0.006, 0.08, 0.002)]);
+  const fuse = new THREE.Mesh(new THREE.TubeGeometry(path, 10, 0.0024, 5, false), new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 1 }));
   g.add(fuse);
+  if (T?.dot) {
+    const spark = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.dot, color: 0xffa040, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, toneMapped: false }));
+    spark.position.set(0.006, 0.082, 0.002);
+    spark.scale.setScalar(0.04);
+    // (por nombre: clone() copia userData por JSON y un objeto ahí no sobrevive)
+    spark.name = 'nadeSpark';
+    g.add(spark);
+  }
   return g;
+}
+
+// El papel del paquete de yerba (una vez por juego de texturas).
+function yerbaPackTex(T) {
+  if (T && T._yerbaPack) return T._yerbaPack;
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 192;
+  const x = c.getContext('2d');
+  x.fillStyle = '#d9a63e';
+  x.fillRect(0, 0, 128, 192);
+  // la trama del papel
+  for (let i = 0; i < 900; i++) {
+    x.fillStyle = Math.random() < 0.5 ? 'rgba(120,80,20,0.12)' : 'rgba(255,240,200,0.12)';
+    x.fillRect(Math.random() * 128, Math.random() * 192, 2, 1);
+  }
+  // la franja colorada con dos rayas blancas
+  x.fillStyle = '#b3151d';
+  x.fillRect(0, 96, 128, 46);
+  x.fillStyle = '#f2efe8';
+  x.fillRect(0, 102, 128, 4);
+  x.fillRect(0, 132, 128, 4);
+  // la hoja de yerba
+  x.fillStyle = '#3d6b2a';
+  x.beginPath();
+  x.ellipse(64, 56, 16, 30, 0.5, 0, Math.PI * 2);
+  x.fill();
+  x.strokeStyle = '#a8c070';
+  x.lineWidth = 2;
+  x.beginPath();
+  x.moveTo(48, 80);
+  x.lineTo(80, 32);
+  x.stroke();
+  // abajo, más oscuro
+  x.fillStyle = 'rgba(80,40,10,0.35)';
+  x.fillRect(0, 170, 128, 22);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  if (T) T._yerbaPack = t;
+  return t;
 }
 
 // Mate cebado con la yerba del perk (para la animación de tomar): la bombilla

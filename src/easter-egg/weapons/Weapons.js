@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { WEAPONS, weaponStats, tierOf, maxTier, KNIFE, GRENADE, BOWIE } from '../config/weapons';
+// la bomba cocinándose: la pose del brazo atrás (s de la animación de tirar) y
+// lo mínimo que se cocina un toque de G
+const COOK_POSE = 0.03;
+const COOK_MIN = 0.12;
 import { buildMate, buildTermo, buildKnife, buildGrenade, buildWhetstone, buildMk3Cell, muzzleTexture, getMats, VM_POSE } from './viewmodels';
 import Elementales from './Elementales';
 import Especiales from './Especiales';
@@ -11,10 +15,12 @@ import Liquidificador from './Liquidificador';
 import Supernova from './Supernova';
 import Supremo from './Supremo';
 import HozBeam from './hozBeam';
+import Sable from './Sable';
 import { memeFx } from './memeMate';
 import { buildPerkMateFor, PERK_MATE_IDS } from './perkMates';
 import Mk3Fx from './mk3Fx';
 import { PERKS } from '../config/perks';
+import { zombieHealth } from '../config/rules';
 import { startMate } from '../core/eggs';
 import { cherryReady, cherryShock } from './electricCherry';
 import { camoFor, CAMOABLE, setPapMap, tickCamos } from './camos';
@@ -417,6 +423,8 @@ export default class Weapons {
     // también esperan en el grupo escondido)
     this.hozBeam = new HozBeam(this);
     this.hozBeamPose = [0, 0, 0, 0, 0, 0, 0];
+    // el Sable Corvo del Monumento al Mate (weapons/Sable.js)
+    this.sable = new Sable(this);
     this.projectiles = [];
     this.projGeo = new THREE.SphereGeometry(1, 10, 8);
     this.pose = { pos: HIP.clone(), rot: new THREE.Euler() };
@@ -776,7 +784,8 @@ export default class Weapons {
     const s = this.slot;
     const st = this.stats;
     // la hoz sin mejorar no lleva munición; la Máquina de Muerte no se acaba
-    const melee = st?.kind === 'melee' && !st.alt;
+    // (el Sable Corvo tampoco)
+    const melee = (st?.kind === 'melee' || st?.kind === 'sable') && !st.alt;
     this.g.hud?.setWeapon(st ? { name: st.upgraded ? st.name : WEAPONS[s.id].name, mag: melee || s.temp ? '∞' : s.mag, reserve: melee || s.temp || st.infinite ? '∞' : s.reserve, upgraded: s.up, desc: st.upgraded && st.desc ? st.desc : WEAPONS[s.id].desc } : null);
     // el cuchillo de Anacleto (el penal) ocupa el lugar de la pava y se muestra aparte
     const knife = this.tactical?.id === 'cuchillo';
@@ -860,6 +869,19 @@ export default class Weapons {
         break;
       }
       case 'throw':
+        // la bomba de yerba se cocina mientras se mantiene la G: la mecha corre
+        // en la mano (con el brazo atrás); al soltar sale con lo que le queda,
+        // y si se pasa revienta ahí nomás
+        if (this.cooking) {
+          this.cookT += dt;
+          this.stateT = Math.min(this.stateT, COOK_POSE);
+          this.cookTick();
+          if (this.cookT >= GRENADE.fuse) {
+            this.cooking = false;
+            this.blowInHand();
+          } else if (!input.key('KeyG') && this.cookT >= COOK_MIN) this.cooking = false;
+          break;
+        }
         if (this.stateT > 0.28 && !this.thrown) this.throwItem();
         if (this.stateT > 0.65) this.state = 'idle';
         break;
@@ -896,6 +918,7 @@ export default class Weapons {
     this.nova.update(dt);
     this.supremo.update(dt);
     this.hozBeam.update(dt);
+    this.sable.update(dt);
     this.shieldHand.update(dt);
     this.updateStuck(dt);
     this.updatePools(dt);
@@ -968,6 +991,11 @@ export default class Weapons {
       this.startReload(st);
       return;
     }
+    // el Sable Corvo (weapons/Sable.js): tajos, el tiro y la Carga de San Lorenzo
+    if (st.kind === 'sable') {
+      this.sable.input(input, st, p);
+      return;
+    }
     // la hoz: izquierdo corta (manteniendo, sigue cortando); la de la Muerte
     // además tira medialunas con el derecho
     if (st.kind === 'melee') {
@@ -1026,6 +1054,7 @@ export default class Weapons {
     this.state = 'reload';
     this.stateT = 0;
     this.reloadTime = st.reload * g.player.reloadMult;
+    g.net?.act?.('reload', this.reloadTime);
     this.tintTermo(st);
     // Electric Cherry (Chisporé): la descarga al empezar a recargar, más fuerte
     // cuanto más vacío venía el cargador (acá y, por Session 'cherry', para los demás)
@@ -1064,6 +1093,7 @@ export default class Weapons {
   startKnife() {
     this.pourSnd?.stop();
     this.state = 'knife';
+    this.g.net?.act?.('stab');
     this.stateT = 0;
     this.knifeHit = false;
     this.knifeKick = false;
@@ -1143,9 +1173,49 @@ export default class Weapons {
   startThrow(kind) {
     this.pourSnd?.stop();
     this.state = 'throw';
+    this.g.net?.act?.('throw');
     this.stateT = 0;
     this.thrown = false;
     this.throwKind = kind;
+    // la bomba: se prende la mecha (y se cocina mientras dure la G)
+    this.cooking = kind === 'frag';
+    this.cookT = 0;
+    this.cookTickT = 0;
+    if (this.cooking) this.fuseSound(true);
+  }
+
+  // El chisporroteo de la mecha prendida (más seguido cuanto menos le queda).
+  fuseSound(lit = false) {
+    const A = this.g.audio;
+    if (!A?.ctx) return;
+    try {
+      const o = A.out({ gain: 0.5 });
+      if (lit) A.noise(o, { dur: 0.25, type: 'bandpass', freq: 2600, freqEnd: 1800, q: 1.2, gain: 0.35 });
+      A.noise(o, { dur: 0.05, type: 'highpass', freq: 5200, gain: 0.25 });
+      A.tone(o, { dur: 0.03, type: 'square', freq: 1900 + (this.cookT || 0) * 500, gain: 0.03 });
+    } catch {
+      /* sin sonido */
+    }
+  }
+
+  cookTick() {
+    const left = GRENADE.fuse - this.cookT;
+    const gap = left > 1.2 ? 0.45 : left > 0.6 ? 0.25 : 0.12;
+    if (this.cookT - this.cookTickT >= gap) {
+      this.cookTickT = this.cookT;
+      this.fuseSound();
+    }
+  }
+
+  // Se pasó cocinándola: revienta en la mano (y al que la tenía le pega fuerte).
+  blowInHand() {
+    const g = this.g;
+    this.thrown = true;
+    this.grenades--;
+    const pos = tmpV2.copy(g.camera.position).add(tmpV.set(0, -0.35, -0.4).applyQuaternion(g.camera.quaternion));
+    this.lob('grenade', pos, new THREE.Vector3(), false, 0.01, true);
+    this.state = 'idle';
+    this.updateHud();
   }
 
   throwItem() {
@@ -1156,7 +1226,11 @@ export default class Weapons {
     const pos = tmpV2.copy(cam.position).addScaledVector(dir, 0.5);
     if (this.throwKind === 'frag') {
       this.grenades--;
-      this.spawnProjectile({ kind: 'grenade', pos, vel: dir.clone().multiplyScalar(15), gravity: 12, fuse: GRENADE.fuse, bounce: true, mesh: buildGrenade(this.T) });
+      // un poco más arriba y con lo que lleva el que la tira; sale con la mecha que le queda
+      const v = new THREE.Vector3(0, 0.2, -1).applyQuaternion(cam.quaternion).normalize().multiplyScalar(16);
+      v.x += g.player.vel.x * 0.6;
+      v.z += g.player.vel.z * 0.6;
+      this.lob('grenade', pos, v, false, Math.max(0.05, GRENADE.fuse - (this.cookT || 0)));
     } else if (this.throwKind === 'cuchillo') {
       // el cuchillo no se gasta: vuela, busca muertos y vuelve a la mano (weapons/Cuchillo.js)
       if (this.tactical?.id === 'cuchillo' && this.tactical.count > 0 && g.ee?.knife) {
@@ -1166,9 +1240,27 @@ export default class Weapons {
     } else if (this.tactical?.count > 0) {
       // (la pava vacía queda en 0, no se borra: la munición máxima la vuelve a llenar)
       this.tactical.count--;
-      this.spawnProjectile({ kind: 'pava', pos, vel: dir.clone().multiplyScalar(11), gravity: 12, fuse: 8, bounce: true, mesh: buildGrenade(this.T, 'pava') });
+      this.lob('pava', pos, dir.clone().multiplyScalar(11));
     }
     this.updateHud();
+  }
+
+  // Una bomba de yerba o la pava, en el aire. En línea los demás la ven volar y
+  // reventar (ghost: la de otro jugador, solo se ve; el daño lo reporta el que la
+  // tiró). La pava del invitado, en el anfitrión, llama a los muertos: son suyos.
+  // fuse: la mecha que le queda (la bomba cocinada); hand: reventó en la mano.
+  lob(kind, pos, vel, ghost = false, fuse = null, hand = false) {
+    const T = (this.lobTpl ||= {});
+    // (una sola por tipo: las que vuelan comparten sus geometrías)
+    T[kind] ||= buildGrenade(this.T, kind === 'pava' ? 'pava' : 'frag');
+    const f = fuse ?? (kind === 'pava' ? 8 : GRENADE.fuse);
+    this.spawnProjectile({ kind, pos, vel, gravity: 12, fuse: f, bounce: true, ghost, hand, mesh: T[kind].clone(), spin: 6 + Math.random() * 4 });
+    if (!ghost) this.g.net?.share('lob', { k: kind, x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2), vx: +vel.x.toFixed(2), vy: +vel.y.toFixed(2), vz: +vel.z.toFixed(2), f: +f.toFixed(2) });
+  }
+
+  ghostLob(m) {
+    if (m.k !== 'grenade' && m.k !== 'pava') return;
+    this.lob(m.k, new THREE.Vector3(m.x, m.y, m.z), new THREE.Vector3(m.vx, m.vy, m.vz), true, m.f ?? null);
   }
 
   // Tomar un perk: el arma baja y aparece el mate de ese perk (cada uno tiene
@@ -1178,6 +1270,7 @@ export default class Weapons {
     this.state = 'drink';
     this.stateT = 0;
     this.drinkTime = 2.3;
+    this.g.net?.act?.('drink', this.drinkTime);
     this.drinkDone = onDone;
     const pm = this.perkMates?.get(perk) || buildPerkMateFor(this.T, perk, color);
     this.perkMate?.removeFromParent();
@@ -1569,7 +1662,8 @@ export default class Weapons {
     let hit = false;
     for (const { z } of list.slice(0, M.targets)) {
       const point = new THREE.Vector3(z.pos.x, (z.pos.y || 0) + 1.3 * (z.scale || 1), z.pos.z);
-      g.zombies.damage(z, st.damage, { type: 'scythe', zone: 'torso', point, dir: fwd.clone(), decap: Math.random() < 0.6 });
+      // (melee: la baja paga como la del cuchillo; la medialuna y el rayo, no)
+      g.zombies.damage(z, st.damage, { type: 'scythe', zone: 'torso', point, dir: fwd.clone(), decap: Math.random() < 0.6, melee: true });
       hit = true;
     }
     if (hit) {
@@ -1601,9 +1695,11 @@ export default class Weapons {
     const pos = cam.position.clone().addScaledVector(fwd, 0.6).add(new THREE.Vector3(0, -0.15, 0));
     this.crescentMat ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0x9affc8).multiplyScalar(2.2), toneMapped: false, transparent: true, opacity: 0.85, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
     // (la de la hoz de oro, dorada y más ancha)
-    if (st.baston) this.crescentGold ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc23a).multiplyScalar(2.6), toneMapped: false, transparent: true, opacity: 0.9, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
+    if (st.baston) this.crescentGold ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc23a).multiplyScalar(1.9), toneMapped: false, transparent: true, opacity: 0.9, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
     const mesh = new THREE.Group();
-    const arc = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.06, 6, 20, Math.PI * 1.1), st.baston ? this.crescentGold : this.crescentMat);
+    // (una sola geometría para todas: antes cada tiro dejaba una nueva en la placa)
+    this.crescentGeo ||= new THREE.TorusGeometry(0.6, 0.06, 6, 20, Math.PI * 1.1);
+    const arc = new THREE.Mesh(this.crescentGeo, st.baston ? this.crescentGold : this.crescentMat);
     if (st.baston) arc.scale.setScalar(1.35);
     arc.rotation.x = Math.PI / 2;
     mesh.add(arc);
@@ -1825,7 +1921,11 @@ export default class Weapons {
     if (!near) this.poolSndT = now;
     const snd = near ? null : g.audio.guns?.play('acido-charco', { pos: mesh.position, rate: 0.9 + Math.random() * 0.06 });
     (this.pools ||= []).push({ pos: new THREE.Vector3(pos.x, y, pos.z), r, B, t: 0, life: 4.5, tick: 0, mesh, snd });
-    while (this.pools.length > 8) this.pools.shift().mesh.removeFromParent();
+    while (this.pools.length > 8) {
+      const old = this.pools.shift();
+      old.mesh.removeFromParent();
+      old.mesh.material.dispose();
+    }
   }
 
   updatePools(dt) {
@@ -2061,12 +2161,19 @@ export default class Weapons {
     const target = this.aimPoint(origin, dir, st.range);
     const vel = target.sub(muzzle).normalize().multiplyScalar(P.speed);
     let mesh;
+    // (geometrías y materiales compartidos por tipo: antes cada tiro dejaba los
+    // suyos en la placa, y en una partida larga se juntaban miles)
+    const PM = (this.projMats ||= new Map());
     if (P.teabag) {
       mesh = new THREE.Group();
-      const bag = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.015), new THREE.MeshStandardMaterial({ color: P.color, roughness: 1 }));
-      mesh.add(bag);
+      this.bagGeo ||= new THREE.BoxGeometry(0.06, 0.07, 0.015);
+      const key = `bag|${P.color}`;
+      if (!PM.has(key)) PM.set(key, new THREE.MeshStandardMaterial({ color: P.color, roughness: 1 }));
+      mesh.add(new THREE.Mesh(this.bagGeo, PM.get(key)));
     } else {
-      mesh = new THREE.Mesh(this.projGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(P.color).multiplyScalar(P.glow ? 3 : 1.5), toneMapped: false }));
+      const key = `${P.color}|${P.glow ? 1 : 0}`;
+      if (!PM.has(key)) PM.set(key, new THREE.MeshBasicMaterial({ color: new THREE.Color(P.color).multiplyScalar(P.glow ? 3 : 1.5), toneMapped: false }));
+      mesh = new THREE.Mesh(this.projGeo, PM.get(key));
       mesh.scale.setScalar(P.size * 0.6);
     }
     this.spawnProjectile({ kind: 'shot', pos: muzzle.clone(), vel, gravity: P.gravity, P, st, mesh, life: 4 });
@@ -2083,11 +2190,12 @@ export default class Weapons {
     const vel = target.sub(muzzle).normalize().multiplyScalar(B.speed);
     const mesh = new THREE.Group();
     const M = getMats(this.T);
-    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.24, 6), M.silver);
+    const G = this.boltGeos();
+    const tube = new THREE.Mesh(G.tube, M.silver);
     tube.rotation.x = Math.PI / 2;
     mesh.add(tube);
     if (st.upgraded) {
-      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), M.glowGreen);
+      const glow = new THREE.Mesh(G.glow, M.glowGreen);
       glow.position.z = 0.12;
       mesh.add(glow);
     }
@@ -2100,14 +2208,25 @@ export default class Weapons {
     const target = this.aimPoint(origin, dir, st.range);
     const vel = target.sub(muzzle).normalize().multiplyScalar(B.speed);
     const M = getMats(this.T);
+    const G = this.boltGeos();
     const mesh = new THREE.Group();
-    const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.06, 8), M.glass);
+    const jar = new THREE.Mesh(G.jar, M.glass);
     jar.rotation.x = Math.PI / 2;
     mesh.add(jar);
-    const goo = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.045, 8), M.glowGreen);
+    const goo = new THREE.Mesh(G.goo, M.glowGreen);
     goo.rotation.x = Math.PI / 2;
     mesh.add(goo);
     this.spawnProjectile({ kind: 'bolt', pos: muzzle.clone(), vel, gravity: 6, B, st, mesh, life: 6 });
+  }
+
+  // Las piezas de la bombilla y del frasco que vuelan (una sola vez: se comparten).
+  boltGeos() {
+    return (this.boltG ||= {
+      tube: new THREE.CylinderGeometry(0.005, 0.005, 0.24, 6),
+      glow: new THREE.SphereGeometry(0.02, 8, 6),
+      jar: new THREE.CylinderGeometry(0.022, 0.022, 0.06, 8),
+      goo: new THREE.CylinderGeometry(0.017, 0.017, 0.045, 8),
+    });
   }
 
   fireChain(st, origin, fwd, muzzle) {
@@ -2254,6 +2373,7 @@ export default class Weapons {
     this.nova?.clear();
     this.supremo?.clear();
     this.hozBeam?.clear();
+    this.sable?.clear();
     for (const p of this.projectiles || []) {
       p.mesh?.removeFromParent();
       p.bubbles?.stop(0.1);
@@ -2365,7 +2485,12 @@ export default class Weapons {
         if (p.kind === 'bolt' || p.P?.teabag) {
           p.mesh.lookAt(tmpV2.copy(p.pos).add(p.vel));
           if (p.P?.teabag) p.mesh.rotation.z += dt * 12;
-        } else if (p.kind === 'grenade' || p.kind === 'pava') {
+        } else if (p.kind === 'grenade') {
+          // da vueltas de punta (y la chispa de la mecha titila)
+          p.mesh.rotation.x += dt * (p.spin || 8);
+          const sp = (p.spark ??= p.mesh.getObjectByName('nadeSpark') || false);
+          if (sp) sp.scale.setScalar(0.035 + Math.random() * 0.03);
+        } else if (p.kind === 'pava') {
           p.mesh.rotation.x += dt * 8;
           p.mesh.rotation.y += dt * 5;
         }
@@ -2478,13 +2603,49 @@ export default class Weapons {
   detonate(p) {
     const g = this.g;
     p.mesh?.removeFromParent();
+    if (p.ghost) {
+      // la de otro jugador: se ve y se oye nomás
+      if (p.kind === 'pava') {
+        this.removeLure(p);
+        g.fx.steam(p.pos, 20, 1.2);
+      }
+      g.fx.explosion(p.pos, p.kind === 'pava' ? 6 : GRENADE.radius, [1, 0.55, 0.2]);
+      g.audio.explosion(p.pos, 1);
+      if (p.kind === 'grenade') this.yerbaBurst(p.pos);
+      return;
+    }
     if (p.kind === 'pava') {
       this.removeLure(p);
-      this.explode(p.pos, 6, 2500, { selfDamage: 0 });
+      // a los que juntó los liquida en cualquier ronda (2500 fijo ya no
+      // alcanzaba de la 20 en adelante); a los jefes, lo de siempre
+      this.explode(p.pos, 6, 2500, { selfDamage: 0, floor: zombieHealth(g.rounds.round) * 2.6 });
       g.fx.steam(p.pos, 20, 1.2);
     } else if (p.kind === 'grenade') {
-      this.explode(p.pos, GRENADE.radius, GRENADE.damage + g.rounds.round * 40, { selfDamage: 75 });
+      // (en la mano pega como para tumbarte)
+      this.explode(p.pos, GRENADE.radius, GRENADE.damage + g.rounds.round * 40, { selfDamage: p.hand ? 160 : 75 });
+      this.yerbaBurst(p.pos);
     }
+  }
+
+  // Lo que vuela de la bomba de yerba: la yerba verde que sale para todos lados
+  // y cae de a poco, y el polvo verdoso (la quemadura del piso la pone fx.explosion).
+  yerbaBurst(pos) {
+    const g = this.g;
+    const A = g.fx.alpha;
+    if (A && !g.settings.calmFx) {
+      for (let i = 0; i < 44; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 2.5 + Math.random() * 6.5;
+        const k = Math.random();
+        A.spawn(pos.x, pos.y + 0.25, pos.z, Math.cos(a) * sp, 2.5 + Math.random() * 6, Math.sin(a) * sp, { color: [0.1 + k * 0.1, 0.2 + k * 0.12, 0.03 + k * 0.04], size: 0.13, size1: 0.09, life: 1.2 + Math.random() * 1.2, alpha: 1, gravity: 7, drag: 1.4 });
+      }
+      // la nube verde de la yerba molida
+      for (let i = 0; i < 8; i++) {
+        const a = Math.random() * Math.PI * 2;
+        A.spawn(pos.x, pos.y + 0.5, pos.z, Math.cos(a) * 1.6, 0.8 + Math.random() * 0.8, Math.sin(a) * 1.6, { color: [0.2, 0.27, 0.1], size: 0.7, size1: 2.6, life: 1.8 + Math.random() * 0.8, alpha: 0.5, drag: 1.6, gravity: -0.2 });
+      }
+    }
+    g.fx.dust(tmpV.copy(pos).setY(pos.y + 0.3), { x: 0, y: 1, z: 0 }, [0.24, 0.3, 0.12], 22);
   }
 
   // Explosión con daño decreciente y línea de visión.
@@ -2492,7 +2653,8 @@ export default class Weapons {
   // qué altura sobre el punto se mira si la explosión alcanza a cada uno.
   // pup: el bossMult del potenciador que la tiró (pega menos a los jefes);
   // boom: el grabado que suena (core/weaponSfx.js; si no, la sintetizada)
-  explode(pos, radius, damage, { color = [1, 0.55, 0.2], selfDamage = 0, skip = null, type = 'explosive', big = 1, elem, lift = 0.4, fx = true, pup, boom = null } = {}) {
+  // floor: el daño mínimo a los muertos comunes (no a jefes ni bichos especiales)
+  explode(pos, radius, damage, { color = [1, 0.55, 0.2], selfDamage = 0, skip = null, type = 'explosive', big = 1, elem, lift = 0.4, fx = true, pup, boom = null, floor = 0 } = {}) {
     const g = this.g;
     if (fx) {
       g.fx.explosion(pos, radius * big, color);
@@ -2505,7 +2667,8 @@ export default class Weapons {
       if (!g.world.clear(from, new THREE.Vector3(z.pos.x, z.pos.y + 1, z.pos.z))) continue;
       const k = 1 - (d / radius) * 0.6;
       const dir = new THREE.Vector3(z.pos.x - pos.x, 0.3, z.pos.z - pos.z).normalize();
-      g.zombies.damage(z, damage * k, { type, dir, point: new THREE.Vector3(z.pos.x, z.pos.y + 1, z.pos.z), elem, pup });
+      const plain = floor && !z.boss && !z.crow && !z.pombero && !z.yasy && !z.stake;
+      g.zombies.damage(z, plain ? Math.max(damage * k, floor) : damage * k, { type, dir, point: new THREE.Vector3(z.pos.x, z.pos.y + 1, z.pos.z), elem, pup });
     }
     const pd = g.player.pos.distanceTo(pos);
     if (selfDamage > 0 && pd < radius * 0.8 && g.world.clear(from, g.camera.position)) {
@@ -2791,11 +2954,27 @@ export default class Weapons {
       rz -= e * 0.7;
       rx += e * 0.3;
     }
+    // el Sable Corvo (weapons/Sable.js): desenvainar, los tajos, el tiro, la
+    // carga y el saludo (o[6]: cuánto baja, -1 la de siempre; o[7]: sin suavizar)
+    if (this.model?.sable) {
+      const o = this.sable.pose(dt);
+      target.x += o[0];
+      target.y += o[1];
+      target.z += o[2];
+      rx += o[3];
+      ry += o[4];
+      rz += o[5];
+      if (o[6] >= 0) lower = o[6];
+      if (o[7]) snap = true;
+    }
     if (this.state === 'throw') {
       lower = 0.7;
       const k = Math.min(1, t / 0.6);
       const obj = this.throwKind === 'pava' ? this.pavaVm : this.throwKind === 'cuchillo' && g.ee?.knife ? g.ee.knife.vm : this.nade;
       obj.visible = !this.thrown;
+      // (la mecha prendida en la mano)
+      const sp = obj.getObjectByName('nadeSpark');
+      if (sp) sp.scale.setScalar(0.012 + Math.random() * 0.01);
       obj.position.set(0.12 - k * 0.05, -0.12 + Math.sin(k * Math.PI) * 0.1, -0.3 - k * 0.2);
       obj.rotation.set(-k * 2, 0, 0);
     }
@@ -2855,7 +3034,7 @@ export default class Weapons {
       rz += ik * (0.25 + Math.sin(c * 0.5 + 1) * 0.1 - peek * 0.2);
       // el golpecito con la palma que hace girar el atado
       rz -= ik * bump(u, 1.45, 0.12) * 0.08;
-    } else if (ik > 0.001) {
+    } else if (ik > 0.001 && !this.model?.sable) {
       const c = Math.max(0, t - 0.4);
       target.lerp(INSPECT, ik);
       rx += ik * (0.62 + Math.sin(c * 1.05) * 0.16);

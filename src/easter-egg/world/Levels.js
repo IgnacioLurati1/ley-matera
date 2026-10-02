@@ -411,7 +411,8 @@ export function computeHeights(w) {
 export function heightAt(w, x, z) {
   const cx = Math.floor(x);
   const cz = Math.floor(z);
-  if (!w.inside(cx, cz)) return FEATURES.farm ? 0 : WATER_Y;
+  // (afuera de la grilla: el mapa puede decir qué hay, w.outY; el Monumento: la plaza, las calles y el río)
+  if (!w.inside(cx, cz)) return w.outY ? w.outY(x, z) : FEATURES.farm ? 0 : WATER_Y;
   const i = w.idx(cx, cz);
   if (w.groundCell?.[i]) return w.groundAt(x, z);
   const r = w.rampAt[i];

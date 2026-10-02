@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { soak } from './swim';
+import YacareSkin from './yacareSkin';
 
 // Yacarés del Iberá: el bicho especial de Mate no Numa (el lugar de los
 // carpinchos del molino y los pumas del castillo). Por dentro son "perros"
@@ -169,9 +170,16 @@ export default class YacareRig {
     }
     this.all = [this.body, this.head, this.headTeeth, this.jaw, this.jawTeeth, this.inside, ...this.tails, this.upper, this.lower, this.foot, this.eyes];
     this.last = game.time;
+    // el cuerpo de verdad (entities/yacareSkin.js): mientras baja, las piezas
+    this.skin = new YacareSkin(game, this.eyeMat);
   }
 
   hide(slot) {
+    this.hidePieces(slot);
+    this.skin?.hide(slot);
+  }
+
+  hidePieces(slot) {
     for (const im of [this.body, this.head, this.headTeeth, this.jaw, this.jawTeeth, this.inside, ...this.tails]) im.setMatrixAt(slot, ZERO);
     for (let k = 0; k < 4; k++) for (const im of [this.upper, this.lower, this.foot]) im.setMatrixAt(slot * 4 + k, ZERO);
     this.eyes.setMatrixAt(slot * 2, ZERO);
@@ -340,6 +348,11 @@ export default class YacareRig {
     tmpQ.setFromEuler(tmpE);
     tmpV.set(z.pos.x + fx * fwd, y, z.pos.z + fz * fwd);
     tmpM.compose(tmpV, tmpQ, tmpS.set(s, s, s));
+    // con el cuerpo de verdad: los mismos números a sus huesos, sin las piezas
+    if (this.skin?.pose(z, { M: tmpB.copy(tmpM), s, sw, headP, headY, jawA, tailYaw, legs })) {
+      this.hidePieces(z.slot);
+      return;
+    }
     this.body.setMatrixAt(z.slot, tmpM);
     // la cabeza, en la nuca
     const H = local(tmpA, tmpM, 0, 0.02, 0.6, headP, headY, 0).multiply(HEAD_S);

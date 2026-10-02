@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mesh, boxGeo, cylGeo } from './props';
+import { ejercitoUp } from './monumentoShield';
 
 // El escudo de cuero de yacaré de los esteros (le faltaba el suyo: usaba el
 // del molino) y lo que le agrega la mejora a cada escudo (world/ShieldUpgrade):
@@ -249,7 +250,7 @@ function castilloUp(g, M) {
   g.userData.emblem = head;
 }
 
-const UP = { molino: molinoUp, granja: granjaUp, penal: penalUp, esteros: esterosUp, torre: torreUp, castillo: castilloUp };
+const UP = { molino: molinoUp, granja: granjaUp, penal: penalUp, esteros: esterosUp, torre: torreUp, castillo: castilloUp, monumento: ejercitoUp };
 
 // Le pone al escudo recién armado lo de su mejora (lo llama shieldModel).
 export function upgradeShield(g, M, mapId) {

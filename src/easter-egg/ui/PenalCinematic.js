@@ -9,6 +9,7 @@ import { SIX, flareTexture } from '../weapons/supremoFx';
 import { arm, leg } from '../entities/zombieGaits';
 import { solvePose, PART_COUNT } from '../entities/skeleton';
 import { crewIds, glowFront } from './cineCrew';
+import { preloadBossSkin } from '../entities/bossSkin';
 
 // Final del penal, adentro del juego, en el Cerro del Espinillo. El Gauchito
 // Gil queda de rodillas junto al espinillo. Las almas del penal suben al
@@ -38,8 +39,8 @@ const GIL_POSE = {
   down: { hipY: 0.52, torsoP: 0.6, torsoR: 0.08, headP: 0.5, shLp: -0.1, shRp: -0.55, shLr: 0.25, shRr: -0.3, elL: -0.2, elR: -1 },
   // habla estirando la mano izquierda (con la derecha sigue agarrando el facón)
   talk: { hipY: 0.55, torsoP: 0.22, torsoR: 0, headP: -0.12, shLp: -1.3, shRp: -0.5, shLr: 0.05, shRr: -0.3, elL: -0.2, elR: -0.9 },
-  struck: { hipY: 0.62, torsoP: -0.5, torsoR: 0, headP: -0.75, shLp: -2.5, shRp: -2.5, shLr: 0.75, shRr: -0.75, elL: -0.15, elR: -0.15 },
-  ash: { hipY: 0.45, torsoP: 1.15, torsoR: 0.1, headP: 0.7, shLp: 0.1, shRp: 0.1, shLr: 0.35, shRr: -0.35, elL: -0.2, elR: -0.2 },
+  struck: { hipY: 0.62, torsoP: -0.5, torsoR: 0, headP: -0.75, shLp: -2.5, shRp: -2.5, shLr: -0.6, shRr: 0.6, elL: -0.15, elR: -0.15 },
+  ash: { hipY: 0.45, torsoP: 1.15, torsoR: 0.1, headP: 0.7, shLp: 0.1, shRp: 0.1, shLr: 0.1, shRr: -0.1, elL: -0.2, elR: -0.2 },
 };
 const CHAR = new THREE.Color(0x141110);
 const TAU = Math.PI * 2;
@@ -233,6 +234,8 @@ export default class PenalCinematic {
     z.yaw = Math.atan2(this.C.x - this.G.x, this.C.z - this.G.z);
     z.hp = z.maxHp = 1;
     Z.boss = z;
+    // (su cuerpo de verdad ya vino con la pelea; si se entra directo al final, se baja ya)
+    preloadBossSkin(Z, 'gil');
     Z.dressBoss('gil');
     Z.bossRig.rig.visible = true;
     this.gil = z;
@@ -892,8 +895,13 @@ export default class PenalCinematic {
   }
 
   // El piso de verdad: en el agua, floorAt da la superficie; acá, la arena del fondo.
+  // (el terreno como se ve, liso: el de fx/Water, el promedio de las esquinas
+  // de las celdas. floorAt va por celda, a escalones de medio metro, y al salir
+  // del agua los subía de a saltos: pedido del usuario 2026-10-01)
   ground(x, z) {
     const Wa = this.g.water;
+    const gy = Wa?.groundFn?.(x, z);
+    if (Number.isFinite(gy)) return gy;
     const d = Wa ? Wa.depthAt(x, z) : 0;
     if (d > 0) return Wa.level - d;
     const y = this.g.world.floorAt(x, z);
@@ -911,7 +919,10 @@ export default class PenalCinematic {
       r.pos.set(SWIM[0] + f.s * 1.3, 0, SWIM[1] + f.s * 0.3 - (f.i % 2) * 0.7);
       f.end = new THREE.Vector3(SHORE[0] + f.s * 1.3, 0, SHORE[1] + f.s * 0.3);
       r.poseFn = null;
-      r.swim = 3;
+      // (nadan con el clip de nado de los compañeros, net/gauchoSkin: el de
+      // antes era la pose vieja; pedido del usuario 2026-10-01)
+      r.swim = 2;
+      r.clips = true;
       r.downed = false;
       r.corpse = false;
       r.yaw = faceTo(r.pos, f.end.x, f.end.z);
@@ -983,6 +994,7 @@ export default class PenalCinematic {
         if (deep(p.x, p.z) < 0.9 || deep(p.x - Math.sin(r.yaw), p.z - Math.cos(r.yaw)) < 0.6) {
           f.phase = 'crawl';
           r.swim = 0;
+          r.clips = false;
           r.downed = true;
           r.poseFn = (P) => this.lieFit(f, P, deep(r.pos.x, r.pos.z) > 0 ? surf(r.pos.x, r.pos.z) - 0.3 : null);
         }

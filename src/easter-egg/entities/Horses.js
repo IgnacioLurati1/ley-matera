@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import HorseSkin from './horseSkin';
 
 // Caballos del infierno: la ronda especial de la granja (el lugar de los
 // carpinchos del molino). Por dentro son los mismos "perros" (Zombies los
@@ -88,9 +89,17 @@ export default class HorseRig {
     }
     this.all = [this.body, this.head, this.mane, this.jaw, this.upper, this.lower, this.hoof, this.tail, this.eyes];
     this.last = game.time;
+    // el cuerpo de verdad (entities/horseSkin.js): mientras baja, las piezas
+    this.skin = new HorseSkin(game, eyeMat);
+    this.skinM = new THREE.Matrix4();
   }
 
   hide(slot) {
+    this.hidePieces(slot);
+    this.skin?.hide(slot);
+  }
+
+  hidePieces(slot) {
     for (const im of [this.body, this.head, this.mane, this.jaw, this.tail]) im.setMatrixAt(slot, ZERO);
     for (let k = 0; k < 4; k++) {
       this.upper.setMatrixAt(slot * 4 + k, ZERO);
@@ -171,6 +180,12 @@ export default class HorseRig {
       tmpV.set(z.pos.x, (z.baseY || 0) + y, z.pos.z);
       const s = z.scale || 1;
       tmpM.compose(tmpV, tmpQ, tmpS.set(s, s, s));
+      // con el cuerpo de verdad: los mismos números a sus huesos, sin las piezas
+      const legP = LEGS.map(([, lz], k) => ({ sw: legs[k], bend: bend + Math.max(0, lz > 0 ? -legs[k] : legs[k]) * 0.7 }));
+      if (this.skin?.pose(z.slot, { M: this.skinM.copy(tmpM), s, headP, jawA, tailR: -tailA + Math.sin(ph * 2) * 0.1 * run, legs: legP })) {
+        this.hidePieces(z.slot);
+        continue;
+      }
       this.body.setMatrixAt(z.slot, local(tmpM, 0, HIP_Y + 0.22, 0, 0, 0, 0));
       const H = local(tmpM, 0, HIP_Y + 0.35, 0.55, headP, 0, 0);
       this.head.setMatrixAt(z.slot, H);
