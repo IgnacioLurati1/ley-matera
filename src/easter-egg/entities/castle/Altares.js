@@ -5,6 +5,7 @@ import { buildMate } from '../../weapons/viewmodels';
 import '../../weapons/elementalModels';
 import { altarGlyph } from '../../world/castleDecor';
 import { flameMaterial } from '../../world/castleFire';
+import { sleepHidden } from '../../world/castleLean';
 import Encierro from '../Encierro';
 import { ELEMENTS, MATE_OF, ELEM_NAME, ELEM_COLOR, ELEM_RGB, glow, ring, myId, isHost, announce, toastAll, players } from './common';
 
@@ -71,6 +72,8 @@ export default class Altares {
         o.frustumCulled = false;
       });
       grp.add(m.root);
+      // (escondido hasta que se gana: no se recorre)
+      sleepHidden(m.root);
       return m;
     });
     const halo = glow(T, col, 2.4, 0);
@@ -88,6 +91,7 @@ export default class Altares {
     pillar.position.y = 4;
     pillar.visible = false;
     grp.add(pillar);
+    sleepHidden(pillar);
     // lo de las esquinas (mismas posiciones que la utilería del altar)
     const corners = [0, 1, 2, 3].map((k) => {
       const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
@@ -104,6 +108,7 @@ export default class Altares {
         }
         f.position.set(c.x, 1.2, c.z);
         grp.add(f);
+        sleepHidden(f);
         deco.push(f);
       }
     } else if (el === 'viento') {

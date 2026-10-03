@@ -175,7 +175,8 @@ export function buildDecor(w) {
   // ---- el Parque: tipas, bancos, faroles y la Batería Libertad
   const trunk = new THREE.CylinderGeometry(0.22, 0.38, 1, 7);
   const crownG = new THREE.IcosahedronGeometry(1, 1);
-  const trees = [[99.2, 9], [102.5, 13], [99, 24], [102.6, 27], [99.3, 33], [102.4, 37], [99.1, 45], [102.7, 49], [99.5, 52.5], [102.4, 21.5], [99.4, 38.6]];
+  // (lejos del mástil de la barranca, en 101,5 / 30,5: la Bandera izada no se enreda en las copas)
+  const trees = [[99.2, 9], [102.5, 13], [99, 24], [102.6, 25.4], [99.3, 35.0], [102.4, 37.6], [99.1, 45], [102.7, 49], [99.5, 52.5], [102.4, 21.5], [99.4, 39.4]];
   const leafM = new THREE.MeshStandardMaterial({ color: 0x24361e, roughness: 0.95, flatShading: true });
   for (const [x, z] of trees) {
     const h = 3.2 + r() * 1.6;
@@ -204,7 +205,7 @@ export function buildDecor(w) {
     g.rotation.y = ry;
     return g;
   };
-  for (const [x, z, ry] of [[101, 16.5, -Math.PI / 2], [101, 43.5, -Math.PI / 2], [101.4, 31, -Math.PI / 2], [110.5, 12, Math.PI / 2], [110.5, 48, Math.PI / 2], [110.5, 24, Math.PI / 2]]) {
+  for (const [x, z, ry] of [[101, 16.5, -Math.PI / 2], [101, 43.5, -Math.PI / 2], [101.4, 33.6, -Math.PI / 2], [110.5, 12, Math.PI / 2], [110.5, 48, Math.PI / 2], [110.5, 24, Math.PI / 2]]) {
     const y = x > 105 ? -4.4 : -2.6;
     const b = bench(x, z, ry);
     b.position.y = y;

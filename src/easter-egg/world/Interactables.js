@@ -7,7 +7,7 @@ import { chalkTexture, perkLabel, toTexture } from '../core/textures';
 import { buildMate, buildKnife, buildGrenade, getMats } from '../weapons/viewmodels';
 import { camoFor } from '../weapons/camos';
 import { supremoOn } from '../core/eggs';
-import { mesh, boxGeo, cylGeo, mergeByMaterial } from './props';
+import { mesh, boxGeo, cylGeo, mergeByMaterial, compactGroup } from './props';
 import { buildBoxSkin } from './BoxSkins';
 import { buildLock, lockMats, disposeLock } from './lockSkins';
 import { buildPerkMachine, MACHINE } from './perkMachines';
@@ -70,6 +70,10 @@ export default class Interactables {
     this.buildPap();
     this.buildBox();
     this.buildRepair();
+    // lo que arranca escondido (los mates de las paredes antes de comprarlos,
+    // los de la caja, las cajas de la liquidación) no se recorre cada cuadro
+    // mientras no se vea (core/matrixCache.js mcSleep)
+    if (!(globalThis.__mduNoMerge || globalThis.__mduNo1d)) for (const c of this.root.children) if (!c.visible) c.mcSleep = true;
     this.current = null;
     this.holdT = 0;
   }
@@ -118,6 +122,7 @@ export default class Interactables {
       group.position.set(cx, fy, cz);
       group.rotation.y = horizontal ? 0 : Math.PI / 2;
       const pieces = [];
+      let closed = null;
       if (d.kind === 'gate') {
         // tranquera de dos hojas: travesaños, la diagonal y el poste de cada lado
         for (const s of [-1, 1]) {
@@ -171,7 +176,8 @@ export default class Interactables {
           hinge.add(mesh(boxGeo(width / 2 - 0.02, DOOR_H - 0.05, 0.12), M.woodDark, (-s * width) / 4, DOOR_H / 2, 0));
           for (const y of [0.4, 1.35, 2.3]) hinge.add(mesh(boxGeo(width / 2 - 0.08, 0.1, 0.15), M.iron, (-s * width) / 4, y, 0));
           for (let k = 0; k < 3; k++) hinge.add(mesh(boxGeo(0.06, 0.5, 0.01), M.redCloth || M.redPaint, -s * (0.15 + k * 0.25), 1.8 - k * 0.1, 0.08, 0, 0, (k - 1) * 0.3));
-          group.add(hinge);
+          // (cada hoja se mueve entera: una malla por material)
+          group.add(compactGroup(hinge));
           pieces.push({ obj: hinge, side: s });
         }
         const padlock = mesh(boxGeo(0.22, 0.26, 0.1), M.brass, 0, 1.25, 0.1);
@@ -238,7 +244,8 @@ export default class Interactables {
           for (const y of [0.5, 1.4, 2.2]) hinge.add(mesh(boxGeo(width / 2 - 0.1, 0.12, 0.13), M.wood, (-s * width) / 4, y, 0));
           hinge.add(mesh(boxGeo(0.04, 0.2, 0.16), M.iron, -s * 0.1, 1.2, 0));
           hinge.add(mesh(boxGeo(0.12, 0.08, 0.14), M.iron, -s * (width / 2 - 0.1), 1.25, 0));
-          group.add(hinge);
+          // (cada hoja se mueve entera: una malla por material)
+          group.add(compactGroup(hinge));
           pieces.push({ obj: hinge, side: s });
         }
       } else {
@@ -256,9 +263,19 @@ export default class Interactables {
           group.add(m);
           pieces.push({ obj: m, vel: new THREE.Vector3((r() - 0.5) * 3, 3 + r() * 4, (r() - 0.5) * 3), spin: new THREE.Vector3(r() * 6, r() * 6, r() * 6) });
         }
+        // cerrado no se mueve: se dibuja una copia con una malla por material
+        // (13 piezas, 4 dibujos); al abrir vuelven las piezas sueltas, que
+        // vuelan cada una por su lado (openDoor)
+        if (!(globalThis.__mduNoMerge || globalThis.__mduNo1d)) {
+          closed = compactGroup(new THREE.Group().add(...items.map((m) => m.clone())));
+          for (const m of items) m.removeFromParent();
+          group.add(closed);
+        }
       }
       this.root.add(group);
-      const door = { def: d, index: i, group, pieces, open: false };
+      // (abierto, el escombro y el maíz quedan escondidos: core/matrixCache.js mcSleep)
+      group.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
+      const door = { def: d, index: i, group, pieces, open: false, closed };
       this.add({
         kind: 'door',
         door,
@@ -292,6 +309,12 @@ export default class Interactables {
     if (door.open) return;
     g.net?.event('door', { i: door.index });
     door.open = true;
+    // (el escombro: vuelven las piezas sueltas en lugar de la copia junta)
+    if (door.closed) {
+      door.closed.removeFromParent();
+      for (const p of door.pieces) door.group.add(p.obj);
+      door.closed = null;
+    }
     g.world.openDoor(door.index);
     for (const z of door.def.zones) g.activateZone(z);
     g.audio.door(door.group.position, door.def.kind === 'debris' || door.def.kind === 'valla');
@@ -368,6 +391,9 @@ export default class Interactables {
       // (sin la mano y la manga de primera persona: colgado en la pared el
       // facón sacaba el brazo entero a través del muro)
       if (shown) dropHands(shown);
+      // (colgado no se mueve por dentro: una malla por material, de 20-110
+      // piezas sueltas a unas pocas)
+      if (shown) compactGroup(shown);
       if (shown) {
         shown.scale.setScalar(isBowie ? 3 : 3.2);
         shown.position.set(a.x + wb.face[0] * 0.12, fy + 1.55, a.z + wb.face[1] * 0.12);
@@ -1224,7 +1250,8 @@ export default class Interactables {
       // misma malla y materiales, sin shaders nuevos)
       if (box !== this.box) m = this.boxModel(id).clone();
       // (la pava no es un mate: se muestra la pava de verdad)
-      else m = id === 'pava' ? buildGrenade(this.g.textures, 'pava') : buildMate(id, false, this.g.textures).root;
+      // (sube y gira entero: una malla por material, compactGroup)
+      else m = compactGroup(id === 'pava' ? buildGrenade(this.g.textures, 'pava') : buildMate(id, false, this.g.textures).root);
       m.scale.setScalar(2.6);
       box.models.set(id, m);
     }
@@ -1623,6 +1650,11 @@ export default class Interactables {
       // de invitado, lo del mapa lo decide el anfitrión (salvo lo que es de cada uno)
       if (g.net?.guest && !best.local) {
         if (typeof pr === 'object' && pr?.info) return;
+        // (el Pack-a-Pava sin corriente o sin su misión: ni se pide)
+        if (best.kind === 'pap' && ((g.papq && !g.papq.done) || !this.machineOn(this.pap))) {
+          g.audio.deny();
+          return;
+        }
         // munición llena: no se cobra una recarga que no hace falta
         if (best.kind === 'wallbuy' && best.weapon && g.weapons.ammoFull(best.weapon)) {
           g.audio.deny();

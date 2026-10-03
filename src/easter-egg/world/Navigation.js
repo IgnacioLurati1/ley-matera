@@ -1,6 +1,9 @@
 import { canStep } from './Levels';
 import TowerNav from './TowerNav';
 
+// lo menos que pasa entre dos cálculos del campo de un jugador (ms)
+const SOLVE_GAP = 110;
+
 // Campo de flujo: distancia (Dijkstra, 8 vecinos) desde la celda del jugador a
 // todas las celdas caminables. Todos los zombies lo comparten: cada uno solo
 // mira qué vecino está más cerca del jugador. Se recalcula cuando el jugador
@@ -69,6 +72,12 @@ export default class Navigation {
     }
     const t = w.idx(cx, cz);
     if (!force && t === this.target && w.navVersion === this.version) return;
+    // (no más de uno cada SOLVE_GAP: corriendo se cambia de celda varias veces
+    // por segundo y el anfitrión rehace uno por jugador; el que queda
+    // pendiente se hace en el cuadro siguiente que toque)
+    const now = performance.now();
+    if (!force && w.navVersion === this.version && now - (this.solvedAt || 0) < SOLVE_GAP) return;
+    this.solvedAt = now;
     this.target = t;
     this.version = w.navVersion;
     this.solve(t);
@@ -86,7 +95,9 @@ export default class Navigation {
     // lo que cuesta cada celda (el agua honda, entities/swim.js); sin agua, todo 1
     const cost = w.navCost;
     while (heap.size) {
-      const [i, d] = heap.pop();
+      // (sin armar un arreglo por celda: era basura de memoria en cada cálculo)
+      const i = heap.pop();
+      const d = heap.lastKey;
       if (d > dist[i]) continue;
       const x = i % W;
       const z = (i - x) / W;
@@ -250,7 +261,8 @@ class MinHeap {
         i = m;
       }
     }
-    return [id, key];
+    this.lastKey = key;
+    return id;
   }
 
   swap(a, b) {

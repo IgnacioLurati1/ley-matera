@@ -12,6 +12,7 @@ import { castleTerrain, macroY } from './Mountain';
 import { quadUV, rampY } from './Levels';
 import { flameMaterial } from './castleFire';
 import { NATURE } from './castleNature';
+import { lean, flattenProps } from './castleLean';
 
 // Arquitectura propia del castillo del Mateendrache, encima de la de
 // world/Levels.js (que arma paredes, pisos, techos y escaleras):
@@ -112,6 +113,14 @@ export function installCastleHooks(w) {
   // al costado de un puente la cara de piedra baja solo el espesor del tablero
   w.curbBase = (x, z, base, top) => (bridgeSide(w, x, z) ? Math.max(base, top - 1.5) : base);
   w.noBars = true;
+  // (la utilería lisa en pocas mallas, antes de juntar el resto por material)
+  if (lean()) {
+    const fin = w.finalizeStatic;
+    w.finalizeStatic = function () {
+      flattenProps(this);
+      return fin.call(this);
+    };
+  }
 }
 
 // ---------------- almenas, barandas y cercas ----------------

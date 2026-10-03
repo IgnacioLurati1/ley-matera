@@ -111,7 +111,8 @@ export default class Cerro extends Arena {
       const l = new THREE.PointLight(0xff3a2a, 0, 28, 1.6);
       l.position.set(x + (k ? 4 : -4), y + 3.5, z);
       this.g.scene.add(l);
-      return l;
+      // (no cuenta como luz mientras está apagada: World.adoptLight)
+      return this.g.world.adoptLight(l);
     });
     this.lightHome = this.lights.map((l) => l.position.clone());
     this.wardMesh = new THREE.Mesh(

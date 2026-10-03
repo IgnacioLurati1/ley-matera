@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { assetUrl } from '../../lib/assets';
-import { skinLook, glowEye } from './bossSkin';
+import { skinLook, glowEye, cullList, cullAt } from './bossSkin';
 
 // El Pombero con cuerpo de verdad: el modelo low poly (Meshy, con el esqueleto
 // de siempre) en lugar de las piezas de entities/Pombero.js, que siguen
@@ -78,6 +78,8 @@ export default class PomberoSkin {
       }
     });
     this.bones = bones;
+    // (el recorte: una esfera alrededor de la cadera, bossSkin cullList)
+    this.cull = cullList(root);
     // las manos más chicas (desde la muñeca; los clips solo giran los huesos)
     for (const n of ['LeftHand', 'RightHand']) bones[n]?.scale.multiplyScalar(HAND);
     this.hipsRest = bones.Hips.getWorldPosition(new THREE.Vector3());
@@ -109,6 +111,8 @@ export default class PomberoSkin {
       o.add(sp);
     }
     root.visible = false;
+    // (escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+    root.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
     P.g.scene.add(root);
     this.root = root;
     // el botín: ya no arriba de la cabeza de las piezas, entre las manos del modelo
@@ -221,6 +225,7 @@ export default class PomberoSkin {
       else d.bone.quaternion.copy(d.bone.parent.getWorldQuaternion(q)).invert().multiply(d.W);
     }
     root.updateMatrixWorld(true);
+    cullAt(this.cull, hb.bone.getWorldPosition(a));
     // con el botín: los brazos arriba, sosteniéndolo sobre la cabeza
     if (P.carry) this.armsUp(z);
     this.placeHold();

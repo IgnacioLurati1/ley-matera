@@ -6,8 +6,9 @@ import { drawPerkIcon } from '../ui/perkIcons';
 
 const N = makeNoise(115);
 
+// (en un worker, core/textureWorker.js, no hay document: OffscreenCanvas)
 function canvas(w, h) {
-  const c = document.createElement('canvas');
+  const c = typeof document !== 'undefined' ? document.createElement('canvas') : new OffscreenCanvas(w, h);
   c.width = w;
   c.height = h;
   return c;
@@ -483,18 +484,31 @@ function terracotta({ seed }) {
 }
 
 // Desgaste y suciedad general sobre un canvas ya pintado.
+// El factor del desgaste en cada pixel: solo ruido, no depende de lo pintado.
+// Las etiquetas de los perks (512x1024, ~90 ms cada una) lo traen hecho de los
+// workers del arranque (core/texturePool.js, putWearField).
+export function wearField(w, h, seed, amount) {
+  const f = new Float32Array(w * h);
+  for (let y = 0, i = 0; y < h; y++) {
+    for (let x = 0; x < w; x++, i++) f[i] = 1 - amount * N.fbm(x / 50 + seed, y / 50, 4, w / 50) * 0.9 - (N.noise(x / 2, y / 2) - 0.5) * 0.08;
+  }
+  return f;
+}
+const wearFields = new Map();
+export const wearKey = (w, h, seed, amount) => `${w}x${h}:${seed}:${amount}`;
+export const putWearField = (key, f) => wearFields.set(key, f);
+
 function wear(ctx, w, h, seed, amount) {
+  const key = wearKey(w, h, seed, amount);
+  let f = wearFields.get(key);
+  if (!f) wearFields.set(key, (f = wearField(w, h, seed, amount)));
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
-  let i = 0;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++, i += 4) {
-      const n = N.fbm(x / 50 + seed, y / 50, 4, w / 50);
-      const k = 1 - amount * n * 0.9 - (N.noise(x / 2, y / 2) - 0.5) * 0.08;
-      d[i] = clamp(d[i] * k);
-      d[i + 1] = clamp(d[i + 1] * k);
-      d[i + 2] = clamp(d[i + 2] * k);
-    }
+  for (let i = 0, j = 0; j < f.length; i += 4, j++) {
+    const k = f[j];
+    d[i] = clamp(d[i] * k);
+    d[i + 1] = clamp(d[i + 1] * k);
+    d[i + 2] = clamp(d[i + 2] * k);
   }
   ctx.putImageData(img, 0, 0);
 }
@@ -968,7 +982,17 @@ export function chalkTexture(weapon, price) {
 }
 
 // Etiqueta de paquete de yerba (perk). Frente del paquete gigante.
+// Cada etiqueta se pinta una sola vez (al cambiar de mapa o reiniciar se
+// vuelve a usar el mismo canvas, con una textura nueva).
+const labels = new Map();
+export const PERK_WEAR = (perk) => wearKey(512, 1024, perk.cost % 97, 0.3);
 export function perkLabel(perk) {
+  let c = labels.get(perk);
+  if (!c) labels.set(perk, (c = paintPerkLabel(perk)));
+  return toTexture(c, { repeat: false });
+}
+
+function paintPerkLabel(perk) {
   const W = 512;
   const H = 1024;
   const c = canvas(W, H);
@@ -1026,7 +1050,7 @@ export function perkLabel(perk) {
   ctx.font = 'bold 40px "Special Elite", monospace';
   ctx.fillText(`1 kg  ·  $${perk.cost}`, W / 2, H * 0.9);
   wear(ctx, W, H, perk.cost % 97, 0.3);
-  return toTexture(c, { repeat: false });
+  return c;
 }
 
 function softDot() {
@@ -1179,48 +1203,90 @@ function woodCarved() {
   });
 }
 
-export function buildTextures() {
+// Las texturas de todos los mapas: [nombre, pintor, opciones de toTexture].
+// Se pintan en otros hilos al abrir el juego (core/texturePool.js); las que no
+// llegan se pintan acá. El '?' usa una letra del sistema: va siempre acá.
+const BASE = [
+  ['plasterGreen', () => plaster({ base: 0xcfc2a4, band: 0x3f6a4c, seed: 1 })],
+  ['plasterBlue', () => plaster({ base: 0xc9c0ab, band: 0x3a5a78, seed: 2 })],
+  ['plasterWhite', () => plaster({ base: 0xe4ddcc, band: 0x6c2a22, seed: 3 })],
+  ['plasterOffice', () => plaster({ base: 0xb9a07a, band: 0x4a3322, seed: 4 })],
+  ['brick', () => bricks({ seed: 5 })],
+  ['brickSoot', () => bricks({ seed: 6, soot: 0.85, tint: 0x8a3c26 })],
+  ['concreteWall', () => plaster({ base: 0x8a877e, band: 0x5b5d52, seed: 7, under: 0x5e5a52, bricks: false })],
+  ['planks', () => planks({ seed: 8 })],
+  ['planksDark', () => planks({ seed: 9, base: 0x4a3322, width: 80, dark: 0.8 })],
+  ['parquet', () => planks({ seed: 10, base: 0x7a4a2a, width: 42, weather: 0.2 })],
+  ['dirt', () => dirt({ seed: 11 })],
+  ['dirtDark', () => dirt({ seed: 12, base: 0x5e2e1c, dark: 0.75 })],
+  ['concrete', () => concrete({ seed: 13 })],
+  ['calcareo', () => calcareo({ seed: 14 })],
+  ['terracotta', () => terracotta({ seed: 15 })],
+  ['corrugated', () => corrugated({ seed: 16 })],
+  ['metal', () => metal({ seed: 17 })],
+  ['metalGreen', () => metal({ seed: 18, base: 0x3f5a44 })],
+  ['burlap', () => burlap({ seed: 19 })],
+  ['wool', () => wool()],
+  ['skin', () => skinTex()],
+  ['board', () => boardTex({ seed: 20 })],
+  ['grime', () => grime()],
+  ['face', () => zombieFace(), { repeat: false }],
+  ['zcloth', () => zombieCloth()],
+  ['zpants', () => zombiePants()],
+  ['zskin', () => zombieSkin()],
+  ['dot', () => softDot(), { repeat: false, srgb: false }],
+  ['decals', () => decalAtlas(), { repeat: false }],
+  ['coffeeFace', () => coffeeFace(), { repeat: false }],
+  ['question', () => questionMark(), { repeat: false }],
+  ['camo', () => papCamo()],
+  ['yerba', () => yerbaTop()],
+  ['leather', () => leather()],
+  ['gourd', () => gourd()],
+  ['woodCarved', () => woodCarved()],
+  ['ground', () => dirt({ seed: 21, base: 0x6a3420, dark: 0.7 })],
+];
+export const BASE_NAMES = BASE.map((b) => b[0]).filter((n) => n !== 'question');
+
+// Las de los mapas (World.js: penalTextures, farmTextures). También salen de
+// los workers del arranque (core/texturePool.js) y quedan esperando en PRE
+// hasta que se arma el mapa; si no llegaron, se pintan acá.
+const EXTRA = {
+  grass41: () => grass({ seed: 41 }),
+  adobe: () => plaster({ base: 0xb49a76, band: 0x7a4428, seed: 42, under: 0x7a5a3c, bricks: false }),
+  barn: () => planks({ seed: 43, base: 0x8e3424, width: 56, dark: 0.9, weather: 1.2 }),
+  fence: () => planks({ seed: 44, base: 0x6e6252, width: 64, dark: 0.85, weather: 1.2 }),
+  corn: () => cornCard(),
+  stoneWall: () => stoneBlocks({ seed: 61 }),
+  cellWall: () => cellWall({ seed: 62 }),
+  whitewash: () => plaster({ base: 0xd8d2c2, band: 0x8a3a2a, seed: 63, under: 0x6e6860, bricks: false }),
+  damero: () => damero({ seed: 64 }),
+  azulejo: () => azulejo({ seed: 65 }),
+  rock: () => rock({ seed: 66 }),
+  grass67: () => grass({ seed: 67 }),
+};
+export const MAP_SETS = {
+  farm: ['grass41', 'adobe', 'barn', 'fence', 'corn'],
+  penal: ['stoneWall', 'cellWall', 'whitewash', 'damero', 'azulejo', 'rock', 'grass67'],
+};
+const PRE = new Map();
+export const putPre = (name, c) => PRE.set(name, c);
+export function takePre(name) {
+  const c = PRE.get(name);
+  if (c) PRE.delete(name);
+  return c || null;
+}
+const pre = (name) => takePre(name) || EXTRA[name]();
+
+// Pinta una de la lista o de los mapas (para el worker).
+export function paintBase(name) {
+  const b = BASE.find((x) => x[0] === name);
+  return b ? b[1]() : EXTRA[name]?.() || null;
+}
+
+// pre: { nombre: canvas } ya pintadas en otro hilo.
+export function buildTextures(pre) {
   const T = {};
-  const t = (name, c, opts) => {
-    T[name] = toTexture(c, opts);
-  };
-  t('plasterGreen', plaster({ base: 0xcfc2a4, band: 0x3f6a4c, seed: 1 }));
-  t('plasterBlue', plaster({ base: 0xc9c0ab, band: 0x3a5a78, seed: 2 }));
-  t('plasterWhite', plaster({ base: 0xe4ddcc, band: 0x6c2a22, seed: 3 }));
-  t('plasterOffice', plaster({ base: 0xb9a07a, band: 0x4a3322, seed: 4 }));
-  t('brick', bricks({ seed: 5 }));
-  t('brickSoot', bricks({ seed: 6, soot: 0.85, tint: 0x8a3c26 }));
-  t('concreteWall', plaster({ base: 0x8a877e, band: 0x5b5d52, seed: 7, under: 0x5e5a52, bricks: false }));
-  t('planks', planks({ seed: 8 }));
-  t('planksDark', planks({ seed: 9, base: 0x4a3322, width: 80, dark: 0.8 }));
-  t('parquet', planks({ seed: 10, base: 0x7a4a2a, width: 42, weather: 0.2 }));
-  t('dirt', dirt({ seed: 11 }));
-  t('dirtDark', dirt({ seed: 12, base: 0x5e2e1c, dark: 0.75 }));
-  t('concrete', concrete({ seed: 13 }));
-  t('calcareo', calcareo({ seed: 14 }));
-  t('terracotta', terracotta({ seed: 15 }));
-  t('corrugated', corrugated({ seed: 16 }));
-  t('metal', metal({ seed: 17 }));
-  t('metalGreen', metal({ seed: 18, base: 0x3f5a44 }));
-  t('burlap', burlap({ seed: 19 }));
-  t('wool', wool());
-  t('skin', skinTex());
-  t('board', boardTex({ seed: 20 }));
-  t('grime', grime());
-  t('face', zombieFace(), { repeat: false });
-  t('zcloth', zombieCloth());
-  t('zpants', zombiePants());
-  t('zskin', zombieSkin());
-  t('dot', softDot(), { repeat: false, srgb: false });
-  t('decals', decalAtlas(), { repeat: false });
-  t('coffeeFace', coffeeFace(), { repeat: false });
-  t('question', questionMark(), { repeat: false });
-  t('camo', papCamo());
-  t('yerba', yerbaTop());
-  t('leather', leather());
-  t('gourd', gourd());
-  t('woodCarved', woodCarved());
-  t('ground', dirt({ seed: 21, base: 0x6a3420, dark: 0.7 }));
+  for (const [name, fn, opts] of BASE) T[name] = toTexture(pre?.[name] || fn(), opts);
   return T;
 }
 
@@ -1317,11 +1383,12 @@ function cornCard() {
 export function farmTextures(T) {
   // (el penal también arma su pasto: se mira el adobe, que es solo de la granja)
   if (T.adobe) return T;
-  T.grass ||= toTexture(grass({ seed: 41 }));
-  T.adobe = toTexture(plaster({ base: 0xb49a76, band: 0x7a4428, seed: 42, under: 0x7a5a3c, bricks: false }));
-  T.barn = toTexture(planks({ seed: 43, base: 0x8e3424, width: 56, dark: 0.9, weather: 1.2 }));
-  T.fence = toTexture(planks({ seed: 44, base: 0x6e6252, width: 64, dark: 0.85, weather: 1.2 }));
-  T.corn = toTexture(cornCard(), { repeat: false });
+  // (lo pintado sale de los workers del arranque si ya llegó: EXTRA, pre)
+  T.grass ||= toTexture(pre('grass41'));
+  T.adobe = toTexture(pre('adobe'));
+  T.barn = toTexture(pre('barn'));
+  T.fence = toTexture(pre('fence'));
+  T.corn = toTexture(pre('corn'), { repeat: false });
   return T;
 }
 
@@ -1450,8 +1517,9 @@ function azulejo({ seed }) {
     if (rust > 0.62) col = mix(col, [120, 70, 40], Math.min(0.55, (rust - 0.62) * 2.5));
     return col;
   });
-  // relieve: el azulejo esmaltado tiene el canto redondeado
-  c.relief = { detail: 0.05, h: (x, y) => tileH(x % t, y % t, t, 2, 3), rough: (x, y) => (x % t < 2 || y % t < 2 ? 0.9 : 0.16) };
+  // relieve: el azulejo esmaltado tiene el canto redondeado (la pieza, 0.35
+  // como en Baja: con 0.16 un cuarto entero de azulejo encandilaba desde Media)
+  c.relief = { detail: 0.05, h: (x, y) => tileH(x % t, y % t, t, 2, 3), rough: (x, y) => (x % t < 2 || y % t < 2 ? 0.9 : 0.35) };
   return c;
 }
 
@@ -1472,12 +1540,13 @@ function rock({ seed }) {
 // Las texturas del penal se pintan recién cuando se arma ese mapa.
 export function penalTextures(T) {
   if (T.stoneWall) return T;
-  T.stoneWall = toTexture(stoneBlocks({ seed: 61 }));
-  T.cellWall = toTexture(cellWall({ seed: 62 }));
-  T.whitewash = toTexture(plaster({ base: 0xd8d2c2, band: 0x8a3a2a, seed: 63, under: 0x6e6860, bricks: false }));
-  T.damero = toTexture(damero({ seed: 64 }));
-  T.azulejo = toTexture(azulejo({ seed: 65 }));
-  T.rock = toTexture(rock({ seed: 66 }));
-  T.grass = T.grass || toTexture(grass({ seed: 67 }));
+  // (lo pintado sale de los workers del arranque si ya llegó: EXTRA, pre)
+  T.stoneWall = toTexture(pre('stoneWall'));
+  T.cellWall = toTexture(pre('cellWall'));
+  T.whitewash = toTexture(pre('whitewash'));
+  T.damero = toTexture(pre('damero'));
+  T.azulejo = toTexture(pre('azulejo'));
+  T.rock = toTexture(pre('rock'));
+  T.grass = T.grass || toTexture(pre('grass67'));
   return T;
 }

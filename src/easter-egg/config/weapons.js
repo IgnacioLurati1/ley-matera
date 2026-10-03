@@ -643,7 +643,7 @@ export const WEAPONS = {
   // arranca el alma a los muertos que tenés adelante (weapons/Farol.js).
   farol: {
     name: 'Farol de las Ánimas',
-    desc: 'Mantené el clic: les arranca el alma a los muertos que tenés adelante.',
+    desc: 'Mantené el clic: les arranca el alma a los muertos que tenés adelante. Clic derecho: gaucho life para vos y los de al lado.',
     kind: 'farol',
     auto: true,
     rpm: 600,
@@ -661,7 +661,8 @@ export const WEAPONS = {
     bossMult: 0.3,
     // cono (coseno del medio ángulo), cuántos a la vez, segundos hasta vaciar a
     // uno común, qué parte de la vida del jefe por segundo, y la explosión final
-    drain: { cos: 0.8, targets: 10, time: 0.8, boss: 0.03, burst: 9 },
+    // (vaciar a uno común: 0,45 s; era 0,8 y se sentía flojo)
+    drain: { cos: 0.8, targets: 10, time: 0.45, boss: 0.03, burst: 9 },
   },
   // El penal: el trabuco de bombillas (sale de la caja solo ahí) y su versión con
   // el kit de ácido (se arma en la enfermería y se carga de almas en el encierro).

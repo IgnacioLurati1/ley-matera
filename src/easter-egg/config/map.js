@@ -21,7 +21,8 @@ export const MAP_LIST = [
   { id: 'esteros', name: 'Mate no Numa', sub: 'Los Esteros del Iberá, bajo la luna llena' },
   { id: 'torre', name: 'Revelaciones Materas', sub: 'Una torre de quince pisos en el ojo del remolino' },
   { id: 'castillo', name: 'Der Mateendrache', sub: 'Un castillo en la cordillera nevada, donde duerme el dragón' },
-  // (el mapa bonus, el Monumento, todavía no se publica: queda fuera de la lista)
+  // el mapa bonus
+  { id: 'monumento', name: 'Monumento al Mate', sub: 'El Monumento a la Bandera, de noche, a orillas del Paraná', bonus: true },
 ];
 
 // Modos de juego de cada mapa (por ahora solo la torre tiene otro): el de

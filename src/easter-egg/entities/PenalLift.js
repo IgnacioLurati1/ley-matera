@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ZOMBIE_DAMAGE } from '../config/rules';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mesh, boxGeo, cylGeo } from '../world/props';
 
 // La telesilla del alcaide (penal): una cabina colgada de un cable que va de la
@@ -115,6 +116,17 @@ export default class PenalLift {
     this.buildWalls();
     this.register();
     this.link();
+    // lo que no se mueve (torres, cables, el motor, la estación), junto por
+    // material: eran ~190 piezas sueltas, un dibujo cada una
+    // (window.__noMergeStill: sueltas, para comparar)
+    if (!window.__noMergeStill) mergeStill(this.root, [this.cabin, this.winch, this.fly, this.redLamp, ...this.wheels]);
+    // lo que se mueve entero, junto por dentro: la cabina (menos la puerta, el
+    // brazo de la palanca, el carro que gira y el farol que se prende), el
+    // carro, el volante del motor y cada rueda del cable
+    if (!globalThis.__mduNoMerge) {
+      mergeStill(this.cabin, [this.door, this.arm, this.car, this.bulb]);
+      for (const o of [this.car, this.fly, ...this.wheels.map((w) => w.children[0])]) mergeStill(o, []);
+    }
   }
 
   // ---------------- lo que se ve ----------------
@@ -1095,5 +1107,49 @@ export default class PenalLift {
     for (const list of Object.values(this.walls)) for (const b of list) b.active = false;
     if (g.world.navLinks) g.world.navLinks = null;
     this.root.removeFromParent();
+  }
+}
+
+// Las mallas quietas de un grupo (a cualquier profundidad, fuera de las ramas
+// de skip, que se mueven o se prenden y apagan), juntas por material y sombra.
+function mergeStill(root, skip) {
+  const out = new Set(skip.filter(Boolean));
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const sets = new Map();
+  const walk = (o) => {
+    if (out.has(o) || !o.visible) return;
+    if (o.isMesh && !o.isSkinnedMesh && !o.isInstancedMesh && !o.children.length && !Array.isArray(o.material) && !o.morphTargetInfluences && o.geometry?.attributes?.position) {
+      const k = `${o.material.uuid}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}|${o.renderOrder}`;
+      let L = sets.get(k);
+      if (!L) sets.set(k, (L = []));
+      L.push(o);
+      return;
+    }
+    for (const c of o.children) walk(c);
+  };
+  walk(root);
+  const m4 = new THREE.Matrix4();
+  for (const L of sets.values()) {
+    if (L.length < 2) continue;
+    const geos = L.map((o) => {
+      let g = o.geometry.clone().applyMatrix4(m4.multiplyMatrices(inv, o.matrixWorld));
+      // (las caras de una caja o un cilindro vienen en grupos: con un material, sobran)
+      g.clearGroups();
+      if (g.index) g = g.toNonIndexed();
+      for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n)) g.deleteAttribute(n);
+      if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      if (!g.attributes.normal) g.computeVertexNormals();
+      return g;
+    });
+    const merged = mergeGeometries(geos);
+    geos.forEach((g) => g.dispose());
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, L[0].material);
+    m.castShadow = L[0].castShadow;
+    m.receiveShadow = L[0].receiveShadow;
+    m.renderOrder = L[0].renderOrder;
+    root.add(m);
+    for (const o of L) o.removeFromParent();
   }
 }

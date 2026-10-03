@@ -1,15 +1,61 @@
 import * as THREE from 'three';
 import LoadScreen from './LoadScreen';
-import { MAP_LIST, MAP_MODES } from '../config/map';
+import { MAP_LIST, MAP_MODES, FEATURES } from '../config/map';
+import { readyBossSkins } from '../entities/bossSkin';
 import { keyLabel } from '../core/controls';
 
-// Llegada a un mapa: la carga del principio (arma todos los mapas una vez para
-// que después no haya tirones), el cambio de mapa en el título y la entrada a
-// la partida. En línea, el anfitrión espera a que todos carguen; cuando están
-// todos, suena el mate y la partida arranca con un fundido desde negro.
+// Llegada a un mapa: la carga del principio (arma el mapa elegido), el cambio
+// de mapa en el título y la entrada a la partida. En línea, el anfitrión
+// espera a que todos carguen; cuando están todos, suena el mate y la partida
+// arranca con un fundido desde negro.
 
-// Fotos de cada mapa para la postal (se sacan al cargar el juego).
+// Fotos de cada mapa para la postal: se sacan la primera vez que se arma cada
+// mapa y quedan guardadas en el navegador para las próximas veces.
 const postcards = new Map();
+// (la primera vez que se arma un mapa todavía no hay foto: va la que viene con
+// el juego, public/assets/sotano/postales; la de esta compu la reemplaza)
+const POSTAL_DIR = '/assets/sotano/postales/';
+const postalOf = (id) => postcards.get(id) || `${POSTAL_DIR}${id}.jpg`;
+const PC_DB = 'lm-postales';
+const pcDb = () =>
+  new Promise((res, rej) => {
+    const rq = indexedDB.open(PC_DB, 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore('p');
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  });
+function savePostcard(id, url) {
+  try {
+    pcDb()
+      .then((db) => {
+        const tx = db.transaction('p', 'readwrite');
+        tx.objectStore('p').put(url, id);
+        tx.oncomplete = tx.onerror = () => db.close();
+      })
+      .catch(() => {});
+  } catch {
+    /* sin IndexedDB: la postal vale solo esta vez */
+  }
+}
+// (las de esta vez mandan sobre las guardadas)
+function loadPostcards() {
+  try {
+    pcDb()
+      .then((db) => {
+        const rq = db.transaction('p').objectStore('p').openCursor();
+        rq.onsuccess = () => {
+          const c = rq.result;
+          if (!c) return db.close();
+          if (!postcards.has(c.key) && typeof c.value === 'string') postcards.set(c.key, c.value);
+          c.continue();
+        };
+        rq.onerror = () => db.close();
+      })
+      .catch(() => {});
+  } catch {
+    /* sin IndexedDB */
+  }
+}
 // Si alguien no termina de cargar, se arranca igual pasado este tiempo.
 const WAIT_MAX = 60000;
 // Solo o si cargó rápido, la postal se ve al menos esto.
@@ -49,6 +95,25 @@ const labelOf = (g) => {
   return md ? { ...info, name: `${info.name} · ${md.name}`, sub: md.sub } : info;
 };
 
+// Las prendas de los zombies sin nadie que las use no se dibujan
+// (Zombies.render): para compilar y calentar se muestran enteras un momento.
+// Devuelve con qué volver a como estaban.
+function showZombies(g) {
+  const back = [];
+  for (const M of g.zombies?.meshes || []) {
+    const im = M.im;
+    back.push([im, im.visible, im.count]);
+    im.visible = true;
+    im.count = im.instanceMatrix.count;
+  }
+  return () => {
+    for (const [im, v, n] of back) {
+      im.visible = v;
+      im.count = n;
+    }
+  };
+}
+
 // Compila los shaders del mapa sin trabar la página (si el navegador puede).
 // Contra el buffer del postproceso, que es donde se dibuja de verdad (contra la
 // pantalla saldrían otras variantes y se volverían a compilar al aparecer), y
@@ -62,6 +127,7 @@ export async function compile(g) {
   const jobs = [];
   // el jefe vive escondido: se muestra entero un momento para que compile lo suyo
   const hideBoss = g.zombies?.bossRig?.showAll?.();
+  const backZ = showZombies(g);
   // los mates armados de la mano (también los mejorados) pasan un momento por
   // el mapa: así el de la pava y los de las paredes salen con sus luces
   const warm = g.weapons?.warm;
@@ -71,6 +137,13 @@ export async function compile(g) {
   // cambiar la calidad en plena partida y llevar el Porongo del Caballero al
   // Pack-a-Pava congelaba un segundo (su nácar se compilaba ahí, con el mapa).
   const extra = new THREE.Group();
+  // (y los potenciadores: el Farol de las Ánimas trababa al aparecer)
+  const pups = g.powerups?.warmGroup?.();
+  if (pups) extra.add(pups);
+  // (y lo que algunos mates especiales arman recién al usarse: el charco del
+  // Liquidificador trababa ~300 ms, los arcos del Facón ~50 ms)
+  const wfx = g.weapons?.warmFx?.();
+  if (wfx) extra.add(wfx);
   for (const m of g.weapons?.models?.values?.() || []) {
     if (!m?.root || (warm && m.root.parent === warm)) continue;
     m.root.traverse((o) => {
@@ -85,6 +158,19 @@ export async function compile(g) {
     if (g.weapons) {
       g.weapons.vmScene.add(extra);
       jobs.push(R.compileAsync(g.weapons.vmScene, g.weapons.vmCamera));
+      // en el gaucho life (el penal arranca ahí) la mano lleva su luz: otra
+      // luz puntual en la escena del mate, y todo lo de la mano se recompilaba
+      // al arrancar. Se compila también con esa luz (compile arma los
+      // programas en el momento: la luz se saca enseguida).
+      if (g.vida) {
+        const L = new THREE.PointLight(0xffffff, 0, 1);
+        g.weapons.vmScene.add(L);
+        try {
+          jobs.push(R.compileAsync(g.weapons.vmScene, g.weapons.vmCamera));
+        } finally {
+          L.removeFromParent();
+        }
+      }
     }
   } catch {
     R.compile(g.scene, g.camera);
@@ -93,8 +179,29 @@ export async function compile(g) {
     if (warm) g.weapons.vmScene.add(warm);
     R.setRenderTarget(prev);
     hideBoss?.();
+    backZ();
   }
   await Promise.all(jobs).catch(() => {});
+  usePrograms(g);
+}
+
+// Cada programa compilado, usado una vez acá (en la carga). La primera vez que
+// three usa un programa le pregunta a la placa sus uniformes y si enlazó, y esa
+// pregunta espera a que la placa termine todo lo que tiene en cola (y a que
+// termine de compilarlo, que va en paralelo): en plena partida eran tirones de
+// 50-70 ms cuando muchos materiales pasaban a otra variante juntos (en el
+// estero, 72 en un cuadro a los 3,5 s). Compilados ya estaban; usados, no.
+// (globalThis.__mduNoUseProg: como antes)
+export function usePrograms(g) {
+  if (globalThis.__mduNoUseProg === true) return;
+  for (const p of g.renderer?.info?.programs || []) {
+    try {
+      p.getUniforms();
+      p.getAttributes();
+    } catch {
+      /* uno que falla se ve al usarlo, como antes */
+    }
+  }
 }
 
 // Todo el mapa de una, sin recorte por cámara: sube a la placa los modelos y
@@ -165,6 +272,23 @@ export function warmWorld(g) {
   // tomaron ningún fuego y no dibujan nada; sin esto, la sombra de cada tipo
   // de cosa (los recortes, lo instanciado) se compilaba al acercarse a un farol
   for (const l of g.post?.epic?.pool || []) if (l.parent) l.shadow.needsUpdate = true;
+  // (y las que no tomaron ningún fuego, en la cámara con alcance grande: fx/Epic pickLamps)
+  const epic = g.post?.epic;
+  if (epic) epic.warmAt = g.camera.position.clone();
+  // los potenciadores y lo que arman los mates especiales, dibujados de verdad
+  // delante de la cámara (compilarlos no alcanzaba: el Farol de las Ánimas
+  // trababa ~70 ms al aparecer, su variante del G-buffer, y otros ~70 al agarrarlo)
+  const show = new THREE.Group();
+  const pups = g.powerups?.warmGroup?.();
+  if (pups) show.add(pups);
+  const wfx = g.weapons?.warmFx?.();
+  if (wfx) show.add(wfx);
+  const cam = g.camera;
+  show.position.copy(cam.position).add(new THREE.Vector3(0, 0, -3).applyQuaternion(cam.quaternion));
+  g.scene.add(show);
+  show.traverse(mats);
+  for (const m of g.weapons?.models?.values?.() || []) m?.root?.traverse(mats);
+  const backZ = showZombies(g);
   try {
     g.render(0.016);
     flip(THREE.BackSide);
@@ -173,11 +297,15 @@ export function warmWorld(g) {
     const gl = R.getContext();
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
   } finally {
+    if (epic) epic.warmAt = null;
+    show.removeFromParent();
+    backZ();
     flip(THREE.FrontSide);
     for (const o of culled) o.frustumCulled = true;
     for (const o of far) o.visible = false;
   }
   R.shadowMap.needsUpdate = true;
+  usePrograms(g);
 }
 
 // Un cuadro desde la cámara del título: sube texturas y sombras a la placa.
@@ -201,38 +329,26 @@ function snapPostcard(g, id) {
     const cw = Math.min(sw, (sh * 16) / 9);
     const ch = (cw * 9) / 16;
     c.getContext('2d').drawImage(src, (sw - cw) / 2, (sh - ch) / 2, cw, ch, 0, 0, w, hgt);
-    postcards.set(id, c.toDataURL('image/jpeg', 0.84));
+    const url = c.toDataURL('image/jpeg', 0.84);
+    postcards.set(id, url);
+    savePostcard(id, url);
   } catch {
     /* sin foto: la postal va con un fondo liso */
   }
 }
 
-// Carga inicial: arma cada mapa una vez (compila sus shaders y saca la foto
-// de la postal) y termina con el elegido. Tarda más al abrir, pero después
-// cambiar de mapa o entrar a jugar no traba.
+// Carga inicial: el mapa elegido (Game.init ya lo armó) compila sus shaders y
+// saca la foto de la postal. Los demás se arman al elegirlos en el título
+// (switchMap, detrás de su postal). Antes se armaban los siete acá: 25-30 s
+// de carga al abrir el juego.
 export async function prewarmMaps(g, step, from, to) {
-  const keep = g.mapId;
-  const order = [keep, ...MAP_LIST.map((m) => m.id).filter((id) => id !== keep), keep];
-  const n = order.length;
-  for (let i = 0; i < n; i++) {
-    const id = order[i];
-    const last = i === n - 1;
-    await step(from + ((to - from) * i) / n, last ? 'Volviendo al mapa elegido…' : `Preparando ${infoOf(id).name}…`);
-    try {
-      if (i > 0) {
-        g.mapId = id;
-        g.buildScene();
-      }
-      await compile(g);
-      warmTitle(g);
-      snapPostcard(g, id);
-    } catch (err) {
-      // un mapa que no arma no frena la carga de los demás
-      console.error(`No se pudo preparar el mapa ${id}`, err);
-      if (last) throw err;
-    }
-  }
-  g.mapId = keep;
+  loadPostcards();
+  const id = g.mapId;
+  await step(from, `Preparando ${infoOf(id).name}…`);
+  await compile(g);
+  warmTitle(g);
+  snapPostcard(g, id);
+  await step(to, 'Listo.');
 }
 
 export default class Arrival {
@@ -258,7 +374,7 @@ export default class Arrival {
         const key = g.mapKey;
         const info = labelOf(g);
         const t0 = performance.now();
-        this.screen.open({ name: info.name, sub: info.sub, image: postcards.get(id), quick: true });
+        this.screen.open({ name: info.name, sub: info.sub, image: postalOf(id), quick: true });
         this.screen.progress(0.1, `Viajando a ${info.name}…`);
         await frame();
         await frame();
@@ -277,20 +393,26 @@ export default class Arrival {
       console.error(err);
     }
     this.switching = false;
-    if (!this.active && g.state === 'title') this.screen.fadeOut(450);
+    if (!this.active && g.state === 'title') {
+      this.screen.fadeOut(450);
+      // (el HUD del mapa nuevo dibujado una vez, ya sin la postal: ui/Hud prewarm)
+      setTimeout(() => g.state === 'title' && g.hud?.prewarm?.(), 600);
+    }
   }
 
   // ---------------- entrada a la partida ----------------
   // Solo o anfitrión. `build`: hay que rearmar el mapa (no se viene del título).
-  async start(build) {
+  // restart: el fast restart (sin la cinemática de entrada).
+  async start(build, { restart = false } = {}) {
     const g = this.g;
     const token = this.begin();
+    this.noIntro = restart;
     // el clic en "Jugar" sirve para capturar el mouse desde ya
     g.input.lock();
     if (g.net?.host) {
       this.ready = new Set();
       this.t0 = performance.now();
-      g.net.event('start', { map: g.mapId, mode: g.mode });
+      g.net.event('start', restart ? { map: g.mapId, mode: g.mode, rs: 1 } : { map: g.mapId, mode: g.mode });
       this.timeout = setTimeout(() => this.checkAll(true), WAIT_MAX);
     }
     this.renderPlayers();
@@ -305,9 +427,10 @@ export default class Arrival {
   }
 
   // Invitado: el anfitrión dio la orden de arrancar.
-  async startGuest(build) {
+  async startGuest(build, restart = false) {
     const g = this.g;
     const token = this.begin();
+    this.noIntro = restart;
     this.renderPlayers();
     if (!(await this.load(token, build))) return;
     g.net?.net.send({ t: 'loaded' });
@@ -331,7 +454,7 @@ export default class Arrival {
     g.hud.show(false);
     const info = labelOf(g);
     const tip = TIPS[Math.floor(Math.random() * TIPS.length)]();
-    this.screen.open({ name: info.name, sub: info.sub, image: postcards.get(g.mapId), tip });
+    this.screen.open({ name: info.name, sub: info.sub, image: postalOf(g.mapId), tip });
     this.opened = performance.now();
     return token;
   }
@@ -350,6 +473,30 @@ export default class Arrival {
       g.buildScene();
     }
     this.screen.progress(0.75, 'Calentando el agua…');
+    // el modelo del jefe de ronda: bajado acá y a la vista mientras se compila
+    // (antes bajaba al arrancar la partida y se compilaba en el primer segundo)
+    const bosses = FEATURES?.boss ? await readyBossSkins(g.zombies, FEATURES.boss === 'mixed' ? ['capataz', 'alcaide'] : FEATURES.boss) : null;
+    if (token !== this.run) return false;
+    // en línea, un compañero de muestra (su gaucho, la silueta y el mate) a la
+    // vista mientras se compila (net/Avatars.warm): si no, se compilaba al
+    // llegar el primer estado de cada uno, ya jugando
+    const doneAv = await g.net?.avatars?.warm?.();
+    if (token !== this.run) {
+      doneAv?.();
+      return false;
+    }
+    bosses?.show(true);
+    // lo que se apoya en la utilería (las radios, lo de la canción secreta):
+    // rayos contra todo el mapa, acá y no en el primer cuadro (~110 ms)
+    if (g.activities && !g.activities.radiosSettled) g.activities.settleRadios();
+    if (g.ee?.song && !g.ee.song.settled) g.ee.song.settle();
+    // los íconos de la canasta de empanadas (cada uno arma y dibuja su
+    // empanada: ~170 ms la primera vez, que caían en el arranque)
+    try {
+      for (const id of g.emp?.loadout?.() || []) g.emp.iconFor(id);
+    } catch {
+      /* sin íconos: los arma newRun, como antes */
+    }
     await compile(g);
     if (token !== this.run) return false;
     // un cuadro desde cada toma de la cinemática de entrada (que no se trabe al pasar)
@@ -362,6 +509,8 @@ export default class Arrival {
     if (token !== this.run) return false;
     warmWorld(g);
     g.render(0.016);
+    bosses?.show(false);
+    doneAv?.();
     if (!postcards.has(g.mapId)) {
       warmTitle(g);
       snapPostcard(g, g.mapId);
@@ -451,7 +600,8 @@ export default class Arrival {
       g.rounds.state = 'remote';
     } else g.newRun();
     // la cinemática de entrada del mapa (ui/Intro); al terminar pide el clic si hace falta
-    const intro = !!g.intro?.play();
+    const intro = !this.noIntro && !!g.intro?.play();
+    this.noIntro = false;
     // sin clic reciente el navegador no deja capturar el mouse: se pide uno
     if (!g.input.locked && !intro) g.menus.showClick(true);
     this.screen.reveal(1800);

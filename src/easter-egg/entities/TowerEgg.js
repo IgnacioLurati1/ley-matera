@@ -195,7 +195,8 @@ export default class TowerEgg {
     this.fogonPos = new THREE.Vector3(x, 0.25, z);
     this.fogonLight = new THREE.PointLight(0xff8a3a, 14, 9, 1.8);
     this.fogonLight.position.set(x, 0.8, z);
-    this.root.add(this.fogonLight);
+    // (va con las de evento, World.adoptLight: alumbra solo de cerca)
+    this.root.add(this.g.world.adoptLight(this.fogonLight));
   }
 
   // El ánima de Martín Fierro: un gaucho de luz azulada.

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { assetUrl } from '../../lib/assets';
-import { skinLook } from '../entities/bossSkin';
+import { skinLook, cullList, cullAt } from '../entities/bossSkin';
 
 // El Chiquitijuein: un duende como los del norte (no llega al metro), casi
 // todo sombrero. Poncho oscuro con guarda y flecos, piernitas flacas, brazos
@@ -398,6 +398,9 @@ function attachSkin(R) {
     run: false,
     last: null,
     grip: null,
+    // el recorte: una esfera alrededor de la cadera (bossSkin cullList; la
+    // pone driveSkin, hasta entonces sin recorte)
+    cull: cullList(model),
   };
   R.skin = S;
   // el bastón en la mano: parado al lado del pie en el primer cuadro de estar
@@ -575,6 +578,7 @@ function driveSkin(R, dt) {
   followStaff(R);
   R.root.updateMatrixWorld(true);
   placeEyes(R);
+  cullAt(S.cull, (S.bones.Hips || S.head).getWorldPosition(tmpV));
 }
 
 // Parado sin hacer nada (idle 'taunt': el trono, el coloso; o vary): no se

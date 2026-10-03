@@ -18,7 +18,8 @@
 // La arquitectura la arma world/Monumento.js; Levels.js pone las alturas,
 // los choques y por dónde se pasa.
 
-export const MAP_W = 124;
+// (hasta 160: del 128 al 158, sobre el río y muy arriba, va el patio de la 2043)
+export const MAP_W = 160;
 export const MAP_H = 60;
 export const WALL_H = 3.6;
 
@@ -118,6 +119,10 @@ export const ZONES = {
     rail: 'costanera',
   },
   I: { name: 'El Mirador', sub: 'Setenta metros arriba de Rosario', y: 44, rects: [[75, 27, 78, 34]], floor: 'concrete', outdoor: true, edge: 'rail', rail: 'mirador' },
+  // el easter egg secundario: el patio de la 2043 del Colegio San José, de día
+  // (lejos de todo, a 150 m sobre el río; lo arma world/monumentoPatio.js y se
+  // llega por el portal de la Sala de las Banderas: entities/monumento/Patio2043.js)
+  P: { name: 'El patio de la 2043', sub: 'Colegio San José · Rosario', y: 150, rects: [[128, 16, 157, 41]], floor: 'concrete', outdoor: true },
 };
 
 export const RAMPS = [
@@ -129,9 +134,11 @@ export const RAMPS = [
   // las escaleras de costado que bajan a la Proa
   { rect: [63, 17, 72, 19], dir: '+x', y0: 0, y1: -2.6, steps: true, own: 'costado' },
   { rect: [63, 41, 72, 43], dir: '+x', y0: 0, y1: -2.6, steps: true, own: 'costado' },
-  // las escaleras de la Cripta (bajan del atrio)
-  { rect: [67, 21, 71, 23], dir: '+x', y0: 0.8, y1: -2.6, steps: true, ceil: 'slope', head: 3.0, own: 'cripta' },
-  { rect: [67, 37, 71, 39], dir: '+x', y0: 0.8, y1: -2.6, steps: true, ceil: 'slope', head: 3.0, own: 'cripta' },
+  // las escaleras de la Cripta (bajan del atrio); el techo en pendiente va 3,6
+  // arriba de los escalones, así al pie queda a ras del techo de la Cripta (1,0)
+  // y no baja como una losa negra cruzada delante de la nave
+  { rect: [67, 21, 71, 23], dir: '+x', y0: 0.8, y1: -2.6, steps: true, ceil: 'slope', head: 3.6, own: 'cripta' },
+  { rect: [67, 37, 71, 39], dir: '+x', y0: 0.8, y1: -2.6, steps: true, ceil: 'slope', head: 3.6, own: 'cripta' },
   // los tres escalones del Pasaje al Propileo
   { rect: [18, 27, 19, 32], dir: '+x', y0: 3.6, y1: 4.2, steps: true, own: 'pasaje' },
   // la escalera del pilono norte del Propileo, que baja a la Sala de las Banderas
@@ -195,11 +202,13 @@ export const WINDOWS = [
   { cell: [113, 38], out: [1, 0], zone: 'H' },
   { cell: [113, 50], out: [1, 0], zone: 'H' },
   // el Mirador: los muertos trepan por la Torre y entran por las ventanas
-  // (entre los parantes; la del este del medio es la de la tirolesa)
+  // (entre los parantes; la del este del medio es la de la tirolesa). Ojo:
+  // la grilla es una sola para todas las alturas: nada en z 35-39 ni z 21-25
+  // (abajo están las alas de la Cripta)
   { cell: [75, 26], out: [0, -1], zone: 'I' },
-  { cell: [78, 35], out: [0, 1], zone: 'I' },
+  { cell: [78, 26], out: [0, -1], zone: 'I' },
   { cell: [79, 34], out: [1, 0], zone: 'I' },
-  { cell: [74, 27], out: [-1, 0], zone: 'I' },
+  { cell: [74, 34], out: [-1, 0], zone: 'I' },
 ];
 
 export const RISERS = [

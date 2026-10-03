@@ -362,6 +362,15 @@ export default class Facon {
     }
   }
 
+  // Un arco para compilar su material al cargar el mapa (Weapons.warmFx, ui/Arrival).
+  warm(grp) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0.1, 0, 0, 0, 0.1, 0], 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute([1, 1, 1, 1, 1, 1, 1, 1, 1], 3));
+    geo.setIndex([0, 1, 2]);
+    grp.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false })));
+  }
+
   addArc(center, yaw, move, R) {
     let a = this.arcs.find((x) => !x.m.visible);
     if (!a) {

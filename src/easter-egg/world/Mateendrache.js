@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { assetUrl } from '../../lib/assets';
 import { skinLook } from '../entities/bossSkin';
+import { lean } from './castleLean';
 
 // El Mateendrache: el dragón de piedra y yerba que duerme encadenado abajo
 // del castillo. Escamas de piedra verde con yerba entre las juntas, el pecho
@@ -720,6 +721,9 @@ export default class Mateendrache {
         this.procMeshes.push(o);
       }
     });
+    // (las piezas escondidas, afuera de la escena: no se recorren en cada
+    // cuadro; quedan los grupos, de donde se atan las cadenas de la cueva)
+    if (lean()) for (const o of this.procMeshes) if (!o.children.length) o.removeFromParent();
     this.root.add(model);
     // los ojos: dos brasas ámbar en la cabeza (despierto)
     const eyeG = new THREE.SphereGeometry(0.085, 10, 8);
@@ -864,6 +868,8 @@ export default class Mateendrache {
     this.root.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
     });
+    // (las piezas que salieron de la escena al llegar el cuerpo)
+    for (const o of this.procMeshes || []) o.geometry?.dispose();
     for (const m of Object.values(this.M)) {
       m.map?.dispose();
       m.dispose();

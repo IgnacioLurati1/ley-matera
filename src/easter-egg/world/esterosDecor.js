@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MAP_W, MAP_H, DOORS, PERK_SPOTS, WALL_BUYS, BOX_SPOTS, POWER, PAP, RISERS } from '../config/map';
 import { WATER_Y, DECOR, ZONES, PROPS, SKY } from '../config/maps/esteros';
 import { rng } from '../core/noise';
+import { compactGroup } from './props';
 import { coverageMips } from '../core/textures';
 import { leafCrownGeometry, evenFoliage } from './esterosGrass';
 
@@ -414,6 +415,9 @@ export function buildDecor(w) {
   float.traverse((o) => {
     if (o.isMesh) o.receiveShadow = true;
   });
+  // (lo fijo, una malla por material: world/props compactGroup; lo que flota
+  // sigue a la creciente y va aparte. globalThis.__mduNoMerge2: como antes)
+  if (globalThis.__mduNoMerge2 !== true) compactGroup(fixed);
   w.root.add(fixed, float);
   w.estero.float = float;
 }

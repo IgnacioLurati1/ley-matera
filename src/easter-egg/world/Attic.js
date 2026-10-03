@@ -195,7 +195,8 @@ export function buildAttic(world) {
   // luz: velas en la mesa del curandero (la mesa la arma el que maneja el mate)
   const candle = new THREE.PointLight(0xffa860, 16, 12, 1.4);
   candle.position.set(48.5, y + 1.6, 44.2);
-  world.root.add(candle);
+  // (va con las de evento, World.adoptLight: alumbra solo de cerca)
+  world.root.add(world.adoptLight(candle));
   return { candle };
 }
 

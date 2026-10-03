@@ -30,6 +30,12 @@ import { reelStep, reelPose } from './zombieReel';
 
 const MAX = 40;
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+const blobM = new THREE.Matrix4();
+// la pose a medio ritmo (render): con el cuadro por debajo de HALF_MS
+// (suavizado, Game.frameMs), a más de HALF_FAR m y con más de HALF_MIN vivos
+const HALF_MS = 11;
+const HALF_FAR = 25;
+const HALF_MIN = 4;
 // un perro no dibuja ninguna parte del cuerpo humano
 const ALL_PARTS = (1 << PART_COUNT) - 1;
 
@@ -920,6 +926,8 @@ export default class Zombies {
     }
     z.active = false;
     z.dead = false;
+    z.solved = false;
+    z.poseDt = 0;
     z.P.melt = 0;
     this.zskins?.free(z);
     for (const M of this.meshes) {
@@ -3487,11 +3495,32 @@ export default class Zombies {
   }
 
   render(dt = 1 / 60) {
-    const blobM = new THREE.Matrix4();
+    // cada prenda se dibuja solo si alguno la usa, y hasta el último lugar que
+    // la usa (cada una es una llamada por pasada: sin muertos, o con prendas
+    // que nadie lleva, se dibujaban igual, vacías)
+    for (const M of this.meshes) M.top = 0;
+    // de lejos y con muchos cuadros por segundo, la pose de cada uno se arma
+    // un cuadro sí y otro no (la mitad cada cuadro): a más de 90 fps no se
+    // nota. Nunca cuando quedan pocos (los últimos, con la silueta a la vista),
+    // ni a los jefes ni a los que caen (globalThis.__mduFullPose: siempre)
+    const g = this.g;
+    let live = 0;
+    for (const z of this.pool) if (z.active && !z.dead) live++;
+    const half = (g.frameMs ?? 16) < HALF_MS && live > HALF_MIN && globalThis.__mduFullPose !== true;
+    const cam = g.camera?.position;
+    this.poseTick = (this.poseTick || 0) ^ 1;
     for (const z of this.pool) {
       if (!z.active) continue;
-      if (!z.static) {
-        const R = this.drawnPose(z, dt);
+      let fresh = true;
+      if (half && !z.static && !z.boss && !z.dead && cam && (z.slot & 1) === this.poseTick && z.solved && z.pos.distanceToSquared(cam) > HALF_FAR * HALF_FAR) {
+        z.poseDt = (z.poseDt || 0) + dt;
+        fresh = false;
+      }
+      if (!z.static && fresh) {
+        const pd = dt + (z.poseDt || 0);
+        z.poseDt = 0;
+        z.solved = true;
+        const R = this.drawnPose(z, pd);
         // el espasmo se suma solo para este cuadro
         const tw = z.dead ? 0 : z.twitch || 0;
         R.headY += tw * 0.8;
@@ -3516,7 +3545,9 @@ export default class Zombies {
         const off = skinned || (M.need && !z.flags?.[M.need]);
         for (let k = 0; k < M.parts.length; k++) {
           const part = M.parts[k];
-          M.im.setMatrixAt(z.slot * M.parts.length + k, off || z.hidden & (1 << part) ? ZERO : z.mats[part]);
+          const no = off || z.hidden & (1 << part);
+          if (fresh) M.im.setMatrixAt(z.slot * M.parts.length + k, no ? ZERO : z.mats[part]);
+          if (!no && z.slot >= M.top) M.top = z.slot + 1;
         }
       }
       if (z.state === 'approach' || z.state === 'tear' || z.state === 'rise' || z.state === 'drop' || z.state === 'dogspawn' || z.state === 'ladder' || z.dead) this.blobs.setMatrixAt(z.slot, ZERO);
@@ -3525,7 +3556,11 @@ export default class Zombies {
         this.blobs.setMatrixAt(z.slot, blobM);
       }
     }
-    for (const M of this.meshes) M.im.instanceMatrix.needsUpdate = true;
+    for (const M of this.meshes) {
+      M.im.count = M.top * M.parts.length;
+      M.im.visible = M.top > 0;
+      M.im.instanceMatrix.needsUpdate = true;
+    }
     this.zskins.endFrame();
     this.dogRig.update(this.pool);
     this.horseRig?.update(this.pool);

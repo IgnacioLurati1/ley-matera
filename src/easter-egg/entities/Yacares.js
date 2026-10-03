@@ -238,7 +238,8 @@ export default class YacareRig {
     const any = pool.some((z) => mine(z) && z.active);
     if (!any && !this.on) return;
     this.on = any;
-    for (const im of this.all) im.visible = any;
+    // las piezas se dibujan solo si alguno las usa (con el modelo quedan vacías)
+    this.pieces = false;
     for (const z of pool) {
       if (!mine(z) || !z.active) {
         if (z[F]) {
@@ -250,7 +251,10 @@ export default class YacareRig {
       z[F] = true;
       this.pose(z, dt);
     }
-    for (const im of this.all) im.instanceMatrix.needsUpdate = true;
+    for (const im of this.all) {
+      im.visible = this.pieces;
+      im.instanceMatrix.needsUpdate = true;
+    }
   }
 
   pose(z, dt) {
@@ -353,6 +357,7 @@ export default class YacareRig {
       this.hidePieces(z.slot);
       return;
     }
+    this.pieces = true;
     this.body.setMatrixAt(z.slot, tmpM);
     // la cabeza, en la nuca
     const H = local(tmpA, tmpM, 0, 0.02, 0.6, headP, headY, 0).multiply(HEAD_S);

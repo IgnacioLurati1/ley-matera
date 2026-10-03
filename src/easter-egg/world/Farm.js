@@ -3,6 +3,8 @@ import GeoBuilder from './GeoBuilder';
 import { mesh, boxGeo, cylGeo } from './props';
 import { rng } from '../core/noise';
 import { MAP_W, MAP_H, WALL_H, ZONES, PROPS, SKY } from '../config/map';
+import { lightGrass } from '../config/quality';
+import { tileInstances } from './foliageTiles';
 
 // La granja: alambrados, el maíz de los bordes y todo lo de afuera (el
 // maizal que la rodea, el camino de entrada con su cartel, postes de luz y el
@@ -79,7 +81,8 @@ export function buildFences(world) {
 }
 
 // Maíz: tarjetas cruzadas instanciadas que se mecen con el viento.
-export function cornMesh(world, pts, shadows = false) {
+// tile: en cuadros de tantos metros (world/foliageTiles.js; far: hasta dónde)
+export function cornMesh(world, pts, shadows = false, { tile = 0, far = 0 } = {}) {
   const M = world.M;
   if (!world.cornU) {
     world.cornU = { value: 0 };
@@ -97,12 +100,27 @@ export function cornMesh(world, pts, shadows = false) {
   const a = new THREE.PlaneGeometry(1.05, 2.7).translate(0, 1.35, 0);
   const b = a.clone().rotateY(Math.PI / 2);
   const geo = mergeTwo(a, b);
-  const im = new THREE.InstancedMesh(geo, M.corn, pts.length);
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const s = new THREE.Vector3();
   const p = new THREE.Vector3();
   const r = rng(pts.length + 7);
+  if (tile) {
+    const items = pts.map(([x, z, h]) => {
+      q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, r() * Math.PI);
+      s.set(0.9 + r() * 0.25, h, 1);
+      return { m: new THREE.Matrix4().compose(p.set(x, 0, z), q, s), x, z };
+    });
+    return tileInstances(world, geo, M.corn, items, {
+      tile,
+      far,
+      setup: (t) => {
+        t.castShadow = shadows;
+        t.receiveShadow = true;
+      },
+    });
+  }
+  const im = new THREE.InstancedMesh(geo, M.corn, pts.length);
   pts.forEach(([x, z, h], i) => {
     q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, r() * Math.PI);
     s.set(0.9 + r() * 0.25, h, 1);
@@ -193,7 +211,7 @@ export function buildFarmOutside(world) {
     return true;
   };
   // (Personalizada: Game.tier('grass'), al armar el mapa)
-  const low = (world.g.tier?.('grass') ?? world.g.settings?.quality) === 'perf';
+  const low = lightGrass(world.g, true);
   const r = rng(1234);
   const pts = [];
   const M0 = 24;
@@ -214,7 +232,11 @@ export function buildFarmOutside(world) {
       pts.push([px, pz, 0.85 + r() * 0.3]);
     }
   }
-  world.root.add(cornMesh(world, pts));
+  // (en cuadros: lo de atrás y lo perdido en la niebla no se dibuja)
+  // (en cuadros de 40 m: de a 16 eran ~80 llamadas de dibujo por pasada; las
+  // matas son tarjetas cruzadas, dibujar las de más de un cuadro grande no
+  // cuesta. globalThis.__mduSmallTiles: como antes)
+  world.root.add(cornMesh(world, pts, false, { tile: globalThis.__mduSmallTiles === true ? 16 : 40, far: 100 }));
 
   // el camino de tierra hasta el horizonte
   const road = new THREE.Mesh(new THREE.PlaneGeometry(ROAD.x1 - ROAD.x0, ROAD.z1 + 80), M.dirt);

@@ -92,7 +92,8 @@ export default class Empanadas {
     // una sola luz para los hornos (la creada en la carga; va al que está prendido más cerca)
     this.light = new THREE.PointLight(0xff8a3a, 0, 3.6, 2);
     this.light.visible = this.hornos.length > 0;
-    this.root.add(this.light);
+    // (no cuenta como luz mientras está apagada: World.adoptLight)
+    this.root.add(this.g.world.adoptLight(this.light));
     this.buildHud();
     this.hookPlayer();
     this.hookPowerups();

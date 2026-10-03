@@ -1,5 +1,11 @@
 import * as THREE from 'three';
 import { buildTextures } from './core/textures';
+import { paintInWorkers } from './core/texturePool';
+import { setPapMap } from './weapons/camos';
+import { sizeCull } from './core/sizeCull';
+import { devKeys } from './core/devKeys';
+// las matrices de lo que no se movió no se recalculan (mismo resultado que three)
+import './core/matrixCache';
 import GameAudio from './core/audio';
 import Input from './core/input';
 import World from './world/World';
@@ -9,7 +15,7 @@ import Interactables from './world/Interactables';
 import Effects from './fx/Effects';
 import PostFX from './fx/PostFX';
 import { LEVELS } from './fx/Epic';
-import { tiersOf } from './config/quality';
+import { tiersOf, MAP_GFX } from './config/quality';
 import Zombies from './entities/Zombies';
 import Player from './entities/Player';
 import { submerged } from './entities/swim';
@@ -52,6 +58,7 @@ import CastleEnding from './ui/CastleEnding';
 import CastleEgg from './entities/CastleEgg';
 import EsterosEgg from './entities/EsterosEgg';
 import MonumentoEgg from './entities/MonumentoEgg';
+import HitchLog from './core/hitchLog';
 import GranGuerra from './world/GranGuerra';
 import CastleWeather from './world/CastleWeather';
 import Intro from './ui/Intro';
@@ -128,7 +135,7 @@ const MIN_FPS = 40;
 // rendimiento, los oídos tapados y el silencio con la ventana atrás.
 const SOUND_MIX = { volWeapons: 1, volZombies: 1, volWorld: 1, volPlayer: 1, volUi: 1, audioOut: 'phones', dynRange: 'normal', reverb: 1, audioPerf: 'auto', muffleLow: true, muffleWater: true, muteBg: false };
 const SOUND_KEYS = ['master', 'music', 'sfx', 'voice', 'voiceMode', ...Object.keys(SOUND_MIX)];
-const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.75, sfx: 0.9, shake: 1, quality: 'high', qualityMode: 'auto', invertY: false, voiceMode: 'murmur', showFps: false, fpsCap: '0', map: 'molino', v: 6, voice: 0.9, subSize: 1, adsSens: 1, adsMode: 'hold', crouchMode: 'hold', sprintMode: 'hold', calmFx: false, upscale: 'off', sharp: 0.8, fsrPct: 0.77, supremo: true, supremoAsked: false, ...SOUND_MIX };
+const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.75, sfx: 0.9, shake: 1, quality: 'high', qualityMode: 'auto', invertY: false, voiceMode: 'murmur', showFps: false, fpsCap: '0', map: 'molino', v: 6, voice: 0.9, subSize: 1, adsSens: 1, adsMode: 'hold', crouchMode: 'hold', sprintMode: 'hold', calmFx: false, vsync: false, upscale: 'off', sharp: 0.8, fsrPct: 0.77, supremo: true, supremoAsked: false, ...SOUND_MIX };
 
 // Entrada vacía: el jugador sigue con su física pero no toca nada (menú abierto en línea).
 const IDLE_INPUT = { mouse: { dx: 0, dy: 0 }, sensitivity: 1, invertY: false, key: () => false, hit: () => false };
@@ -203,6 +210,9 @@ export default class Game {
 
   async init() {
     const root = this.root;
+    // las texturas se pintan en otros hilos mientras carga lo demás (core/texturePool.js)
+    const S = this.settings;
+    const painted = paintInWorkers(this.mapId, { relief: !(S.qualityMode === 'manual' && (S.quality === 'low' || S.quality === 'perf')) });
     this.menus = new Menus(root, this);
     const step = (k, text) =>
       new Promise((r) => {
@@ -229,11 +239,13 @@ export default class Game {
     r.shadowMap.type = THREE.PCFShadowMap;
     r.shadowMap.autoUpdate = false;
     this.gpu = this.detectGpu();
-    if (this.settings.qualityMode === 'auto') this.settings.quality = this.autoQuality();
+    if (this.settings.qualityMode === 'auto') this.settings.quality = this.autoTier();
     this.perf = { t: 0, n: 0, warm: false };
+    // los tirones (core/hitchLog.js; Alt+H los muestra)
+    this.hitch = new HitchLog(this);
 
     await step(0.08, 'Pintando paredes y calcáreos…');
-    this.textures = buildTextures();
+    this.textures = buildTextures(await painted);
     await step(0.22, 'Encendiendo el barbacuá…');
     this.audio = new GameAudio();
     // la música de las escenas (entradas, jefes, cinemáticas, muerte)
@@ -295,6 +307,11 @@ export default class Game {
     this.loop = this.loop.bind(this);
     this.raf = requestAnimationFrame(this.loop);
     this.titleIntro.play();
+    // el HUD dibujado una vez, casi transparente (ui/Hud prewarm): si no,
+    // trababa ~50 ms al terminar la entrada
+    setTimeout(() => {
+      if (this.state === 'title') this.hud.prewarm();
+    }, 1500);
     // la pulpería se arma y se compila de antemano (cuando el título ya está
     // quieto), así entrar no traba
     setTimeout(() => {
@@ -303,12 +320,19 @@ export default class Game {
       else pre();
     }, 6500);
     // los atajos de prueba (Alt+…: puntos, modo dios, saltar al final, el
-    // premio del super easter egg…) solo en desarrollo: en el sitio publicado no
-    const dev = !!import.meta.env.DEV;
+    // premio del super easter egg…) solo en desarrollo y en la versión de
+    // escritorio (core/devKeys): en el sitio publicado no
+    const dev = devKeys();
     this.onKey = (e) => {
       // (en la cinemática de entrada, Esc la saltea: lo maneja ui/Intro)
       // (y en una escena del easter egg con su Saltar, Esc es de la escena)
       if (e.code === 'Escape' && this.state === 'playing' && !this.input.locked && !this.intro?.active && !this.ee?.scene?.cine?.skip) this.pause();
+      // Alt+H, en cualquier lado (también en el sitio publicado): los últimos
+      // tirones y qué los causó (core/hitchLog.js)
+      if (e.altKey && e.code === 'KeyH') {
+        this.hitch?.toggle();
+        e.preventDefault();
+      }
       // Alt+I en el menú del título: ir directo a cada escena con música (prueba)
       if (dev && e.altKey && e.code === 'KeyI' && this.state === 'title' && !this.net && this.menus.toggleMusic()) e.preventDefault();
       // Alt+O, en el título o jugando solo: prueba del premio del super easter
@@ -486,7 +510,21 @@ export default class Game {
     if (/RTX\s*(40[7-9]0|50[7-9]0)|RX\s*(7[89]\d0|9\d{3})/i.test(name)) return 'epic';
     // gama alta: Ultra
     if (/RTX\s*(30[6-9]0|40[6-9]0|50[6-9]0)|RX\s*(6[7-9]\d0|7[7-9]\d0)|Arc.*B[57]\d0/i.test(name)) return 'ultra';
+    // gama media (GTX 9/1050-1070/16, RTX 2050/2060/3050, MX, RX 400/500/5000/6400-6600):
+    // Media, y Baja si es de notebook (con Alta a una 1650 y una 2060 les iba mal)
+    if (/GTX\s*(9\d0|10[5-7]0|16\d0)|RTX\s*(20[56]0|3050)|\bMX\s*\d|RX\s*(4\d0|5\d0|5[3-7]00|6[45]00|66[05]0)/i.test(name)) return /Laptop|Max-Q|Mobile/i.test(name) ? 'low' : 'medium';
     return 'high';
+  }
+
+  // La automática con lo que ya aprendió en esta compu: si en una partida
+  // anterior tuvo que bajar (watchPerf), arranca desde ahí y no desde arriba
+  // (antes cada partida volvía a Alta y repetía los tirones de bajar).
+  autoTier() {
+    const q = this.autoQuality();
+    const c = this.settings.autoCap;
+    if (!c || c.gpu !== (this.gpu?.name || '')) return q;
+    const i = QUALITY_ORDER.indexOf(c.q);
+    return i >= 0 && i < QUALITY_ORDER.indexOf(q) ? c.q : q;
   }
 
   // Mide los FPS en partida; en automática, si anda lento baja la calidad un
@@ -514,8 +552,15 @@ export default class Game {
       return;
     }
     const i = QUALITY_ORDER.indexOf(this.settings.quality);
-    if (fps >= MIN_FPS || i <= 0) return;
-    this.settings.quality = QUALITY_ORDER[i - 1];
+    // (con tope de FPS lo que se espera es el tope: con 30 nunca llegaba a 40
+    // y la iba bajando hasta Rendimiento)
+    const cap = +this.settings.fpsCap;
+    const want = cap > 0 ? Math.min(MIN_FPS, cap * 0.8) : MIN_FPS;
+    if (fps >= want || i <= 0) return;
+    // muy lento: dos escalones de una (cada cambio recompila y traba)
+    this.settings.quality = QUALITY_ORDER[Math.max(0, i - (fps < want * 0.6 ? 2 : 1))];
+    // y se acuerda para esta placa (Game.autoTier)
+    this.settings.autoCap = { gpu: this.gpu?.name || '', q: this.settings.quality };
     store.set(SETTINGS_KEY, this.settings);
     this.applyQuality();
     this.resize();
@@ -607,6 +652,37 @@ export default class Game {
     if (this.post) this.resize();
     // los compañeros pasan al mundo nuevo
     this.net?.avatars.rebuild();
+    // el camuflaje del Pack-a-Pava de este mapa se pinta con el mapa (~70 ms
+    // que caían en el primer cuadro de la partida, en Weapons.reset)
+    setPapMap(this.mapId, this.textures);
+    // las piezas diminutas de lejos no se dibujan (core/sizeCull.js), solo
+    // jugando con la cámara en los ojos del jugador: en las cinemáticas, que
+    // panean el mapa de lejos, se dibuja todo
+    // y lo de adentro de cada zona que no se ve: los cuartos hasta el techo,
+    // las zonas abiertas (el patio del penal) y sin techo hasta 4 m (la torre
+    // va por world/Tower, sin zonas acá)
+    const rooms = [];
+    for (const [key, Z] of Object.entries(ZONES)) {
+      if (!Z.rects) continue;
+      const open = !!Z.outdoor || !Z.roof;
+      const boxes = [];
+      for (const r of Z.rects) {
+        const y0 = r[4] ?? Z.y ?? 0;
+        const y1 = open ? y0 + 4 : (r[5] ?? Z.roof);
+        if (y1 - y0 > 1) boxes.push([r[0], y0, r[1], r[2] + 1, y1, r[3] + 1]);
+      }
+      if (boxes.length) rooms.push({ key, boxes });
+    }
+    sizeCull(
+      this.renderer,
+      this.scene,
+      () => {
+        const p = this.player;
+        const c = this.camera.position;
+        return this.state === 'playing' && !this.intro?.active && !this.cine && !!p && Math.abs(c.x - p.pos.x) < 0.5 && Math.abs(c.z - p.pos.z) < 0.5 && Math.abs(c.y - p.pos.y - p.eye) < 1.5;
+      },
+      { camera: this.camera, rooms: this.world.tower ? [] : rooms },
+    );
   }
 
   // Saca lo que quedó de la animación de fin de partida.
@@ -652,7 +728,7 @@ export default class Game {
 
   // Invitado: el anfitrión arrancó la partida. Se carga el mapa y se espera
   // a los demás; la partida empieza cuando el anfitrión dice (Arrival.go).
-  arriveAsGuest(map = null, mode) {
+  arriveAsGuest(map = null, mode, restart = false) {
     if (this.state === 'arriving') return;
     this.audio.resume();
     const was = this.mapKey;
@@ -667,7 +743,7 @@ export default class Game {
       c.onDone = null;
       c.finish();
     }
-    this.arrival.startGuest(this.state !== 'title' || other || this.arrival.switching);
+    this.arrival.startGuest(this.state !== 'title' || other || this.arrival.switching, restart);
   }
 
   // Engancha una sala ya conectada: de acá en más se sincroniza la partida.
@@ -926,9 +1002,11 @@ export default class Game {
   restart() {
     // en línea solo el anfitrión arma otra, y la arma para todos
     if (this.net?.guest) return;
-    this.buildScene();
-    this.newRun();
-    this.net?.restartAll();
+    // con la pantalla de carga, como al arrancar (compila y calienta el mapa
+    // nuevo; antes arrancaba al toque y trababa un buen rato) y sin la entrada
+    this.net?.clearScores();
+    this.audio.resume();
+    this.arrival.start(true, { restart: true });
   }
 
   pause() {
@@ -1260,7 +1338,7 @@ export default class Game {
     const dur = this.audio.say(text, speaker);
     // si alguien estaba hablando, la voz espera su turno (y el subtítulo con ella)
     const wait = this.audio.sayWait || 0;
-    const label = { fierro: 'Martín Fierro', francisco: 'Francisco', abuelo: 'Abuelo', capataz: 'El Capataz', capatazJoven: 'Anselmo, el capataz (1911)', radio: FEATURES.penal ? 'Radio Nacional' : 'Radio Misiones', taza: 'La taza', anunciador: 'La Voz', entidad: 'La Voz de Arriba', espantapajaros: 'El Espantapájaros', alcaide: 'El Alcaide', gil: 'El Gauchito Gil', anacleto: 'Anacleto', cirilo: 'Cirilo', benito: 'Benito', nicanor: 'Nicanor', sargento: 'El Sargento' }[speaker] || speaker;
+    const label = { fierro: 'Martín Fierro', francisco: 'Francisco', abuelo: 'Abuelo', capataz: 'El Capataz', capatazJoven: 'Anselmo, el capataz (1911)', radio: FEATURES.penal ? 'Radio Nacional' : 'Radio Misiones', taza: 'La taza', anunciador: 'La Voz', entidad: 'La Voz de Arriba', espantapajaros: 'El Espantapájaros', alcaide: 'El Alcaide', gil: 'El Gauchito Gil', anacleto: 'Anacleto', cirilo: 'Cirilo', benito: 'Benito', nicanor: 'Nicanor', sargento: 'El Sargento', belgrano: 'Manuel Belgrano' }[speaker] || speaker;
     if (wait > 0.1) this.later(wait, () => this.hud.speak(label, text, dur + 1.4, kind));
     else this.hud.speak(label, text, dur + 1.4, kind);
     return wait + dur;
@@ -1304,7 +1382,7 @@ export default class Game {
       // "auto" elige según la placa; "custom" (Personalizada) usa settings.gfx;
       // cualquier otra queda fija
       this.settings.qualityMode = v === 'auto' ? 'auto' : v === 'custom' ? 'custom' : 'manual';
-      if (v === 'auto') v = this.autoQuality();
+      if (v === 'auto') v = this.autoTier();
       if (v === 'custom') {
         // arranca igual a lo que había (después se toca cada cosa)
         if (!this.settings.gfx) this.settings.gfx = gfxFrom(this.settings.quality);
@@ -1354,7 +1432,14 @@ export default class Game {
   // luciérnagas, fire el fuego del dragón, grass el pasto al armar el mapa).
   tier(sys) {
     const c = this.settings.qualityMode === 'custom' ? this.settings.gfx : null;
-    return (c && c[sys]) || this.settings.quality;
+    return (c && c[sys]) || this.mapGfx()?.[sys] || this.settings.quality;
+  }
+
+  // Lo de este mapa sobre la calidad elegida (config/quality.js MAP_GFX); la
+  // Personalizada va tal cual la armó el jugador.
+  mapGfx() {
+    if (this.settings.qualityMode === 'custom' || globalThis.__mduNoMapGfx === true) return null;
+    return MAP_GFX[this.mapId]?.[this.settings.quality] || null;
   }
 
   // La calidad en uso: la del escalón o, en Personalizada, con lo que eligió
@@ -1377,7 +1462,7 @@ export default class Game {
       this.world.moon.shadow.map = null;
     }
     this.renderer.shadowMap.needsUpdate = true;
-    this.post?.setQuality(this.settings.quality, this.settings.qualityMode === 'custom' ? this.settings.gfx : null);
+    this.post?.setQuality(this.settings.quality, this.settings.qualityMode === 'custom' ? this.settings.gfx : null, this.mapGfx());
     // en plena partida (a mano o la automática que la baja): lo visible se
     // recompila solo, pero lo escondido no (el mate que muestra el Pack-a-Pava o
     // la caja, los actores de las cinemáticas). Se vuelve a compilar todo de
@@ -1433,6 +1518,7 @@ export default class Game {
     // con varios sonando a la vez
     const raw = Math.min(200, Math.max(0, now - this.last));
     this.frameMs = (this.frameMs ?? 16) * 0.96 + raw * 0.04;
+    this.hitch?.begin(now - this.last);
     // (en las opciones se puede dejar siempre completo o siempre liviano)
     const perf = this.settings.audioPerf;
     if (this.audio) this.audio.budget = perf === 'full' ? 1 : perf === 'light' ? 0.4 : this.frameMs < 24 ? 1 : this.frameMs < 36 ? 0.65 : 0.4;
@@ -1457,6 +1543,7 @@ export default class Game {
     // las cinemáticas de la granja y el penal pasan adentro del mundo
     else if (this.state === 'won' && this.cine?.update) this.cine.update(dt);
     if (!stage) this.render(dt);
+    this.hitch?.end();
     this.input.endFrame();
   }
 

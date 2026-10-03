@@ -130,7 +130,10 @@ export default class Profile {
       },
       { passive: false },
     );
+    // (jugando no: cada muerte suma experiencia y rehacía la tarjeta escondida;
+    // al volver al título la sincroniza el showHooks de arriba)
     P.on('change', () => {
+      if (menus.g.state !== 'title') return;
       this.syncCard();
       if (menus.current === 'levels') this.syncHead();
     });

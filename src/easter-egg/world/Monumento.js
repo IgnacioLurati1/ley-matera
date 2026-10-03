@@ -121,6 +121,7 @@ function buildFloors(w, gb) {
       if (k === 'E' && r[4] != null) continue; // el espejo del sur lo arma buildPasaje
       if (k === 'H' && x0 >= 113) continue; // el muelle es de tablas (buildCostanera)
       if (k === 'G') continue; // el pasto del parque lo arma buildParque
+      if (k === 'P') continue; // el patio de la 2043 lo arma world/monumentoPatio.js
       // (la vereda del Pasaje: sin los escalones del final)
       // (la explanada: sin la avenida, que es de asfalto)
       if (k === 'C' && x0 >= 91) continue;
@@ -178,6 +179,10 @@ function parapet(gb, xs, zi, inSign, { thick = 0.62, h = 1.0, top = patioEdgeY, 
   for (const [x, s] of [[xs[0], -1], [xs[xs.length - 1], 1]]) {
     const t = top(x) + h;
     quad(gb, 'travertino', [[x, base(x), zi], [x, base(x), zo], [x, t, zo], [x, t, zi]], [s, 0, 0]);
+    // la punta del remate, que vuela 4 cm de cada lado
+    const zi2 = zi + inSign * 0.04;
+    const zo2 = zo - inSign * 0.04;
+    quad(gb, 'travStep', [[x, t - 0.08, zi2], [x, t - 0.08, zo2], [x, t, zo2], [x, t, zi2]], [s, 0, 0]);
   }
 }
 
@@ -232,6 +237,11 @@ function buildPasaje(w, gb, extra) {
   const yW = 3.45;
   // (el fondo llega hasta la cara del Propileo, x 20,5: si no, por la franja se ve el vacío)
   quad(gb, 'poolBed', [[5, 3.1, 27], [20.5, 3.1, 27], [20.5, 3.1, 15], [5, 3.1, 15]], [0, 1, 0]);
+  // donde la escalera de la Sala pasa por debajo del borde del estanque (x 20
+  // a 20,5) el techo de la escalera queda arriba del fondo: la viga del borde,
+  // con su cara de abajo y la que mira a la escalera
+  quad(gb, 'salaCeil', [[20, 3.1, 17], [20.5, 3.1, 17], [20.5, 3.1, 20], [20, 3.1, 20]], [0, -1, 0]);
+  quad(gb, 'salaMarble', [[20.5, 3.1, 17], [20.5, 3.1, 20], [20.5, 3.42, 20], [20.5, 3.42, 17]], [1, 0, 0]);
   w.mon.pools = [{ x0: 5, z0: 15, x1: 20.5, z1: 26.55, y: yW }, { x0: 5, z0: 33, x1: 20.5, z1: 40, y: 3.55 }];
   // el borde del estanque del norte (al lado de la vereda): un banco de piedra
   bbox(gb, 'travertino', 1, 3.0, 26.5, 20.5, 4.05, 27.0, { b: 0.04, top: 'travStep' });
@@ -244,6 +254,9 @@ function buildPasaje(w, gb, extra) {
   quad(gb, 'poolBed', [[5, 3.352, 40], [20.5, 3.352, 40], [20.5, 3.352, 33], [5, 3.352, 33]], [0, 1, 0]);
   // la franja de piso del Propileo entre su frente (x 20,5) y la primera celda (21), a los lados de la valla
   for (const [z0, z1] of [[21, 27], [33, 40]]) quad(gb, 'travPave', [[20.5, 4.202, z1], [21, 4.202, z1], [21, 4.202, z0], [20.5, 4.202, z0]], [0, 1, 0]);
+  // el canto del piso de la valla (x 20 a 20,5) sobre los dos estanques
+  quad(gb, 'travertino', [[20, 3.3, 33], [20.5, 3.3, 33], [20.5, 4.204, 33], [20, 4.204, 33]], [0, 0, 1]);
+  quad(gb, 'travertino', [[20, 3.9, 27], [20.5, 3.9, 27], [20.5, 4.204, 27], [20, 4.204, 27]], [0, 0, -1]);
   // la vereda de la plaza alrededor de los estanques (entre el Palacio, la
   // Catedral y la plaza 25 de Mayo): sin esto, por los costados se ve el vacío
   for (const [x0, z0, x1, z1] of [[-6, 13.9, 0, 20], [0, 13.9, 4.4, 26.5], [4.4, 13.9, 20.5, 14.4], [0, 33.0, 4.4, 40.6], [-6, 40, 0, 40.6]]) {

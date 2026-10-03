@@ -204,6 +204,7 @@
   stroke: var(--red);
   stroke-width: 9;
   stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .mdu-round.is-changing { animation: mdu-roundflash 3.2s ease-out; }
 .mdu-round.is-ending { animation: mdu-roundend 4s ease-in-out; }
@@ -1092,6 +1093,8 @@
   margin-bottom: 12px;
 }
 .mdu-field input[type='range'] { accent-color: var(--red-hi); width: 100%; }
+/* (una opción que acá no se puede cambiar: el vsync en la web) */
+.mdu-field.is-off { opacity: 0.5; }
 .mdu-field select {
   font-family: inherit;
   font-size: 16px;

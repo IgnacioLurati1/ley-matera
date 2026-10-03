@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { EE, DOORS, ZONES } from '../config/map';
 import { rng } from '../core/noise';
 import { depthPrepass } from '../fx/prepass';
+import { lightGrass } from '../config/quality';
 import { buildCamps } from '../world/matorralCamps';
 import MatorralChests from './matorralChests';
 
@@ -249,7 +250,7 @@ export default class Matorral {
   build() {
     const g = this.g;
     const C = this.C;
-    const low = (g.tier?.('grass') ?? g.settings?.quality) === 'perf';
+    const low = lightGrass(g);
     const step = low ? STEP_LOW : STEP;
     const r = rng(4417);
     let x0 = Infinity;

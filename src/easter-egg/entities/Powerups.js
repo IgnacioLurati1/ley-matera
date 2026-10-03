@@ -140,6 +140,29 @@ export default class Powerups {
     g.audio.powerupSpawn(mesh.position);
   }
 
+  // Los mates de los potenciadores personales que pueden salir en este mapa
+  // (Weapons.warmFx arma su modelo al cargar: el Farol de las Ánimas trababa al agarrarlo).
+  personalWeapons() {
+    const ks = FEATURES.anySpecial ? Object.values(SPECIAL) : [SPECIAL[MAP_ID]];
+    return ks.filter((k) => k && NAMES[k] && PERSONAL[k]).map((k) => PERSONAL[k][0]);
+  }
+
+  // Uno de cada potenciador (con su brillo), para compilar sus materiales al
+  // cargar el mapa (ui/Arrival compile): el Farol de las Ánimas trababa el
+  // juego la primera vez que aparecía.
+  warmGroup() {
+    const grp = new THREE.Group();
+    for (const type of Object.keys(NAMES)) {
+      try {
+        grp.add(this.model(type));
+      } catch {
+        /* uno a medio hacer: se compila cuando salga */
+      }
+    }
+    grp.add(new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0x40ff60, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.7 })));
+    return grp;
+  }
+
   model(type) {
     const M = getMats(this.g.textures);
     const gold = new THREE.MeshStandardMaterial({ color: 0xffd060, metalness: 0.9, roughness: 0.25, emissive: 0x3a2a00 });

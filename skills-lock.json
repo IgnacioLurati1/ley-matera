@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "3d-games": {
+      "source": "sickn33/agentic-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/agentic-bundle-indie-game-dev/skills/3d-games/SKILL.md",
+      "computedHash": "d7c04bd3c50d42b85bef311b21b9111d8cab39a53b13fafea9728b660fa44903"
+    },
+    "game-development": {
+      "source": "sickn33/agentic-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/game-development/SKILL.md",
+      "computedHash": "d9278adfbebfbd2090f094f01f8651c24b151455b12a125c432d3b6410bd732f"
+    }
+  }
+}

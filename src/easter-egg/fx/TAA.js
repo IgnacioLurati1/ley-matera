@@ -30,6 +30,29 @@ for (let i = 1; i <= 8; i++) {
 // cuánto queda de lo de antes (más, más suave y más estela)
 const KEEP = 0.9;
 
+// El pasto corrido una fracción de píxel por cuadro (solo en el dibujo del
+// mundo, fx/PostFX WorldPass): sin correr nada, parado, el promedio era siempre
+// la misma imagen y los bordes del pajonal quedaban en escalera (con SMAA solo;
+// el MSAA lo tapaba pero costaba ~17% en el estero). Corrido, el promedio de
+// los cuadros cubre cada hoja como con varias muestras. Lo demás no se corre.
+// (globalThis.__mduNoGrassJit: quieto, como antes)
+export const GRASS_JIT = { value: new THREE.Vector2() };
+const PROTO_KEY = THREE.Material.prototype.customProgramCacheKey;
+export function jitterGrass(mat) {
+  if (!mat || mat.userData.grassJit) return mat;
+  mat.userData.grassJit = true;
+  const prev = mat.onBeforeCompile;
+  const key = mat.customProgramCacheKey;
+  const base = key === PROTO_KEY ? () => prev.toString() : () => key.call(mat);
+  mat.onBeforeCompile = function (sh, r) {
+    prev.call(this, sh, r);
+    sh.uniforms.uGrassJit = GRASS_JIT;
+    sh.vertexShader = `uniform vec2 uGrassJit;\n${sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n\tgl_Position.xy += uGrassJit * gl_Position.w;')}`;
+  };
+  mat.customProgramCacheKey = () => `${base()}|gjit`;
+  return mat;
+}
+
 const TAAShader = {
   uniforms: {
     tCur: { value: null },
@@ -123,6 +146,9 @@ export default class TAAPass extends Pass {
     this.prevPos = new THREE.Vector3();
     this.jittered = false;
     this.shake = false;
+    // el corrimiento del pasto de este cuadro, en píxeles (GRASS_JIT)
+    this.gj = new THREE.Vector2();
+    this.gn = 0;
     this.mat = new THREE.ShaderMaterial({ ...TAAShader, uniforms: THREE.UniformsUtils.clone(TAAShader.uniforms), depthTest: false, depthWrite: false });
     this.quad = new FullScreenQuad(this.mat);
     this.copyMat = new THREE.ShaderMaterial({
@@ -152,6 +178,8 @@ export default class TAAPass extends Pass {
     // un salto de cámara (cinemáticas, reaparecer): se empieza de cero
     if (c.position.distanceToSquared(this.prevPos) > 4) this.valid = false;
     this.prevPos.copy(c.position);
+    if (globalThis.__mduNoGrassJit === true) this.gj.set(0, 0);
+    else this.gj.fromArray(JIT[this.gn++ % JIT.length]);
     // (correr la cámara ayuda al pasto, pero lo que no es pasto temblaba)
     if (this.shake) {
       const [jx, jy] = JIT[this.n++ % JIT.length];

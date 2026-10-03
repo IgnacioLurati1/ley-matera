@@ -9,6 +9,7 @@ import { PLAYER } from '../config/rules';
 import DragonFire from '../fx/DragonFire';
 import { buildFragments, floatingRocks, FRAGMENTS } from './eterFragments';
 import { warmScene } from '../ui/cineWarm';
+import { sleepHidden } from './castleLean';
 
 // La Gran Guerra: la pelea final contra el Chiquitijuein, en el Éter.
 //  · El vuelo: después del juramento, el Mateendrache sale de la cumbre con
@@ -116,7 +117,8 @@ export default class GranGuerra extends Arena {
       const l = new THREE.PointLight(k ? 0xff4a2a : 0x9a7aff, 0, 60, 1.4);
       l.position.set(this.A.x + (k ? 8 : -8), this.A.y + 7, this.A.z + (k ? -6 : 6));
       this.g.scene.add(l);
-      return l;
+      // (no cuenta como luz mientras está apagada: World.adoptLight)
+      return this.g.world.adoptLight(l);
     });
     this.cineLight = null;
     this.wardMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
@@ -449,6 +451,8 @@ export default class GranGuerra extends Arena {
     if (E.vanguardia) E.vanguardia.root.visible = false;
     if (E.npc) E.npc.root.visible = false;
     if (E.fierroGlow) E.fierroGlow.visible = false;
+    // (lo escondido del castillo no se recorre durante la guerra)
+    sleepHidden(g.interact?.root, g.barriers?.root, g.critters?.root, g.activities?.root, g.papq?.root, g.luz?.root, g.decor?.root, E.cueva?.root, E.vanguardia?.root, E.npc?.root, ...Object.values(E.quests || {}).map((q) => q.root));
     // los muertos que quedaban, afuera
     if (isHost(g)) {
       for (const z of g.zombies.pool) if (z.active) g.zombies.free(z);

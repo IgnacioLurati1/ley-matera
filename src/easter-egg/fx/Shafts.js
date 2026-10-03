@@ -19,6 +19,9 @@ import * as THREE from 'three';
 const STEPS = { perf: 4, low: 4, medium: 6, high: 8, ultra: 10, epic: 10 };
 const MOTES = 48;
 const MAXB = 6;
+// las esquinas de la caja de un haz (x e y en la abertura, z a lo largo del rayo)
+const CORNERS = [];
+for (const x of [-0.5, 0.5]) for (const y of [-0.5, 0.5]) for (const z of [0, 1]) CORNERS.push(new THREE.Vector3(x, y, z));
 
 // Las tablas y la abertura, en metros sobre el plano de la ventana.
 const COMMON = /* glsl */ `
@@ -216,10 +219,15 @@ export function windowBeams(items, { color = 0x9ab4e8, dens = 0.45, pool = 0.35 
     const beam = new THREE.Mesh(box, mk(beamVert, beamFrag, { uDens: { value: dens * k } }));
     beam.material.defines = { STEPS: STEPS.high };
     beam.matrixAutoUpdate = false;
-    // (con la caja torcida la esfera de three no la envuelve: cerca del borde
-    // de la pantalla desaparecía; el costo de no recortarla son 36 vértices)
-    beam.frustumCulled = false;
     beam.matrix.copy(M);
+    // (con la caja torcida la esfera de three no la envuelve —cerca del borde
+    // de la pantalla desaparecía— y se dibujaba siempre, también en el reflejo
+    // del agua: en el muelle del penal eran 38 dibujos de cuartos que no se
+    // ven. La esfera propia, la que envuelve las 8 esquinas de la caja)
+    const ws = new THREE.Sphere().setFromPoints(CORNERS.map((p) => p.clone().applyMatrix4(M)));
+    beam.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0.5), ws.radius / M.getMaxScaleOnAxis());
+    // (los haces son de adentro: en el agua no se ven)
+    beam.userData.reflect = false;
     beam.renderOrder = 6;
     root.add(beam);
     // el charco: la abertura proyectada al piso por el rayo (un paralelogramo), un poco más grande
@@ -241,6 +249,7 @@ export function windowBeams(items, { color = 0x9ab4e8, dens = 0.45, pool = 0.35 
     pm.polygonOffsetUnits = -2;
     const poolMesh = new THREE.Mesh(pg, pm);
     poolMesh.renderOrder = 5;
+    poolMesh.userData.reflect = false;
     root.add(poolMesh);
     // las motas
     const seeds = new Float32Array(MOTES * 4);
@@ -249,8 +258,11 @@ export function windowBeams(items, { color = 0x9ab4e8, dens = 0.45, pool = 0.35 
     mg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MOTES * 3), 3));
     mg.setAttribute('seed', new THREE.BufferAttribute(seeds, 4));
     const motes = new THREE.Points(mg, mk(moteVert, moteFrag));
-    motes.frustumCulled = false;
+    // (las motas las pone el shader adentro de la caja: la esfera del haz, en
+    // el mundo; la raíz de los haces no se mueve)
+    motes.boundingSphere = ws;
     motes.renderOrder = 7;
+    motes.userData.reflect = false;
     root.add(motes);
     beams.push({ beam, inv, bl, boards, inside: false });
   }

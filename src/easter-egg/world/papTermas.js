@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { PROPS } from '../config/map';
-import { mesh, boxGeo, cylGeo } from './props';
+import { mesh, boxGeo, cylGeo, mergeByMaterial } from './props';
 
 // El Pack-a-Pava del castillo está del otro lado del barranco, en las termas
 // del Inca, y se llega por el puente levadizo de la barbacana. Es a mitad de
@@ -122,6 +122,10 @@ export default class PapTermas {
         plug.add(s);
       }
       plug.position.y = 0.14;
+      // (la cúpula y las agujas, una malla por material: se prenden, se apagan
+      // y laten juntas con el grupo; sin sombra, como eran)
+      mergeByMaterial(plug);
+      for (const c of plug.children) c.castShadow = c.receiveShadow = false;
       grp.add(plug);
       q.root.add(grp);
       return { i, x, y, z, r, grp, sheet, plug, hp: HP, broken: false, melt: 0, flash: 0, gey: 0, center: new THREE.Vector3(x, y + 0.4, z) };
@@ -284,6 +288,9 @@ export default class PapTermas {
       // los carámbanos que cuelgan
       for (let k = 0; k < 5; k++) grp.add(mesh(new THREE.ConeGeometry(0.05 + r() * 0.04, 0.3 + r() * 0.4, 5), mat, (r() - 0.5) * 0.5, -0.35 - r() * 0.15, r() * 0.15, Math.PI, 0, 0));
     }
+    // (todo el hielo de la grampa en una malla: eran 11-18 pedazos sueltos, un
+    // dibujo cada uno; se rompe y desaparece entera con el grupo)
+    mergeByMaterial(grp);
     this.q.root.add(grp);
     return { i, grp, mat, r: s.r, center: s.at.clone(), hp: CLAMP_HP, broken: false, flash: 0 };
   }

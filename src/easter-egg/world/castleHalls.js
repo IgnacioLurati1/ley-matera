@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import GeoBuilder from './GeoBuilder';
 import { quadUV } from './Levels';
 import { glyph, guarda } from './castleDecor';
+import { compactGroup } from './props';
+import { lean } from './castleLean';
 
 // Los dos salones grandes del castillo, con más cuerpo (lo llama buildCastle):
 //  · la Sala del Trono: dos filas de columnas con capitel, un artesonado de
@@ -285,5 +287,7 @@ export function buildHalls(w) {
   }
   const mesh = gb.build(mats);
   w.root.add(mesh);
+  // (las lanzas y las moharras de los escudos: una malla cada una)
+  if (lean()) compactGroup(g);
   w.root.add(g);
 }

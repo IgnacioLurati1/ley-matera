@@ -301,6 +301,8 @@ export function buildBossRig(g) {
 
   const rig = new THREE.Group();
   rig.visible = false;
+  // (escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+  rig.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
   const parts = [];
   for (let i = 0; i < 18; i++) {
     parts[i] = perch();

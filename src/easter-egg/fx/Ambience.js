@@ -24,6 +24,47 @@ function fadeTexture(top = 1, bottom = 0) {
   return new THREE.CanvasTexture(c);
 }
 
+// Los halos de las lámparas, todos en un dibujo: un cuadrado de frente a la
+// cámara por instancia, como un Sprite (el tamaño es la escala de la
+// instancia), con niebla. El color de la instancia ya trae la opacidad.
+function haloMaterial(map) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null } }]),
+    vertexShader: `
+      #include <common>
+      #include <fog_pars_vertex>
+      varying vec2 vUv;
+      varying vec3 vCol;
+      void main() {
+        vUv = uv;
+        vCol = instanceColor;
+        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        mvPosition.xy += position.xy * length(instanceMatrix[0].xyz);
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: `
+      #include <common>
+      #include <fog_pars_fragment>
+      uniform sampler2D map;
+      varying vec2 vUv;
+      varying vec3 vCol;
+      void main() {
+        vec4 t = texture2D(map, vUv);
+        gl_FragColor = vec4(vCol * t.rgb, t.a);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+        #include <fog_fragment>
+      }`,
+    fog: true,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  mat.uniforms.map.value = map;
+  return mat;
+}
+
 export default class Ambience {
   constructor(game) {
     this.g = game;
@@ -31,25 +72,40 @@ export default class Ambience {
     game.scene.add(this.root);
     const T = game.textures;
     const fade = fadeTexture();
-    // lámparas del mapa
+    // lámparas del mapa: los halos de todas en un dibujo y los conos en otro
+    // (instancias; cada una con su color por su opacidad, que se suman). Lo
+    // que los toca de afuera usa halo.visible / cone.visible y su opacidad
     this.lamps = [];
-    for (const e of game.world.lights) {
+    const lamps = game.world.lights;
+    const nCone = lamps.filter((e) => !e.def.kind).length;
+    this.halos = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), haloMaterial(T.dot), Math.max(1, lamps.length));
+    this.cones = new THREE.InstancedMesh(
+      new THREE.ConeGeometry(1.5, 2.6, 20, 1, true).translate(0, -1.3, 0),
+      new THREE.MeshBasicMaterial({ map: fade, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.DoubleSide }),
+      Math.max(1, nCone),
+    );
+    const m4 = new THREE.Matrix4();
+    const zero = new THREE.Color(0, 0, 0);
+    for (const e of lamps) {
       const [x, y, z] = e.def.pos;
       const candle = e.def.kind === 'candle';
-      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.dot, color: e.def.color, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
-      halo.position.set(x, y, z);
-      halo.scale.setScalar(candle ? 0.7 : 1.5);
-      this.root.add(halo);
+      const halo = { visible: true, shown: true, i: this.lamps.length, size: candle ? 0.7 : 1.5, pos: new THREE.Vector3(x, y, z), material: { opacity: 1 } };
+      this.halos.setMatrixAt(halo.i, m4.makeScale(halo.size, halo.size, halo.size).setPosition(halo.pos));
+      this.halos.setColorAt(halo.i, zero);
       let cone = null;
       if (!candle && !e.def.kind) {
-        cone = new THREE.Mesh(
-          new THREE.ConeGeometry(1.5, 2.6, 20, 1, true).translate(0, -1.3, 0),
-          new THREE.MeshBasicMaterial({ map: fade, color: e.def.color, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.DoubleSide }),
-        );
-        cone.position.set(x, y + 0.05, z);
-        this.root.add(cone);
+        cone = { visible: true, shown: true, i: this.cones.count - nCone + this.lamps.filter((l) => l.cone).length, pos: new THREE.Vector3(x, y + 0.05, z), material: { opacity: 1 } };
+        this.cones.setMatrixAt(cone.i, m4.makeTranslation(cone.pos));
+        this.cones.setColorAt(cone.i, zero);
       }
-      this.lamps.push({ e, halo, cone, candle });
+      this.lamps.push({ e, halo, cone, candle, col: new THREE.Color(e.def.color) });
+    }
+    if (!lamps.length) this.halos.setColorAt(0, zero);
+    if (!nCone) this.cones.setColorAt(0, zero);
+    for (const im of [this.halos, this.cones]) {
+      im.count = im === this.halos ? lamps.length : nCone;
+      im.computeBoundingSphere();
+      this.root.add(im);
     }
     // haces de luna por las ventanas de los zombies que miran a la luna,
     // pasando entre las tablas (el castillo junta los suyos en castleRooms:
@@ -113,11 +169,27 @@ export default class Ambience {
     this.root.visible = on;
     if (!on) return;
     // halos y conos siguen a cada lámpara (titilan y se apagan con la luz)
+    const c = (this.tmpC ||= new THREE.Color());
+    let moved = false;
     for (const l of this.lamps) {
       const k = Math.min(1, l.e.light.intensity / (l.e.base || 1));
       l.halo.material.opacity = (l.candle ? 0.45 : 0.55) * k;
       if (l.cone) l.cone.material.opacity = 0.05 * k;
+      for (const [im, it] of [[this.halos, l.halo], [this.cones, l.cone]]) {
+        if (!it) continue;
+        im.setColorAt(it.i, c.copy(l.col).multiplyScalar(it.material.opacity));
+        if (it.visible === it.shown) continue;
+        it.shown = it.visible;
+        const m4 = (this.tmpM ||= new THREE.Matrix4());
+        const sc = it.visible ? it.size || 1 : 0;
+        im.setMatrixAt(it.i, m4.makeScale(sc, sc, sc).setPosition(it.pos));
+        im.instanceMatrix.needsUpdate = true;
+        moved = true;
+      }
     }
+    if (moved) for (const im of [this.halos, this.cones]) im.computeBoundingSphere();
+    this.halos.instanceColor.needsUpdate = true;
+    this.cones.instanceColor.needsUpdate = true;
     // la luna se ve menos con nubes o de día; roja con la luna de sangre y el
     // relámpago la prende de golpe
     if (this.beams) {

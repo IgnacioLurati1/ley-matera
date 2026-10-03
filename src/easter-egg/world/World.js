@@ -22,6 +22,7 @@ import { monumentoMaterials } from './monumentoTextures';
 import { buildCastleSky } from './castleSky';
 import Night from '../fx/Night';
 import { ARENA } from './Arena';
+import { cullFarTiles } from './foliageTiles';
 
 export const CELL = { OUT: 0, FLOOR: 1, WALL: 2, DOOR: 3, WINDOW: 4 };
 // Qué es cada celda de borde: pared, alambrado (se ve y se tira por encima) o maíz.
@@ -34,9 +35,27 @@ const SILL = 0.95;
 const HEAD = 2.35;
 const DOOR_H = 2.7;
 // lámparas del mapa prendidas a la vez (las más cercanas a la cámara; ver
-// cullLights). Solo en los mapas con muchas (el penal): los demás quedan igual
+// cullLights). Cada luz puntual encarece cada píxel de todo lo que se dibuja:
+// según la calidad (TIER_LIGHTS); en Ultra y Épica como siempre, solo en los
+// mapas con muchas (el penal)
 const MAX_LIGHTS = 10;
 const CULL_FROM = 13;
+const TIER_LIGHTS = { perf: 3, low: 5, medium: 7, high: 10 };
+// las luces de evento (adoptLight): cuántas de verdad las representan
+const POOL = { perf: 2, low: 2 };
+const POOL_MAX = 3;
+// la capa de las adoptadas: ninguna cámara la mira, three no las cuenta
+const VIRT = 30;
+// rayos de "¿se ve esta lámpara?" por vuelta de cullLights (las demás, lo guardado)
+const SEE_RAYS = 3;
+// El pasto alto y el maíz sin luces puntuales (World.foliage): con el define
+// FOLIAGE_NOPOINT el material no recorre las lámparas. En el código de las
+// luces de todos los materiales (sin el define no cambia nada; NUM_POINT_LIGHTS
+// no es un define: three lo reemplaza por el número en el texto)
+const POINT_LOOP = '#if ( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )';
+if (!THREE.ShaderChunk.lights_fragment_begin.includes('FOLIAGE_NOPOINT')) {
+  THREE.ShaderChunk.lights_fragment_begin = THREE.ShaderChunk.lights_fragment_begin.replace(POINT_LOOP, `${POINT_LOOP} && !defined( FOLIAGE_NOPOINT )`);
+}
 // El medio del mapa, para el sol, la luna y su sombra (la granja lo corre a la
 // chacra: el matorral agrandó la grilla hacia el sur, SKY.center)
 const mapCenter = () => new THREE.Vector3(SKY.center?.[0] ?? MAP_W / 2, 0, SKY.center?.[1] ?? MAP_H / 2);
@@ -59,6 +78,9 @@ export default class World {
     this.cellBoxes = Array.from({ length: MAP_W * MAP_H }, () => []);
     this.dynamic = { flywheels: [], fans: [], lamps: [], kilnGlow: null, candles: null, bucket: null };
     this.lights = [];
+    // las luces de evento adoptadas (adoptLight) y las de verdad que las representan
+    this.virt = [];
+    this.pool = null;
     this.power = false;
     // luz del día: 1 atardecer, 0 noche cerrada (el molino es siempre de noche)
     this.daylight = SKY.daylight || 0;
@@ -104,9 +126,35 @@ export default class World {
     buildRoofs(this, MAP_ID);
     this.buildSky();
     this.buildLights();
+    // el pasto alto y el maíz, sin luces puntuales en las calidades bajas
+    for (const m of [this.M.reed, this.M.tussock, this.M.corn]) this.foliage(m);
     // la luz arranca donde corresponde (sol del atardecer o luna)
     if (this.sunDir) this.updateDay(0);
     this.computeNavBlock();
+  }
+
+  // El pasto alto y el maíz (miles de planos con recorte, uno encima del
+  // otro) no toman las luces puntuales en Baja y Rendimiento: cada lámpara se
+  // calculaba en cada píxel de cada mata y casi no se nota. Es un define del
+  // material (FOLIAGE_NOPOINT): al cambiar la calidad se recompilan solo ellos.
+  foliage(mat) {
+    if (!mat || this.foliageMats?.includes(mat)) return;
+    (this.foliageMats ||= []).push(mat);
+    this.foliageQ = null;
+    this.foliageSync();
+  }
+
+  foliageSync() {
+    const q = this.g.settings?.quality;
+    if (!this.foliageMats || q === this.foliageQ) return;
+    this.foliageQ = q;
+    const off = q === 'perf' || q === 'low';
+    for (const m of this.foliageMats) {
+      if (off === !!m.defines?.FOLIAGE_NOPOINT) continue;
+      if (off) m.defines = { ...m.defines, FOLIAGE_NOPOINT: 1 };
+      else delete m.defines.FOLIAGE_NOPOINT;
+      m.needsUpdate = true;
+    }
   }
 
   idx(x, z) {
@@ -238,7 +286,8 @@ export default class World {
       M.cellWall = std(T.cellWall, { bump: 1.1 });
       M.whitewash = std(T.whitewash, { bump: 1.1 });
       M.damero = std(T.damero, { r: 0.6 });
-      M.azulejo = std(T.azulejo, { r: 0.35, bump: 0.4 });
+      // (menos brilloso: en Baja la lámpara de Las Duchas encandilaba en el piso y las paredes)
+      M.azulejo = std(T.azulejo, { r: 0.55, bump: 0.25 });
       M.rock = std(T.rock, { bump: 1.6 });
       M.grass = std(T.grass, { bump: 0.6 });
       // Phong y no Standard: el Standard reflejaba el environment del estudio
@@ -970,21 +1019,23 @@ export default class World {
 
     const bulbGeo = new THREE.SphereGeometry(0.07, 10, 8);
     const shadeGeo = new THREE.ConeGeometry(0.28, 0.2, 16, 1, true);
+    const bulbs = [];
     for (const L of LIGHTS) {
       const light = new THREE.PointLight(L.color, L.intensity, 22, 1.7);
       light.position.set(...L.pos);
       s.add(light);
       const entry = { def: L, light, base: L.intensity, phase: Math.random() * 100, bulb: null };
       if (!L.kind) {
-        const bulbMat = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: L.color, emissiveIntensity: 3 });
-        const bulb = new THREE.Mesh(bulbGeo, bulbMat);
-        bulb.position.set(...L.pos);
+        // la bombita: una instancia de this.bulbs (todas en un dibujo). Lo que
+        // la toca de afuera (la Luz Mala, el motín) usa este "como si fuera"
+        // una malla: visible y material.emissive / emissiveIntensity
+        const bulb = { visible: true, shown: true, i: bulbs.length, position: new THREE.Vector3(...L.pos), material: { emissive: new THREE.Color(L.color), emissiveIntensity: 3 } };
+        bulbs.push(bulb);
         const shade = new THREE.Mesh(shadeGeo, this.M.metalGreen);
         shade.position.set(L.pos[0], L.pos[1] + 0.1, L.pos[2]);
         // el cable sube hasta el techo de ese lugar
         const roof = this.levels ? Math.min(ceilAt(this, Math.floor(L.pos[0]), Math.floor(L.pos[2])), L.pos[1] + 6) : WALL_H;
         const wire = mesh(cylGeo(0.006, 0.006, Math.max(0.05, roof - L.pos[1]), 4), this.M.black, L.pos[0], (roof + L.pos[1]) / 2 + 0.1, L.pos[2]);
-        this.root.add(bulb);
         // la pantalla y el cable no se mueven: van con la utilería fundida (un dibujo menos cada uno)
         if (this.addStatic) {
           const fixed = new THREE.Group();
@@ -995,20 +1046,172 @@ export default class World {
       }
       this.lights.push(entry);
     }
+    // las bombitas, todas juntas: el brillo de cada una es su color de instancia
+    // (emissive por emissiveIntensity, puesto en updateBulbs); lo oscuro del
+    // vidrio, el mismo para todas
+    if (bulbs.length) {
+      const mat = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xffffff, emissiveIntensity: 1 });
+      mat.onBeforeCompile = (sh) => {
+        sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', '').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= vColor.rgb;');
+      };
+      const im = new THREE.InstancedMesh(bulbGeo, mat, bulbs.length);
+      const m4 = new THREE.Matrix4();
+      for (const b of bulbs) {
+        im.setMatrixAt(b.i, m4.makeTranslation(b.position));
+        im.setColorAt(b.i, b.material.emissive);
+      }
+      im.computeBoundingSphere();
+      this.root.add(im);
+      this.bulbs = { im, list: bulbs };
+    }
     this.setPower(false);
-    // (el penal: muchas lámparas) prendidas de entrada las del arranque
-    if (this.lights.length >= CULL_FROM) this.cullLights(0, new THREE.Vector3(PLAYER_START.x, (ZONES[START_ZONE]?.y ?? 0) + 1.6, PLAYER_START.z));
+    // (muchas lámparas para la calidad) prendidas de entrada las del arranque
+    if (this.lights.length > this.maxLamps()) this.cullLights(0, new THREE.Vector3(PLAYER_START.x, (ZONES[START_ZONE]?.y ?? 0) + 1.6, PLAYER_START.z));
+    // las de verdad que representan a las luces de evento (syncLights). Las
+    // que sobran en esta calidad nacen apagadas: si no, los materiales se
+    // compilaban en la carga con una luz de más y se recompilaban al jugar
+    this.pool = [];
+    const n = POOL[this.g.settings?.quality] ?? POOL_MAX;
+    for (let i = 0; i < POOL_MAX; i++) {
+      const l = new THREE.PointLight(0xffffff, 0, 10, 2);
+      l.userData.src = null;
+      l.visible = i < n;
+      s.add(l);
+      this.pool.push(l);
+    }
+  }
+
+  // Una lámpara que se sumó después de armar el mapa (el farol del bote del
+  // penal): se vuelve a recortar ya, así la cuenta de luces al compilar en la
+  // carga es la misma que al jugar.
+  recull() {
+    if (this.lights.length <= this.maxLamps()) return;
+    this.lightT = 0;
+    this.cullLights(0, new THREE.Vector3(PLAYER_START.x, (ZONES[START_ZONE]?.y ?? 0) + 1.6, PLAYER_START.z));
+  }
+
+  // Las bombitas (instancias de this.bulbs): el brillo y si se ven, de lo que
+  // dice cada una (e.bulb.visible, e.bulb.material).
+  updateBulbs() {
+    const B = this.bulbs;
+    if (!B) return;
+    const im = B.im;
+    const c = (this.bulbC ||= new THREE.Color());
+    let moved = false;
+    for (const b of B.list) {
+      im.setColorAt(b.i, c.copy(b.material.emissive).multiplyScalar(b.material.emissiveIntensity));
+      if (b.visible === b.shown) continue;
+      b.shown = b.visible;
+      const m4 = (this.bulbM ||= new THREE.Matrix4());
+      im.setMatrixAt(b.i, b.visible ? m4.makeTranslation(b.position) : m4.makeScale(0, 0, 0));
+      moved = true;
+    }
+    im.instanceColor.needsUpdate = true;
+    if (moved) im.instanceMatrix.needsUpdate = true;
+  }
+
+  // Cuántas lámparas del mapa van prendidas a la vez (Infinity: todas).
+  maxLamps() {
+    const n = TIER_LIGHTS[this.g.settings?.quality];
+    if (n) return n;
+    return this.lights.length >= CULL_FROM ? MAX_LIGHTS : Infinity;
+  }
+
+  // Una luz que se prende de a ratos (el fuego de un jefe, la de una
+  // cinemática, el horno): existe desde que se arma el mapa para no recompilar
+  // al prenderse, pero three cuenta cada luz visible en cada material aunque
+  // esté en 0. La adoptada no se dibuja (capa VIRT); en cada cuadro las más
+  // importantes que están prendidas se copian en las del pool (syncLights). Su
+  // dueño la maneja igual que antes (intensidad, color, lugar, visible).
+  // prio: cuánto pesa frente a las otras (los destellos de los tiros, poco).
+  adoptLight(l, prio = 1) {
+    if (!l || l.castShadow) return l;
+    l.userData.prio = prio;
+    if (this.virt.includes(l)) return l;
+    l.layers.set(VIRT);
+    this.virt.push(l);
+    return l;
+  }
+
+  // Antes de dibujar (fx/PostFX.render, en cualquier estado: también las
+  // cinemáticas del final): las luces de evento y el pasto lejano.
+  preRender(cam, dt) {
+    this.syncLights(cam);
+    cullFarTiles(this, dt, cam);
+  }
+
+  // Las adoptadas que más se notan desde
+  // la cámara (fuertes y que alcanzan hasta cerca) pasan a las luces del pool.
+  // La que ya tiene una la conserva mientras no haya otra bastante mejor.
+  syncLights(cam) {
+    const P = this.pool;
+    if (!P) return;
+    const n = POOL[this.g.settings?.quality] ?? POOL_MAX;
+    const cp = (this.syncC ||= new THREE.Vector3()).setFromMatrixPosition(cam.matrixWorld);
+    const R = (this.ranked ||= []);
+    R.length = 0;
+    for (const l of this.virt) {
+      if (!(l.intensity > 0.001)) continue;
+      let o = l;
+      while (o.visible && o.parent) o = o.parent;
+      if (!o.visible || o !== this.scene) continue;
+      const u = l.userData;
+      const p = l.getWorldPosition((u.wp ||= new THREE.Vector3()));
+      const d = p.distanceTo(cp);
+      const reach = l.distance > 0 ? l.distance : 60;
+      let s = (l.intensity * (u.prio ?? 1) * Math.max(0, 1 - Math.max(0, d - reach) / 30)) / (1 + (d * d) / 900);
+      if (!(s > 0)) continue;
+      for (let i = 0; i < n; i++) if (P[i].userData.src === l) s *= 1.5;
+      u.s = s;
+      R.push(l);
+    }
+    R.sort((a, b) => b.userData.s - a.userData.s);
+    if (R.length > n) R.length = n;
+    for (let i = 0; i < P.length; i++) {
+      const pl = P[i];
+      pl.visible = i < n;
+      if (pl.userData.src && (i >= n || !R.includes(pl.userData.src))) pl.userData.src = null;
+    }
+    for (const l of R) {
+      let has = false;
+      for (let i = 0; i < n; i++) if (P[i].userData.src === l) has = true;
+      if (has) continue;
+      for (let i = 0; i < n; i++) {
+        if (P[i].userData.src) continue;
+        P[i].userData.src = l;
+        break;
+      }
+    }
+    for (const pl of P) {
+      const l = pl.userData.src;
+      if (!l) {
+        pl.intensity = 0;
+        continue;
+      }
+      pl.position.copy(l.userData.wp);
+      pl.color.copy(l.color);
+      pl.intensity = l.intensity;
+      pl.distance = l.distance;
+      pl.decay = l.decay;
+      pl.updateMatrixWorld();
+    }
   }
 
   // Cada luz puntual encarece todo lo que se dibuja (el penal tiene más de
-  // veinte). Quedan prendidas solo las MAX_LIGHTS más cercanas a la cámara y
+  // veinte). Quedan prendidas solo las maxLamps más cercanas a la cámara y
   // siempre la misma cantidad, así los materiales no se recompilan al cambiar.
   // Las demás están lejos: casi no alumbran lo que se ve.
   cullLights(dt, at = this.g.camera.position) {
     this.lightT = (this.lightT || 0) - dt;
     if (this.lightT > 0) return;
     this.lightT = 0.25;
+    const max = this.maxLamps();
     const here = this.zoneAt(at.x, at.z, at.y);
+    // si se ve cada lámpara (un rayo contra el mapa) se guarda por celda de la
+    // cámara y se rehacen pocas por vuelta: eran todas las de menos de 30 m
+    // cada 0,25 s (en el penal, lo más caro del juego en la CPU)
+    const cell = `${Math.floor(at.x)},${Math.floor(at.z)},${Math.floor(at.y / 2)}`;
+    let rays = SEE_RAYS;
     for (const e of this.lights) {
       const [x, y, z] = e.def.pos;
       // lo de otro piso cuenta más lejos; la que ya está prendida, un poco más cerca (sin parpadeos)
@@ -1016,11 +1219,18 @@ export default class World {
       // las del lugar donde se está cuentan como más cerca (el fogón del gran
       // salón alumbra desde la otra punta) y las que tapa una pared, más lejos
       if (here && e.def.zone === here) e.d2 *= 0.3;
-      else if (e.d2 < 900 && !this.sees(at, x, y, z)) e.d2 *= 2.5;
+      else if (e.d2 < 900) {
+        if (e.seeCell !== cell && (rays > 0 || e.seeCell === undefined)) {
+          rays--;
+          e.seeCell = cell;
+          e.seen = this.sees(at, x, y, z);
+        }
+        if (!e.seen) e.d2 *= 2.5;
+      }
     }
     const order = [...this.lights].sort((a, b) => a.d2 - b.d2);
     order.forEach((e, i) => {
-      e.light.visible = i < MAX_LIGHTS;
+      e.light.visible = i < max;
     });
   }
 
@@ -1122,7 +1332,16 @@ export default class World {
       e.light.intensity = (e.target ?? e.base) * k;
       if (e.bulb && !L.kind) e.bulb.material.emissiveIntensity = 3 * k * (this.power ? 1 : L.noPower);
     }
-    if (this.lights.length >= CULL_FROM) this.cullLights(dt);
+    this.updateBulbs();
+    this.foliageSync();
+    if (this.lights.length > this.maxLamps()) {
+      this.culled = true;
+      this.cullLights(dt);
+    } else if (this.culled) {
+      // (subió la calidad: todas de nuevo)
+      this.culled = false;
+      for (const e of this.lights) e.light.visible = true;
+    }
     if (this.dynamic.kilnGlow) this.dynamic.kilnGlow.material.emissiveIntensity = 2.5 + Math.sin(t * 11) * 0.6 + Math.random() * 0.4;
     if (this.power) for (const w of this.dynamic.flywheels) w.rotateX(dt * 9);
     // el molino de viento gira siempre (aunque no sople)

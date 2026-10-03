@@ -91,6 +91,13 @@ export function buildBoxSkin(g, M, mapId) {
   const glowMats = [qMat];
   const build = SKINS[mapId] || SKINS.molino;
   build({ group, lid, qMat, glowMats, M, T, glow });
+  // las piezas quietas del cajón y de la tapa en una malla por material (el
+  // de algunos mapas tenía decenas: remaches, listones, paja): muchas menos
+  // llamadas de dibujo. Queda aparte lo que late (glowMats), lo transparente
+  // y lo que tiene algo colgado.
+  const apart = (p) => p.children.filter((o) => o.isMesh && (glowMats.includes(o.material) || o.material.transparent || o.children.length || Array.isArray(o.material)));
+  mergeByMaterial(lid, apart(lid));
+  mergeByMaterial(group, apart(group));
   const inner = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.7), new THREE.MeshBasicMaterial({ color: glow.clone().multiplyScalar(2), toneMapped: false, transparent: true, opacity: 0 }));
   inner.rotation.x = -Math.PI / 2;
   inner.position.y = 0.5;

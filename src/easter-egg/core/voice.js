@@ -320,6 +320,10 @@ export const SPEAKERS = {
   // mojada (apagada, con un gorgoteo rápido) y más apurado que el viejo Anacleto
   sargento: { f0: 116, rate: 1.12, range: 1.35, jitter: 0.035, shimmer: 0.12, breath: 0.2, vib: { rate: 11, depth: 0.06 }, growl: 0.3, roughRate: 22, tilt: 0.46, shift: 0.95, bwMul: 2, drive: 1.5, oq: 0.58, level: 0.9 },
   caballeroHielo: { f0: 72, rate: 0.66, range: 0.3, jitter: 0.004, shimmer: 0.02, breath: 0.2, tilt: 0.22, shift: 1.02, bwMul: 0.55, oq: 0.5, level: 0.85 },
+  // Manuel Belgrano, el ánima del Monumento: voz media y culta, solemne, con
+  // mucha melodía y algo de aire de fantasma (no se confunde con Fierro: más
+  // agudo, más melodía, el susurro y las pausas largas)
+  belgrano: { f0: 114, rate: 0.88, range: 1.35, jitter: 0.012, shimmer: 0.05, breath: 0.24, whisper: 0.28, vib: { rate: 3.2, depth: 0.03 }, tilt: 0.48, shift: 0.97, oq: 0.58, pauseK: 1.3, drawl: 1.1, level: 0.9 },
 };
 
 const VOWELS_RE = /[aeiouáéíóúü]/;

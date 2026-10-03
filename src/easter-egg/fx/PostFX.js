@@ -10,9 +10,10 @@ import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 import Epic, { LEVELS, FOLIAGE_B } from './Epic';
 import Surfaces from './Surfaces';
-import TAAPass from './TAA';
+import TAAPass, { GRASS_JIT } from './TAA';
 import FsrPass, { FSR_SCALE } from './Fsr';
 import { FEATURES } from '../config/map';
+import SliceWalk from './sliceWalk';
 
 // Lo del pasto alto del estero (Mate no Numa) va solo en ese mapa: el MSAA del
 // mundo con recortes suaves, el suavizado temporal y el grano a la mitad. En
@@ -20,9 +21,13 @@ import { FEATURES } from '../config/map';
 // sin MSAA) dejaban dientes en los bordes, y sin el grano de siempre se veía
 // el ruido de las sombras. Ahí sigue todo como era (SMAA, grano 0,06).
 const grassy = () => !!FEATURES.esteros;
+// lo de fx/Epic (LEVELS) que un mapa puede cambiarle a su calidad (Game.mapGfx)
+const LEVEL_KEYS = ['live', 'soft', 'ao', 'light', 'vol', 'gres', 'lamps', 'bounce'];
 
 // muestras por píxel del MSAA del mundo (Ultra y Épica)
 const MSAA = 4;
+// objetos de la escena que revisa sweep por cuadro (fx/sliceWalk.js)
+const SWEEP_N = 300;
 
 // Postproceso con la estética de BO1: mundo + mate en primera persona,
 // brillo en luces, corrección de color desaturada y contrastada, viñeta,
@@ -177,6 +182,17 @@ class WorldPass extends RenderPass {
   }
 
   render(renderer, writeBuffer, readBuffer, dt, mask) {
+    // el pasto corrido (fx/TAA GRASS_JIT): solo acá, ni en el G-buffer ni en el espejo
+    const T = this.taa;
+    if (T?.enabled) GRASS_JIT.value.set((2 * T.gj.x) / this.w, (2 * T.gj.y) / this.h);
+    try {
+      return this.draw(renderer, writeBuffer, readBuffer, dt, mask);
+    } finally {
+      GRASS_JIT.value.set(0, 0);
+    }
+  }
+
+  draw(renderer, writeBuffer, readBuffer, dt, mask) {
     if (!this.samples || this.renderToScreen) return super.render(renderer, writeBuffer, readBuffer, dt, mask);
     // (con su profundidad: la usa el suavizado temporal para llevar lo de antes)
     if (!this.msaa) this.msaa = new THREE.WebGLRenderTarget(this.w, this.h, { type: THREE.HalfFloatType, samples: this.samples, depthTexture: new THREE.DepthTexture(this.w, this.h) });
@@ -234,6 +250,7 @@ export default class PostFX {
     for (const p of this.epic.passes) this.composer.addPass(p);
     // el suavizado temporal (Épica): después de la luz y antes del mate en la mano
     this.taa = new TAAPass(camera, () => this.world.msaa?.depthTexture || this.epic.gbuffer.depthTexture, () => this.epic.gbuffer.target.texture, FOLIAGE_B / 15);
+    this.world.taa = this.taa;
     this.taa.enabled = false;
     this.composer.addPass(this.taa);
     this.composer.addPass(this.vm);
@@ -259,6 +276,12 @@ export default class PostFX {
     this.composer.addPass(this.fsr);
     this.flashV = 0;
     this.sweepT = 0;
+    this.vmT = 0;
+    this.walk = new SliceWalk();
+    this.sweepVisit = (o) => {
+      sweepOne(o);
+      if (this.surfaces.on) this.surfaces.visit?.(o);
+    };
     this.epic.setScenes(scene, camera);
   }
 
@@ -285,12 +308,12 @@ export default class PostFX {
 
   // Cada calidad suma un poco sobre la anterior (lo de fx/Epic desde Alta).
   // c: la Personalizada (Game gfxFrom / settings.gfx), cada efecto por separado
-  // encima de la base q.
-  setQuality(q, c = null) {
+  // encima de la base q. m: lo de cada mapa sobre la calidad (Game.mapGfx).
+  setQuality(q, c = null, m = null) {
     this.bloom.enabled = c ? !!c.bloom : q !== 'perf';
     // bordes: FXAA en baja y media; SMAA (más nítido) de alta para arriba
     const tall = grassy();
-    let aa = c ? c.aa : q === 'perf' ? 'none' : q === 'low' || q === 'medium' ? 'fxaa' : q === 'high' ? 'smaa' : 'msaa';
+    let aa = c ? c.aa : m?.aa || (q === 'perf' ? 'none' : q === 'low' || q === 'medium' ? 'fxaa' : q === 'high' ? 'smaa' : 'msaa');
     if (aa === 'msaa' && !tall) aa = 'smaa';
     this.grade.uniforms.uGrain.value = (tall ? 0.03 : 0.06) * (c?.grain ?? 1);
     const smaa = aa === 'smaa' || aa === 'msaa';
@@ -301,7 +324,7 @@ export default class PostFX {
     this.world.setSamples(ms);
     // el suavizado temporal: solo Épica (el pasto que titila al moverse). Lee
     // la máscara del pasto del G-buffer de Épica: sin oclusión ni reflejos no hay.
-    const taa = tall && (c ? !!c.taa && !!(c.ao || c.light) : q === 'epic');
+    const taa = tall && (c ? !!c.taa && !!(c.ao || c.light) : (m?.taa ?? q === 'epic'));
     if (taa !== this.taa.enabled) {
       this.taa.enabled = taa;
       this.taa.valid = false;
@@ -315,7 +338,12 @@ export default class PostFX {
     // (el rebote lee el G-buffer: sin oclusión ni reflejos no hay)
     // (vol: los haces de luna; gres: la resolución del G-buffer, 0 automática;
     // lampSoft: el borde de las sombras de fuegos)
-    const cfg = c ? { live: !!c.live, soft: c.soft || 1, ao: c.ao || 0, light: !!c.light, vol: c.vol ?? !!c.light, gres: Number(c.gres) || 0, lampSoft: c.lampSoft ?? 3, lamps: c.lamps || 0, bounce: !!c.bounce && !!(c.ao || c.light) } : LEVELS[q] || null;
+    let cfg = c ? { live: !!c.live, soft: c.soft || 1, ao: c.ao || 0, light: !!c.light, vol: c.vol ?? !!c.light, gres: Number(c.gres) || 0, lampSoft: c.lampSoft ?? 3, lamps: c.lamps || 0, bounce: !!c.bounce && !!(c.ao || c.light) } : LEVELS[q] || null;
+    // (lo del mapa, solo las claves de LEVELS que trae)
+    if (cfg && !c && m) {
+      const k = Object.keys(m).filter((k) => LEVEL_KEYS.includes(k));
+      if (k.length) cfg = { ...cfg, ...Object.fromEntries(k.map((k) => [k, m[k]])) };
+    }
     if (cfg !== this.epic.cfg) this.epic.configure(cfg, this.game);
   }
 
@@ -364,12 +392,22 @@ export default class PostFX {
     this.flashV = Math.max(0, this.flashV - dt * 1.2);
     // opción "menos destellos": la pantalla apenas se aclara
     u.uFlash.value = Math.min(1, this.flashV) * (this.game?.settings?.calmFx ? 0.3 : 1);
-    this.sweepT -= dt;
+    // (de a tajadas por cuadro; al cambiar de escena o de calidad, todo de una)
     if (this.sweepT <= 0) {
-      this.sweepT = 1;
+      this.sweepT = Infinity;
+      this.walk.reset();
       this.sweep();
+    } else if (this.world.scene) this.walk.step([this.world.scene], this.sweepVisit, SWEEP_N);
+    // (la mano es chica: entera cada segundo)
+    this.vmT -= dt;
+    if (this.vmT <= 0) {
+      this.vmT = 1;
+      this.vm.scene?.traverse(sweepOne);
     }
     this.taa.jitter();
+    // las luces de evento a las del pool (World.adoptLight), antes que las
+    // sombras de fuegos de Épica las miren; el pasto lejano (World.preRender)
+    if (this.game?.world?.scene === this.world.scene) this.game.world.preRender?.(this.world.camera, dt);
     this.epic.before(dt, this.game);
     // las matrices del mundo, una sola vez por cuadro: cada dibujo de la escena
     // (el mundo, el G-buffer de Épica) las recorría enteras otra vez. Y el

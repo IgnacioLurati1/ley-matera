@@ -194,7 +194,8 @@ export default class Infierno extends Arena {
       const a = (k / 3) * Math.PI * 2;
       l.position.set(x + Math.cos(a) * 5, y + 5, z + Math.sin(a) * 5);
       g.scene.add(l);
-      return l;
+      // (no cuenta como luz mientras está apagada: World.adoptLight)
+      return g.world.adoptLight(l);
     });
     // el escudo y los círculos de los rayos (como en la Salamanca)
     this.wardMesh = new THREE.Mesh(
@@ -208,6 +209,8 @@ export default class Infierno extends Arena {
     this.buildFight();
     this.decor(rock, gold);
     this.root.updateMatrixWorld(true);
+    // hasta la pelea, (escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+    this.root.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
   }
 
   // El trono de Francisco: un mate de oro gigante sobre dos escalones de roca,

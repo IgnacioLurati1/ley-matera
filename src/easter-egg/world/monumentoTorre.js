@@ -240,14 +240,15 @@ function buildMirador(w, gb, extra) {
   const sill = y0 + 1.05;
   const lint = T.lint;
   // el antepecho (todo alrededor) y el dintel corrido
-  const ring = (ya, yb) => {
-    bbox(gb, 'travertinoBig', T.x0, ya, T.z0, T.x1, yb, T.z0 + 1, { b: 0.02, skip: ['bottom'] });
-    bbox(gb, 'travertinoBig', T.x0, ya, T.z1 - 1, T.x1, yb, T.z1, { b: 0.02, skip: ['bottom'] });
-    bbox(gb, 'travertinoBig', T.x0, ya, T.z0 + 1, T.x0 + 1, yb, T.z1 - 1, { b: 0.02, skip: ['bottom'] });
-    bbox(gb, 'travertinoBig', T.x1 - 1, ya, T.z0 + 1, T.x1, yb, T.z1 - 1, { b: 0.02, skip: ['bottom'] });
+  const ring = (ya, yb, skip) => {
+    bbox(gb, 'travertinoBig', T.x0, ya, T.z0, T.x1, yb, T.z0 + 1, { b: 0.02, skip });
+    bbox(gb, 'travertinoBig', T.x0, ya, T.z1 - 1, T.x1, yb, T.z1, { b: 0.02, skip });
+    bbox(gb, 'travertinoBig', T.x0, ya, T.z0 + 1, T.x0 + 1, yb, T.z1 - 1, { b: 0.02, skip });
+    bbox(gb, 'travertinoBig', T.x1 - 1, ya, T.z0 + 1, T.x1, yb, T.z1 - 1, { b: 0.02, skip });
   };
-  ring(y0 - 0.01, sill);
-  ring(lint, lint + 0.4);
+  ring(y0 - 0.01, sill, ['bottom']);
+  // (el dintel con su cara de abajo: desde adentro se ve, si no queda hueco y se ve el cielo)
+  ring(lint, lint + 0.4, []);
   // los parantes entre las ventanas (las ventanas: 4 en las caras largas, 2 en las cortas)
   const pierW = 0.7;
   const along = (a0, a1, n) => {

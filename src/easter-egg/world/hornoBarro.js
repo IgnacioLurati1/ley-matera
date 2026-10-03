@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { mesh, mergeByMaterial } from './props';
+import { mesh, mergeByMaterial, compactGroup } from './props';
 import { buildEmpanada } from '../weapons/empanadaModels';
 
 // El horno de barro de las empanadas (el de los chicles de Black Ops 3):
@@ -322,6 +322,93 @@ function archShape(w, h) {
 }
 
 // Un horno entero. Devuelve las partes que se animan.
+// Lo fijo del horno en menos dibujos (sin cambiar cómo se ve): el ladrillo y
+// el hollín (la misma textura, otro color) van en una malla con el color en
+// los vértices, con la cara de ladrillo del arco; el adentro del hueco de la
+// leña y el del túnel (de las dos caras), con la parte de túnel del arco; el
+// labio de barro con la cúpula; la chapa de la puerta en una. Lo que cambia
+// (brasas, piso, brillo, pizarra, pala) queda aparte.
+// (__mduNoMerge / __mduNo1d: como antes, para comparar)
+let VMATS = null;
+function foldHorno(g, M, arch, dome, door) {
+  if (!VMATS) {
+    const v = (m) => {
+      const c = m.clone();
+      c.color.setRGB(1, 1, 1);
+      c.vertexColors = true;
+      return c;
+    };
+    VMATS = { front: v(M.brick), both: v(M.nicheIn) };
+  }
+  const tint = (geo, c) => {
+    const n = geo.attributes.position.count;
+    const a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      a[i * 3] = c.r;
+      a[i * 3 + 1] = c.g;
+      a[i * 3 + 2] = c.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(a, 3));
+    return geo;
+  };
+  const only = (geo, names) => {
+    for (const n of Object.keys(geo.attributes)) if (!names.includes(n)) geo.deleteAttribute(n);
+    for (const n of names) if (!geo.attributes[n] && n === 'uv') geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+    return geo;
+  };
+  const take = (o) => {
+    o.updateMatrix();
+    let geo = o.geometry.clone().applyMatrix4(o.matrix);
+    if (geo.index) geo = geo.toNonIndexed();
+    return geo;
+  };
+  const front = [];
+  const both = [];
+  for (const o of [...g.children]) {
+    if (!o.isMesh || Array.isArray(o.material)) continue;
+    const m = o.material;
+    if (m !== M.brick && m !== M.soot && m !== M.nicheIn && m !== M.tunnel) continue;
+    (m === M.brick || m === M.soot ? front : both).push(tint(only(take(o), ['position', 'normal', 'uv']), m.color));
+    o.removeFromParent();
+  }
+  // el arco: cada parte (ladrillo / túnel) con los suyos
+  const ag = take(arch);
+  for (const grp of ag.groups) {
+    const part = new THREE.BufferGeometry();
+    for (const n of ['position', 'normal', 'uv']) {
+      const a = ag.attributes[n];
+      part.setAttribute(n, new THREE.BufferAttribute(a.array.slice(grp.start * a.itemSize, (grp.start + grp.count) * a.itemSize), a.itemSize));
+    }
+    const m = arch.material[grp.materialIndex];
+    (m === M.brick ? front : both).push(tint(part, m.color));
+  }
+  arch.removeFromParent();
+  for (const [list, mat] of [[front, VMATS.front], [both, VMATS.both]]) {
+    const merged = mergeGeometries(list);
+    list.forEach((x) => x.dispose());
+    const mm = new THREE.Mesh(merged, mat);
+    mm.castShadow = true;
+    mm.receiveShadow = true;
+    g.add(mm);
+  }
+  // el labio de barro con la cúpula (la cúpula ya va con el color en los vértices)
+  const lip = g.children.find((o) => o.isMesh && o.material === M.lip);
+  if (lip) {
+    const dg = only(take(dome), ['position', 'normal', 'color', 'uv']);
+    const lg = tint(only(take(lip), ['position', 'normal', 'uv']), M.lip.color);
+    const merged = mergeGeometries([dg, lg]);
+    dg.dispose();
+    lg.dispose();
+    const mm = new THREE.Mesh(merged, dome.material);
+    mm.castShadow = true;
+    mm.receiveShadow = true;
+    lip.removeFromParent();
+    dome.removeFromParent();
+    g.add(mm);
+  }
+  compactGroup(door);
+}
+
 export function buildHorno(T, seed = 0) {
   const M = mats(T);
   const g = new THREE.Group();
@@ -464,6 +551,7 @@ export function buildHorno(T, seed = 0) {
   peel.position.set(0, top, 0.05);
   g.add(peel);
   mergeByMaterial(g, [dome, back, floor, arch, board, decorMesh, peel, door]);
+  if (!(globalThis.__mduNoMerge || globalThis.__mduNo1d)) foldHorno(g, M, arch, dome, door);
   return {
     group: g,
     peel,

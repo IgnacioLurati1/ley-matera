@@ -4,6 +4,26 @@ import { supabase } from './supabase';
 // dos navegadores intercambien la "tarjeta de presentación" (WebRTC) y se
 // conecten directo: después de eso los datos de la partida no pasan por acá.
 // No se guarda nada en la base: son mensajes al voleo de Realtime.
+// Servidores para cuando la red de alguien no deja conectar directo: un puente
+// TURN de Cloudflare. La clave vive en Supabase (supabase/functions/turn); acá
+// llegan usuario y contraseña que vencen solos en 12 h. Se reusan 6 h.
+let ice = null;
+function iceServers() {
+  if (!ice || Date.now() - ice.at > 6 * 3600e3) {
+    const at = Date.now();
+    const list = supabase.functions.invoke('turn', { body: {} }).then(({ data, error }) => {
+      if (error || !Array.isArray(data?.iceServers)) throw error || new Error('sin servidores');
+      return data.iceServers;
+    });
+    ice = { at, list };
+    // (si falló, la próxima sala vuelve a pedir)
+    list.catch(() => {
+      if (ice?.list === list) ice = null;
+    });
+  }
+  return ice.list;
+}
+
 export function createSignal() {
   if (!supabase) return null;
   let channel = null;
@@ -26,6 +46,7 @@ export function createSignal() {
     send(msg) {
       channel?.send({ type: 'broadcast', event: 'sig', payload: msg });
     },
+    ice: iceServers,
     close() {
       if (channel) supabase.removeChannel(channel);
       channel = null;

@@ -235,7 +235,8 @@ export default class Menus {
            <p class="mdu-small mdu-custom__note">MSAA y pasto sin titileo solo se usan en Mate no Numa (en los demás mapas, SMAA).</p>
            <p class="mdu-small mdu-custom__note" data-custom-note></p>
          </div>
-         <label class="mdu-field">Límite de FPS <select data-set="fpsCap"><option value="0">Sin límite</option><option value="60">60</option><option value="90">90</option><option value="120">120</option><option value="144">144</option></select></label>
+         <label class="mdu-field" data-vsync title="Ata los cuadros al refresco del monitor"><span data-vsync-txt>Vsync</span> <input type="checkbox" data-set="vsync"></label>
+         <label class="mdu-field">Límite de FPS <select data-set="fpsCap"><option value="0">Sin límite</option><option value="60">60</option><option value="90">90</option><option value="120">120</option><option value="144">144</option><option value="165">165</option><option value="175">175</option></select></label>
          <label class="mdu-field">Mostrar FPS <input type="checkbox" data-set="showFps"></label>
          <label class="mdu-field">Menos destellos <input type="checkbox" data-set="calmFx"></label>
          <p class="mdu-small" data-gpu2></p>
@@ -313,6 +314,8 @@ export default class Menus {
         const k = input.dataset.set;
         const v = input.type === 'checkbox' ? input.checked : input.tagName === 'SELECT' ? input.value : Number(input.value);
         this.g.setSetting(k, v);
+        // (el vsync es de la versión de escritorio: lo toma al arrancar, desktop/main.cjs)
+        if (k === 'vsync') window.__mduDesktop?.setVsync?.(v);
         // (la calidad y el escalado muestran u ocultan partes)
         if (k === 'quality' || k === 'upscale') this.syncOptions();
         else this.syncOutputs();
@@ -421,6 +424,15 @@ export default class Menus {
     // el Mate Supremo: solo para el Caballero de la Luz (core/eggs)
     const sup = this.screens.options.querySelector('[data-supremo]');
     if (sup) sup.hidden = !isKnight();
+    // el vsync: lo cambia la versión de escritorio (al arrancar); en la web lo
+    // decide el navegador, así que se ve pero no se toca
+    const vs = this.screens.options.querySelector('[data-vsync]');
+    if (vs) {
+      const app = !!window.__mduDesktop?.setVsync;
+      vs.querySelector('[data-vsync-txt]').textContent = app ? 'Vsync (al reiniciar)' : 'Vsync (solo en la app)';
+      vs.querySelector('input').disabled = !app;
+      vs.classList.toggle('is-off', !app);
+    }
     this.screens.options.querySelectorAll('[data-set]').forEach((input) => {
       const v = s[input.dataset.set];
       if (input.type === 'checkbox') input.checked = !!v;
@@ -487,6 +499,9 @@ export default class Menus {
     }
     for (const [k, s] of Object.entries(this.screens)) s.classList.toggle('is-on', k === name);
     this.current = name;
+    // el grano CSS solo con un menú: jugando ya está el del PostFX, y animado
+    // encima del canvas le hacía repintar toda la pantalla al navegador
+    this.grain.hidden = !name;
     for (const f of this.showHooks) f(name);
     if (name === 'title') this.syncEggs();
     this.root.scrollTop = 0;

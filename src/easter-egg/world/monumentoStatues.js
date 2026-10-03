@@ -183,6 +183,69 @@ function fuse(parts, mat, x, y, z, ry, s) {
   return m;
 }
 
+// Los probadores del patio de la 2043 (y Fortu): chicos de ahora, de piedra,
+// con zapatillas, jean y buzo con capucha, cada uno en su pose y con lo suyo.
+// pose: 'mate' (el mate y el termo), 'pulgar', 'brazos' (cruzados), 'saludo',
+// 'pelota' (el pie arriba de la pelota), 'auris' (auriculares, manos en los
+// bolsillos), 'heroe' (Fortu: el puño en alto y la capa del buzo al viento).
+export function probador(pose, mat, x, y, z, ry = 0, s = 1) {
+  const parts = [];
+  // zapatillas, piernas de jean y el buzo (más ancho, con la capucha atrás)
+  const legOpen = pose === 'heroe' ? 0.16 : 0.1;
+  for (const sx of [-1, 1]) {
+    const footUp = pose === 'pelota' && sx > 0 ? 0.22 : 0;
+    parts.push(ball(V(sx * legOpen, 0.05 + footUp, 0.05), 0.075, 1.1, 0.7, 1.75));
+    parts.push(limb(V(sx * legOpen, 0.08 + footUp, 0.02), V(sx * 0.1, 0.48 + footUp * 0.5, 0.02 + footUp * 0.4), 0.07, 0.075));
+    parts.push(limb(V(sx * 0.1, 0.48 + footUp * 0.5, 0.02 + footUp * 0.4), V(sx * 0.1, 0.9, 0), 0.08, 0.09));
+  }
+  parts.push(folds([[0.82, 0.21, 0.04], [0.98, 0.2, 0.03], [1.2, 0.22, 0.02], [1.38, 0.24, 0.02], [1.47, 0.19, 0.01], [1.52, 0.08, 0]], { seg: 16, n: 5, sz: 0.72 }));
+  // la capucha caída y el bolsillo canguro
+  parts.push(ball(V(0, 1.47, -0.12), 0.13, 1.1, 0.6, 0.8));
+  parts.push(ball(V(0, 1.02, 0.15), 0.13, 1.2, 0.55, 0.35));
+  // cuello, cabeza y el pelo (o la gorra, o los auriculares)
+  parts.push(limb(V(0, 1.5, 0), V(0, 1.6, 0.01), 0.055, 0.05));
+  parts.push(ball(V(0, 1.69, 0.02), 0.105, 0.9, 1.08, 0.98));
+  parts.push(ball(V(0, 1.62, 0.11), 0.03, 0.9, 1.2, 0.9));
+  if (pose === 'saludo' || pose === 'heroe') parts.push(ball(V(0, 1.75, 0), 0.11, 1, 0.75, 1.05));
+  else if (pose === 'pulgar') parts.push(ball(V(0, 1.75, -0.01), 0.115, 1, 0.55, 1.05), ball(V(0, 1.75, 0.12), 0.09, 1.1, 0.15, 0.9));
+  else parts.push(ball(V(0, 1.75, -0.01), 0.108, 1, 0.8, 1.02));
+  if (pose === 'auris') {
+    parts.push(limb(V(-0.12, 1.69, 0), V(0, 1.84, 0), 0.015, 0.015, 5), limb(V(0, 1.84, 0), V(0.12, 1.69, 0), 0.015, 0.015, 5));
+    for (const sx of [-1, 1]) parts.push(ball(V(sx * 0.12, 1.68, 0.01), 0.05, 0.6, 1, 1));
+  }
+  // los brazos según la pose (desde los hombros del buzo)
+  const shL = V(0.22, 1.42, 0);
+  const shR = V(-0.22, 1.42, 0);
+  const ARMS = {
+    mate: [[[0.4, -0.9], [1.1, 0.2]], [[-0.3, -1.3], [-0.2, -1.2]]],
+    pulgar: [[[0.5, -0.3], [0.9, 0.9]], [[-0.3, -1.3], [-0.2, -1.2]]],
+    brazos: [[[0.5, -1.0], [-1.2, 0.1]], [[-0.5, -1.0], [1.2, 0.05]]],
+    saludo: [[[0.2, -1.3], [0.2, -1.2]], [[-0.9, 0.5], [-0.5, 1.3]]],
+    pelota: [[[0.6, -1.0], [0.7, -0.6]], [[-0.6, -1.0], [-0.7, -0.6]]],
+    auris: [[[0.15, -1.2], [-0.4, -1.1]], [[-0.15, -1.2], [0.4, -1.1]]],
+    heroe: [[[0.15, 1.2], [0.1, 1.45]], [[-0.8, -0.8], [-1.2, -0.4]]],
+  }[pose] || [[[0.3, -1.4], [0.2, -1.3]], [[-0.3, -1.4], [-0.2, -1.3]]];
+  const hl = arm(parts, shL, ARMS[0][0], ARMS[0][1], 0.29, 0.055);
+  const hr = arm(parts, shR, ARMS[1][0], ARMS[1][1], 0.29, 0.055);
+  if (pose === 'mate') {
+    // el mate en la mano izquierda (con la bombilla) y el termo bajo el brazo derecho
+    parts.push(folds([[0, 0.045, 0], [0.05, 0.062, 0], [0.1, 0.058, 0], [0.13, 0.045, 0]], { seg: 12, n: 2 }).translate(hl.x, hl.y + 0.02, hl.z));
+    parts.push(limb(V(hl.x, hl.y + 0.1, hl.z), V(hl.x + 0.03, hl.y + 0.24, hl.z + 0.02), 0.008, 0.006, 4));
+    parts.push(limb(V(-0.27, 0.95, 0.06), V(-0.27, 1.32, 0.04), 0.06, 0.055, 10));
+  } else if (pose === 'pulgar') {
+    parts.push(limb(hl, hl.clone().add(V(0, 0.09, 0)), 0.018, 0.015, 5));
+  } else if (pose === 'pelota') {
+    // la pelota bajo el pie derecho
+    parts.push(ball(V(0.12, 0.12, 0.18), 0.12, 1, 1, 1, 2));
+  } else if (pose === 'heroe') {
+    // el buzo que flamea atrás como capa y el puño cerrado
+    parts.push(folds([[0.6, 0.32, 0.12], [1.0, 0.27, 0.08], [1.45, 0.22, 0.03]], { seg: 14, n: 5, sz: 0.5, phase: 0.4 }).translate(0, 0, -0.16));
+    parts.push(ball(hl, 0.07, 1, 1.1, 1));
+  }
+  void hr;
+  return [fuse(parts, mat, x, y, z, ry, s)];
+}
+
 export function statue(kind, mat, x, y, z, ry = 0, s = 1) {
   const parts = [];
   switch (kind) {

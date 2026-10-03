@@ -670,6 +670,29 @@ export default class Weapons {
   }
 
   // Facón de Plata comprado en la pared: se desenvaina para mostrarlo.
+  // Lo que los mates especiales arman recién al usarse, para compilarlo al
+  // cargar el mapa (ui/Arrival compile).
+  warmFx() {
+    const grp = new THREE.Group();
+    this.liq?.warm?.(grp);
+    this.facon?.warm?.(grp);
+    // (el espíritu que se chupa el Farol de las Ánimas)
+    grp.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), this.pot?.spiritWarmMat?.() || new THREE.MeshBasicMaterial()));
+    // (y el modelo de los mates de los potenciadores del mapa: se arma ahora y
+    // queda guardado; las copias van a dibujarse con la escena, ui/Arrival)
+    for (const id of this.g.powerups?.personalWeapons?.() || []) {
+      try {
+        const m = this.modelOf(id, 0, null);
+        m.root.traverse((o) => {
+          if (o.isMesh && o.material) grp.add(new THREE.Mesh(o.geometry, o.material));
+        });
+      } catch {
+        /* uno que no se arma acá se arma al agarrarlo, como antes */
+      }
+    }
+    return grp;
+  }
+
   giveBowie() {
     this.bowie = true;
     this.startKnife();
@@ -1901,7 +1924,7 @@ export default class Weapons {
   // Charco de ácido: queda en el piso unos segundos, frena y carcome a los que lo
   // pisan. Se dibuja con un shader: verde tóxico con remolinos, borde irregular
   // que respira, espuma clara en la orilla y burbujas que revientan.
-  acidPool(pos, B) {
+  acidPool(pos, B, ghost = false) {
     const g = this.g;
     const y = g.world.floorAt(pos.x, pos.z, pos.y) + 0.03;
     const r = B.radius * 0.75;
@@ -1920,7 +1943,7 @@ export default class Weapons {
     const near = now - (this.poolSndT ?? -1) < 0.3;
     if (!near) this.poolSndT = now;
     const snd = near ? null : g.audio.guns?.play('acido-charco', { pos: mesh.position, rate: 0.9 + Math.random() * 0.06 });
-    (this.pools ||= []).push({ pos: new THREE.Vector3(pos.x, y, pos.z), r, B, t: 0, life: 4.5, tick: 0, mesh, snd });
+    (this.pools ||= []).push({ pos: new THREE.Vector3(pos.x, y, pos.z), r, B, t: 0, life: 4.5, tick: 0, mesh, snd, ghost });
     while (this.pools.length > 8) {
       const old = this.pools.shift();
       old.mesh.removeFromParent();
@@ -1954,7 +1977,8 @@ export default class Weapons {
         g.fx.alpha.spawn(P.pos.x + Math.cos(a) * rr, P.pos.y + 0.05, P.pos.z + Math.sin(a) * rr, (Math.random() - 0.5) * 0.2, 0.35 + Math.random() * 0.3, (Math.random() - 0.5) * 0.2, { color: [0.32, 0.55, 0.18], size: 0.15, size1: 0.7, life: 1.4, alpha: 0.16, drag: 0.6 });
       }
       P.tick -= dt;
-      if (P.tick <= 0 && P.t < P.life - 0.4) {
+      // (el charco de otro jugador no lastima: lo reporta su compu)
+      if (P.tick <= 0 && P.t < P.life - 0.4 && !P.ghost) {
         P.tick = 0.35;
         for (const { z } of g.zombies.inRadius(P.pos, P.r)) {
           if (Math.abs((z.baseY || 0) - P.pos.y) > 1.5) continue;
@@ -2188,9 +2212,39 @@ export default class Weapons {
     }
     const target = this.aimPoint(origin, fwd, st.range);
     const vel = target.sub(muzzle).normalize().multiplyScalar(B.speed);
-    const mesh = new THREE.Group();
+    this.shotBolt(st, muzzle, vel, 2);
+  }
+
+  // La bombilla o el frasco que sale: vuela acá y, en línea, los demás ven
+  // una copia (ghostBolt) que se pega, llama a los muertos y revienta, sin
+  // daño (el daño lo reporta el que tiró). Antes no se compartía: el
+  // compañero no veía los tiros y su "mono" no llamaba a los muertos del anfitrión.
+  shotBolt(st, pos, vel, gravity, ghost = false) {
+    this.spawnProjectile({ kind: 'bolt', pos: pos.clone(), vel, gravity, B: st.bolt, st, mesh: this.boltMesh(st), life: 6, ghost });
+    if (!ghost) this.g.net?.share('gutb', { w: st.id, u: st.tier || (st.upgraded ? 1 : 0), x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2), vx: +vel.x.toFixed(2), vy: +vel.y.toFixed(2), vz: +vel.z.toFixed(2), gr: gravity });
+  }
+
+  ghostBolt(m) {
+    if (!WEAPONS[m.w]) return;
+    const st = weaponStats(m.w, m.u || 0);
+    if (!st.bolt) return;
+    this.shotBolt(st, new THREE.Vector3(m.x, m.y, m.z), new THREE.Vector3(m.vx, m.vy, m.vz), m.gr ?? 2, true);
+  }
+
+  boltMesh(st) {
     const M = getMats(this.T);
     const G = this.boltGeos();
+    const mesh = new THREE.Group();
+    if (st.bolt.acid) {
+      // un frasco de ácido
+      const jar = new THREE.Mesh(G.jar, M.glass);
+      jar.rotation.x = Math.PI / 2;
+      mesh.add(jar);
+      const goo = new THREE.Mesh(G.goo, M.glowGreen);
+      goo.rotation.x = Math.PI / 2;
+      mesh.add(goo);
+      return mesh;
+    }
     const tube = new THREE.Mesh(G.tube, M.silver);
     tube.rotation.x = Math.PI / 2;
     mesh.add(tube);
@@ -2199,7 +2253,7 @@ export default class Weapons {
       glow.position.z = 0.12;
       mesh.add(glow);
     }
-    this.spawnProjectile({ kind: 'bolt', pos: muzzle.clone(), vel, gravity: 2, B, st, mesh, life: 6 });
+    return mesh;
   }
 
   // Un frasco de ácido: vuela en arco, se pega a lo que toca y revienta en verde.
@@ -2207,16 +2261,7 @@ export default class Weapons {
     const B = st.bolt;
     const target = this.aimPoint(origin, dir, st.range);
     const vel = target.sub(muzzle).normalize().multiplyScalar(B.speed);
-    const M = getMats(this.T);
-    const G = this.boltGeos();
-    const mesh = new THREE.Group();
-    const jar = new THREE.Mesh(G.jar, M.glass);
-    jar.rotation.x = Math.PI / 2;
-    mesh.add(jar);
-    const goo = new THREE.Mesh(G.goo, M.glowGreen);
-    goo.rotation.x = Math.PI / 2;
-    mesh.add(goo);
-    this.spawnProjectile({ kind: 'bolt', pos: muzzle.clone(), vel, gravity: 6, B, st, mesh, life: 6 });
+    this.shotBolt(st, muzzle, vel, 6);
   }
 
   // Las piezas de la bombilla y del frasco que vuelan (una sola vez: se comparten).
@@ -2590,6 +2635,17 @@ export default class Weapons {
     this.removeLure(p);
     p.mesh?.removeFromParent();
     p.bubbles?.stop(0.06);
+    if (p.ghost) {
+      // la de otro jugador: se ve y se oye nomás (el daño lo reportó él)
+      if (p.B.acid) {
+        this.acidSplash(p.pos, p.B.radius);
+        this.acidPool(p.pos, p.B, true);
+      } else {
+        this.g.fx.explosion(p.pos, p.B.radius, p.st.upgraded ? [0.5, 1, 0.4] : [1, 0.55, 0.2]);
+        this.g.audio.explosion(p.pos, 1);
+      }
+      return;
+    }
     if (p.B.acid) {
       // el ácido: un reventón verde que salpica y carcome (al Alcaide le derrite el cinturón)
       this.explode(p.pos, p.B.radius, p.B.damage, { selfDamage: 20, type: 'acid', fx: false });

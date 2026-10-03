@@ -833,6 +833,12 @@ export default class Liquidificador {
     this.sceneRef = null;
   }
 
+  // Un charco para compilar su material al cargar el mapa (Weapons.warmFx, ui/Arrival):
+  // el primero trababa ~300 ms al largar la primera vez.
+  warm(grp) {
+    grp.add(new THREE.Mesh(puddleGeo(), puddleMat(0)));
+  }
+
   // El vapor toma la luz del lugar (de noche, la de la luna; si no, blanco
   // brillaría solo) con un toque del verde de la pava.
   steamCol(k = 1) {

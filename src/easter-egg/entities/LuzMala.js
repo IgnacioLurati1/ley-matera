@@ -254,8 +254,11 @@ export default class LuzMala {
     // la Luz Mala de siempre, world/LuzMala, si está apagada): siempre en la
     // escena, en 0 cuando no hace falta (si no, se recompilan los materiales)
     this.lamp = new THREE.PointLight(0xc8ff7a, 0, 10, 1.6);
+    // (anda flotando: sin sombra de fuego, fx/Epic)
+    this.lamp.userData.noShadow = true;
     this.lamp.position.y = -50;
-    game.scene.add(this.lamp);
+    // (no cuenta como luz mientras está apagada: World.adoptLight)
+    game.scene.add(game.world.adoptLight(this.lamp));
     this.graves = RISERS.filter((r) => r.grave).map((r) => r.pos);
     this.registerDig();
     this.buildHud();

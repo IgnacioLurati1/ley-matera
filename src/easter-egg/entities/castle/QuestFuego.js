@@ -3,6 +3,8 @@ import { EE } from '../../config/map';
 import { flameMaterial } from '../../world/castleFire';
 import { ELEM_RGB, glow, ring, isHost, announce, placeOf, deP } from './common';
 import { fireflies } from '../../fx/Fireflies';
+import { compactGroup } from '../../world/props';
+import { lean, sleepHidden } from '../../world/castleLean';
 
 // La vuelta del fuego: "La Salamandra del Pillán".
 //  1. La yesca: tres atados de yesca de cardón escondidos por el castillo (el
@@ -79,6 +81,8 @@ export default class QuestFuego {
       t.rotation.y = Math.PI / 2;
       t.position.y = 0.1;
       grp.add(t);
+      // (las nueve pajas, una malla: se agarra el atado entero)
+      if (lean()) compactGroup(grp);
       const s = fireflies(g, 0xff8a3a, 0.9, 0.6);
       s.position.y = 0.25;
       grp.add(s);
@@ -100,6 +104,7 @@ export default class QuestFuego {
     grp.visible = false;
     grp.scale.setScalar(0.01);
     this.root.add(grp);
+    sleepHidden(grp);
     this.flare = grp;
     this.flareK = 0;
     this.forgeGlow = glow(this.g.textures, 0xff6a1a, 3.5, 0);
@@ -153,6 +158,7 @@ export default class QuestFuego {
     halo.position.y = 0.2;
     root.add(halo);
     root.visible = false;
+    sleepHidden(root);
     root.scale.setScalar(1.5);
     root.traverse((o) => {
       o.castShadow = false;
@@ -179,6 +185,7 @@ export default class QuestFuego {
     grp.add(s);
     grp.visible = false;
     this.root.add(grp);
+    sleepHidden(grp);
     this.anvilObj = { grp, mat, ring: r, glow: s, flash: 0 };
   }
 

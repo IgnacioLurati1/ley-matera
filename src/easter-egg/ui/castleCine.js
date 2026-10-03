@@ -125,11 +125,13 @@ export default class CastleCine {
     if (!this.script) return false;
     // el reloj de la escena es el de verdad, no el dt con tope de Game.loop: en
     // línea, la compu que se traba (compila al cambiar de toma) no se atrasa de
-    // los demás ni de la música (un salto de más de 1 s es una pausa)
+    // los demás ni de la música. Solo, un salto de más de 3 s es una pausa; en
+    // línea no hay pausa y una trabada de hasta 30 s cuenta. Llamadas seguidas,
+    // sin cuadro en el medio: una prueba que la adelanta.
     const now = performance.now();
     const w = (now - (this.wallAt || 0)) / 1000;
     this.wallAt = now;
-    this.t += w > dt && w < 1 ? w : dt;
+    this.t += w >= 0.002 && w < (g.net ? 30 : 3) ? w : dt;
     if (this.drive) g.time += dt;
     g.weapons.vmRoot.visible = false;
     const t = this.t;

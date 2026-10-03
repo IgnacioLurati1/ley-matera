@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // Los Frascos de las Ánimas, uno distinto por mapa (world/Activities.js los
 // pone en la pared y los llena). Cada modelo se arma en el lugar de la repisa:
@@ -389,6 +390,52 @@ const BUILD = {
   },
 };
 
+// Las piezas quietas del frasco (ménsula, cinchas, remaches, tapa: una decena
+// de hierro en el del penal) en una malla por material: se ve igual y son
+// unas pocas llamadas de dibujo en vez de una por pieza. Quedan sueltas las
+// que se mueven o se dibujan aparte: el vidrio y la etiqueta (transparentes,
+// con su orden), las llamitas de las velas y lo que va en un grupo propio.
+function mergeJar(g, M) {
+  // (un grupo adentro se mueve entero, como el atado de yuyos: se junta adentro suyo)
+  for (const c of g.children) if (!c.isMesh && c.children.length) mergeJar(c, M);
+  const by = new Map();
+  for (const o of g.children) {
+    if (!o.isMesh || o.children.length || o.renderOrder || Array.isArray(o.material) || o.material.transparent || o.material === M.flame) continue;
+    const L = by.get(o.material) || [];
+    L.push(o);
+    by.set(o.material, L);
+  }
+  for (const [mat, list] of by) {
+    if (list.length < 2) continue;
+    let geo = null;
+    try {
+      geo = mergeGeometries(
+        list.map((o) => {
+          const src = o.geometry;
+          const ge = new THREE.BufferGeometry();
+          for (const k of ['position', 'normal', 'uv']) {
+            if (!src.attributes[k]) throw new Error('sin ' + k);
+            ge.setAttribute(k, src.attributes[k]);
+          }
+          if (src.index) ge.setIndex(src.index);
+          o.updateMatrix();
+          return (ge.index ? ge.toNonIndexed() : ge.clone()).applyMatrix4(o.matrix);
+        }),
+      );
+    } catch {
+      geo = null;
+    }
+    if (!geo) continue;
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = list.some((o) => o.castShadow);
+    m.receiveShadow = list.some((o) => o.receiveShadow);
+    for (const o of list) o.removeFromParent();
+    g.add(m);
+  }
+}
+
 export function buildJar(style, M, i, label) {
-  return (BUILD[style] || BUILD.molino)(M, i, label);
+  const J = (BUILD[style] || BUILD.molino)(M, i, label);
+  mergeJar(J.obj, M);
+  return J;
 }

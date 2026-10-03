@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import Avatars from './Avatars';
-import { GRENADE, maxTier, tierOf } from '../config/weapons';
+import { GRENADE, WEAPONS, maxTier, tierOf } from '../config/weapons';
 import { POMBERO_ID } from '../entities/Pombero';
 import { CROW_ID } from '../entities/Crow';
 import { STAKE_ID } from '../entities/bossMoves';
@@ -140,11 +140,16 @@ export default class Session {
 
   // Partida nueva armada por el anfitrión: cada invitado recibe el mundo de nuevo.
   restartAll() {
+    this.clearScores();
+    for (const id of this.net.peers.keys()) this.sendState(id, true);
+  }
+
+  // La tabla de puntos de la partida, de cero (el fast restart: Game.restart).
+  clearScores() {
     this.tally.clear();
     this.score.clear();
     this.earned.clear();
     this.outT = 0;
-    for (const id of this.net.peers.keys()) this.sendState(id, true);
   }
 
   get players() {
@@ -946,6 +951,13 @@ export default class Session {
       }
       const tier = (m.up | 0) + 1;
       if (!m.w || pap.state !== 'idle' || tier > maxTier(m.w)) return reply(false);
+      // lo mismo que le pide a su propio uso (Interactables, kind 'pap'): sin
+      // corriente o con la misión del Pack-a-Pava sin terminar no anda, y solo
+      // los mates que tienen mejora. Antes un invitado mejoraba la Bombilla Gut
+      // con la máquina apagada (el aviso lo veía él, pero el pedido salía igual).
+      if ((g.papq && !g.papq.done) || !g.interact.machineOn(pap)) return reply(false);
+      const W = WEAPONS[m.w];
+      if (!W?.pap || W.altar || W.temp) return reply(false);
       const res = g.interact.startPapFor(m.w, from, tier);
       if (!res) return reply(false);
       // la hoz entra al ritual: vuelve cuando termina (llega con 'hozup')
@@ -1130,6 +1142,10 @@ export default class Session {
       case 'lob':
         g.weapons?.ghostLob(m);
         break;
+      // la Bombilla Gut o la Ácida de otro jugador (se pega, llama a los muertos y revienta)
+      case 'gutb':
+        g.weapons?.ghostBolt(m);
+        break;
       // la Piedra de Molino o el Mate Dragón de otro jugador (solo se ve)
       case 'esp':
         g.weapons?.esp?.ghost(m);
@@ -1298,8 +1314,9 @@ export default class Session {
         g.activateZone(m.z);
         break;
       case 'start':
-        // pantalla de carga: se arma el mapa y se espera a los demás
-        if (g.state !== 'playing' && g.state !== 'arriving') g.arriveAsGuest(m.map, m.mode);
+        // pantalla de carga: se arma el mapa y se espera a los demás (rs: el
+        // fast restart del anfitrión, que rearma aunque estén jugando)
+        if (g.state !== 'arriving' && (m.rs || g.state !== 'playing')) g.arriveAsGuest(m.map, m.mode, !!m.rs);
         break;
       case 'arrive':
         g.arrival?.setReady(m.ids);

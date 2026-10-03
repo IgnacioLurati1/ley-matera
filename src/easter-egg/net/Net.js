@@ -77,12 +77,23 @@ export default class Net {
     this.onStatus?.(text);
   }
 
+  // Servidores de conexión con puente (signal.ice, lo da la tienda); se piden
+  // una vez al abrir o buscar la sala. Si no hay o no contestan, null: solo STUN.
+  ice() {
+    if (!this.icePromise) {
+      const s = this.signal;
+      this.icePromise = s?.ice ? Promise.race([s.ice(), new Promise((r) => setTimeout(r, 4000))]).then((l) => l || null, () => null) : Promise.resolve(null);
+    }
+    return this.icePromise;
+  }
+
   // ---------------- anfitrión ----------------
   // Abre la sala y queda esperando invitados.
   async startHost() {
     this.code = this.code || randomCode();
     this.players.set(0, { id: 0, name: this.name });
     if (!this.signal) return this.code;
+    this.ice();
     await this.signal.open(this.code, (msg) => this.onSignal(msg));
     this.status(`Sala ${this.code} abierta. Esperando jugadores...`);
     return this.code;
@@ -98,7 +109,7 @@ export default class Net {
         return;
       }
       const id = this.nextId++;
-      const peer = createPeer();
+      const peer = createPeer(await this.ice());
       const offer = await makeOffer(peer);
       this.attach(peer, id, msg.name);
       this.pending = this.pending || new Map();
@@ -163,23 +174,26 @@ export default class Net {
     if (!this.signal) throw new Error('Este sitio no tiene salas por código');
     const mine = randomCode(6);
     this.myTag = mine;
-    const peer = createPeer();
+    const peer = createPeer(await this.ice());
     peer.onMessage = (data) => this.receive(0, data);
     peer.onClose = () => this.handlers.get('hostgone')?.();
     this.peer = peer;
+    // la sala contestó: desde ahí manda el tiempo de conectar (waitOpen), no este
+    let found = false;
     const done = new Promise((resolve, reject) => {
       this.resolveJoin = resolve;
       this.rejectJoin = reject;
-      setTimeout(() => reject(new Error('No contestó ninguna sala con ese código')), 15000);
+      setTimeout(() => !found && reject(new Error('No contestó ninguna sala con ese código')), 15000);
     });
     await this.signal.open(this.code, async (msg) => {
       if (msg.to !== mine) return;
       if (msg.t === 'full') this.rejectJoin?.(new Error('La sala está llena'));
       if (msg.t !== 'offer') return;
+      found = true;
       this.id = msg.id;
       const answer = await makeAnswer(peer, { type: msg.type, sdp: msg.sdp });
       this.signal.send({ t: 'answer', to: this.code, from: mine, sdp: answer.sdp, type: answer.type });
-      waitOpen(peer).then(() => this.resolveJoin?.(peer), (e) => this.rejectJoin?.(e));
+      waitOpen(peer).then(() => this.resolveJoin?.(peer), () => this.rejectJoin?.(new Error('La sala está, pero la red no deja conectar')));
     });
     this.status('Buscando la sala...');
     this.signal.send({ t: 'hello', from: mine, name: this.name });

@@ -18,6 +18,12 @@ import { skinLook } from './bossSkin';
 const tmpE = new THREE.Euler();
 const tmpL = new THREE.Matrix4();
 const tmpV = new THREE.Vector3();
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+// los lugares de bichos (entities/Zombies.js MAX = 40)
+const SLOTS = 48;
+// la esfera del recorte: la del modelo quieto, con margen para las patas, la
+// cola y la boca abierta
+const SPHERE_K = 1.25;
 
 export const sstep = (a, b, x) => {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
@@ -106,9 +112,24 @@ export default class AnimalSkin {
     const R = Array.from({ length: D.nb }, () => new THREE.Matrix4());
     D.bonesFor(X, D.rest(), R);
     this.inv = R.map((r) => r.clone().invert());
-    // los ojos: dónde están, respecto del hueso de la cabeza en reposo
+    // la esfera del recorte va pegada al hueso del cuerpo (0): sin recorte cada
+    // bicho se dibujaba en todas las pasadas (el reflejo, la luna y las seis
+    // caras de cada farol), aunque estuviera lejos o atrás
+    geo.computeBoundingSphere();
+    this.bc = geo.boundingSphere.center.clone().applyMatrix4(this.inv[0]);
+    this.br = geo.boundingSphere.radius * SPHERE_K;
+    // los ojos: dónde están, respecto del hueso de la cabeza en reposo; los de
+    // todos los bichos en un solo dibujo (lugar slot * ojos + k)
     this.eyes = (X.eyes || []).map((e) => new THREE.Vector3(...e).applyMatrix4(this.inv[D.head]));
-    this.eyeGeo = new THREE.SphereGeometry(X.eyeR || 0.03, 8, 6);
+    const ne = this.eyes.length;
+    if (ne) {
+      const E = new THREE.InstancedMesh(new THREE.SphereGeometry(X.eyeR || 0.03, 8, 6), this.eyeMat, SLOTS * ne);
+      for (let i = 0; i < SLOTS * ne; i++) E.setMatrixAt(i, ZERO);
+      E.count = 0;
+      // (chiquitos: sin recorte, una llamada para todos)
+      E.frustumCulled = false;
+      this.eyeIM = E;
+    }
     this.state = 2;
   }
 
@@ -124,19 +145,32 @@ export default class AnimalSkin {
     });
     const sk = new THREE.Skeleton(bones, this.inv.map((m) => m.clone()));
     const mesh = new THREE.SkinnedMesh(this.geo, this.mat);
+    mesh.name = this.def.key;
     // (los huesos no están en la escena: cada cuadro se les pone el mundo a mano)
     mesh.bind(sk, new THREE.Matrix4());
+    // (la malla queda en el origen: la esfera va en el mundo, la pone pose())
+    mesh.boundingSphere = new THREE.Sphere();
+    // los primeros cuadros sin recorte: compila sus programas (y los de las
+    // sombras) al aparecer, como antes, y no recién cuando entra a la vista
     mesh.frustumCulled = false;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    const eyes = this.eyes.map(() => {
-      const e = new THREE.Mesh(this.eyeGeo, this.eyeMat);
-      e.frustumCulled = false;
-      return e;
-    });
-    I = { mesh, bones, eyes };
+    I = { mesh, bones, warm: 4 };
     this.list.set(slot, I);
     return I;
+  }
+
+  // Los ojos de un lugar (H: la cabeza en el mundo; sin H, escondidos).
+  eyesAt(slot, H, s) {
+    const E = this.eyeIM;
+    if (!E || slot >= SLOTS) return;
+    const ne = this.eyes.length;
+    for (let k = 0; k < ne; k++) {
+      if (H) tmpL.makeScale(s, s, s).setPosition(tmpV.copy(this.eyes[k]).applyMatrix4(H));
+      E.setMatrixAt(slot * ne + k, H ? tmpL : ZERO);
+    }
+    if (H) E.count = Math.max(E.count, (slot + 1) * ne);
+    E.instanceMatrix.needsUpdate = true;
   }
 
   // La pose del rig de piezas en los huesos (P.M: el cuerpo en el mundo; P.s:
@@ -145,19 +179,17 @@ export default class AnimalSkin {
     if (this.state !== 2 || window[this.def.off]) return false;
     const I = this.inst(slot);
     const sc = this.g.scene;
-    if (I.mesh.parent !== sc) {
-      sc.add(I.mesh);
-      for (const e of I.eyes) sc.add(e);
-    }
+    if (I.mesh.parent !== sc) sc.add(I.mesh);
+    if (this.eyeIM && this.eyeIM.parent !== sc) sc.add(this.eyeIM);
     I.mesh.visible = true;
-    this.def.bonesFor(this.X, P, this.W);
-    for (let i = 0; i < this.def.nb; i++) I.bones[i].matrixWorld.copy(this.W[i]);
-    const H = this.W[this.def.head];
-    I.eyes.forEach((e, k) => {
-      e.visible = true;
-      e.position.copy(tmpV.copy(this.eyes[k]).applyMatrix4(H));
-      e.scale.setScalar(P.s || 1);
-    });
+    const W = this.W;
+    this.def.bonesFor(this.X, P, W);
+    for (let i = 0; i < this.def.nb; i++) I.bones[i].matrixWorld.copy(W[i]);
+    const B = I.mesh.boundingSphere;
+    B.center.copy(this.bc).applyMatrix4(W[0]);
+    B.radius = this.br * W[0].getMaxScaleOnAxis();
+    if (I.warm && --I.warm === 0) I.mesh.frustumCulled = true;
+    this.eyesAt(slot, W[this.def.head], P.s || 1);
     return true;
   }
 
@@ -165,6 +197,6 @@ export default class AnimalSkin {
     const I = this.list.get(slot);
     if (!I) return;
     I.mesh.visible = false;
-    for (const e of I.eyes) e.visible = false;
+    this.eyesAt(slot, null);
   }
 }

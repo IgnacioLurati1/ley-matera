@@ -125,7 +125,8 @@ export default class DogRig {
     const any = pool.some((z) => mine(z) && z.active);
     if (!any && !this.on) return;
     this.on = any;
-    for (const im of this.all) im.visible = any;
+    // las piezas se dibujan solo si alguno las usa (con el modelo quedan vacías)
+    let pieces = false;
     for (const z of pool) {
       if (!mine(z) || !z.active || z.state === 'dogspawn') {
         if (z.dogShown) {
@@ -192,6 +193,7 @@ export default class DogRig {
       }
       if (z.dogSkin) this.skin.hide(z.slot);
       z.dogSkin = false;
+      pieces = true;
       // cuerpo
       this.body.setMatrixAt(z.slot, local(tmpM, 0, HIP_Y + 0.1 + y, 0, -0.06, 0, 0));
       // cabeza y mandíbula
@@ -217,7 +219,10 @@ export default class DogRig {
         this.lower.setMatrixAt(z.slot * 4 + k, knee);
       });
     }
-    for (const im of this.all) im.instanceMatrix.needsUpdate = true;
+    for (const im of this.all) {
+      im.visible = pieces;
+      im.instanceMatrix.needsUpdate = true;
+    }
   }
 
   // Rayo contra el perro (una cápsula para el cuerpo y una esfera para la cabeza).

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { FEATURES } from '../config/map';
+import { gbufferPass } from '../core/sizeCull';
 
 // El rebote de luz de Épica (fx/Bounce, de 59). Mientras el archivo no está,
 // no hay rebote (así no se rompe nada).
@@ -143,7 +144,10 @@ class GBufferPass extends Pass {
       gi = this.gbIds.get(gb);
       if (!gi) this.gbIds.set(gb, (gi = ++this.gbN));
     }
-    const key = `${side}|${b}|${src.flatShading ? 1 : 0}|${o.isInstancedMesh ? 1 : 0}${o.instanceColor ? 1 : 0}${o.isSkinnedMesh ? 1 : 0}${o.isBatchedMesh ? 1 : 0}${morph}|${nm ? nm.id : 0}|${cut ? cut.id : 0}|${push ? 1 : 0}|${gb ? `${gb.key}#${gi}` : ''}`;
+    // el reflejo por vértice (attribute float refl, 0..1 = b/15): piezas de
+    // materiales distintos fusionadas en una malla (world/perkMachines.js)
+    const vr = !!src.userData?.vRefl;
+    const key = `${side}|${b}|${src.flatShading ? 1 : 0}|${o.isInstancedMesh ? 1 : 0}${o.instanceColor ? 1 : 0}${o.isSkinnedMesh ? 1 : 0}${o.isBatchedMesh ? 1 : 0}${morph}|${nm ? nm.id : 0}|${cut ? cut.id : 0}|${push ? 1 : 0}|${gb ? `${gb.key}#${gi}` : ''}|${vr ? 1 : 0}`;
     let m = this.mats.get(key);
     if (!m) {
       m = new THREE.MeshNormalMaterial({ side, flatShading: !!src.flatShading, normalMap: nm });
@@ -164,11 +168,15 @@ class GBufferPass extends Pass {
           Object.assign(s.uniforms, m.userData.cut);
           s.fragmentShader = s.fragmentShader.replace('void main() {', 'uniform sampler2D gCut;\nuniform mat3 gCutUv;\nuniform float gCutT;\nvoid main() {\n\tif (texture2D(gCut, (gCutUv * vec3(vUv, 1.0)).xy).a < gCutT) discard;');
         }
-        s.fragmentShader = s.fragmentShader.replace(/}\s*$/, `\tgl_FragColor = vec4(mix(gl_FragColor.rgb, vec3(0.5, 0.5, 1.0), greaterThanEqual(floatBitsToUint(gl_FragColor.rgb) & 0x7fffffffu, uvec3(0x7f800000u))), ${a});\n}`);
+        if (vr) {
+          s.vertexShader = s.vertexShader.replace('void main() {', 'attribute float refl;\nvarying float vRefl;\nvoid main() {').replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvRefl = refl;');
+          s.fragmentShader = s.fragmentShader.replace('void main() {', 'varying float vRefl;\nvoid main() {');
+        }
+        s.fragmentShader = s.fragmentShader.replace(/}\s*$/, `\tgl_FragColor = vec4(mix(gl_FragColor.rgb, vec3(0.5, 0.5, 1.0), greaterThanEqual(floatBitsToUint(gl_FragColor.rgb) & 0x7fffffffu, uvec3(0x7f800000u))), ${vr ? 'vRefl' : a});\n}`);
         push?.(s);
         gb?.patch(s);
       };
-      m.customProgramCacheKey = () => `gbuf${b}${cut ? 'c' : ''}${push ? 'g' : ''}${gb ? gb.key : ''}`;
+      m.customProgramCacheKey = () => `gbuf${b}${cut ? 'c' : ''}${push ? 'g' : ''}${gb ? gb.key : ''}${vr ? 'v' : ''}`;
       m.userData.key = key;
       this.mats.set(key, m);
     }
@@ -235,7 +243,13 @@ class GBufferPass extends Pass {
     renderer.setRenderTarget(this.target);
     renderer.setClearColor(0x7f7fff, 0);
     renderer.clear();
-    renderer.render(scene, camera);
+    // (sin las piezas chicas: core/sizeCull.js GB_PX)
+    gbufferPass(true, this.aoOnly === true);
+    try {
+      renderer.render(scene, camera);
+    } finally {
+      gbufferPass(false);
+    }
     renderer.setClearColor(cc, ca);
     renderer.shadowMap.autoUpdate = auto;
     scene.background = bg;
@@ -564,6 +578,12 @@ class LightPass extends Pass {
 // guardado.
 const SIG = 20;
 const SETTLE = 240;
+// lo que dejó de moverse vuelve a lo guardado solo si son al menos tantas
+// cosas: volver una sola (el mate de un potenciador que cayó, algo suelto)
+// rehacía todas las sombras guardadas, y al levantarla otra vez. Pocas
+// quietas entre las que se mueven cuestan menos que rehacer todo
+// (globalThis.__mduIdleAll: como antes)
+const IDLE_MIN = 6;
 const NONE = [];
 
 function look(m) {
@@ -679,6 +699,7 @@ class ShadowCache {
     this.dyn.length = 0;
     this.settled = 0;
     this.dirty = true;
+    this.first = true;
   }
 
   render(lights, scene, camera) {
@@ -849,7 +870,7 @@ class ShadowCache {
       this.dirty = true;
     }
     // lo que dejó de moverse vuelve a lo guardado (no más de una vez cada tanto)
-    if (this.idle && this.stamp - this.settled > SETTLE * 2) {
+    if (this.idle >= (globalThis.__mduIdleAll === true ? 1 : IDLE_MIN) && this.stamp - this.settled > SETTLE * 2) {
       this.settled = this.stamp;
       this.dirty = true;
     }
@@ -857,6 +878,15 @@ class ShadowCache {
     snap.clear();
     this.still.length = 0;
     this.dyn.length = 0;
+    // recién armado (otro mapa, otra calidad): todo lo que no es animado
+    // arranca como quieto, y lo que se mueve se ve en el cuadro siguiente y
+    // pasa a lo que se mueve. Antes todo arrancaba como "recién movido" y los
+    // primeros SETTLE * 2 cuadros (16 s a 30 cuadros) la sombra entera se
+    // redibujaba en cada cuadro (~600-900 dibujos)
+    if (this.first) {
+      this.first = false;
+      this.msig = new WeakMap();
+    }
     scene.traverseVisible(this.sort);
     this.dirty = false;
     this.gen++;
@@ -991,6 +1021,15 @@ const tmpD = new THREE.Vector3();
 const tmpM = new THREE.Matrix4();
 const zBox = new THREE.Box3();
 const zSphere = new THREE.Sphere();
+// En la sombra de los fuegos (cada uno dibuja a los zombies en hasta 6
+// direcciones) van solo las piezas que hacen la silueta: los pies, los ojos,
+// lo de la cabeza y los adornos chicos no se distinguen en la pared. Y solo
+// los ZLAMPS fuegos más cerca de la cámara (con margen, para que no salten):
+// los otros, con lo quieto. Peleando en el penal eran ~70 de ~380 llamadas por
+// cuadro (globalThis.__mduZShadowAll: como antes).
+const ZSMALL = new Set(['foot', 'eye', 'headx', 'hair', 'boina', 'scarf', 'susp', 'shackle', 'cuff', 'num', 'cord', 'belts', 'algae', 'algaeS', 'bonete', 'faja', 'snow', 'chullo']);
+const ZLAMPS = 2;
+const ZLAMP_HOLD = 2;
 
 export default class Epic {
   constructor(post, renderer, scene, camera) {
@@ -1105,6 +1144,8 @@ export default class Epic {
     this.mc.on = !!c.live;
     if (!c.live) this.mc.free();
     this.gbuffer.enabled = !!(c.ao || c.light || vol);
+    // (solo para la oclusión: core/sizeCull deja afuera más piezas chicas)
+    this.gbuffer.aoOnly = !c.light && !vol && !c.bounce;
     this.gbuffer.scale = c.gres || (c.light ? 1 : 0.5);
     this.gbuffer.setSize(this.gbuffer.w, this.gbuffer.h);
     if (c.ao) {
@@ -1152,7 +1193,8 @@ export default class Epic {
       if (!this.touched.has(o)) this.touched.set(o, o.castShadow);
       o.castShadow = v;
     };
-    for (const M of game?.zombies?.meshes || []) set(M.im, true);
+    // (los ojos brillan: sin sombra, como los faroles)
+    for (const M of game?.zombies?.meshes || []) set(M.im, M.key !== 'eye');
     this.scene?.traverse((o) => {
       if (!o.isMesh || !o.castShadow) return;
       const m = Array.isArray(o.material) ? o.material[0] : o.material;
@@ -1196,7 +1238,9 @@ export default class Epic {
       this.candidates.length = 0;
       if (cfg.lamps) {
         scene.traverse((o) => {
-          if (o.isPointLight && o.name !== 'epicShadowLight' && o.distance >= 5) this.candidates.push(o);
+          // (no las adoptadas de World.adoptLight: van por las del pool)
+          // (ni las que piden no tener sombra: los destellos de fx/Effects)
+          if (o.isPointLight && o.name !== 'epicShadowLight' && o.distance >= 5 && o.layers.isEnabled(0) && !o.userData.noShadow) this.candidates.push(o);
         });
         this.zoneOf.clear();
         for (const e of game?.world?.lights || []) if (e.def?.zone) this.zoneOf.set(e.light, e.def.zone);
@@ -1264,7 +1308,9 @@ export default class Epic {
         r = { l, p: new THREE.Vector3(), s: 0, v: -1, since: 0 };
         this.recs.set(l, r);
       }
-      if (!l.visible || l.intensity < 0.3 || !l.parent) {
+      // (las del pool de World.adoptLight llevan la luz que representan: un
+      // destello de fx/Effects tampoco va con sombra)
+      if (!l.visible || l.intensity < 0.3 || !l.parent || l.userData.src?.userData?.noShadow) {
         r.since = 0;
         continue;
       }
@@ -1275,7 +1321,9 @@ export default class Epic {
       if (d > l.distance + 6) continue;
       if (recheck || r.v < 0) r.v = this.zoneOf.get(l) === this.here && this.here ? 1 : this.seen(w, camPos, r.p, d);
       r.s = (l.intensity * r.v) / (1 + (d / LAMP_FALL) ** 2);
-      if (r.since < LAMP_WAIT && !this.holds(l)) continue;
+      // (y la que ya tiene sombra y se movió, la suelta: una luz que anda
+      // rehacía lo quieto de su sombra en cada cuadro, ~400 llamadas)
+      if (r.since < LAMP_WAIT && (!this.holds(l) || (r.since === 0 && globalThis.__mduMovingLamps !== true))) continue;
       if (this.holds(l)) r.s *= LAMP_HOLD;
       ranked.push(r);
     }
@@ -1306,7 +1354,18 @@ export default class Epic {
       }
       const r = u.src && this.recs.get(u.src);
       if (!r) {
+        // (en la carga, ui/Arrival warmWorld: en la cámara y con alcance grande,
+        // para que se compile la sombra de fuego de cada tipo de cosa; si no, se
+        // compilaban al tomar el primer fuego después de la intro, ~60 ms)
+        if (this.warmAt) {
+          pl.position.copy(this.warmAt);
+          pl.distance = 300;
+          pl.intensity = 0.001;
+          pl.shadow.needsUpdate = true;
+          continue;
+        }
         pl.intensity = 0;
+        pl.distance = 1;
         pl.position.set(0, -500, 0);
         continue;
       }
@@ -1349,28 +1408,52 @@ export default class Epic {
   // dibuja esa sombra se recortan con una esfera que abarca solo a los de cerca.
   fitZombies(l, on) {
     const f = this.zFit;
+    const off = (this.zOff ||= []);
     if (!on) {
       for (let i = 0; i < f.length; i += 2) {
         f[i].frustumCulled = false;
         f[i].boundingSphere = f[i + 1];
       }
       f.length = 0;
+      for (const im of off) im.visible = true;
+      off.length = 0;
       return;
     }
     const Z = this.game?.zombies;
     if (!Z?.meshes) return;
     const p = l.position;
+    const all = globalThis.__mduZShadowAll === true;
+    // (de los fuegos con sombra, ¿este está entre los ZLAMPS más cerca de la cámara?)
+    let near = true;
+    const cam = this.game?.camera;
+    if (!all && cam) {
+      const c = cam.position;
+      const d = p.distanceTo(c) - (l.userData.zNear ? ZLAMP_HOLD : 0);
+      let closer = 0;
+      for (const o of this.pool) {
+        if (o === l || !o.parent || !(o.intensity > 0) || !o.castShadow) continue;
+        if (o.position.distanceTo(c) - (o.userData.zNear ? ZLAMP_HOLD : 0) < d) closer++;
+      }
+      near = closer < ZLAMPS;
+      l.userData.zNear = near;
+    }
     const r2 = (l.distance + 1.5) ** 2;
     zBox.makeEmpty();
-    for (const z of Z.pool) {
-      if (!z.active || z.pos.distanceToSquared(p) > r2) continue;
-      zBox.expandByPoint(z.pos);
-      zBox.expandByPoint(tmpV.copy(z.pos).setY(z.pos.y + 2.4));
-    }
+    if (near)
+      for (const z of Z.pool) {
+        if (!z.active || z.pos.distanceToSquared(p) > r2) continue;
+        zBox.expandByPoint(z.pos);
+        zBox.expandByPoint(tmpV.copy(z.pos).setY(z.pos.y + 2.4));
+      }
     if (zBox.isEmpty()) zSphere.set(tmpV.set(0, -1e4, 0), 0);
     else zBox.expandByScalar(1).getBoundingSphere(zSphere);
     for (const M of Z.meshes) {
       const im = M.im;
+      if (!all && ZSMALL.has(M.key) && im.visible) {
+        im.visible = false;
+        off.push(im);
+        continue;
+      }
       if (im.frustumCulled) continue;
       f.push(im, im.boundingSphere);
       im.boundingSphere = zSphere;

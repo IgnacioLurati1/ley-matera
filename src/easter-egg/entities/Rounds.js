@@ -176,13 +176,11 @@ export default class Rounds {
     if (crow) g.crow?.spawn(this.round);
   }
 
-  // El alcaide del penal: desde la ronda 4, cada 3 a 5 rondas (no es fijo).
+  // El alcaide del penal: fijo cada 5 rondas, como los demás jefes de ronda
+  // (antes era cada 3 a 5 al azar y parecía que no venía; el usuario, 2026-10-02)
   alcaideRound() {
-    const r = this.round;
-    if (r < 4) return false;
-    const since = r - (this.lastBoss || 0);
-    const go = since >= 5 || (since >= 3 && Math.random() < 0.55);
-    if (go) this.lastBoss = r;
+    const go = bossRound(this.round, 5);
+    if (go) this.lastBoss = this.round;
     return go;
   }
 

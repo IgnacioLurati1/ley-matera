@@ -8,6 +8,7 @@ import { macroY } from '../../world/Mountain';
 import { chiquiGiggle } from '../../world/Chiqui';
 import { isHost, myId, announce, players } from './common';
 import { ARM_COCK, ARM_FIRE, bannerTex, lavaTex, streamTex, buildCatapult, buildLadder, buildRam, buildCauldron, buildChest, boulderGeo, buildGateIce, buildStandards } from './asedioModels';
+import { sleepHidden } from '../../world/castleLean';
 
 // El asedio del castillo (cada 10 rondas, y una vez durante el easter egg):
 // el Chiquitijuein sitia el castillo del Mateendrache.
@@ -156,6 +157,8 @@ export default class Asedio {
     this.root = new THREE.Group();
     this.root.visible = false;
     g.scene.add(this.root);
+    // (escondido hasta el primer asedio: no se recorre)
+    sleepHidden(this.root);
     this.disposables = [];
     this.makeMats();
     this.buildGate();
@@ -294,6 +297,7 @@ export default class Asedio {
       const group = buildLadder(g.world.M, len + 0.6);
       group.visible = false;
       this.root.add(group);
+      sleepHidden(group);
       const L = { i, x, foot, top, land: new THREE.Vector3(x, ly, landZ), len, phi0, phi: 0.1, group, st: 'off', t: 0, cd: 0, lastSpawn: -9, fire: 0, wind: 0, by: null, roll: 0, slide: 0, sink: 0, mats: [] };
       group.traverse((o) => {
         if (o.isMesh) L.mats.push([o, o.material]);
@@ -391,6 +395,7 @@ export default class Asedio {
       m.root.position.set(x, y, z);
       m.root.visible = false;
       this.root.add(m.root);
+      sleepHidden(m.root);
       // la cascada adentro de la barbacana (del muro de ese lado) y el vapor
       const sx = dir > 0 ? 50.15 : 53.85;
       const top = 29.7;
@@ -436,6 +441,7 @@ export default class Asedio {
     const g = this.g;
     const grp = buildRam(g.world.M, this.mat.eye, this.mat.ramHot, this.mat.fireS);
     grp.visible = false;
+    sleepHidden(grp);
     // la cabeza hacia el rastrillo (al norte)
     grp.rotation.order = 'YXZ';
     this.root.add(grp);
@@ -453,6 +459,7 @@ export default class Asedio {
     m.root.rotation.y = Math.PI;
     m.root.visible = false;
     this.root.add(m.root);
+    sleepHidden(m.root);
     const glow = new THREE.Sprite(this.mat.goldS);
     glow.scale.setScalar(2.4);
     glow.position.set(x, y + 0.9, z);

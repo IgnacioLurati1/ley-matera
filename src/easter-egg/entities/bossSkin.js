@@ -55,6 +55,41 @@ for (let i = 0; i < 13; i++) {
   pq.push(new THREE.Quaternion());
   pp.push(new THREE.Vector3());
 }
+const T2 = new THREE.Vector3();
+const FEET = ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase'];
+const cullM = new THREE.Matrix4();
+
+// El recorte de un cuerpo con huesos (los jefes, el Cuervo, el Pombero, el
+// Espantapájaros, el Chiqui): una esfera alrededor de un hueso del medio (la
+// cadera), del tamaño del modelo quieto con margen (k). Sin recorte se dibujaba
+// en todas las pasadas (el reflejo, la luna y las seis caras de cada farol)
+// aunque estuviera atrás o lejos. cullList(root) al cargar; cada cuadro,
+// después de mover los huesos, cullAt(list, el centro en el mundo); on false:
+// sin recorte (calentándose abajo del piso tiene que entrar a las sombras).
+// (la del modelo quieto es la de three con los huesos, en lo local de la
+// malla: la de la geometría sola no sirve, los de Meshy traen otra escala en
+// el nodo. Con los huesos en reposo y al día: root.updateMatrixWorld antes)
+export function cullList(root, k = 1.5) {
+  const out = [];
+  root.traverse((o) => {
+    if (!o.isSkinnedMesh) return;
+    o.boundingSphere = null;
+    o.computeBoundingSphere();
+    o.frustumCulled = false;
+    out.push({ o, c: o.boundingSphere.center.clone(), r: o.boundingSphere.radius * k });
+  });
+  return out;
+}
+export function cullAt(list, at, on = true) {
+  for (const C of list) {
+    const o = C.o;
+    o.frustumCulled = on;
+    if (!on) continue;
+    // (la esfera va en lo local de la malla: el centro, del mundo a lo local)
+    o.boundingSphere.center.copy(at).applyMatrix4(cullM.copy(o.matrixWorld).invert());
+    o.boundingSphere.radius = C.r;
+  }
+}
 
 // Lo de cada jefe ya cargado (por kind).
 const LOADED = {};
@@ -159,7 +194,18 @@ function fresh(zs, k) {
 }
 
 function load(zs, skin) {
-  const S = { skin, state: 1, layers: [], v: 0, scene: zs.g.scene, zs };
+  const S = {
+    skin,
+    state: 1,
+    layers: [],
+    v: 0,
+    scene: zs.g.scene,
+    zs,
+    // las capas de ahora, para mirar (se arma cuando se pide, no cada cuadro)
+    get mode() {
+      return this.layers.map((L) => `${L.key}:${L.w.toFixed(2)}`).join(' ');
+    },
+  };
   LOADED[skin.kind] = S;
   const base = assetUrl(DIR + (skin.dir || skin.kind) + '/');
   const clips = fetch(base + 'clips.json').then((r) => r.json());
@@ -220,8 +266,11 @@ function load(zs, skin) {
       // los ojos: los del cuerpo de piezas (el mismo material: se prenden igual)
       if (meta.eye) for (const [n, o] of Object.entries(bones)) if (/^(luEye|eye)[AB]$/.test(n)) glowEye(o, zs.bossRig.eyeMat, meta.eye, zs.g.textures?.dot);
       root.visible = false;
+      // (escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+      root.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
       S.scene.add(root);
       S.root = root;
+      S.cull = cullList(root);
       S.state = 2;
       skin.ready?.(S);
       // (la luz de los personajes, sobre lo que haya puesto el archivo del jefe;
@@ -272,6 +321,7 @@ function warmUp(zs) {
     }
     if (S.warm-- > 0) {
       S.root.visible = true;
+      cullAt(S.cull, null, false);
       // (abajo del piso: el del jugador y el de una lámpara, warmSpot)
       S.root.position.copy(warmSpot(zs.g, S.warm));
       S.root.updateMatrixWorld(true);
@@ -355,7 +405,7 @@ function reach(S, up, lo, hand, handLen) {
   q.setFromUnitVectors(w.copy(b).sub(a).normalize(), u.copy(v).sub(a).normalize());
   // el antebrazo, después de girar el brazo: de donde apuntaba a donde tiene que apuntar
   w.copy(tip).sub(b).normalize().applyQuaternion(q);
-  u.copy(a).addScaledVector(T.clone().sub(a).normalize(), d).sub(v).normalize();
+  u.copy(a).addScaledVector(T2.copy(T).sub(a).normalize(), d).sub(v).normalize();
   q2.setFromUnitVectors(w, u).multiply(q);
   up.W.premultiply(q);
   lo.W.premultiply(q2);
@@ -410,6 +460,36 @@ export function preloadBossSkin(zs, kind) {
       WARM.add(S);
     }
   }
+}
+
+// En la carga (ui/Arrival.load): el modelo del jefe de ronda bajado y, mientras
+// se compila el mapa, a la vista abajo del piso (sombras y G-buffer incluidos).
+// Antes bajaba recién con Rounds.start, al arrancar: compilaba en el primer
+// segundo de la partida. show(true/false) lo pone y lo saca.
+export async function readyBossSkins(zs, kinds, ms = 5000) {
+  const list = [];
+  for (const k of [].concat(kinds || [])) {
+    if (!SKINS[k] || !zs?.g?.scene || !zs.bossRig) continue;
+    preloadBossSkin(zs, k);
+    const S = fresh(zs, k);
+    if (S) list.push(S);
+  }
+  const t0 = performance.now();
+  while (list.some((S) => S.state === 1) && performance.now() - t0 < ms) await new Promise((r) => setTimeout(r, 50));
+  const ok = list.filter((S) => S.state === 2 && S.root);
+  return {
+    list: ok,
+    show(on) {
+      for (const S of ok) {
+        if (S === shown && zs.bossRig?.rig.visible) continue;
+        S.root.visible = on;
+        if (!on) continue;
+        cullAt(S.cull, null, false);
+        S.root.position.copy(warmSpot(zs.g, 1));
+        S.root.updateMatrixWorld(true);
+      }
+    },
+  };
 }
 
 // Cada cuadro, después de que Zombies.render acomodó las piezas del jefe.
@@ -556,9 +636,8 @@ export function updateBossSkin(zs, dt) {
   // con los pies en su altura: lo más bajo de los pies justo en floorY (el arco
   // de un salto que lleva la escena, o para que no quede flotando)
   if (want.feet) {
-    root.updateMatrixWorld(true);
     let low = Infinity;
-    for (const nm of ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase']) if (S.bones[nm]) low = Math.min(low, S.bones[nm].getWorldPosition(a).y);
+    for (const nm of FEET) if (S.bones[nm]) low = Math.min(low, S.bones[nm].getWorldPosition(a).y);
     if (low < Infinity) {
       hipsW.y += floorY - low + (S.meta.sole || 0) * s;
       hips.bone.position.copy(hips.bone.parent.worldToLocal(v.copy(hipsW)));
@@ -566,10 +645,9 @@ export function updateBossSkin(zs, dt) {
   }
   // clavado: el medio de los pies justo donde está (arriba de una piedra chica)
   if (want.pin && z?.pos) {
-    root.updateMatrixWorld(true);
     let n = 0;
     c.set(0, 0, 0);
-    for (const nm of ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase']) if (S.bones[nm]) { c.add(S.bones[nm].getWorldPosition(a)); n++; }
+    for (const nm of FEET) if (S.bones[nm]) { c.add(S.bones[nm].getWorldPosition(a)); n++; }
     if (n) {
       c.multiplyScalar(1 / n);
       hipsW.x += z.pos.x - c.x;
@@ -593,7 +671,6 @@ export function updateBossSkin(zs, dt) {
   // con el cuerpo de piezas: las manos no se meten en el piso
   if (rigW > 0.3 && S.arms.length) {
     S.floor = Math.min(z ? floorY : Infinity, pp[11].y, pp[12].y);
-    root.updateMatrixWorld(true);
     const hand = (S.meta.hand || 0.2) * s;
     for (const [up, lo, hd] of S.arms) reach(S, up, lo, hd, hand);
   }
@@ -608,7 +685,6 @@ export function updateBossSkin(zs, dt) {
     const fore = S.bones[H.fore];
     const hb = S.bones[H.bone];
     if (fore && hb) {
-      root.updateMatrixWorld(true);
       hb.getWorldPosition(a);
       fore.getWorldPosition(b);
       u.copy(a).sub(b).normalize();
@@ -630,7 +706,10 @@ export function updateBossSkin(zs, dt) {
       }
     }
   }
-  S.mode = S.layers.map((L) => `${L.key}:${L.w.toFixed(2)}`).join(' ');
+  // (todo junto, una vez: lo de arriba lee los huesos con getWorldPosition, que
+  // pone al día solo su cadena)
+  root.updateMatrixWorld(true);
+  cullAt(S.cull, hips.bone.getWorldPosition(c));
   // y al final (lo que cuelga del modelo ya puesto: aureolas, brillos...)
   skin.after?.(S, ctx, z);
 }

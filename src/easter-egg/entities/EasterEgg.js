@@ -204,7 +204,8 @@ export default class EasterEgg {
     // luz fantasmal
     this.ghostLight = new THREE.PointLight(0x7ab8ff, 0, 6, 2);
     this.ghostLight.position.set(x, 1.6, z + 0.3);
-    this.root.add(this.ghostLight);
+    // (no cuenta como luz mientras está apagada: World.adoptLight)
+    this.root.add(this.g.world.adoptLight(this.ghostLight));
   }
 
   buildCalabaza() {
@@ -267,7 +268,7 @@ export default class EasterEgg {
     const glow = new THREE.PointLight(0xc8ff6a, 0, 3, 2);
     glow.position.set(g.position.x, 0.5, g.position.z + 0.3);
     g.visible = false;
-    this.root.add(g, glow);
+    this.root.add(g, this.g.world.adoptLight(glow));
     this.yerbaObj = { group: g, glow };
   }
 

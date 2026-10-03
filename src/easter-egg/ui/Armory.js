@@ -174,7 +174,9 @@ export default class Armory {
       }
     }));
     window.addEventListener('resize', (this.onResize = () => this.on && this.layout()));
+    // (jugando no: lo sincroniza el showHooks al volver al título)
     P.on('change', () => {
+      if (menus.g.state !== 'title') return;
       if (this.on) this.syncAll();
       this.syncBadge();
     });

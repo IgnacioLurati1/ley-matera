@@ -59,6 +59,8 @@ export default class Pombero {
     this.escape = null;
     this.rig = this.build();
     this.rig.visible = false;
+    // (escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+    this.rig.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
     game.scene.add(this.rig);
     // el cuerpo low poly (mientras baja, las piezas)
     this.skin = new PomberoSkin(this);

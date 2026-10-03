@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import GeoBuilder from './GeoBuilder';
 import { MAP_W, MAP_H, WALL_H, ZONES, zoneRects, WALL_BUYS, PERK_SPOTS, BOX_SPOTS, POWER, PAP, PROPS, ACT } from '../config/map';
-import { mesh, boxGeo, cylGeo } from './props';
+import { mesh, boxGeo, cylGeo, compactGroup } from './props';
 import { canvasTex } from './penalProps';
 import { flame, emberMat } from './castleFire';
 import { guarda, glyph } from './castleDecor';
+import { lean } from './castleLean';
 
 // El castillo por dentro, para que las salas no se vean peladas:
 //  · el entramado de madera en las paredes revocadas de la caballeriza y de
@@ -718,6 +719,8 @@ export function skinPap(g) {
   G.add(mesh(boxGeo(1.95, 0.42, 0.06), M.woodDark || M.wood, 0, 0.55, front));
   for (const s of [-1, 1]) G.add(mesh(boxGeo(0.08, 0.9, 0.08), M.woodDark || M.wood, s * 0.92, 0.45, front - 0.02));
   G.add(mesh(boxGeo(1.95, 0.05, 0.1), M.snowCap || M.wood, 0, 0.785, front));
+  // (las piedras y las tablas: una malla por material)
+  if (lean()) compactGroup(G);
   pap.group.add(G);
   const label = pap.group.children.find((c) => c.material?.map && c.geometry?.parameters?.width === 1.7);
   if (label) label.position.set(0, 0.55, front + 0.035);

@@ -304,7 +304,9 @@ export const PROPS = [
   { type: 'yerbahang', pos: [46, 62], y: 1.8 },
   { type: 'yerbahang', pos: [46, 69.6], y: 1.8 },
   { type: 'firewood', pos: [49.4, 66.8], rot: Math.PI / 2 },
-  { type: 'sacks', pos: [49.4, 68.9], rot: 0.4 },
+  // (acá estaban los sacos de adelante de la caja: sacados por pedido del
+  // usuario 2026-10-02; el lugar vacío conserva la semilla de los que siguen)
+  { type: 'vacio', pos: [49.4, 68.9] },
   { type: 'bote', pos: [28.2, 85], rot: 0.1, y: -0.5 },
   { type: 'bote', pos: [34.8, 86.5], rot: -0.25, y: -0.5 },
   { type: 'bote', pos: [48.2, 87], rot: 0.2, y: -0.5 },

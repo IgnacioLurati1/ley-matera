@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { DOORS, EE } from '../../config/map';
 import { flameMaterial } from '../../world/castleFire';
 import { ELEMENTS, ELEM_NAME, ELEM_COLOR, ELEM_RGB, glow, isHost, announce } from './common';
+import { compactGroup } from '../../world/props';
+import { lean } from '../../world/castleLean';
 
 // La cueva del Mateendrache (los pasos del medio del easter egg):
 //  · La pared de hielo de la gruta: se derrite con un tiro cargado del Pillán.
@@ -74,6 +76,13 @@ export default class Cueva {
       leg.rotation.set(Math.sin(a) * 0.3, 0, -Math.cos(a) * 0.3);
       grp.add(leg);
     }
+    // (las piedras, los leños y el trípode, quietos: una malla por material)
+    if (lean()) {
+      const base = new THREE.Group();
+      for (const o of [...grp.children]) base.add(o);
+      grp.add(base);
+      compactGroup(base);
+    }
     // las llamas (se prenden con el Pillán)
     const fire = new THREE.Group();
     for (let k = 0; k < 3; k++) {
@@ -109,6 +118,8 @@ export default class Cueva {
     pava.add(knob);
     pava.position.set(0, 2.1, 0);
     grp.add(pava);
+    // (la panza, el pico y la manija: una malla; la pava se inclina entera)
+    if (lean()) compactGroup(pava);
     this.hearthObj = { grp, fire, glow: fglow, pava, spoutTip: new THREE.Vector3(2.0, 1.45, 0) };
   }
 

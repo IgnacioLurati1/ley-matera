@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EE } from '../config/map';
 import { zombieHealth, maxAlive, SPEEDS } from '../config/rules';
-import { mesh, boxGeo, cylGeo } from '../world/props';
+import { mesh, boxGeo, cylGeo, mergeByMaterial } from '../world/props';
 import { bars, cot, bucket } from '../world/penalProps';
 import Avatars from '../net/Avatars';
 import Encierro, { missingIn, missingText } from './Encierro';
@@ -18,6 +18,7 @@ import { fireflies } from '../fx/Fireflies';
 import { reachableSpot } from './reach';
 import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
 import PenalForge from './penalForge';
+import { devKeys } from '../core/devKeys';
 import PenalMotin from './penalMotin';
 
 // Easter egg del penal: "Los Tres Gauchos". En tres celdas hay tres gauchos
@@ -234,7 +235,7 @@ export default class PenalEgg {
     this.mergeStatic();
     // atajos de prueba (solo, jugando): Alt+N el cuchillo, Alt+B el bote
     this.onKey = (e) => {
-      if (!import.meta.env.DEV || !e.altKey || game.state !== 'playing' || game.net) return;
+      if (!devKeys() || !e.altKey || game.state !== 'playing' || game.net) return;
       if (e.code === 'KeyN') {
         e.preventDefault();
         this.debugKnife();
@@ -316,6 +317,9 @@ export default class PenalEgg {
       g.add(door);
       cot(g, M, -w / 2 + 0.55, -d / 2 + 1.1, 0, false);
       bucket(g, M, w / 2 - 0.4, 0, -d / 2 + 0.4);
+      // la puerta se abre entera: sus barrotes, en una malla por material (lo
+      // demás de la celda lo funde mergeStatic con la utilería del mapa)
+      mergeByMaterial(door);
       this.root.add(g);
       // colisión de la reja (la puerta se abre)
       const world = this.g.world;
@@ -357,6 +361,8 @@ export default class PenalEgg {
       eye.position.set(s * 0.07, 0.04, 0.13);
       head.add(eye);
     }
+    // (la cabeza se mueve entera: el pelo, en una malla; los ojos, aparte)
+    mergeByMaterial(head);
     body.add(head);
     // las patas cuelgan de la cadera (así corren)
     const legs = [];

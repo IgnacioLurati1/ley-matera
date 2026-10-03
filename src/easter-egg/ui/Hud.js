@@ -69,6 +69,26 @@ export default class Hud {
   constructor(root) {
     this.root = el('div', 'mdu-hud', root);
     const r = this.root;
+    // las animaciones a reiniciar en el cuadro que viene (pulse) y los puntos
+    // que se juntan antes de salir (addPoints)
+    this.pulses = new Map();
+    this.pulseRaf = 0;
+    this.runPulses = () => {
+      this.pulseRaf = 0;
+      for (const [e, c] of this.pulses) e.classList.add(c);
+      this.pulses.clear();
+    };
+    this.ptsAcc = [0, 0];
+    this.ptsT = 0;
+    this.flushPoints = () => {
+      this.ptsT = 0;
+      const [pos, neg] = this.ptsAcc;
+      this.ptsAcc[0] = this.ptsAcc[1] = 0;
+      if (pos) this.popPoints(pos);
+      if (neg) this.popPoints(neg);
+      // (mientras sigan llegando, la ventana sigue abierta)
+      if (pos || neg) this.ptsT = setTimeout(this.flushPoints, 120);
+    };
     this.vignette = el('div', 'mdu-hurt', r);
     this.dirs = el('div', 'mdu-dirs', r);
     this.scope = el('div', 'mdu-scope', r, '<div class="mdu-scope__lens"></div>');
@@ -129,6 +149,44 @@ export default class Hud {
 
   show(on) {
     this.root.style.display = on ? '' : 'none';
+  }
+
+  // Una vez por mapa (cada uno tiene su cartel y su letra), en el menú del
+  // título: el HUD a la vista unos cuadros,
+  // casi transparente y con el cartel de las piezas abierto. La primera vez que
+  // el navegador dibuja esos degradés y sombras difuminadas compila lo suyo en
+  // su proceso de la placa (~50 ms) y el juego esperaba atrás: era el tirón al
+  // terminar la entrada, cuando el cartel se asoma (2026-10-03). Tapado por la
+  // pantalla de carga no sirve (lo tapado no se dibuja).
+  // (globalThis.__mduNoHudWarm: como antes)
+  prewarm() {
+    const r = this.root;
+    if (globalThis.__mduNoHudWarm === true || this.warmed === this.theme || r.style.display !== 'none') return Promise.resolve();
+    this.warmed = this.theme;
+    // (el cartel se ve solo asomado o con Tab; en el título está vacío: unas
+    // piezas de muestra del mapa, una juntada)
+    const plan = this.parts;
+    const had = [...plan.classList];
+    const html = plan.innerHTML;
+    if (!html) {
+      const defs = (ACT?.parts || []).slice(0, 4);
+      plan.innerHTML = `<header><b>${esc(ACT?.shield?.name || 'Escudo')}</b><em>1/${defs.length || 4}</em></header><ol>${defs.map((d, i) => `<li class="${i ? '' : 'is-got'}">${partIcon(d.id)}<span>${esc(PART_SHORT[d.id] || d.name || '')}</span></li>`).join('')}</ol><small>Piezas del escudo</small>`;
+    }
+    plan.classList.add('is-on', 'is-peek');
+    r.style.opacity = '0.01';
+    r.style.display = '';
+    return new Promise((res) => {
+      let n = 0;
+      const step = () => {
+        if (++n < 6) return requestAnimationFrame(step);
+        r.style.display = 'none';
+        r.style.opacity = '';
+        plan.className = had.join(' ');
+        if (!html) plan.innerHTML = '';
+        res();
+      };
+      requestAnimationFrame(step);
+    });
   }
 
   reset() {
@@ -199,17 +257,36 @@ export default class Hud {
     });
   }
 
+  // El primero sale enseguida; lo que llega en los 120 ms siguientes sale
+  // sumado en un solo número (con la escopeta era un span y un timer por perdigón).
   addPoints(n) {
+    if (this.ptsT) {
+      this.ptsAcc[n < 0 ? 1 : 0] += n;
+      return;
+    }
+    this.popPoints(n);
+    this.ptsT = setTimeout(this.flushPoints, 120);
+  }
+
+  popPoints(n) {
     const p = el('span', n < 0 ? 'is-neg' : '', this.popups, `${n > 0 ? '+' : ''}${n}`);
     p.style.setProperty('--dx', `${-40 - Math.random() * 60}px`);
     p.style.setProperty('--dy', `${-10 - Math.random() * 40}px`);
     setTimeout(() => p.remove(), 900);
   }
 
+  // Reinicia la animación CSS de `cls`: saca la clase ya y la vuelve a poner en
+  // el cuadro que viene. Antes era sacar, `void offsetWidth` (un layout forzado
+  // de toda la página) y poner: con la escopeta, uno por perdigón. Varios en el
+  // mismo cuadro quedan en uno.
+  pulse(e, cls = 'is-on') {
+    e.classList.remove(cls);
+    this.pulses.set(e, cls);
+    if (!this.pulseRaf) this.pulseRaf = requestAnimationFrame(this.runPulses);
+  }
+
   flashPoints() {
-    this.points.classList.remove('is-deny');
-    void this.points.offsetWidth;
-    this.points.classList.add('is-deny');
+    this.pulse(this.points, 'is-deny');
   }
 
   // ---------------- armas ----------------
@@ -223,9 +300,7 @@ export default class Hud {
       this.weaponName.textContent = w.name;
       this.weaponName.classList.toggle('is-pap', !!w.upgraded);
       this.pickup.innerHTML = `<b>${w.name}</b><span>${w.desc || ''}</span>`;
-      this.pickup.classList.remove('is-on');
-      void this.pickup.offsetWidth;
-      this.pickup.classList.add('is-on');
+      this.pulse(this.pickup);
     });
     this.set('ammo', `${w.mag}|${w.reserve}`, () => {
       this.ammo.innerHTML = `<b class="${w.mag === 0 ? 'is-empty' : ''}">${w.mag}</b><span>/ ${w.reserve}</span>`;
@@ -254,16 +329,14 @@ export default class Hud {
     const s = this.splat;
     s.style.setProperty('--flip', side > 0 ? -1 : 1);
     s.classList.toggle('is-stab', !side);
-    s.classList.remove('is-on');
-    void s.offsetWidth;
-    s.classList.add('is-on');
+    this.pulse(s);
   }
 
+  // (un perdigón a la cabeza en el cuadro la pinta de rojo)
   hitmarker(head) {
-    this.hit.classList.toggle('is-head', head);
-    this.hit.classList.remove('is-on');
-    void this.hit.offsetWidth;
-    this.hit.classList.add('is-on');
+    if (!this.pulses.has(this.hit)) this.hit.classList.toggle('is-head', !!head);
+    else if (head) this.hit.classList.add('is-head');
+    this.pulse(this.hit);
   }
 
   // ---------------- perks y power-ups ----------------
@@ -278,6 +351,7 @@ export default class Hud {
           return `<i class="mdu-perk ${prev.has(id) ? '' : 'is-new'}" data-perk="${id}" style="--c:${p.color}" title="${p.name}"><img src="${perkIconURL(id, 104)}" alt="${p.name}"></i>`;
         })
         .join('');
+      this.layoutT = 0;
     });
   }
 
@@ -322,6 +396,7 @@ export default class Hud {
     this.set('hint', text, (t) => {
       this.hint.textContent = t || '';
       this.hint.classList.toggle('is-on', !!t);
+      this.layoutT = 0;
     });
   }
 
@@ -350,8 +425,7 @@ export default class Hud {
       const anim = prev == null ? 'is-new' : kk < prev - 1e-3 ? 'is-hit' : null;
       if (anim) {
         s.classList.remove('is-hit', 'is-new');
-        void s.offsetWidth;
-        s.classList.add(anim);
+        this.pulse(s, anim);
       }
       this.shieldK = kk;
     });
@@ -567,6 +641,7 @@ export default class Hud {
   setBossBar(name, k = 1) {
     if (!this.bossBar) this.bossBar = el('div', 'mdu-bossbar', this.root, '<span></span><b><s></s></b>');
     this.set('bossbar', name == null ? null : `${name}|${Math.round(k * 200)}`, () => {
+      if (this.bossBar.classList.contains('is-on') !== (name != null)) this.layoutT = 0;
       this.bossBar.classList.toggle('is-on', name != null);
       if (name != null) {
         this.bossBar.querySelector('span').textContent = name;
@@ -605,6 +680,7 @@ export default class Hud {
     span.textContent = reveal > 0 ? '' : text;
     const line = { el: p, span, text, t: secs, reveal, shown: reveal > 0 ? 0 : text.length, age: 0, out: false };
     this.lines.push(line);
+    this.layoutT = 0;
     while (this.lines.filter((l) => !l.out).length > 3) this.dropLine(this.lines.find((l) => !l.out));
     requestAnimationFrame(() => p.classList.add('is-on'));
   }
@@ -612,6 +688,7 @@ export default class Hud {
   dropLine(l) {
     if (!l || l.out) return;
     l.out = true;
+    this.layoutT = 0;
     l.el.classList.remove('is-on');
     setTimeout(() => {
       l.el.remove();
@@ -624,9 +701,7 @@ export default class Hud {
     this.set('room', name, (n) => {
       this.room.textContent = n || '';
       this.room.classList.toggle('is-on', !!n);
-      this.room.classList.remove('is-change');
-      void this.room.offsetWidth;
-      this.room.classList.add('is-change');
+      this.pulse(this.room, 'is-change');
     });
   }
 
@@ -639,9 +714,7 @@ export default class Hud {
   location(name, sub = '') {
     this.loc.querySelector('b').textContent = name;
     this.loc.querySelector('span').textContent = sub;
-    this.loc.classList.remove('is-on');
-    void this.loc.offsetWidth;
-    this.loc.classList.add('is-on');
+    this.pulse(this.loc);
   }
 
   toast(text) {
@@ -780,9 +853,12 @@ export default class Hud {
       l.t -= dt;
       if (l.t <= 0) this.dropLine(l);
     }
+    // (cada medio segundo: lee posiciones de la página y fuerza un layout; lo
+    // que cambia el acomodo al toque — renglones, el aviso, los perks, la barra
+    // del jefe — lo adelanta con layoutT = 0)
     this.layoutT = (this.layoutT || 0) - dt;
     if (this.layoutT <= 0) {
-      this.layoutT = 0.2;
+      this.layoutT = 0.5;
       this.layout();
     }
   }
@@ -869,14 +945,38 @@ function roman(n) {
   return s;
 }
 
+// Un palito de tiza: la curva de (x0, y0) a (x1, y1) con el control en (cx,
+// cy), en tramitos corridos al azar de costado (el borde áspero de la tiza).
+// Antes ese borde lo hacía un filtro de SVG (feTurbulence + feDisplacementMap)
+// y cada cambio de ronda trababa ~60 ms: el navegador lo redibuja en su proceso
+// de la placa, y el juego esperaba atrás (2026-10-03).
+function chalkPath(x0, y0, cx, cy, x1, y1) {
+  const N = 16;
+  let d = '';
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const a = (1 - t) * (1 - t);
+    const b = 2 * (1 - t) * t;
+    const c = t * t;
+    const dx = 2 * (1 - t) * (cx - x0) + 2 * t * (x1 - cx);
+    const dy = 2 * (1 - t) * (cy - y0) + 2 * t * (y1 - cy);
+    const l = Math.hypot(dx, dy) || 1;
+    const k = (Math.random() - 0.5) * 2.2;
+    const x = a * x0 + b * cx + c * x1 - (dy / l) * k;
+    const y = a * y0 + b * cy + c * y1 + (dx / l) * k;
+    d += `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`;
+  }
+  return `<path d="${d}" />`;
+}
+
 // Palitos de tiza roja para las rondas 1 a 5, como en el original.
 function tally(n) {
   const strokes = [];
   for (let i = 0; i < Math.min(n, 4); i++) {
     const x = 14 + i * 20;
     const j = () => (Math.random() - 0.5) * 4;
-    strokes.push(`<path d="M${x + j()} ${8 + j()} Q ${x + 3 + j()} 45 ${x + j()} ${84 + j()}" />`);
+    strokes.push(chalkPath(x + j(), 8 + j(), x + 3 + j(), 45, x + j(), 84 + j()));
   }
-  if (n >= 5) strokes.push('<path d="M2 70 Q 45 45 92 20" />');
-  return `<svg class="mdu-tally" viewBox="0 0 96 92" aria-label="Ronda ${n}"><defs><filter id="chalk"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="3"/></filter></defs><g filter="url(#chalk)">${strokes.join('')}</g></svg>`;
+  if (n >= 5) strokes.push(chalkPath(2, 70, 45, 45, 92, 20));
+  return `<svg class="mdu-tally" viewBox="0 0 96 92" aria-label="Ronda ${n}">${strokes.join('')}</svg>`;
 }

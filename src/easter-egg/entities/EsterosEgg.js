@@ -10,6 +10,7 @@ import LuisonArrival, { prefetchSong } from '../ui/LuisonArrival';
 import SongEgg from '../world/SongEgg';
 import Thriller from './esteros/Thriller';
 import { TRACKS, LUISON_FROM } from '../core/music';
+import { devKeys } from '../core/devKeys';
 import { LUISON_PREP } from '../core/audio';
 
 // Lo que suena antes que llegue el Luisón, en segundos de canción desde que
@@ -119,7 +120,7 @@ export default class EsterosEgg {
     // atajos de prueba (solo): Alt+U un paso más del pacto (era Alt+J, que es
     // saltear la ronda en Game: cinco saltos de ronda llamaban al Luisón)
     this.onKey = (e) => {
-      if (!import.meta.env.DEV || !e.altKey || game.state !== 'playing' || game.net || e.code !== 'KeyU') return;
+      if (!devKeys() || !e.altKey || game.state !== 'playing' || game.net || e.code !== 'KeyU') return;
       e.preventDefault();
       this.debugStep(this.step + 1);
     };
@@ -266,7 +267,8 @@ export default class EsterosEgg {
     // luces y se recompilaban todos los shaders (4 s de cuadro trabado).
     this.cineLight = new THREE.PointLight(0x9ad8c8, 0, 9, 1.6);
     this.cineLight.position.copy(this.huecoPos);
-    this.root.add(this.cineLight);
+    // (no cuenta como luz mientras está apagada: World.adoptLight)
+    this.root.add(g.world.adoptLight(this.cineLight));
     g.interact.add({
       kind: 'ee',
       pos: this.huecoPos.clone(),

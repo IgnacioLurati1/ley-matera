@@ -321,12 +321,25 @@ export default class GameAudio {
   }
 
   // Banco de sonidos de zombie: varias tomas de cada tipo, generadas una vez.
+  // (en el worker de las voces si está: eran ~200 ms de carga al abrir; hasta
+  // que llegan, growl no tiene con qué y no suena, y en el título no hay zombies)
   buildBank() {
     const plan = { moan: 10, groan: 8, breath: 6, snarl: 8, scream: 6, death: 8, boss: 3 };
-    for (const [kind, n] of Object.entries(plan)) {
-      this.bank[kind] = [];
-      for (let i = 0; i < n; i++) this.bank[kind].push(this.toBuffer(zombieSound(kind).data));
-    }
+    const here = () => {
+      for (const [kind, n] of Object.entries(plan)) {
+        if (this.bank[kind]?.length) continue;
+        this.bank[kind] = [];
+        for (let i = 0; i < n; i++) this.bank[kind].push(this.toBuffer(zombieSound(kind).data));
+      }
+    };
+    if (this.voiceWorker) {
+      const id = ++this.voiceJobId;
+      this.voiceJobs.set(id, (data) => {
+        if (!data) return here();
+        for (const kind in data) this.bank[kind] = data[kind].map((d) => this.toBuffer(d));
+      });
+      this.voiceWorker.postMessage({ id, bank: plan });
+    } else here();
     this.bake();
   }
 
@@ -501,6 +514,12 @@ export default class GameAudio {
     // un cuadro con la cámara en NaN (teletransportes) tira una excepción en
     // setTargetAtTime: ese cuadro se saltea y el oído queda donde estaba
     if (!Number.isFinite(pos.x + pos.y + pos.z + fwd.x + fwd.y + fwd.z)) return;
+    // dónde está el oído y cuándo se movió (los fuegos: startFire)
+    const e = (this.ear ||= { x: 0, y: 0, z: 0, at: 0 });
+    e.x = pos.x;
+    e.y = pos.y;
+    e.z = pos.z;
+    e.at = performance.now();
     const l = this.ctx.listener;
     if (l.positionX) {
       // (de un saque cada cuadro: con setTargetAtTime la curva no termina
@@ -2637,13 +2656,28 @@ export default class GameAudio {
     const f = c.createBiquadFilter();
     f.type = 'lowpass';
     f.frequency.value = 500;
-    src.connect(f).connect(o);
+    // A más de ~25 m el fuego se calla: el crepitar ni se arma y el rumor baja
+    // a cero justo (rampa lineal: con setTargetAtTime nunca llega y el panner
+    // HRTF seguía calculando). Sin el oído moviéndose (el título, los menús)
+    // tampoco crepita: era el tic-tic que se oía al tocar los botones.
+    const gate = c.createGain();
+    src.connect(f).connect(gate).connect(o);
     src.start();
-    const crackle = setInterval(() => {
+    const fire = { src, crackle: 0, out: o, on: true, near: true };
+    fire.crackle = setInterval(() => {
       if (c.state !== 'running') return;
-      this.noise(o, { dur: 0.03, type: 'highpass', freq: 2500, gain: 0.3 + Math.random() * 0.5 });
+      const e = this.ear;
+      const near = !e || (pos.x - e.x) ** 2 + (pos.y - e.y) ** 2 + (pos.z - e.z) ** 2 < (fire.near ? 26 * 26 : 24 * 24);
+      if (near !== fire.near) {
+        fire.near = near;
+        const t = c.currentTime;
+        gate.gain.cancelScheduledValues(t);
+        gate.gain.setValueAtTime(gate.gain.value, t);
+        gate.gain.linearRampToValueAtTime(near ? 1 : 0, t + 0.4);
+      }
+      if (near && e && performance.now() - e.at < 500) this.noise(o, { dur: 0.03, type: 'highpass', freq: 2500, gain: 0.3 + Math.random() * 0.5 });
     }, 140);
-    this.fire = { src, crackle, out: o, on: true };
+    this.fire = fire;
     // un mapa puede tener varios fuegos: se apagan todos al cambiar de mapa
     (this.fires ||= []).push(this.fire);
   }
