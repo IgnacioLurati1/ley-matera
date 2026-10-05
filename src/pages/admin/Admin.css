@@ -287,6 +287,15 @@
 }
 .stock-input input:focus { outline: 2px solid var(--green-light); }
 .stock-input.is-out { border-color: var(--danger); color: var(--danger); }
+.stock-input--wide input { width: 76px; }
+
+/* Plata invertida y ganancia por unidad (editor y fila de producto). */
+.cost-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cost-pair label { display: grid; gap: 6px; }
+.cost-pair label > span { font-weight: 700; font-size: 0.9rem; color: var(--title); }
+.cost-pair .input.is-loss { color: var(--danger); }
+.cost-gain { margin-right: 4px; color: #3f8f4a; font-size: 0.8rem; white-space: nowrap; }
+.cost-gain.is-loss { color: var(--danger); }
 
 .color-chip {
   width: 52px;

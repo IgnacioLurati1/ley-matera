@@ -29,11 +29,12 @@ const EMPTY = {
   stock: null,
   discount: 0,
   description: '',
+  cost: null,
 };
 
 // Campo numérico chico de la fila (stock / descuento): guarda al salir del
 // campo o con Enter.
-function InlineNumber({ product, field, label, title, empty, max, suffix = '', okText, danger = false, extra }) {
+function InlineNumber({ product, field, label, title, empty, max, suffix = '', okText, danger = false, wide = false, extra }) {
   const { saveProduct } = useData();
   const { run } = useUI();
   const current = product[field] ?? empty;
@@ -47,7 +48,7 @@ function InlineNumber({ product, field, label, title, empty, max, suffix = '', o
   };
 
   return (
-    <label className={`stock-input ${danger ? 'is-out' : ''}`} title={title}>
+    <label className={`stock-input ${danger ? 'is-out' : ''} ${wide ? 'stock-input--wide' : ''}`} title={title}>
       <span>{label}</span>
       <input
         inputMode="numeric"
@@ -162,7 +163,7 @@ function PhotosField({ photos, setPhotos, max }) {
 }
 
 function ProductEditor({ initial, onClose }) {
-  const { saveProduct, stockEnabled, discountEnabled, descriptionEnabled, imagesEnabled } = useData();
+  const { saveProduct, stockEnabled, discountEnabled, descriptionEnabled, imagesEnabled, costEnabled } = useData();
   const { run } = useUI();
   const [form, setForm] = useState({
     ...initial,
@@ -170,6 +171,7 @@ function ProductEditor({ initial, onClose }) {
     stock: initial.stock == null ? '' : String(initial.stock),
     discount: initial.discount ? String(initial.discount) : '',
     description: initial.description ?? '',
+    cost: initial.cost == null ? '' : String(initial.cost),
   });
   // Fotos con su encuadre: las nuevas o reencuadradas se recortan al publicar.
   const [photos, setPhotos] = useState(() => productPhotos(initial).map((src) => newPhoto(src, false)));
@@ -180,6 +182,14 @@ function ProductEditor({ initial, onClose }) {
   const price = Number(String(form.price).replace(/\D/g, ''));
   const stock = form.stock === '' ? null : Number(String(form.stock).replace(/\D/g, ''));
   const discount = Math.min(90, Number(String(form.discount).replace(/\D/g, '')) || 0);
+  // Invertido y ganancia por unidad: se guarda lo invertido; la ganancia es el
+  // precio de venta (con descuento) menos eso. Escribir uno calcula el otro.
+  const cost = form.cost === '' ? null : Number(form.cost);
+  const sale = salePrice({ price, discount });
+  const setGain = (e) => {
+    const v = e.target.value.replace(/\D/g, '');
+    setForm((f) => ({ ...f, cost: v === '' ? '' : String(Math.max(0, sale - Number(v))) }));
+  };
 
   const publish = async () => {
     if (!form.title.trim() || !form.category || !price || !photos.length) {
@@ -190,7 +200,7 @@ function ProductEditor({ initial, onClose }) {
     setError('');
     // Las fotos nuevas o reencuadradas se suben recortadas en 800 y 400 px (WebP).
     const saved = await run(
-      () => saveProduct({ ...form, title: form.title.trim(), price, stock, discount }, photos),
+      () => saveProduct({ ...form, title: form.title.trim(), price, stock, discount, cost }, photos),
       (p) => (initial.id ? 'Cambios guardados' : `Producto publicado (${p.id})`),
     );
     setSaving(false);
@@ -254,6 +264,39 @@ function ProductEditor({ initial, onClose }) {
               </small>
             )}
           </label>
+        )}
+        {costEnabled && (
+          <div className="field">
+            <div className="cost-pair">
+              <label>
+                <span>Invertido por unidad</span>
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  value={form.cost}
+                  onChange={(e) => setForm((f) => ({ ...f, cost: e.target.value.replace(/\D/g, '') }))}
+                  placeholder="Lo que te costó"
+                />
+              </label>
+              <label>
+                <span>Ganancia por unidad</span>
+                <input
+                  className={`input ${cost != null && sale - cost < 0 ? 'is-loss' : ''}`}
+                  inputMode="numeric"
+                  value={cost == null ? '' : String(sale - cost)}
+                  onChange={setGain}
+                  disabled={!price}
+                  placeholder={price ? 'Lo que te queda' : 'Primero el precio'}
+                />
+              </label>
+            </div>
+            <small>
+              {cost != null && price > 0
+                ? `Cada uno: se vende a ${money(sale)}, costó ${money(cost)} y te quedan ${money(sale - cost)}. `
+                : 'Escribí uno y el otro sale del precio de venta. '}
+              Con esto se calcula la ganancia en Ventas.
+            </small>
+          </div>
         )}
         {stockEnabled && (
           <label className="field">
@@ -328,6 +371,7 @@ export default function ProductsAdmin() {
     discountEnabled,
     descriptionEnabled,
     imagesEnabled,
+    costEnabled,
   } = useData();
   const { run } = useUI();
   const [params, setParams] = useSearchParams();
@@ -349,6 +393,7 @@ export default function ProductsAdmin() {
     !discountEnabled && { feature: 'los descuentos', file: 'migrations_discount.sql' },
     !descriptionEnabled && { feature: 'las descripciones', file: 'migrations_description.sql' },
     !imagesEnabled && { feature: 'varias fotos por producto', file: 'migrations_images.sql' },
+    !costEnabled && { feature: 'la plata invertida y la ganancia', file: 'migrations_cost.sql' },
   ].filter(Boolean);
   // Arriba de todo los que se quedaron sin stock (rojo) y después los que
   // tienen poco (amarillo), de menos a más. El resto, del más nuevo al más viejo.
@@ -443,6 +488,23 @@ export default function ProductsAdmin() {
                   title="Descuento en % (0 = sin descuento)"
                   okText={(n) => (n ? `Descuento de ${n}% aplicado` : 'Descuento quitado')}
                   extra={(n) => n > 0 && <b className="price-off">{money(salePrice({ price: p.price, discount: n }))}</b>}
+                />
+              )}
+              {costEnabled && (
+                <InlineNumber
+                  product={p}
+                  field="cost"
+                  label="Invertido $"
+                  empty={null}
+                  max={99999999}
+                  wide
+                  title="Plata invertida por unidad (vacío = sin cargar)"
+                  okText={(n) => (n == null ? 'Invertido borrado' : `Invertido guardado: ganás ${money(salePrice(p) - n)} por unidad`)}
+                  extra={(n) =>
+                    n != null && (
+                      <b className={`cost-gain ${salePrice(p) - n < 0 ? 'is-loss' : ''}`}>+{money(salePrice(p) - n)}</b>
+                    )
+                  }
                 />
               )}
               {stockEnabled && (

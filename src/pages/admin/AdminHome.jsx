@@ -7,6 +7,9 @@ import {
   depositPatch,
   halfOf,
   isPaid,
+  manualSpent,
+  orderCost,
+  orderProfit,
   statusLabel,
   restoresOnDelete,
   statusPatch,
@@ -14,6 +17,7 @@ import {
   toPay,
   useOrders,
 } from '../../context/OrdersContext';
+import { useProductMap } from '../../context/DataContext';
 import { money, normalize } from '../../lib/format';
 import Modal from '../../components/Modal';
 import SalesInsights from './SalesInsights';
@@ -73,8 +77,62 @@ function MoneyCell({ value, onSave, label, placeholder = '$ 0' }) {
   );
 }
 
+// Invertido de la venta: por defecto la suma de lo invertido en sus artículos
+// (Productos). Se puede cambiar si justo ese salió más o menos; si se borra,
+// vuelve a la suma.
+function SpentCell({ order, sum, editable, onSave }) {
+  const manual = manualSpent(order);
+  const shown = manual ?? sum;
+  const [editing, setEditing] = useState(false);
+  const [v, setV] = useState('');
+  const note =
+    manual != null
+      ? sum != null && sum !== manual
+        ? `Suma: ${money(sum)}`
+        : 'A mano'
+      : sum == null && order.items?.length
+        ? 'Falta en Productos'
+        : '';
+  if (!editable) {
+    return shown == null ? <span className="sales__note">{note || '—'}</span> : <span>{money(shown)}</span>;
+  }
+  return (
+    <>
+      <input
+        className={`cell-input cell-input--money ${shown == null ? 'is-empty' : ''}`}
+        inputMode="numeric"
+        aria-label="Invertido"
+        placeholder="Cargar"
+        value={editing ? v : shown == null ? '' : money(shown)}
+        onFocus={() => {
+          setV(shown == null ? '' : String(shown));
+          setEditing(true);
+        }}
+        onChange={(e) => setV(e.target.value.replace(/\D/g, ''))}
+        onBlur={() => {
+          setEditing(false);
+          const next = v === '' ? null : Number(v);
+          if (next == null ? manual == null : next === shown) return;
+          onSave(next);
+        }}
+        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+      />
+      {note && <span className={`sales__note ${shown == null ? 'is-missing' : ''}`}>{note}</span>}
+    </>
+  );
+}
+
+// Ganancia de una venta pagada: $ Producto menos Invertido.
+function ProfitText({ order, byId }) {
+  if (!isPaid(order)) return <span className="sales__missing">Falta pagar</span>;
+  const profit = orderProfit(order, byId);
+  if (profit == null) return <span className="sales__missing">Falta invertido</span>;
+  return <strong className={profit < 0 ? 'is-loss' : ''}>{money(profit)}</strong>;
+}
+
 export default function AdminHome() {
-  const { orders, loading, missing, addOrder, updateOrder, deleteOrder } = useOrders();
+  const { orders, loading, missing, costEnabled, addOrder, updateOrder, deleteOrder } = useOrders();
+  const byId = useProductMap();
   const { run, toast } = useUI();
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
@@ -164,7 +222,7 @@ export default function AdminHome() {
                 setExporting(true);
                 try {
                   const { exportSalesExcel } = await import('../../lib/salesExcel');
-                  await exportSalesExcel(visible);
+                  await exportSalesExcel(visible, byId);
                   toast('Excel descargado');
                 } catch (e) {
                   toast(`No se pudo exportar: ${e.message ?? e}`, 'error');
@@ -225,6 +283,7 @@ export default function AdminHome() {
                   <th>Producto</th>
                   <th className="num">$ Producto</th>
                   <th>Cliente</th>
+                  <th className="num">Invertido</th>
                   <th className="num">$ Seña</th>
                   <th className="num">A pagar</th>
                   <th>Estado</th>
@@ -257,6 +316,14 @@ export default function AdminHome() {
                         placeholder="Nombre (WTSP / IG)"
                         label="Cliente"
                         onSave={(client) => save(o, { client })}
+                      />
+                    </td>
+                    <td className="num sales__spent" data-label="Invertido">
+                      <SpentCell
+                        order={o}
+                        sum={orderCost(o, byId)}
+                        editable={costEnabled}
+                        onSave={(cost) => save(o, { cost, profit: null })}
                       />
                     </td>
                     <td className="num" data-label="$ Seña">
@@ -292,11 +359,7 @@ export default function AdminHome() {
                       </select>
                     </td>
                     <td className="num" data-label="Ganancia">
-                      {isPaid(o) ? (
-                        <strong>{money(o.price)}</strong>
-                      ) : (
-                        <span className="sales__missing">Falta pagar</span>
-                      )}
+                      <ProfitText order={o} byId={byId} />
                     </td>
                     <td className="sales__del">
                       <button
@@ -315,8 +378,10 @@ export default function AdminHome() {
           </div>
         )}
         <p className="hint" style={{ marginBottom: 0 }}>
-          Tocá cualquier celda para editarla; se guarda sola. El Excel sale con las ventas que estás viendo y con el
-          formato de la planilla de ventas.
+          Tocá cualquier celda para editarla; se guarda sola. Ganancia = $ Producto menos Invertido. Invertido es la
+          suma de lo invertido en sus artículos (se carga en Productos); si justo esa venta salió más o menos, cambialo
+          ahí, y si lo borrás vuelve a la suma. El Excel sale con las ventas que estás viendo y con el formato de la
+          planilla de ventas.
         </p>
       </div>
 

@@ -22,6 +22,8 @@ alter table public.products add column if not exists stock integer check (stock 
 alter table public.products add column if not exists discount integer not null default 0 check (discount between 0 and 90);
 alter table public.products add column if not exists description text not null default '';
 alter table public.products add column if not exists images text[] not null default '{}';
+-- Plata invertida por unidad (lo que costó cada uno); null = sin cargar.
+alter table public.products add column if not exists cost integer check (cost >= 0);
 
 create table if not exists public.promos (
   id          text primary key default 'PR' || nextval('promo_seq'),
@@ -130,6 +132,10 @@ create table if not exists public.orders (
   note text not null default '',
   created_at timestamptz not null default now()
 );
+-- Invertido cambiado a mano en una venta; null = la suma de sus artículos.
+alter table public.orders add column if not exists cost integer;
+-- Ganancia cargada a mano (versión anterior, se sigue respetando); null = se calcula.
+alter table public.orders add column if not exists profit integer;
 
 alter table public.orders enable row level security;
 drop policy if exists "orders admin" on public.orders;

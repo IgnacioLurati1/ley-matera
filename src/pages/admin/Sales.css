@@ -99,6 +99,24 @@
 .fact .is-down { color: var(--danger); }
 .fact + .fact { padding-top: 12px; border-top: 1.5px dashed var(--line); }
 
+/* Ganancia: cobrado − invertido = ganancia, a todo lo ancho. */
+.insights__profit { grid-column: 1 / -1; }
+.profit { display: grid; grid-template-columns: 1fr auto 1fr auto 1.2fr; align-items: center; gap: 10px 18px; }
+.profit__item span { display: block; font-weight: 800; color: var(--muted); font-size: 0.88rem; }
+.profit__item strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--title);
+  font-variant-numeric: tabular-nums;
+}
+.profit__item small { color: var(--muted); }
+.profit__item.is-gain strong { color: #3f8f4a; font-size: clamp(1.8rem, 3.4vw, 2.4rem); line-height: 1.15; }
+.profit__item.is-loss strong { color: var(--danger); }
+.profit__op { font-family: var(--font-display); font-size: 1.8rem; font-weight: 600; color: var(--muted); }
+.insights__profit .warn, .insights__profit .hint { margin: 12px 0 0; }
+
 .toplist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: top; }
 .toplist li {
   display: grid;
@@ -191,6 +209,11 @@
   font-size: 0.78rem;
   white-space: nowrap;
 }
+.sales td.num > strong.is-loss { color: var(--danger); }
+.sales__spent > span:only-child { display: block; padding: 7px 8px 0; }
+.sales__spent .cell-input:placeholder-shown { border: 1.5px dashed var(--line); }
+.sales__note { display: block; padding: 0 8px; font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+.sales__note.is-missing { color: #8a4b12; font-weight: 700; }
 .sales__half {
   display: block;
   margin: 2px 0 0 auto;
@@ -244,6 +267,9 @@
 @media (max-width: 560px) {
   .toplist li { grid-template-columns: 22px minmax(0, 1fr) auto; }
   .toplist__bar { display: none; }
+  .profit { grid-template-columns: 1fr; gap: 0; }
+  .profit__op { display: none; }
+  .profit__op + .profit__item { margin-top: 12px; padding-top: 12px; border-top: 1.5px dashed var(--line); }
 }
 
 /* En el celu la planilla no entra: cada venta pasa a ser una tarjeta con sus
@@ -276,8 +302,10 @@
   }
   .sales th.num, .sales td.num { text-align: left; }
   .sales .cell-input--money { text-align: left; min-width: 0; }
-  .sales__product { grid-column: 1 / -1; padding-right: 40px !important; }
-  .sales__client { grid-column: 1 / -1; }
+  .sales__product { grid-column: 1 / -1; padding-right: 40px !important; order: -2; }
+  /* Cliente arriba; $ Producto e Invertido quedan juntos en la misma fila. */
+  .sales__client { grid-column: 1 / -1; order: -1; }
+  .sales__spent > span:only-child { padding: 7px 8px 0; }
   .sales__due { padding: 0 8px !important; }
   .sales__due::before { padding: 0 !important; margin-bottom: 7px; }
   .sales td.num > strong { padding: 7px 8px 0; }

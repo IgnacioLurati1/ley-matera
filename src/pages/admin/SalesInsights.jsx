@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useData } from '../../context/DataContext';
-import { STATUSES, collected } from '../../context/OrdersContext';
+import { STATUSES, collected, isPaid, orderProfit } from '../../context/OrdersContext';
 import { money } from '../../lib/format';
 
 const MONTHS = 6;
@@ -11,8 +11,8 @@ const monthName = (key) => {
 };
 const pctChange = (now, before) => (before ? Math.round(((now - before) / before) * 100) : null);
 
-// Estadísticas del panel de ventas: evolución por mes, ticket promedio,
-// productos más vendidos y cómo están repartidas las ventas por estado.
+// Estadísticas del panel de ventas: ganancia, evolución por mes, ticket
+// promedio, productos más vendidos y cómo están repartidas las ventas por estado.
 export default function SalesInsights({ orders }) {
   const { products } = useData();
 
@@ -47,6 +47,26 @@ export default function SalesInsights({ orders }) {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5);
 
+    // Ganancia total: ventas pagadas o entregadas cuyo invertido se sabe (la
+    // suma de sus artículos o el cambiado en la tabla). Las otras se avisan aparte.
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const profit = { got: 0, gain: 0, count: 0, unknown: 0, unknownSum: 0 };
+    orders.filter(isPaid).forEach((o) => {
+      const g = orderProfit(o, byId);
+      if (g == null) {
+        profit.unknown += 1;
+        profit.unknownSum += o.price;
+      } else {
+        profit.got += o.price;
+        profit.gain += g;
+        profit.count += 1;
+      }
+    });
+    profit.spent = profit.got - profit.gain;
+    profit.margin = profit.got ? Math.round((profit.gain / profit.got) * 100) : null;
+    // Plata que sigue invertida en mercadería sin vender.
+    profit.inStock = products.reduce((n, p) => n + (p.cost != null && p.stock > 0 ? p.cost * p.stock : 0), 0);
+
     const withDeposit = active.filter((o) => o.deposit > 0).length;
     const byStatus = STATUSES.map((s) => ({ ...s, count: orders.filter((o) => o.status === s.id).length }));
 
@@ -61,6 +81,7 @@ export default function SalesInsights({ orders }) {
       topMax: top[0]?.qty ?? 1,
       byStatus,
       total: orders.length,
+      profit,
     };
   }, [orders, products]);
 
@@ -68,6 +89,45 @@ export default function SalesInsights({ orders }) {
 
   return (
     <div className="insights">
+      <section className="panel insights__profit">
+        <h2>Ganancia</h2>
+        <div className="profit">
+          <div className="profit__item">
+            <span>Cobrado</span>
+            <strong>{money(stats.profit.got)}</strong>
+            <small>
+              {stats.profit.count} {stats.profit.count === 1 ? 'venta pagada' : 'ventas pagadas'}
+            </small>
+          </div>
+          <b className="profit__op" aria-hidden>
+            −
+          </b>
+          <div className="profit__item">
+            <span>Invertido</span>
+            <strong>{money(stats.profit.spent)}</strong>
+            <small>En lo que se vendió</small>
+          </div>
+          <b className="profit__op" aria-hidden>
+            =
+          </b>
+          <div className={`profit__item is-gain ${stats.profit.gain < 0 ? 'is-loss' : ''}`}>
+            <span>Ganancia total</span>
+            <strong>{money(stats.profit.gain)}</strong>
+            <small>{stats.profit.margin != null ? `${stats.profit.margin}% de lo cobrado` : 'Todavía sin ventas pagadas'}</small>
+          </div>
+        </div>
+        {stats.profit.unknown > 0 && (
+          <p className="warn">
+            {stats.profit.unknown === 1 ? '1 venta pagada' : `${stats.profit.unknown} ventas pagadas`} (
+            {money(stats.profit.unknownSum)}) no {stats.profit.unknown === 1 ? 'suma' : 'suman'}: cargá lo invertido en
+            Productos o en la tabla de ventas.
+          </p>
+        )}
+        {stats.profit.inStock > 0 && (
+          <p className="hint">Además tenés {money(stats.profit.inStock)} invertidos en stock sin vender.</p>
+        )}
+      </section>
+
       <section className="panel insights__chart">
         <div className="panel__head" style={{ marginBottom: 8 }}>
           <h2>Ventas por mes</h2>
