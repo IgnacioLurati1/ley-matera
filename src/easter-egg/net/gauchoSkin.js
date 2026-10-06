@@ -3,7 +3,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { assetUrl } from '../../lib/assets';
 import { makePose, solvePose } from '../entities/skeleton';
-import { skinLook } from '../entities/bossSkin';
+import { skinLook, cullList, cullAt } from '../entities/bossSkin';
+import { liveOn, liveBegin, liveBone, liveAfter, liveRest } from '../ui/cineLife';
 
 // El gaucho de verdad (low poly facetado, Meshy) en lugar del muñeco de piezas
 // de net/Avatars: los compañeros de la red y los gauchos de todas las
@@ -38,6 +39,34 @@ const HAND_AT = new THREE.Vector3(0, -0.19, 0);
 const RIG_THIGH = 0.03;
 // el color del poncho: los de Avatars vienen ×1,7 (la arpillera oscurecía)
 const TINT_K = 1 / 1.7;
+// La cara y el poncho del modelo, en sus unidades (cm, en reposo) para la vida
+// de las escenas (ui/cineLife): la mandíbula (de dónde a dónde, el ancho y el
+// eje de la bisagra), los ojos pintados (centro, radios, de dónde para
+// adelante) y de dónde a dónde se hamaca el poncho.
+// (medido en el juego con marcas en la cabeza: e4/manos-cine/face.mjs; los
+// ojos del modelo no están centrados: el derecho, x 4,25; el izquierdo, -5,72)
+const FACE = {
+  jawTop: 161.2,
+  jawBot: 153,
+  jawBack: 8,
+  jawW: 5.5,
+  jawSoft: 1.4,
+  pivY: 163,
+  pivZ: 2,
+  mouthY: 160.6,
+  mouthW: 2.2,
+  eyeXR: 4.25,
+  eyeXL: -5.72,
+  eyeY: 172.4,
+  eyeRX: 1.35,
+  eyeRY: 2.45,
+  eyeZ: 13,
+  lidX: 3,
+  lidY0: 176,
+  lidY1: 179,
+  swayTop: 140,
+  swayBot: 100,
+};
 // el escudo colgado en la espalda: afuera del poncho
 const SHIELD_BACK = new THREE.Matrix4().makeTranslation(0, 0.02, -0.13);
 
@@ -58,6 +87,7 @@ for (let i = 0; i < 13; i++) {
   pq.push(new THREE.Quaternion());
 }
 const updateMW = THREE.Object3D.prototype.updateMatrixWorld;
+const vCull = new THREE.Vector3();
 
 function prep(gltf) {
   const root = gltf.scene;
@@ -76,6 +106,7 @@ function prep(gltf) {
   const map = mesh.material.map;
   // el gris medio del poncho en la textura (para teñirlo sin perder la guarda)
   let lumRef = 0.12;
+  const lidCol = new THREE.Color(0.42, 0.26, 0.18);
   try {
     const S = 256;
     const cv = document.createElement('canvas');
@@ -96,6 +127,21 @@ function prep(gltf) {
       n++;
     }
     if (n) lumRef = acc / n;
+    // el color de los párpados: la piel de la frente, arriba de los ojos (ui/cineLife)
+    const pos = geo.getAttribute('position');
+    const c = [0, 0, 0];
+    let m = 0;
+    for (let i = 0; i < uv.count; i++) {
+      const px = pos.getX(i);
+      const py = pos.getY(i);
+      if (Math.abs(px) > FACE.lidX || py < FACE.lidY0 || py > FACE.lidY1 || pos.getZ(i) < FACE.eyeZ) continue;
+      const x = Math.min(S - 1, Math.max(0, Math.floor(uv.getX(i) * S)));
+      const y = Math.min(S - 1, Math.max(0, Math.floor(uv.getY(i) * S)));
+      const k = (y * S + x) * 4;
+      for (let j = 0; j < 3; j++) c[j] += lin(D[k + j] / 255);
+      m++;
+    }
+    if (m) lidCol.setRGB(c[0] / m, c[1] / m, c[2] / m);
   } catch {
     // (sin leer la imagen: el valor de siempre)
   }
@@ -117,6 +163,8 @@ function prep(gltf) {
     mesh,
     map,
     lumRef,
+    lidCol,
+    face: FACE,
     list,
     partRest,
     mid: thighMid.clone().sub(hipsW),
@@ -167,16 +215,55 @@ function material(a) {
   const m = new THREE.MeshStandardMaterial({ map: T.map, roughness: 0.9, metalness: 0 });
   const tint = { value: a.M.poncho.color };
   const ref = { value: T.lumRef / TINT_K };
+  // la vida de las escenas (ui/cineLife): la mandíbula, los párpados y el
+  // poncho que se hamaca; jugando quedan en 0
+  // (uFill: luz de relleno solo para este gaucho, desde la cámara: las escenas
+  // de noche, ui/cineActors fill; jugando, 0)
+  const life = { uJaw: { value: 0 }, uLid: { value: 0 }, uSway: { value: new THREE.Vector3() }, uLidCol: { value: T.lidCol }, uEyeGlow: { value: new THREE.Color(0, 0, 0) }, uFill: { value: new THREE.Color(0, 0, 0) } };
+  m.userData.life = life;
+  const F = T.face;
+  const f = (x) => x.toFixed(2);
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uPonTint = tint;
     sh.uniforms.uPonRef = ref;
-    sh.vertexShader = sh.vertexShader.replace('void main() {', 'attribute float poncho;\nvarying float vPoncho;\nvoid main() {\n\tvPoncho = poncho;');
-    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform vec3 uPonTint;\nuniform float uPonRef;\nvarying float vPoncho;\nvoid main() {').replace(
+    Object.assign(sh.uniforms, life);
+    sh.vertexShader = sh.vertexShader
+      .replace('void main() {', 'attribute float poncho;\nvarying float vPoncho;\nvarying vec3 vBind;\nuniform float uJaw;\nuniform vec3 uSway;\nvoid main() {\n\tvPoncho = poncho;\n\tvBind = position;')
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+	if (uJaw > 0.0) {
+		float jw = uJaw * smoothstep(${f(F.jawTop)}, ${f(F.jawTop - F.jawSoft)}, position.y) * smoothstep(${f(F.jawBot)}, ${f(F.jawBot + F.jawSoft)}, position.y) * smoothstep(${f(F.jawBack)}, ${f(F.jawBack + F.jawSoft)}, position.z) * (1.0 - smoothstep(${f(F.jawW)}, ${f(F.jawW + F.jawSoft)}, abs(position.x)));
+		vec2 jp = transformed.yz - vec2(${f(F.pivY)}, ${f(F.pivZ)});
+		float jc = cos(jw);
+		float js = sin(jw);
+		transformed.yz = vec2(${f(F.pivY)}, ${f(F.pivZ)}) + vec2(jp.x * jc - jp.y * js, jp.x * js + jp.y * jc);
+	}`,
+      )
+      .replace('#include <skinning_vertex>', `#include <skinning_vertex>\n\ttransformed += uSway * (poncho * smoothstep(${f(F.swayTop)}, ${f(F.swayBot)}, position.y));`);
+    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform vec3 uPonTint;\nuniform float uPonRef;\nuniform float uLid;\nuniform float uJaw;\nuniform vec3 uLidCol;\nuniform vec3 uEyeGlow;\nuniform vec3 uFill;\nvarying float vPoncho;\nvarying vec3 vBind;\nvoid main() {').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += uEyeGlow * eyeGlow;\n\ttotalEmissiveRadiance += diffuseColor.rgb * uFill * (0.3 + 0.7 * max(dot(normal, normalize(vViewPosition)), 0.0));').replace(
       '#include <map_fragment>',
       `#include <map_fragment>
 	if (vPoncho > 0.5) {
 		float pl = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
 		diffuseColor.rgb = uPonTint * (pl / uPonRef);
+	}
+	// los ojos pintados del modelo (cada uno en su lugar): el párpado baja
+	// desde arriba y, con uEyeGlow, lo oscuro del ojo brilla (los ojos de oro)
+	vec2 ed = vec2(vBind.x - (vBind.x > ${f((F.eyeXR + F.eyeXL) / 2)} ? ${f(F.eyeXR)} : ${f(F.eyeXL)}), vBind.y - ${f(F.eyeY)}) / vec2(${f(F.eyeRX)}, ${f(F.eyeRY)});
+	float eyeIn = vBind.z > ${f(F.eyeZ)} && dot(ed, ed) < 1.0 ? 1.0 : 0.0;
+	float eyeGlow = eyeIn * (1.0 - smoothstep(0.03, 0.08, dot(diffuseColor.rgb, vec3(0.3333))));
+	if (uLid > 0.001 && eyeIn > 0.5) {
+		float edge = 1.0 - 2.0 * uLid;
+		if (ed.y > edge) {
+			diffuseColor.rgb = uLidCol * (ed.y < edge + 0.3 ? 0.55 : 1.0);
+			eyeGlow = 0.0;
+		}
+	}
+	// la boca, abajo del bigote: oscura lo que se abre la mandíbula
+	if (uJaw > 0.0 && vBind.z > ${f(F.eyeZ)}) {
+		float mo = 1.0 - smoothstep(0.65, 1.0, length(vec2((vBind.x - ${f((F.eyeXR + F.eyeXL) / 2)}) / ${f(F.mouthW)}, (vBind.y - ${f(F.mouthY + 0.5)}) / 1.15)));
+		diffuseColor.rgb *= 1.0 - 0.85 * mo * clamp(uJaw * ${f(1 / 0.09)}, 0.0, 1.0);
 	}`,
     );
   };
@@ -232,6 +319,11 @@ function attach(a, blocky) {
     snap: new Float64Array(13 * 16),
     off: false,
     pose: (adjust, dt, g) => pose(G, adjust, dt, g),
+    // la vida de las escenas (ui/cineLife): los uniforms del material
+    jawU: mat.userData.life.uJaw,
+    lidU: mat.userData.life.uLid,
+    swayU: mat.userData.life.uSway,
+    meshScale: mesh.getWorldScale(new THREE.Vector3()).x,
   };
   // la silueta a través de las paredes (compañeros de la partida)
   if (a.xray) {
@@ -247,14 +339,21 @@ function attach(a, blocky) {
     a.xparts.push(x);
     G.xray = x;
   }
+  // el recorte: una esfera alrededor de la cadera (entities/bossSkin
+  // cullList, con los huesos en reposo). Antes iba sin recorte y se dibujaba
+  // siempre, aunque estuviera atrás o lejos (compañeros, presos, cinemáticas)
+  root.updateMatrixWorld(true);
+  G.cull = cullList(root);
   // a la hora de dibujar, si alguien puso la pose por su cuenta (las tomas de
   // las cinemáticas que acomodan las piezas a mano), el modelo la sigue
   root.updateMatrixWorld = function (force) {
     if (G.on && visible(a)) {
       if (G.mesh.material !== G.mat) fallback(G);
-      else if (changed(G)) pose(G, false);
+      // (con vida de escena, un cuadro nuevo aunque la pose sea la misma)
+      else if (changed(G) || (liveOn(G) && G.frame !== a.g?.raf)) pose(G, false);
     }
     updateMW.call(this, force);
+    if (G.on) cullAt(G.cull, G.bones.Hips.getWorldPosition(vCull));
   };
   a.group.add(root);
   for (const o of blocky) o.visible = false;
@@ -305,10 +404,18 @@ function pose(G, adjust, dt = 0, g = null) {
     pq[i].multiply(T.partRest[i]);
   }
   const L = G.list;
+  // la vida de las escenas (ui/cineLife): respira, parpadea, mira, habla
+  G.frame = a.g?.raf;
+  const life = liveOn(G) ? liveBegin(G, qa.copy(pq[2]).multiply(L[G.iHead ??= L.findIndex((d) => d.name === 'Head')].rest)) : null;
+  if (!life && G.life) {
+    liveRest(G);
+    G.life = null;
+  }
   for (const d of L) {
     if (d.p1 == null) d.W.copy(pq[d.p0]);
     else d.W.copy(pq[d.p0]).slerp(pq[d.p1], d.k);
     d.W.multiply(d.rest);
+    if (life) liveBone(life, d);
     const pw = d.pi >= 0 ? L[d.pi].W : T.armQ;
     d.bone.quaternion.copy(qa.copy(pw).invert()).multiply(d.W);
   }
@@ -321,6 +428,14 @@ function pose(G, adjust, dt = 0, g = null) {
   vb.sub(vc.copy(T.mid).applyQuaternion(qb));
   G.bones.Hips.position.copy(vb).applyMatrix4(T.armInv);
   shieldOut(G);
+  // con un mate en la mano (el de piezas o uno de verdad): la palma arriba (palmMate)
+  const mate = handMate(a);
+  if (mate || gunMate(a)) {
+    updateMW.call(G.root, true);
+    vF.set(0, 0, 1).transformDirection(M[1]).setY(0);
+    if (vF.lengthSq() < 1e-6) vF.set(0, 0, 1);
+    palmMate(G, 'LeftForeArm', 'LeftHand', 1, vF.normalize());
+  } else if (G.palm) G.palm.k = 0;
   if (adjust) {
     updateMW.call(G.root, true);
     for (const [part, fore, hand] of HANDS) {
@@ -333,7 +448,40 @@ function pose(G, adjust, dt = 0, g = null) {
       M[part].setPosition(va.sub(vb));
     }
   }
+  if (mate) seatMate(G, mate, M[6]);
+  else unseatMate(a.hand?.children[0]);
+  if (life) liveAfter(G, life);
   snapshot(G);
+}
+
+// (el usuario, 2026-10-03; window.__mduNoPalm = true: como antes, para comparar)
+const palmOn = () => globalThis.__mduNoPalm !== true;
+// el mate de piezas de la mano, si se ve (Avatars lo marca: handMate)
+function handMate(a) {
+  if (!palmOn()) return null;
+  const m = a.hand?.children[0];
+  return m?.userData.handMate && a.hand.visible && m.visible && !a.gun ? m : null;
+}
+// un mate de verdad (Avatars.setGun, con boca) en la mano
+const gunMate = (a) => palmOn() && !!a.gun && !!a.mouth && a.gun.visible !== false;
+
+// Los ojos pintados del modelo, para lo que brilla en ellos (los ojos de oro
+// del gaucho dorado del molino): dos puntos colgados de la cabeza justo delante
+// de cada ojo, y la textura del ojo que se prende con color (null: se apaga).
+// Los huesos eyeA/eyeB del archivo no están donde están los ojos pintados.
+export function eyeSpots(G, color = null) {
+  if (G.mat.userData.life) G.mat.userData.life.uEyeGlow.value = color || new THREE.Color(0, 0, 0);
+  if (G.eyeSpots) return G.eyeSpots;
+  const sk = G.mesh.skeleton;
+  const hi = sk.bones.findIndex((b) => b.name === 'Head');
+  const head = sk.bones[hi];
+  G.eyeSpots = [FACE.eyeXR, FACE.eyeXL].map((x) => {
+    const o = new THREE.Object3D();
+    o.position.set(x, FACE.eyeY, 16.2).applyMatrix4(G.mesh.bindMatrix).applyMatrix4(sk.boneInverses[hi]);
+    head.add(o);
+    return o;
+  });
+  return G.eyeSpots;
 }
 
 function snapshot(G) {
@@ -385,7 +533,7 @@ const HANDS_CLIP = [
   [6, 'RightForeArm', 'RightHand'],
 ];
 // las armas de dos manos (con las de una, el mate o la pistola: quieto sin arma larga)
-const TWO_HAND = new Set(['madera', 'plastico', 'vidrio', 'lata', 'algarrobo', 'imperial', 'camionero', 'torpedo', 'asta', 'mate47', 'campanario', 'bombillon', 'tronador', 'diablo', 'liquidificador', 'wunder', 'terere', 'rayo', 'silicona', 'cocido', 'bombillazo', 'dragon', 'supremo']);
+export const TWO_HAND = new Set(['madera', 'plastico', 'vidrio', 'lata', 'algarrobo', 'imperial', 'camionero', 'torpedo', 'asta', 'mate47', 'campanario', 'bombillon', 'tronador', 'diablo', 'liquidificador', 'wunder', 'terere', 'rayo', 'silicona', 'cocido', 'bombillazo', 'dragon', 'supremo']);
 // lo que hace (Session.act): clip y cuánto dura en el juego (s; d: lo manda el que lo hace)
 const ACTS = { drink: ['drink', 2.3], stab: ['stab', 0.8], throw: ['throw', 1.0], reload: ['reload', 2] };
 // la parte de arriba (para lo que hace) y cuánto sigue a la mirada (arriba o abajo)
@@ -415,6 +563,8 @@ let refA = [];
 let refB = [];
 let refC = [];
 
+// (para esperarlos antes de una escena: ui/introShots ready; también arranca a bajarlos)
+export const gauchoClipsReady = () => clipsReady() || clState === 3;
 function clipsReady() {
   if (clState === 2) return true;
   if (!clState && T) {
@@ -424,6 +574,7 @@ function clipsReady() {
       .then((J) => {
         prepClips(J);
         clState = 2;
+        loadBlend();
       })
       .catch((e) => {
         console.warn('gaucho: sin clips', e);
@@ -432,6 +583,29 @@ function clipsReady() {
   }
   return false;
 }
+
+// anim-online (2026-10-04): los clips de los compañeros hechos en Blender
+// (clips-online.json: cebar, afilar y los de siempre revisados), encima de los
+// de clips.json; solo los compañeros (no los muñecos de escena con r.clips).
+// globalThis.__mduNoAvatarBlend = true: los de antes (y el cebado de antes).
+const BLEND_URL = '/assets/sotano/modelos/gaucho/clips-online.json';
+function loadBlend() {
+  fetch(assetUrl(BLEND_URL))
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+    .then((J) => {
+      const add = {};
+      for (const [k, c] of Object.entries(J.clips)) add[k] = { ...c, fps: c.fps || J.fps, q: Float32Array.from(c.q), hips: Float32Array.from(c.hips) };
+      CL.blend = { ...CL.clips, ...add };
+    })
+    .catch((e) => console.warn('gaucho: sin clips-online', e));
+}
+const blendOn = (a) => !!CL?.blend && globalThis.__mduNoAvatarBlend !== true && !a.r?.clips;
+const BLADES = new Set(['hoz', 'facon', 'sable']);
+// (las que tienen su recarga en primera persona, la misma en tercera: la Lata de
+// a un cartucho, los Gemelos cambian la yerba, cada elemental su gesto; el
+// Liquidificador se ceba con el porongo en vez del termo)
+const OWN = { lata: 'cartucho', gemelos: 'yerba', pillan: 'conjFuego', zonda: 'conjViento', illapa: 'conjRayo', penitente: 'conjHielo' };
+const reloadClip = (C, a, wk) => (OWN[wk] && C[OWN[wk]]) || (a.mouth ? C.cebar : BLADES.has(wk) ? C.afilar : C.quebrar);
 
 function prepClips(J) {
   const clips = {};
@@ -467,12 +641,16 @@ function prepClips(J) {
     armL: names.map((n) => ARM_L.includes(n)),
     iR: ARM_R.map((n) => names.indexOf(n)),
     iL: ARM_L.map((n) => names.indexOf(n)),
+    // (anim-online: el termo de cebar va en la mano izquierda, desde su reposo)
+    iLook: ['neck', 'Head'].map((n) => names.indexOf(n)),
+    handRest: tb.LeftHand.getWorldQuaternion(new THREE.Quaternion()),
   };
   tmpW = names.map(() => new THREE.Quaternion());
   refA = names.map(() => new THREE.Quaternion());
   refB = names.map(() => new THREE.Quaternion());
   refC = names.map(() => new THREE.Quaternion());
   (window.__gaucho ||= {}).CL = CL;
+  window.__gaucho.SAB = SAB;
 }
 
 // un cuadro de un clip (el giro de cada hueso en el espacio del modelo y la cadera)
@@ -534,7 +712,7 @@ function want(G) {
 function play(G, dt, g) {
   const a = G.a;
   const r = a.r;
-  const C = CL.clips;
+  const C = (G.C = blendOn(a) ? CL.blend : CL.clips);
   if (!G.layers) {
     G.layers = [];
     G.cb ||= CL.names.map((n) => G.bones[n]);
@@ -565,13 +743,31 @@ function play(G, dt, g) {
   const over = r.pos.y - (Number.isFinite(floor) ? floor : r.pos.y);
   G.air = !r.downed && !r.ghost && !(r.swim >= 1) && (G.air ? over > 0.12 : over > 0.35);
   const wk = (a.wkey || '').split('|')[0];
-  G.two = TWO_HAND.has(wk);
+  // (anim-online: todo mate, también los de dos manos, va parado en la palma: Avatars.setGun)
+  G.two = TWO_HAND.has(wk) && !(globalThis.__mduNoAvatarBlend !== true && a.mouth);
   // lo que hace (Session 'act')
   const act = r.act;
   if (act && act.t !== G.actSeen) {
     G.actSeen = act.t;
     if (act.a === 'revive') G.kneel = Math.min(6, act.d || 3.5);
-    else if (ACTS[act.a] && C[ACTS[act.a][0]]) {
+    // (anim-online: cebar de verdad, el clip de Blender, o afilar la hoz;
+    // estirado a lo que dura la recarga: cebArms, termoAt)
+    // (las de filo se afilan; las que no son mate, la Gut y compañía, se quiebran y se cargan)
+    else if (act.a === 'reload' && C !== CL.clips && C.cebar && C.afilar && C.quebrar) {
+      G.ceb = { c: reloadClip(C, a, wk), t: 0, ct: 0, d: Math.max(0.8, act.d || ACTS.reload[1]), prop: wk === 'liquidificador' ? 'porongo' : 'termo' };
+      G.pour = null;
+    }
+    // con un mate (tiene boca: Avatars.setGun) no se recarga como un arma: se
+    // ceba con el termo (pourArm; el termo lo pone Avatars con G.pourK)
+    else if (act.a === 'reload' && a.mouth) G.pour ={ t: 0, d: Math.max(0.8, act.d || ACTS.reload[1]) };
+    // el Sable Corvo: el tajo que sigue del combo, o el saludo (sableArm)
+    else if (wk === 'sable' && (act.a === 'stab' || act.a === 'salute') && globalThis.__mduNoSableAvatar !== true) {
+      const chain = (G.sab && G.sab.kind === 'slash') || performance.now() - (G.sabEnd || -1e9) < 450;
+      // (cuál del combo: el que manda el que tajea; si no viene, el que sigue)
+      G.sabI = act.k != null ? act.k % 3 : chain ? ((G.sabI ?? -1) + 1) % 3 : 0;
+      G.sab = act.a === 'salute' ? { kind: 'salute', t: 0, d: Math.max(0.8, act.d || 3.4) } : { kind: 'slash', move: ['izq', 'der', 'arriba'][G.sabI], t: 0, d: Math.max(0.2, act.d || 0.45) };
+      G.act = null;
+    } else if (ACTS[act.a] && C[ACTS[act.a][0]]) {
       const c = C[ACTS[act.a][0]];
       G.act = { c, t: 0, rate: c.dur / Math.max(0.3, act.d || ACTS[act.a][1]) };
     }
@@ -648,6 +844,8 @@ function play(G, dt, g) {
   // los brazos según lo que tiene en la mano (los clips de moverse son con arma larga)
   holdArms(G, dt, top.key, W);
   // lo que hace, en la parte de arriba
+  // (G.actW: cuánto; anim-online: con el brazo del mate ocupado, el mate se esconde: Avatars)
+  G.actW = 0;
   if (G.act) {
     const A = G.act;
     A.t += dt * A.rate;
@@ -655,10 +853,16 @@ function play(G, dt, g) {
     if (u >= 1 || r.downed || r.dead || r.ghost || (r.swim || 0) >= 2) G.act = null;
     else {
       const w = Math.min(1, u / 0.1) * Math.min(1, (1 - u) / 0.15);
+      G.actW = C !== CL.clips ? w : 0;
       sample(A.c, A.t, false, tmpW, tmpH);
       for (let i = 0; i < CL.nb; i++) if (CL.upper[i]) W[i].slerp(tmpW[i], CL.upper[i] * w);
     }
   }
+  // el Sable Corvo: el tajo o el saludo, con el sable en la mano
+  if (G.sab) sableArm(G, dt, W, r);
+  // cebando (o afilando la hoz): los brazos del clip de Blender, respecto del pecho
+  if (G.ceb) cebArms(G, dt, W, r);
+  else G.cebK = G.mateRoll = 0;
   // de pie: hacia dónde mira, arriba o abajo (el lomo, el cuello y la cabeza; los
   // brazos con el arma, más)
   const upright = !r.downed && !r.dead && !r.corpse && !r.ghost && !((r.swim || 0) >= 2) && top.key !== 'kneel';
@@ -668,19 +872,24 @@ function play(G, dt, g) {
   // (con el mate de una mano la derecha lo apunta igual que un arma larga; la
   // izquierda, suelta, casi no sigue la mirada)
   const one = !!a.gun && !G.two;
-  const armK = G.act ? 0.4 : G.two || one || top.key.startsWith('loco') || top.key === 'crouchW' ? 0.85 : 0.4;
-  const armKL = one && !G.act ? 0.15 : armK;
+  const armK0 = G.act ? 0.4 : G.two || one || top.key.startsWith('loco') || top.key === 'crouchW' ? 0.85 : 0.4;
+  // (cebando mira el mate: los brazos casi no siguen la mirada)
+  const armK = G.cebK ? armK0 + (0.2 - armK0) * G.cebK : armK0;
+  const armKL = one && !G.act && !G.cebK ? 0.15 : armK;
   for (let i = 0; i < CL.nb; i++) {
     W[i].premultiply(qY);
     const k = CL.arm[i] ? (CL.armL[i] ? armKL : armK) : CL.aim[i];
     if (k && G.pitch) W[i].premultiply(qR.setFromAxisAngle(vr, -G.pitch * k));
   }
   // la cadera (el medio de los pies del clip, donde está el compañero)
-  const swimY = SWIM_Y[top.key];
+  // (de a poco: al pasar de flotar a nadar, o al salir del agua, el cuerpo
+  // saltaba 0,8 m de golpe)
+  const swimY = SWIM_Y[top.key] ?? 0;
+  G.swimY = G.swimY == null ? swimY : G.swimY + (swimY - G.swimY) * Math.min(1, dt * 4);
   vb.copy(CL.hipsRest).sub(CL.feetMid).add(vh).applyQuaternion(qY);
   vb.x += r.pos.x;
   vb.z += r.pos.z;
-  vb.y += (r.pos.y || 0) + (swimY ?? 0);
+  vb.y += (r.pos.y || 0) + G.swimY;
   // los huesos
   const B = G.cb;
   for (let i = 0; i < CL.nb; i++) {
@@ -689,6 +898,19 @@ function play(G, dt, g) {
   }
   G.bones.Hips.position.copy(vb).applyMatrix4(T.armInv);
   updateMW.call(G.root, true);
+  // cebando: la mano libre sube el termo arriba del mate
+  if (G.pour) pourArm(G, dt, r);
+  else G.pourK = 0;
+  // (el termo del cebado nuevo: rígido en la mano izquierda; Avatars lo pone)
+  if (G.ceb?.c.termo) termoAt(G);
+  else if (G.tm) G.tm.on = false;
+  // el mate de una mano, parado en la palma (palmMate; Avatars lo apoya en G.palm)
+  // (cebando, también el de dos manos: Avatars lo cambia por el de la palma)
+  const holdP = (G.ceb?.c.termo ? Math.max(G.two ? 0 : G.holdR || 0, G.cebK) : G.two ? 0 : G.holdR || 0) * (1 - G.actW);
+  if (gunMate(a) && holdP > 1e-3) {
+    palmMate(G, 'RightForeArm', 'RightHand', holdP, vF.set(Math.sin(yaw), 0, Math.cos(yaw)));
+    updateMW.call(G.root, true);
+  } else if (G.palm) G.palm.k = 0;
   // las piezas, desde los huesos (el arma y el mate, en la mano derecha)
   const M = a.mats;
   for (let i = 0; i < 13; i++) {
@@ -706,6 +928,58 @@ function play(G, dt, g) {
   G.mode = G.layers.map((L) => `${L.key}:${L.w.toFixed(2)}`).join(' ') + (G.act ? ' +act' : '');
 }
 
+// El Sable Corvo de un compañero (el Monumento): los tajos del combo (a la
+// izquierda, a la derecha y de arriba) y el saludo militar (E), con el sable
+// en la mano. Antes el tajo era la puñalada del facón con el sable escondido
+// y el saludo no se veía (el usuario, 2026-10-05). Todo el brazo derecho gira
+// alrededor del hombro (G.sabQ, en el espacio del muñeco: x a su izquierda, y
+// arriba, z adelante) y Avatars gira el sable igual (sabGun).
+// globalThis.__mduNoSableAvatar: como antes. (window.__gaucho.SAB: para probar)
+const SAB = {
+  // cada tajo: [eje, ángulo armado, ángulo al terminar]. Medidos para que el
+  // antebrazo, la mano y la hoja no atraviesen la cabeza, el ala del sombrero
+  // ni el poncho en ningún momento (S/monu-pasada/surubi/t_sabPen.mjs); el de
+  // arriba sube el brazo abierto, por arriba y al costado de la cabeza.
+  izq: [[-0.5, 1, 0.4], -0.8, 0.8],
+  der: [[-0.5, 1, 0.4], 0.8, -0.8],
+  arriba: [[1, 0, -0.9], -1.5, 0.6],
+  // cuánto del tajo es armarlo y cuánto el golpe (el resto, volver)
+  wind: 0.28,
+  swing: 0.3,
+  // el saludo: [eje, ángulo] (el brazo arriba, la hoja parada delante de la cara)
+  salute: [[1, 0.55, 0], -1.15],
+};
+const qSab = new THREE.Quaternion();
+const vSab = new THREE.Vector3();
+function sableArm(G, dt, W, r) {
+  const S = G.sab;
+  S.t += dt;
+  const u = S.t / S.d;
+  if (u >= 1 || r.downed || r.dead || r.ghost || (r.swim || 0) >= 2) {
+    G.sab = null;
+    G.sabQ = null;
+    G.sabEnd = performance.now();
+    return;
+  }
+  let ang;
+  let ax;
+  if (S.kind === 'salute') {
+    ax = SAB.salute[0];
+    // arriba enseguida, quieto, y baja al final
+    ang = SAB.salute[1] * sm(u / 0.12) * sm((1 - u) / 0.15);
+  } else {
+    const [a, a0, a1] = SAB[S.move] || SAB.izq;
+    ax = a;
+    const wn = SAB.wind;
+    const sw = SAB.swing;
+    ang = u < wn ? a0 * sm(u / wn) : u < wn + sw ? a0 + (a1 - a0) * sm((u - wn) / sw) : a1 * (1 - sm((u - wn - sw) / (1 - wn - sw)));
+  }
+  qSab.setFromAxisAngle(vSab.set(ax[0], ax[1], ax[2]).normalize(), ang);
+  // (el brazo, el antebrazo y la mano: el hombro queda)
+  for (let k = 1; k < CL.iR.length; k++) W[CL.iR[k]].premultiply(qSab);
+  (G.sabQ ||= new THREE.Quaternion()).copy(qSab);
+}
+
 // Los brazos según lo que lleva (los clips de caminar, correr y agachado
 // caminando son con arma larga; el quieto, el sprint, el salto y agachado
 // quieto, sin arma):
@@ -716,7 +990,7 @@ function play(G, dt, g) {
 //   la agarran como en el quieto con arma.
 // Cada brazo se pone respecto del pecho (sigue al lomo del clip) y entra y sale de a poco.
 function holdArms(G, dt, key, W) {
-  const C = CL.clips;
+  const C = G.C || CL.clips;
   const armed = !!G.a.gun;
   const one = armed && !G.two;
   const two = armed && G.two;
@@ -748,6 +1022,256 @@ function holdArms(G, dt, key, W) {
     const amp = loco ? Math.max(SWING_MIN, Math.min(1, G.speed / SWING_FULL)) : 0;
     armTo(W, CL.iL, refB, refC, amp, G.holdL);
   }
+}
+
+// Cebar (la recarga con un mate): el brazo libre (el Left del modelo) lleva la
+// mano arriba y al costado del mate, con dos huesos (hombro y codo, el codo
+// para abajo y afuera); entra y sale de a poco. G.pourK: cuánto (Avatars
+// inclina el termo con eso y echa el chorro).
+const POUR_UP = 0.17;
+const POUR_SIDE = 0.1;
+const pA = new THREE.Vector3();
+const pE = new THREE.Vector3();
+const pH = new THREE.Vector3();
+const pT = new THREE.Vector3();
+const pPole = new THREE.Vector3();
+const vF = new THREE.Vector3();
+const vL = new THREE.Vector3();
+const qW = new THREE.Quaternion();
+const qP = new THREE.Quaternion();
+const qD = new THREE.Quaternion();
+const qL = new THREE.Quaternion();
+const sm = (x) => {
+  const k = Math.max(0, Math.min(1, x));
+  return k * k * (3 - 2 * k);
+};
+function pourArm(G, dt, r) {
+  const P = G.pour;
+  P.t += dt;
+  const u = P.t / P.d;
+  if (u >= 1 || r.downed || r.dead || r.ghost || (r.swim || 0) >= 2) {
+    G.pour = null;
+    G.pourK = 0;
+    return;
+  }
+  const w = sm(u / 0.2) * sm((1 - u) / 0.18);
+  // (el termo se inclina un poco después de llegar y se endereza antes de irse)
+  G.pourK = sm((u - 0.16) / 0.14) * sm((0.86 - u) / 0.12);
+  const B = G.bones;
+  const yaw = (r.yaw || 0) + Math.PI;
+  vF.set(Math.sin(yaw), 0, Math.cos(yaw));
+  vL.set(Math.cos(yaw), 0, -Math.sin(yaw));
+  // (arriba del mate: parado en la palma, la boca queda más adelante y más alta que la muñeca)
+  if (G.palm?.k > 0.5) pT.copy(G.palm.at).setY(G.palm.at.y + 0.1);
+  else B.RightHand.getWorldPosition(pT);
+  pT.y += POUR_UP;
+  pT.addScaledVector(vL, POUR_SIDE).addScaledVector(vF, 0.02);
+  B.LeftArm.getWorldPosition(pA);
+  B.LeftForeArm.getWorldPosition(pE);
+  B.LeftHand.getWorldPosition(pH);
+  const l1 = pA.distanceTo(pE);
+  const l2 = pE.distanceTo(pH);
+  const to = vb.subVectors(pT, pA);
+  const d = Math.max(0.05, Math.min(l1 + l2 - 1e-3, to.length()));
+  to.normalize();
+  // el codo: en el plano del brazo, del lado de abajo y afuera
+  pPole.set(0, -1, 0).addScaledVector(vL, 0.6).addScaledVector(vF, -0.3);
+  pPole.addScaledVector(to, -pPole.dot(to)).normalize();
+  const cosA = Math.max(-1, Math.min(1, (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d)));
+  const sinA = Math.sqrt(1 - cosA * cosA);
+  const elbow = vc.copy(pA).addScaledVector(to, l1 * cosA).addScaledVector(pPole, l1 * sinA);
+  const hand = va.copy(pA).addScaledVector(to, d);
+  // el brazo: del codo de ahora al de la solución
+  turn(B.LeftArm, vs.subVectors(pE, pA).normalize(), vb.subVectors(elbow, pA).normalize(), w);
+  B.LeftArm.updateMatrixWorld(true);
+  B.LeftForeArm.getWorldPosition(pE);
+  B.LeftHand.getWorldPosition(pH);
+  turn(B.LeftForeArm, vs.subVectors(pH, pE).normalize(), vb.subVectors(hand, pE).normalize(), w);
+  B.LeftForeArm.updateMatrixWorld(true);
+}
+
+// anim-online (2026-10-04): cebar con el clip de Blender (clips-online.json
+// 'cebar'): el mate en la palma derecha; la izquierda saca el termo de atrás
+// de la cadera, lo sube al lado del mate, lo inclina, vierte y lo guarda.
+// Dura lo que la recarga: si es más larga que el clip se estira lo de verter
+// (c.termo.phases), si es más corta se apura todo parejo. Los brazos van
+// respecto del pecho (armTo) sobre lo que haga el resto del cuerpo; el cuello
+// y la cabeza miran un poco el mate. 'afilar' (la hoz) igual, sin termo.
+function cebArms(G, dt, W, r) {
+  const E = G.ceb;
+  E.t += dt;
+  if (E.t >= E.d || r.downed || r.dead || r.ghost || (r.swim || 0) >= 2) {
+    G.ceb = null;
+    G.cebK = 0;
+    return;
+  }
+  const c = E.c;
+  const ph = c.termo?.phases;
+  // (la Lata: un cartucho cada c.dur, los que hagan falta)
+  if (c.cycle) E.ct = E.t % c.dur;
+  else if (E.d <= c.dur || !ph) E.ct = (E.t / E.d) * c.dur;
+  else {
+    const x = E.d - c.dur;
+    E.ct = E.t < ph[0] ? E.t : E.t < ph[1] + x ? ph[0] + ((E.t - ph[0]) * (ph[1] - ph[0])) / (ph[1] - ph[0] + x) : E.t - x;
+  }
+  const w = sm(E.t / 0.2) * sm((E.d - E.t) / 0.2);
+  G.cebK = w;
+  // (los Gemelos: la palma se da vuelta para volcar la yerba; palmMate y Avatars giran el mate igual)
+  if (c.roll) {
+    const x = Math.min(c.roll.length - 1.001, E.ct * 15);
+    const i = Math.floor(x);
+    G.mateRoll = ((c.roll[i] + (c.roll[i + 1] - c.roll[i]) * (x - i)) * Math.PI * w) / 180;
+  } else G.mateRoll = 0;
+  sample(c, E.ct, false, tmpW, tmpH);
+  armTo(W, CL.iR, tmpW, null, 0, w);
+  armTo(W, CL.iL, tmpW, null, 0, w);
+  for (const i of CL.iLook) W[i].slerp(tmpW[i], 0.6 * w);
+}
+
+// El termo en la mano izquierda (G.tm, en el mundo; Avatars lo dibuja): sus
+// ejes en el reposo de la mano (c.termo up0/sp0, del clip) y el agarre (grip,
+// en los ejes del termo); se ve entre show[0] y show[1] y echa agua en pour.
+function termoAt(G) {
+  const E = G.ceb;
+  const c = E.c;
+  const T = c.termo;
+  if (!c.tK) {
+    const up = new THREE.Vector3().fromArray(T.up0);
+    const sp = new THREE.Vector3().fromArray(T.sp0);
+    const z = new THREE.Vector3().crossVectors(sp, up);
+    c.tK = CL.handRest.clone().invert().multiply(new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(sp, up, z)));
+    c.tG = new THREE.Vector3().fromArray(T.grip);
+  }
+  const tm = (G.tm ||= { pos: new THREE.Vector3(), q: new THREE.Quaternion(), on: false, pour: false, k: 1 });
+  G.bones.LeftHand.matrixWorld.decompose(tm.pos, tm.q, vs);
+  tm.q.multiply(c.tK);
+  tm.pos.add(va.copy(c.tG).applyQuaternion(tm.q));
+  tm.on = E.ct >= T.show[0] && E.ct <= T.show[1];
+  tm.pour = E.ct >= T.pour[0] && E.ct <= T.pour[1];
+  tm.k = T.k;
+  tm.prop = E.prop;
+}
+
+// ---------------- el mate en la palma ----------------
+// El mate va arriba de la mano: la mano horizontal, la palma para arriba y el
+// mate parado encima (el usuario, 2026-10-03: la mano quedaba vertical, como
+// la del arma, y el mate al lado de los dedos, atravesándolos). El antebrazo
+// gira sobre su eje lo que haga falta para que la palma mire arriba y la
+// muñeca deja los dedos casi horizontales; G.palm: dónde se apoya el mate.
+// Los ejes de la mano del modelo (en reposo, con los brazos abajo): +Y va a
+// los dedos y la palma mira al cuerpo (-X la derecha, +X la izquierda).
+const PALM = { RightHand: new THREE.Vector3(-1, 0, 0), LeftHand: new THREE.Vector3(1, 0, 0) };
+// de la muñeca al medio de la palma (a lo largo de los dedos) y de los huesos
+// a la piel de la palma
+const PALM_AT = 0.095;
+const PALM_SKIN = 0.03;
+// lo más que se dobla la muñeca hacia atrás para dejar los dedos horizontales (rad)
+const WRIST_MAX = 1.1;
+const UP_P = new THREE.Vector3(0, 1, 0);
+const mP = new THREE.Matrix4();
+const mX = new THREE.Vector3();
+const mY = new THREE.Vector3();
+const mZ = new THREE.Vector3();
+const pF = new THREE.Vector3();
+const pN = new THREE.Vector3();
+const qH = new THREE.Quaternion();
+function palmMate(G, fore, hand, k, fwd) {
+  const B = G.bones;
+  const F = B[fore];
+  const Hd = B[hand];
+  F.getWorldPosition(pE);
+  Hd.getWorldPosition(pH);
+  const d = pT.subVectors(pH, pE).normalize();
+  // el antebrazo, sobre su eje: la palma hacia arriba (lo que se pueda: con el
+  // brazo colgando, nada)
+  Hd.getWorldQuaternion(qW);
+  const n0 = pN.copy(PALM[hand]).applyQuaternion(qW);
+  n0.addScaledVector(d, -n0.dot(d));
+  const n1 = pF.copy(UP_P).addScaledVector(d, -d.y);
+  if (n0.lengthSq() > 1e-6 && n1.lengthSq() > 0.04) {
+    n0.normalize();
+    n1.normalize();
+    const c = n0.dot(n1);
+    if (c < -0.9999) qD.setFromAxisAngle(d, Math.PI);
+    else qD.setFromUnitVectors(n0, n1);
+    F.getWorldQuaternion(qW);
+    F.parent.getWorldQuaternion(qP);
+    qL.copy(qP).invert().multiply(qD.multiply(qW));
+    F.quaternion.slerp(qL, k);
+    F.updateMatrixWorld(true);
+  }
+  // la mano: los dedos para adelante, casi horizontales (la muñeca se dobla
+  // hasta WRIST_MAX), y la palma arriba
+  const f = pF.set(d.x, 0, d.z);
+  const hl = f.length();
+  if (hl < 0.3) f.lerp(vh.copy(fwd).multiplyScalar(0.3), 1 - hl / 0.3);
+  f.normalize();
+  const bend = Math.acos(Math.max(-1, Math.min(1, f.dot(d))));
+  if (bend > WRIST_MAX) f.lerp(d, 1 - WRIST_MAX / bend).normalize();
+  const n = pN.copy(UP_P).addScaledVector(f, -f.y).normalize();
+  // (anim-online: los Gemelos vuelcan: la palma girada sobre los dedos)
+  if (G.mateRoll) n.applyAxisAngle(f, -G.mateRoll);
+  const s = hand === 'LeftHand' ? 1 : -1;
+  mX.copy(n).multiplyScalar(s);
+  mY.copy(f);
+  mZ.crossVectors(mX, mY);
+  qH.setFromRotationMatrix(mP.makeBasis(mX, mY, mZ));
+  Hd.getWorldQuaternion(qW);
+  qW.slerp(qH, k);
+  Hd.parent.getWorldQuaternion(qP);
+  Hd.quaternion.copy(qP.invert().multiply(qW));
+  Hd.updateMatrixWorld(true);
+  // la palma (donde se apoya el mate): sobre los huesos, a lo largo de los dedos
+  Hd.getWorldPosition(pH);
+  vb.set(0, 1, 0).applyQuaternion(qW);
+  const P = (G.palm ||= { at: new THREE.Vector3(), up: new THREE.Vector3(), fwd: new THREE.Vector3(), k: 0 });
+  P.at.copy(pH).addScaledVector(vb, PALM_AT).addScaledVector(vc.copy(PALM[hand]).applyQuaternion(qW), PALM_SKIN);
+  P.up.copy(UP_P);
+  if (G.mateRoll) P.up.copy(PALM[hand]).applyQuaternion(qW);
+  P.fwd.copy(fwd);
+  P.k = k;
+}
+
+// El mate de piezas de la mano (Avatars: a.hand.children[0]) parado en la
+// palma del modelo (G.palm), girado con el cuerpo (la bombilla para el que lo
+// tiene). La mano de las piezas sigue siendo la del brazo: el mate se acomoda
+// respecto de ella.
+const MATE_HALF = 0.063;
+const mW = new THREE.Matrix4();
+const mL = new THREE.Matrix4();
+const vS = new THREE.Vector3();
+function seatMate(G, mate, M6) {
+  const P = G.palm;
+  const a = G.a;
+  // (lo de antes, para devolverlo: unseatMate)
+  const U = mate.userData;
+  if (!U.palm) U.palm = { p: mate.position.clone(), q: mate.quaternion.clone() };
+  mW.multiplyMatrices(a.group.matrixWorld, M6);
+  mW.decompose(va, qa, vS);
+  // (la bombilla, que se inclina hacia +x del mate, para el lado del cuerpo)
+  qb.setFromAxisAngle(UP_P, Math.atan2(P.fwd.z, -P.fwd.x));
+  vc.copy(P.at).addScaledVector(P.up, MATE_HALF * vS.x * mate.scale.y);
+  mL.compose(vc, qb, va.copy(vS).multiply(mate.scale));
+  // (en posición y giro, no en la matriz: las escenas lo clonan para soltarlo)
+  mL.premultiply(mW.invert()).decompose(mate.position, mate.quaternion, vS);
+  mate.updateMatrixWorld(true);
+}
+
+function unseatMate(mate) {
+  const U = mate?.userData;
+  if (!U?.palm) return;
+  mate.position.copy(U.palm.p);
+  mate.quaternion.copy(U.palm.q);
+  U.palm = null;
+}
+
+// Gira un hueso (en el mundo) para que la dirección `from` pase a `to`, en k.
+function turn(bone, from, to, k) {
+  bone.getWorldQuaternion(qW);
+  bone.parent.getWorldQuaternion(qP);
+  qD.setFromUnitVectors(from, to);
+  qL.copy(qP).invert().multiply(qD.multiply(qW));
+  bone.quaternion.slerp(qL, k);
 }
 
 // Un brazo (idx, de padre a hijo) hacia el de una pose de referencia: el giro
@@ -786,4 +1310,160 @@ function dirWeights(ang) {
     DW[3] = 1 - DW[1];
   }
   return DW;
+}
+
+// ---------------- clips de cinemática (hechos en Blender) ----------------
+// Las tomas con el movimiento hecho en Blender (IK, física; mismo formato que
+// clips.json: por cuadro, el giro de cada hueso en el espacio del modelo y la
+// cadera) ponen el cuerpo directo, sin la pose de piezas: el gaucho queda con
+// el origen del clip en (x, y, z), mirando hacia `yaw`, en el segundo `t`.
+// Las piezas se rearman desde los huesos (la mano de la linterna, el mate y lo
+// que cuelga de ellas siguen al cuerpo; la 6 es la mano derecha del modelo).
+// false: el gaucho o sus clips todavía no están (queda la pose de piezas).
+export const cineClip = (c) => ({ ...c, q: Float32Array.from(c.q), hips: Float32Array.from(c.hips) });
+
+// Un clip de los de siempre (clips.json: 'tread', 'crawl', 'idle'...) para las
+// cinemáticas; null si todavía no bajaron.
+export const gauchoClip = (name) => (clipsReady() ? CL.clips[name] || null : null);
+
+const qT = new THREE.Quaternion();
+const qLk = new THREE.Quaternion();
+const AX_X = new THREE.Vector3(1, 0, 0);
+// La pose que tiene ahora un gaucho (giro de cada hueso y la cadera, en el
+// mundo), para pasar de ahí a un clip sin salto (poseCineClip o.snap).
+export function cineSnap(a) {
+  const G = a?.gs;
+  if (!G?.on || !clipsReady()) return null;
+  return { W: CL.names.map((n) => G.bones[n].getWorldQuaternion(new THREE.Quaternion())), h: G.bones.Hips.getWorldPosition(new THREE.Vector3()) };
+}
+
+// o (opcional): loop; snap (cineSnap) y sw (0..1: cuánto del clip nuevo): se
+// mezcla desde esa pose, cadera incluida; from { c, t, loop } y w (0..1: cuánto del clip nuevo,
+// para pasar de uno a otro sin salto); look (rad, + mira para arriba: cuello y
+// cabeza); tilt (rad, el cuerpo entero inclinado hacia adelante desde los pies:
+// una pendiente).
+export function poseCineClip(a, c, t, x, y, z, yaw, o = null) {
+  const G = a.gs;
+  if (!G?.on || !clipsReady()) return false;
+  G.cb ||= CL.names.map((n) => G.bones[n]);
+  G.cW ||= CL.names.map(() => new THREE.Quaternion());
+  const W = G.cW;
+  sample(c, t, !!o?.loop, W, vh);
+  if (o?.from && o.w < 1) {
+    sample(o.from.c, o.from.t, !!o.from.loop, tmpW, tmpH);
+    const w = Math.max(0, o.w);
+    for (let i = 0; i < CL.nb; i++) W[i].copy(tmpW[i].slerp(W[i], w));
+    vh.copy(tmpH.lerp(vh, w));
+  }
+  if (o?.look) {
+    const iN = CL.names.indexOf('neck');
+    const iH = CL.names.indexOf('Head');
+    W[iN].premultiply(qLk.setFromAxisAngle(AX_X, -o.look * 0.4));
+    W[iH].premultiply(qLk.setFromAxisAngle(AX_X, -o.look));
+  }
+  // (turn: rad, la cabeza y el cuello giran para su izquierda (+) o derecha
+  // sobre el clip, como headY de las piezas: ui/LuisonArrival)
+  if (o?.turn) {
+    const iN = CL.names.indexOf('neck');
+    const iH = CL.names.indexOf('Head');
+    W[iN].premultiply(qLk.setFromAxisAngle(UP_C, o.turn * 0.45));
+    W[iH].premultiply(qLk.setFromAxisAngle(UP_C, o.turn));
+  }
+  qY.setFromAxisAngle(UP_C, yaw);
+  vb.copy(CL.hipsRest).sub(CL.feetMid).add(vh);
+  if (o?.tilt) {
+    qT.setFromAxisAngle(AX_X, o.tilt);
+    for (let i = 0; i < CL.nb; i++) W[i].premultiply(qT);
+    vb.applyQuaternion(qT);
+  }
+  for (let i = 0; i < CL.nb; i++) W[i].premultiply(qY);
+  vb.applyQuaternion(qY);
+  if (o?.snap && o.sw < 1) {
+    const k = Math.max(0, o.sw);
+    vb.x += x;
+    vb.y += y;
+    vb.z += z;
+    vb.lerpVectors(o.snap.h, vb, k);
+    vb.x -= x;
+    vb.y -= y;
+    vb.z -= z;
+    for (let i = 0; i < CL.nb; i++) W[i].copy(qa.copy(o.snap.W[i]).slerp(W[i], k));
+  }
+  vb.x += x;
+  vb.y += y;
+  vb.z += z;
+  for (let i = 0; i < CL.nb; i++) {
+    const pi = CL.parent[i];
+    G.cb[i].quaternion.copy(qa.copy(pi >= 0 ? W[pi] : T.armQ).invert()).multiply(W[i]);
+  }
+  G.bones.Hips.position.copy(vb).applyMatrix4(T.armInv);
+  updateMW.call(G.root, true);
+  const M = a.mats;
+  for (let i = 0; i < 13; i++) M[i].multiplyMatrices(G.bones[PART_BONE[SWAP[i]]].matrixWorld, CL.OFF[SWAP[i]]);
+  for (const [part, fore, hand] of HANDS_CLIP) {
+    G.bones[hand].getWorldPosition(va);
+    G.bones[fore].getWorldPosition(vc);
+    va.addScaledVector(vc.subVectors(va, vc).normalize(), GRIP);
+    M[part].decompose(vc, qa, vs);
+    vc.copy(HAND_AT).applyQuaternion(qa);
+    M[part].setPosition(va.sub(vc));
+  }
+  shieldOut(G);
+  snapshot(G);
+  return true;
+}
+
+// Algo puesto en la cabeza del gaucho (los anteojos del Canchero): obj se arma
+// en el espacio de la malla (centímetros, +z adelante, +y arriba: como FACE) y
+// queda colgado del hueso de la cabeza.
+export function headProp(a, obj) {
+  const G = a?.gs;
+  if (!G?.on) return null;
+  const sk = G.mesh.skeleton;
+  const hi = sk.bones.findIndex((b) => b.name === 'Head');
+  const wrap = new THREE.Group();
+  wrap.matrixAutoUpdate = false;
+  wrap.matrix.copy(sk.boneInverses[hi]).multiply(G.mesh.bindMatrix);
+  wrap.add(obj);
+  sk.bones[hi].add(wrap);
+  return wrap;
+}
+export const FACE_EYES = { x: (FACE.eyeXR + FACE.eyeXL) / 2, y: FACE.eyeY, half: (FACE.eyeXR - FACE.eyeXL) / 2 };
+
+// Al revés que poseCineClip con snap: el gaucho ya tomó su pose de siempre
+// (piezas o los clips de los compañeros, net/Avatars) y se la mezcla desde
+// `snap` (la pose del clip de escena que dejó), para que no salte al volver a
+// caminar (ui/TowerCinematic). w: 0 = todo snap, 1 = la pose de ahora.
+export function cineBlendFrom(a, snap, w) {
+  const G = a?.gs;
+  if (!G?.on || !snap || w >= 1 || !clipsReady()) return false;
+  G.cb ||= CL.names.map((n) => G.bones[n]);
+  G.cW ||= CL.names.map(() => new THREE.Quaternion());
+  const W = G.cW;
+  const k = Math.max(0, w);
+  updateMW.call(G.root, true);
+  for (let i = 0; i < CL.nb; i++) {
+    G.cb[i].getWorldQuaternion(W[i]);
+    W[i].copy(qa.copy(snap.W[i]).slerp(W[i], k));
+  }
+  G.bones.Hips.getWorldPosition(vb);
+  vb.lerpVectors(snap.h, vb, k);
+  for (let i = 0; i < CL.nb; i++) {
+    const pi = CL.parent[i];
+    G.cb[i].quaternion.copy(qa.copy(pi >= 0 ? W[pi] : T.armQ).invert()).multiply(W[i]);
+  }
+  G.bones.Hips.position.copy(vb).applyMatrix4(T.armInv);
+  updateMW.call(G.root, true);
+  const M = a.mats;
+  for (let i = 0; i < 13; i++) M[i].multiplyMatrices(G.bones[PART_BONE[SWAP[i]]].matrixWorld, CL.OFF[SWAP[i]]);
+  for (const [part, fore, hand] of HANDS_CLIP) {
+    G.bones[hand].getWorldPosition(va);
+    G.bones[fore].getWorldPosition(vc);
+    va.addScaledVector(vc.subVectors(va, vc).normalize(), GRIP);
+    M[part].decompose(vc, qa, vs);
+    vc.copy(HAND_AT).applyQuaternion(qa);
+    M[part].setPosition(va.sub(vc));
+  }
+  snapshot(G);
+  return true;
 }

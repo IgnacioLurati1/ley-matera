@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { assetUrl } from '../../lib/assets';
-import { warmSpot } from './bossSkin';
+import { warmSpot, cullList } from './bossSkin';
 
 // El Cuervo con cuerpo de verdad: un modelo de Meshy (malla y textura) con un
 // esqueleto armado por código (tools: el bake del cuervo), en lugar de las
@@ -34,6 +34,21 @@ const AY = new THREE.Vector3(0, 1, 0);
 const AZ = new THREE.Vector3(0, 0, 1);
 const qa = new THREE.Quaternion();
 const qb = new THREE.Quaternion();
+// las alas (el de +x, s = 1, y el de -x) y las patas: los nombres de sus huesos
+const WINGS = ['L', 'R'].map((side, i) => ({ s: i ? -1 : 1, arm: 'arm' + side, fore: 'fore' + side, hand: 'hand' + side, tip: 'tip' + side }));
+const LEGS = ['L', 'R'].map((side) => ({ leg: 'leg' + side, shin: 'shin' + side, foot: 'foot' + side }));
+
+// El hueso n en su reposo (null si el modelo no lo tiene) y un giro encima, en
+// el espacio del padre (los ejes del bake: cada hueso sale con el mismo marco
+// que el modelo, +z adelante).
+function rest(K, n) {
+  const b = K.bones[n];
+  if (b) b.quaternion.copy(K.rest[n]);
+  return b;
+}
+function pre(b, ax, a) {
+  if (b) b.quaternion.premultiply(qa.setFromAxisAngle(ax, a));
+}
 
 export default class CrowSkin {
   constructor(crow) {
@@ -65,6 +80,10 @@ export default class CrowSkin {
       }
     });
     this.bones = bones;
+    // el recorte: la esfera del modelo quieto con margen (las alas giran, no se
+    // estiran; bossSkin cullList). Sin recorte mientras se calienta (warm)
+    this.cull = cullList(root, 1.3);
+    for (const L of this.cull) L.o.boundingSphere.set(L.c, L.r);
     // el borde de noche (uniform: el programa es uno solo, prendido o apagado)
     this.rimU = { value: new THREE.Color(0) };
     if (this.mat) {
@@ -96,6 +115,11 @@ export default class CrowSkin {
     this.perchY = PERCH_Y;
     this.state = 2;
     if (!C.rig.visible) this.warm();
+    else this.cullOn(true);
+  }
+
+  cullOn(on) {
+    for (const L of this.cull) L.o.frustumCulled = on;
   }
 
   // Bajado antes de que venga (Crow lo arma al empezar): la textura sube, el
@@ -125,6 +149,7 @@ export default class CrowSkin {
     g.scene.add(root);
     place();
     root.visible = true;
+    this.cullOn(false);
     R?.compileAsync?.(root, g.camera, g.scene).catch(() => {});
     let n = 0;
     const back = () => {
@@ -136,6 +161,7 @@ export default class CrowSkin {
       }
       root.position.set(0, 0, 0);
       C.rig.add(root);
+      this.cullOn(true);
     };
     requestAnimationFrame(back);
   }
@@ -158,69 +184,56 @@ export default class CrowSkin {
     const night = Math.max(0, Math.min(1, (0.03 - L) / 0.02));
     this.nightK = (this.nightK ?? night) + (night - (this.nightK ?? night)) * Math.min(1, dt * 2);
     this.rimU.value.copy(RIM).multiplyScalar(this.nightK * RIM_K);
-    const B = this.bones;
     dt = Math.min(0.1, dt);
-    const set = (n, fn) => {
-      const b = B[n];
-      if (!b) return;
-      b.quaternion.copy(this.rest[n]);
-      fn(b);
-    };
-    // (los giros van en el espacio del padre, sobre el reposo; los ejes del
-    // bake: cada hueso sale con el mismo marco que el modelo, +z adelante)
-    const pre = (b, ax, a) => b.quaternion.premultiply(qa.setFromAxisAngle(ax, a));
+    // (los giros van en el espacio del padre, sobre el reposo: rest y pre)
+    let b;
     // el modelo está parado en el aire (el cuerpo levantado pitch0): volando
     // se nivela; posado queda así, casi derecho
     const st = C.state;
     const fly = st === 'perch' || st === 'dead' ? 0 : 1;
     this.fk = (this.fk ?? fly) + (fly - (this.fk ?? fly)) * Math.min(1, dt * 4);
     const lift = this.meta.pitch0 * this.fk;
-    set('root', (b) => {
-      pre(b, AX, P.pitch * (0.5 + this.fk * 0.5) + lift);
-      pre(b, AZ, P.roll);
-    });
+    b = rest(this, 'root');
+    pre(b, AX, P.pitch * (0.5 + this.fk * 0.5) + lift);
+    pre(b, AZ, P.roll);
     // la cabeza mira adelante aunque el cuerpo se nivele (y al que persigue)
     const hr = C.head.rotation;
-    set('neck', (b) => {
-      pre(b, AY, hr.y * 0.4);
-      pre(b, AX, -lift * 0.45);
-    });
-    set('head', (b) => {
-      pre(b, AY, hr.y * 0.6);
-      pre(b, AX, (hr.x - 0.25) - lift * 0.55);
-    });
+    b = rest(this, 'neck');
+    pre(b, AY, hr.y * 0.4);
+    pre(b, AX, -lift * 0.45);
+    b = rest(this, 'head');
+    pre(b, AY, hr.y * 0.6);
+    pre(b, AX, (hr.x - 0.25) - lift * 0.55);
     // (el pico de Meshy está cerrado: se abre poco, si no se rompe)
-    set('jaw', (b) => pre(b, AX, Math.min(0.2, C.jaw.rotation.x * 0.35)));
+    pre(rest(this, 'jaw'), AX, Math.min(0.2, C.jaw.rotation.x * 0.35));
     // las alas: el de +x (s = 1) y el de -x
-    for (const [side, s] of [['L', 1], ['R', -1]]) {
-      set('arm' + side, (b) => {
-        pre(b, AY, -s * P.sweep * 0.6);
-        pre(b, AZ, s * P.shoulder);
-      });
-      set('fore' + side, (b) => {
-        pre(b, AY, -s * P.sweep * 0.35);
-        pre(b, AZ, s * P.hand * 0.35);
-      });
-      set('hand' + side, (b) => {
-        pre(b, AY, -s * P.sweep * 0.35);
-        pre(b, AZ, s * P.hand * 0.65);
-      });
+    for (const W of WINGS) {
+      const s = W.s;
+      b = rest(this, W.arm);
+      pre(b, AY, -s * P.sweep * 0.6);
+      pre(b, AZ, s * P.shoulder);
+      b = rest(this, W.fore);
+      pre(b, AY, -s * P.sweep * 0.35);
+      pre(b, AZ, s * P.hand * 0.35);
+      b = rest(this, W.hand);
+      pre(b, AY, -s * P.sweep * 0.35);
+      pre(b, AZ, s * P.hand * 0.65);
       // las puntas se abren como dedos (para atrás) y se cierran plegadas
-      set('tip' + side, (b) => pre(b, AY, -s * (P.open - 0.8) * 0.35));
+      pre(rest(this, W.tip), AY, -s * (P.open - 0.8) * 0.35);
     }
     // la cola: sube y baja, y se abre en abanico
     const fan = (P.fan - 1) * 0.35;
-    set('tail', (b) => pre(b, AX, -C.tail.rotation.x));
-    set('tailL', (b) => pre(b, AY, fan));
-    set('tailR', (b) => pre(b, AY, -fan));
+    pre(rest(this, 'tail'), AX, -C.tail.rotation.x);
+    pre(rest(this, 'tailL'), AY, fan);
+    pre(rest(this, 'tailR'), AY, -fan);
     // las patas: recogidas para atrás volando; posado, agachado (las patas del
     // modelo son más largas que las de las piezas: dobladas, el cuerpo queda a perchY)
     const tuck = Math.min(1, C.legs.rotation.x / 1.3);
     const crouch = (1 - tuck) * (1 - this.fk);
-    for (const side of ['L', 'R']) {
-      set('leg' + side, (b) => pre(b, AX, tuck * 0.9 - crouch * CROUCH[0]));
-      set('shin' + side, (b) => pre(b, AX, tuck * 0.5 + crouch * CROUCH[1]));
-      set('foot' + side, (b) => pre(b, AX, tuck * 0.6 - crouch * CROUCH[2]));
+    for (const G of LEGS) {
+      pre(rest(this, G.leg), AX, tuck * 0.9 - crouch * CROUCH[0]);
+      pre(rest(this, G.shin), AX, tuck * 0.5 + crouch * CROUCH[1]);
+      pre(rest(this, G.foot), AX, tuck * 0.6 - crouch * CROUCH[2]);
     }
   }
 }

@@ -7,10 +7,11 @@ import { chalkTexture, perkLabel, toTexture } from '../core/textures';
 import { buildMate, buildKnife, buildGrenade, getMats } from '../weapons/viewmodels';
 import { camoFor } from '../weapons/camos';
 import { supremoOn } from '../core/eggs';
-import { mesh, boxGeo, cylGeo, mergeByMaterial } from './props';
+import { mesh, boxGeo, cylGeo, mergeByMaterial, compactGroup } from './props';
 import { buildBoxSkin } from './BoxSkins';
 import { buildLock, lockMats, disposeLock } from './lockSkins';
 import { buildPerkMachine, MACHINE } from './perkMachines';
+import { freezeDoors, castleDoorsOn, leanGroup } from './staticLean';
 import { cherryFx } from '../fx/cherryFx';
 import { maizal } from '../entities/maizaster';
 
@@ -20,7 +21,7 @@ const LEVER_ON = 0.6;
 import { DOOR_H } from './World';
 import { cornMesh } from './Farm';
 import { buildDrawbridge } from './castleBridge';
-import { vallaDoor, bronzeDoor } from './monumentoDoors';
+import { vallaDoor, bronzeDoor, rejaDoor } from './monumentoDoors';
 import { sableModel } from '../weapons/sableModels';
 
 // ¿Sale en la caja de este mapa? (`only`: los de un mapa solo; el Challenge de
@@ -70,6 +71,10 @@ export default class Interactables {
     this.buildPap();
     this.buildBox();
     this.buildRepair();
+    // lo que arranca escondido (los mates de las paredes antes de comprarlos,
+    // los de la caja, las cajas de la liquidación) no se recorre cada cuadro
+    // mientras no se vea (core/matrixCache.js mcSleep)
+    if (!(globalThis.__mduNoMerge || globalThis.__mduNo1d)) for (const c of this.root.children) if (!c.visible) c.mcSleep = true;
     this.current = null;
     this.holdT = 0;
   }
@@ -118,6 +123,7 @@ export default class Interactables {
       group.position.set(cx, fy, cz);
       group.rotation.y = horizontal ? 0 : Math.PI / 2;
       const pieces = [];
+      let closed = null;
       if (d.kind === 'gate') {
         // tranquera de dos hojas: travesaños, la diagonal y el poste de cada lado
         for (const s of [-1, 1]) {
@@ -148,6 +154,15 @@ export default class Interactables {
         const [c0x, c0z] = d.cells[0];
         const side = horizontal ? (zOf(c0x, c0z + 1) === d.zones[1] ? 1 : -1) : zOf(c0x + 1, c0z) === d.zones[1] ? 1 : -1;
         castleDoor(M, group, pieces, width, side, d.kind === 'reja');
+      } else if (FEATURES.monumento && d.kind === 'reja') {
+        // el Monumento: la reja de la Cripta a la Proa abre en dos hojas hacia
+        // adentro de la Cripta (corriendo de costado se metía en la pared)
+        const zOf = (x, z) => (world.inside(x, z) ? world.zoneKeys[world.zone[world.idx(x, z)]] : null);
+        const [c0x, c0z] = d.cells[0];
+        const side = horizontal ? (zOf(c0x, c0z + 1) === d.zones[1] ? 1 : -1) : zOf(c0x + 1, c0z) === d.zones[1] ? 1 : -1;
+        rejaDoor(M, group, pieces, width, DOOR_H, -side);
+        // (cada hoja: una malla por material)
+        for (const p of pieces) mergeByMaterial(p.obj);
       } else if (d.kind === 'reja' || d.kind === 'vida') {
         // reja de hierro que corre para un costado (la de gaucho life tiene una cerradura que chisporrotea)
         const slide = new THREE.Group();
@@ -171,7 +186,8 @@ export default class Interactables {
           hinge.add(mesh(boxGeo(width / 2 - 0.02, DOOR_H - 0.05, 0.12), M.woodDark, (-s * width) / 4, DOOR_H / 2, 0));
           for (const y of [0.4, 1.35, 2.3]) hinge.add(mesh(boxGeo(width / 2 - 0.08, 0.1, 0.15), M.iron, (-s * width) / 4, y, 0));
           for (let k = 0; k < 3; k++) hinge.add(mesh(boxGeo(0.06, 0.5, 0.01), M.redCloth || M.redPaint, -s * (0.15 + k * 0.25), 1.8 - k * 0.1, 0.08, 0, 0, (k - 1) * 0.3));
-          group.add(hinge);
+          // (cada hoja se mueve entera: una malla por material)
+          group.add(compactGroup(hinge));
           pieces.push({ obj: hinge, side: s });
         }
         const padlock = mesh(boxGeo(0.22, 0.26, 0.1), M.brass, 0, 1.25, 0.1);
@@ -215,7 +231,11 @@ export default class Interactables {
           const t = performance.now() / 1000;
           eyeMat.opacity = Math.sin(t * 1.3) > 0.985 ? 0.05 : 0.45 + Math.sin(t * 0.9) * 0.2;
         };
+        // (se derrite entera: los bloques, los carámbanos y los ojos, una malla
+        // por material; el bloque grande, con su onBeforeRender, aparte.
+        // world/staticLean.leanGroup; 23 dibujos por pared → 4)
         group.add(ice);
+        if (FEATURES.castle) leanGroup(ice);
         pieces.push({ obj: ice, melt: true });
       } else if (d.kind === 'puente') {
         // el puente levadizo de la barbacana (lo baja el torno del Pack-a-Pava)
@@ -223,6 +243,14 @@ export default class Interactables {
       } else if (d.kind === 'valla') {
         // el Monumento: las vallas amarillas de los actos (world/monumentoDoors.js)
         vallaDoor(M, group, pieces, width, i + 1);
+        // (cerradas no se mueven: una copia junta, una malla por material; eran
+        // ~28 mallas por valla, 625 en el mapa. Al abrir vuelven las sueltas, que
+        // salen volando: openDoor. globalThis.__mduNoVallaMerge: como antes)
+        if (!(globalThis.__mduNoMerge || globalThis.__mduNoVallaMerge)) {
+          closed = compactGroup(new THREE.Group().add(...pieces.map((p) => p.obj.clone())));
+          for (const p of pieces) p.obj.removeFromParent();
+          group.add(closed);
+        }
       } else if (FEATURES.monumento && d.kind === 'door') {
         // el Monumento: portones de bronce, abren hacia la segunda zona
         const zOf = (x, z) => (world.inside(x, z) ? world.zoneKeys[world.zone[world.idx(x, z)]] : null);
@@ -238,7 +266,8 @@ export default class Interactables {
           for (const y of [0.5, 1.4, 2.2]) hinge.add(mesh(boxGeo(width / 2 - 0.1, 0.12, 0.13), M.wood, (-s * width) / 4, y, 0));
           hinge.add(mesh(boxGeo(0.04, 0.2, 0.16), M.iron, -s * 0.1, 1.2, 0));
           hinge.add(mesh(boxGeo(0.12, 0.08, 0.14), M.iron, -s * (width / 2 - 0.1), 1.25, 0));
-          group.add(hinge);
+          // (cada hoja se mueve entera: una malla por material)
+          group.add(compactGroup(hinge));
           pieces.push({ obj: hinge, side: s });
         }
       } else {
@@ -256,9 +285,36 @@ export default class Interactables {
           group.add(m);
           pieces.push({ obj: m, vel: new THREE.Vector3((r() - 0.5) * 3, 3 + r() * 4, (r() - 0.5) * 3), spin: new THREE.Vector3(r() * 6, r() * 6, r() * 6) });
         }
+        // cerrado no se mueve: se dibuja una copia con una malla por material
+        // (13 piezas, 4 dibujos); al abrir vuelven las piezas sueltas, que
+        // vuelan cada una por su lado (openDoor)
+        if (!(globalThis.__mduNoMerge || globalThis.__mduNo1d)) {
+          closed = compactGroup(new THREE.Group().add(...items.map((m) => m.clone())));
+          for (const m of items) m.removeFromParent();
+          group.add(closed);
+        }
+      }
+      // las puertas de dos hojas, las tranqueras y el portón del cerro: cerradas
+      // tampoco se mueven, así que se dibuja una copia de las dos hojas juntas
+      // (en el penal, 6 dibujos por puerta pasan a 3); al abrir vuelven las
+      // hojas sueltas, como el escombro (globalThis.__mduNoDoorMerge: como antes)
+      // (el castillo: solo las de dos hojas, castleDoorsOn; world/staticLean)
+      if (!closed && pieces.length > 1 && (d.kind === 'door' || d.kind === 'gate' || d.kind === 'cerro') && (!FEATURES.castle || (d.kind === 'door' && castleDoorsOn())) && !(FEATURES.monumento && globalThis.__mduNoMonuDoorMerge) && !(globalThis.__mduNoMerge || globalThis.__mduNo1d || globalThis.__mduNoDoorMerge)) {
+        closed = compactGroup(new THREE.Group().add(...pieces.map((p) => p.obj.clone())));
+        for (const p of pieces) p.obj.removeFromParent();
+        group.add(closed);
       }
       this.root.add(group);
-      const door = { def: d, index: i, group, pieces, open: false };
+      // (abierto, el escombro y el maíz quedan escondidos: core/matrixCache.js mcSleep)
+      group.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
+      // (cerrada no se mueve, core/matrixCache no recorre sus piezas
+      // —mcFrozen—; openDoor la suelta y abierta del todo la vuelve a congelar.
+      // globalThis.__mduNoFreeze: como antes; ver world/staticLean.js)
+      if (freezeDoors()) {
+        group.mcFrozen = true;
+        (world.frozen ||= []).push(group);
+      }
+      const door = { def: d, index: i, group, pieces, open: false, closed };
       this.add({
         kind: 'door',
         door,
@@ -292,6 +348,13 @@ export default class Interactables {
     if (door.open) return;
     g.net?.event('door', { i: door.index });
     door.open = true;
+    door.group.mcFrozen = false;
+    // (el escombro: vuelven las piezas sueltas en lugar de la copia junta)
+    if (door.closed) {
+      door.closed.removeFromParent();
+      for (const p of door.pieces) door.group.add(p.obj);
+      door.closed = null;
+    }
     g.world.openDoor(door.index);
     for (const z of door.def.zones) g.activateZone(z);
     g.audio.door(door.group.position, door.def.kind === 'debris' || door.def.kind === 'valla');
@@ -334,6 +397,22 @@ export default class Interactables {
         }
       }
       if ((door.def.kind === 'debris' || door.def.kind === 'corn') && k >= 1) door.group.visible = false;
+      // abierta del todo, las hojas ya no se mueven: otra vez una copia junta
+      // (una malla por material), como cerrada. Con todas las puertas abiertas
+      // eran 6 dibujos por puerta en cada pasada; quedan 3
+      // (globalThis.__mduNoOpenMerge: como antes)
+      if (k >= 1 && (door.def.kind === 'door' || door.def.kind === 'gate' || door.def.kind === 'cerro') && (!FEATURES.castle || (door.def.kind === 'door' && castleDoorsOn())) && !(FEATURES.monumento && globalThis.__mduNoMonuDoorMerge) && !(globalThis.__mduNoMerge || globalThis.__mduNo1d || globalThis.__mduNoDoorMerge || globalThis.__mduNoOpenMerge)) {
+        const objs = door.pieces.map((p) => p.obj).filter((o) => o.visible && o.parent === door.group);
+        if (objs.length > 1) {
+          door.group.add(compactGroup(new THREE.Group().add(...objs.map((o) => o.clone()))));
+          for (const o of objs) o.removeFromParent();
+        }
+      }
+      // (abierta del todo ya no se mueve; se rehace una vez con la copia nueva)
+      if (k >= 1 && freezeDoors()) {
+        door.group.mcFrozen = true;
+        door.group.matrixWorldNeedsUpdate = true;
+      }
       return k < 1;
     });
     g.fx.dust(door.group.position.clone().setY(door.group.position.y + 1), UP, [0.45, 0.4, 0.35], 16);
@@ -368,6 +447,9 @@ export default class Interactables {
       // (sin la mano y la manga de primera persona: colgado en la pared el
       // facón sacaba el brazo entero a través del muro)
       if (shown) dropHands(shown);
+      // (colgado no se mueve por dentro: una malla por material, de 20-110
+      // piezas sueltas a unas pocas)
+      if (shown) compactGroup(shown);
       if (shown) {
         shown.scale.setScalar(isBowie ? 3 : 3.2);
         shown.position.set(a.x + wb.face[0] * 0.12, fy + 1.55, a.z + wb.face[1] * 0.12);
@@ -660,7 +742,8 @@ export default class Interactables {
           return { text: g.ee?.papDone ? 'convertir tu hoz en la Hoz de la Muerte' : 'poner la hoz en el Pack-a-Pava (ritual)', noCost: true };
         }
         const tier = tierOf(s.up);
-        if (tier >= maxTier(s.id)) return { text: tier >= 2 ? 'Ese mate ya tiene las dos mejoras' : 'Ese mate ya está mejorado', noCost: true };
+        // (el Sable Corvo no es un mate: Sable de San Lorenzo es su mejora)
+        if (tier >= maxTier(s.id)) return { text: WEAPONS[s.id].kind === 'sable' && !globalThis.__mduNoPapSableText ? 'El sable ya está mejorado' : tier >= 2 ? 'Ese mate ya tiene las dos mejoras' : 'Ese mate ya está mejorado', noCost: true };
         const what = tier ? `segunda mejora de ${weaponStats(s.id, 1).name}: ${ELEM_INFO[WEAPONS[s.id].pap.elem].desc}` : `mejorar ${WEAPONS[s.id].name}`;
         if (g.activities?.freePap) return { text: `${what} gratis (regalo de las ánimas)`, noCost: true };
         return what;
@@ -808,11 +891,14 @@ export default class Interactables {
         if (!guest) g.net?.event('pap', { s: 'idle' });
       } else if (pap.t > (guest ? 16 : 12)) {
         const by = pap.entry.remote;
-        if (this.papMine()) g.hud.subtitle('El Pack-a-Pava se quedó con tu mate. Nunca lo dejes esperando.', 3);
+        if (this.papMine()) g.hud.subtitle(`El Pack-a-Pava se quedó con tu ${pap.entry.id === 'sable' && !globalThis.__mduNoPapSableText ? 'sable' : 'mate'}. Nunca lo dejes esperando.`, 3);
         this.clearPap();
         if (!guest) g.net?.event('pap', { s: 'idle', lost: by ?? g.net.id });
       }
     }
+    // (la misión que muda la máquina puede moverlo a su manera encima de lo de
+    // arriba: la Llama Votiva del Monumento, world/papLlama.js papAnim)
+    if (pap.anim && pap.model && pap.state !== 'idle') pap.anim(pap, dt);
   }
 
   // ---------------- caja misteriosa ----------------
@@ -1224,7 +1310,8 @@ export default class Interactables {
       // misma malla y materiales, sin shaders nuevos)
       if (box !== this.box) m = this.boxModel(id).clone();
       // (la pava no es un mate: se muestra la pava de verdad)
-      else m = id === 'pava' ? buildGrenade(this.g.textures, 'pava') : buildMate(id, false, this.g.textures).root;
+      // (sube y gira entero: una malla por material, compactGroup)
+      else m = compactGroup(id === 'pava' ? buildGrenade(this.g.textures, 'pava') : buildMate(id, false, this.g.textures).root);
       m.scale.setScalar(2.6);
       box.models.set(id, m);
     }
@@ -1623,6 +1710,11 @@ export default class Interactables {
       // de invitado, lo del mapa lo decide el anfitrión (salvo lo que es de cada uno)
       if (g.net?.guest && !best.local) {
         if (typeof pr === 'object' && pr?.info) return;
+        // (el Pack-a-Pava sin corriente o sin su misión: ni se pide)
+        if (best.kind === 'pap' && ((g.papq && !g.papq.done) || !this.machineOn(this.pap))) {
+          g.audio.deny();
+          return;
+        }
         // munición llena: no se cobra una recarga que no hace falta
         if (best.kind === 'wallbuy' && best.weapon && g.weapons.ammoFull(best.weapon)) {
           g.audio.deny();
@@ -1828,6 +1920,8 @@ function castleDoor(M, group, pieces, W, side, reja) {
     }
   }
   mergeByMaterial(frame);
+  // (no se mueve nunca: world/staticLean junta todos los marcos)
+  frame.userData.doorFrame = true;
   group.add(frame);
   if (reja) {
     // el rastrillo: barrotes cuadrados, travesaños y puntas abajo; sube adentro de la pared

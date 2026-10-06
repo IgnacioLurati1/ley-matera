@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { zombieHealth } from '../config/rules';
-import { mesh, boxGeo, cylGeo } from '../world/props';
+import { mesh, boxGeo, cylGeo, compactGroup } from '../world/props';
 import { texMat } from '../world/penalProps';
 import { CELL } from '../world/World';
 import RamFx from './penalRams';
@@ -193,6 +193,8 @@ export default class PenalBoat {
     this.lampDef = { pos: [this.pos.x, DECK + 2.6, this.pos.z], color: 0xffb060, intensity: 2.6, noPower: 1, kind: 'fire' };
     this.lampEntry = { def: this.lampDef, light: this.lampLight, base: 2.6, phase: Math.random() * 100, bulb: null };
     this.g.world.lights?.push(this.lampEntry);
+    // (con las lámparas recortadas por calidad: la misma cuenta al cargar y al jugar)
+    this.g.world.recull?.();
     // la damajuana (se llena de agua verde)
     this.jugMat = new THREE.MeshStandardMaterial({ color: 0x2a4a3a, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.75, emissive: 0x000000 });
     const jug = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10), this.jugMat);
@@ -212,6 +214,15 @@ export default class PenalBoat {
     this.root.add(pile);
     this.pile = pile;
     this.showBuilt(false);
+    // lo fijo del casco, una malla por material (se mueve y se mece entero con
+    // body); quedan sueltas las tablas que faltan, el poste y la rueda (están
+    // escondidos ahora), la damajuana (se esconde en el Pack-a-Pava) y el farol
+    if (!globalThis.__mduNoMerge) {
+      for (const p of this.jugParts) p.userData.dynamic = true;
+      compactGroup(body);
+      compactGroup(wheel);
+      compactGroup(pile);
+    }
     g.position.set(this.pos.x, 0, this.pos.z);
     // la luz del cruce: una columna y un anillo en el agua donde se amarra del otro lado
     const beaconMat = new THREE.MeshBasicMaterial({ color: 0x7affa0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
@@ -271,9 +282,12 @@ export default class PenalBoat {
       ctx.fillText('Naufragio del vapor Esperanza', w / 2, 102);
     });
     grp.add(mesh(boxGeo(0.62, 0.31, 0.02), plaque, 0, 0.98, 0.02));
+    // (el clavo y las cintas juntos; la rueda va aparte: se descuelga)
+    if (!globalThis.__mduNoMerge) compactGroup(grp);
     const wheel = this.wheelModel(0.42);
     wheel.position.set(0, 1.72, 0.1);
     grp.add(wheel);
+    if (!globalThis.__mduNoMerge) compactGroup(wheel);
     this.exWheel = wheel;
     this.root.add(grp);
     this.exPos = new THREE.Vector3(EXVOTO.x, y + 1.3, EXVOTO.z - 0.6);

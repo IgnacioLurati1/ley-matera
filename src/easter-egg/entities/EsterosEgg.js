@@ -5,11 +5,13 @@ import { isHost, announce, glow } from './castle/common';
 import Saber from './esteros/Saber';
 import Poder from './esteros/Poder';
 import Ofrenda from './esteros/Ofrenda';
-import EsterosEnding from '../ui/EsterosEnding';
-import LuisonArrival, { prefetchSong } from '../ui/LuisonArrival';
+import EsterosEnding, { prefetchEsterosClips, esterosClipsReady } from '../ui/EsterosEnding';
+import EsterosEndingClassic from '../ui/EsterosEndingClassic';
+import LuisonArrival, { prefetchSong, prefetchLuisonClips } from '../ui/LuisonArrival';
 import SongEgg from '../world/SongEgg';
 import Thriller from './esteros/Thriller';
 import { TRACKS, LUISON_FROM } from '../core/music';
+import { devKeys } from '../core/devKeys';
 import { LUISON_PREP } from '../core/audio';
 
 // Lo que suena antes que llegue el Luisón, en segundos de canción desde que
@@ -96,6 +98,9 @@ export default class EsterosEgg {
     this.g = game;
     this.scene = null;
     this.step = 0;
+    // (los cuerpos del final y los de la llegada del Luisón, animados en Blender: se bajan ya)
+    prefetchEsterosClips();
+    prefetchLuisonClips();
     this.papDone = true;
     // id del jugador que es Gil (null hasta el sorteo) y el personaje de cada uno
     this.gil = null;
@@ -119,7 +124,7 @@ export default class EsterosEgg {
     // atajos de prueba (solo): Alt+U un paso más del pacto (era Alt+J, que es
     // saltear la ronda en Game: cinco saltos de ronda llamaban al Luisón)
     this.onKey = (e) => {
-      if (!import.meta.env.DEV || !e.altKey || game.state !== 'playing' || game.net || e.code !== 'KeyU') return;
+      if (!devKeys() || !e.altKey || game.state !== 'playing' || game.net || e.code !== 'KeyU') return;
       e.preventDefault();
       this.debugStep(this.step + 1);
     };
@@ -266,7 +271,8 @@ export default class EsterosEgg {
     // luces y se recompilaban todos los shaders (4 s de cuadro trabado).
     this.cineLight = new THREE.PointLight(0x9ad8c8, 0, 9, 1.6);
     this.cineLight.position.copy(this.huecoPos);
-    this.root.add(this.cineLight);
+    // (no cuenta como luz mientras está apagada: World.adoptLight)
+    this.root.add(g.world.adoptLight(this.cineLight));
     g.interact.add({
       kind: 'ee',
       pos: this.huecoPos.clone(),
@@ -536,7 +542,9 @@ export default class EsterosEgg {
     // (entra con un destello blanco: tapa el corte de la pelea a la escena)
     g.post?.flash(1.3);
     // (los compañeros de la escena: siempre tres, con el nombre de cada uno)
-    const cine = new EsterosEnding(g, this, { hoja });
+    // (sin los clips de Blender, o con __mduBlend = false: la versión de antes)
+    const Cine = esterosClipsReady() ? EsterosEnding : EsterosEndingClassic;
+    const cine = new Cine(g, this, { hoja });
     this.scene = { update: (dt) => cine.update(dt), cine };
     cine.play((choice) => {
       this.scene = null;
@@ -769,6 +777,15 @@ export default class EsterosEgg {
     const [x, z] = EE.hueco;
     p.pos.set(x - 1.5, g.world.floorAt(x - 1.5, z), z + 2);
     p.vel?.set(0, 0, 0);
+  }
+
+  // (Game.win) En línea, el final del invitado puede ir unos cuadros atrás del
+  // del anfitrión: si le llega la victoria con la escena todavía puesta, se
+  // termina acá (con la partida en pausa quedaba trabado para siempre en el
+  // último cartel, "El ciclo continúa", tapando la tabla del final).
+  onWin() {
+    const c = this.scene?.cine;
+    if (c && !c.done && globalThis.__mduNoWinCut !== true) c.finish();
   }
 
   dispose() {

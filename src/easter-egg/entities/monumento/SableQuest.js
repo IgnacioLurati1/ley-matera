@@ -6,6 +6,7 @@ import { sfxClang } from '../../world/shieldSfx';
 import { EE } from '../../config/map';
 import GeoBuilder from '../../world/GeoBuilder';
 import { quad } from '../../world/monumentoKit';
+import { tierOf } from '../../config/weapons';
 
 // El Sable Corvo de San Martín (la maravilla del Monumento, weapons/Sable.js):
 // se arma con tres piezas y se forja en la Llama Votiva.
@@ -16,6 +17,14 @@ import { quad } from '../../world/monumentoKit';
 //    corriente, la válvula del borde lo vacía.
 //  · Las tres en la Llama prendida (después de la posta de la antorcha): se
 //    forja y queda flotando sobre el fuego; cada uno agarra el suyo.
+//  · El que pierde el suyo (se muere, lo cambia por otro mate, pierde la Mula,
+//    el Pack-a-Pava se queda con él, se va de la partida...) lo encuentra
+//    clavado en la piedra de la hoja, al pie de la Proa, como estaba (mejorado
+//    o no): mantener F lo saca. Cada uno el suyo; el de uno que se fue, el
+//    primero que no tenga. Mientras tanto la forja no le da otro (el usuario,
+//    2026-10-05; __mduNoSableTumba: como antes, la forja da otro sin mejorar).
+//    Y el sable de la forja se ve solo si se lo puede agarrar (antes quedaba
+//    flotando siempre, también después del Pack-a-Pava; __mduNoForgeHide).
 // Lo decide el anfitrión; viaja por 'pee' (k: 'sbl') como el resto del
 // easter egg (entities/MonumentoEgg.js).
 
@@ -48,6 +57,8 @@ const ICON = { hoja: '⟋', emp: '♞', vaina: '▭' };
 const NAME = { hoja: 'La hoja', emp: 'La empuñadura', vaina: 'La vaina' };
 
 const myId = (g) => (g.net ? g.net.id : 0);
+// dónde está el jugador `id` (el local o uno de la red)
+const playerAt = (g, id) => ((g.net?.id ?? 0) === id ? g.player.pos : g.net?.remote.get(id)?.pos || null);
 const isHost = (g) => !g.net || g.net.host;
 
 // Dónde va el granadero a la distancia s del circuito (y para dónde mira).
@@ -107,6 +118,14 @@ export default class SableQuest {
     g.scene.add(this.root);
     // got: piezas juntadas (del equipo); forge: 0 nada, 1 forjando, 2 listo
     this.st = { got: { hoja: 0, emp: 0, vaina: 0 }, drained: 0, forge: 0, ghost: 0, hits: 0, fx: 0, fz: 0 };
+    // los sables perdidos clavados en la piedra: { o: dueño (-1: de nadie), up }
+    this.st.buried = [];
+    // (el anfitrión) qué sable tiene cada invitado: id → up
+    this.owners = new Map();
+    // (cada compu) el sable propio: { up } mientras lo tiene (en la mano o en el Pack-a-Pava)
+    this.mine = null;
+    this.lostT = 0;
+    this.ownSent = -1;
     this.drainK = 0;
     this.forgeT = 0;
     this.ghostS = 0;
@@ -117,6 +136,7 @@ export default class SableQuest {
     this.buildHoja();
     this.buildValve();
     this.buildForge();
+    this.buildTumba();
     this.syncHud();
   }
 
@@ -437,7 +457,10 @@ export default class SableQuest {
       radius: 1.8,
       prompt: () => {
         const st = this.st;
-        if (st.forge === 2) return g.weapons.has('sable') ? null : { text: 'agarrar el Sable Corvo', noCost: true, hold: true };
+        // (con el sable adentro del Pack-a-Pava, que es esta misma Llama, no
+        // se ofrece otro: tapaba el "agarrar Sable de San Lorenzo" y daba uno
+        // sin mejorar)
+        if (st.forge === 2) return this.forgeOffer() ? { text: 'agarrar el Sable Corvo', noCost: true, hold: true } : null;
         if (st.forge === 1) return null;
         if (!PARTS.every((k) => st.got[k])) return null;
         if ((g.papq?.termas?.st || 0) < 2) return { text: 'Necesita la Llama encendida', noCost: true, info: true };
@@ -448,6 +471,9 @@ export default class SableQuest {
         const st = this.st;
         const who = g.net?.useFrom ?? myId(g);
         if (st.forge === 2) {
+          if (who === myId(g) && !this.forgeOffer()) return false;
+          // (el que tiene el suyo clavado en la piedra no saca otro)
+          if (!globalThis.__mduNoSableTumba && this.buriedOf(who) >= 0) return false;
           if (who === myId(g)) this.giveSable();
           else g.net?.event('pee', { k: 'sbl', a: 'give', id: who });
           return true;
@@ -459,10 +485,191 @@ export default class SableQuest {
     });
   }
 
-  giveSable() {
+  // ¿Hay un sable adentro del Pack-a-Pava (mejorándose o esperando)?
+  inPap() {
+    if (globalThis.__mduNoForgePapFix) return false;
+    return this.g.interact.pap?.entry?.id === 'sable';
+  }
+
+  // ¿La forja le da un sable a este jugador? (no tiene, no hay uno en el
+  // Pack-a-Pava, no tiene el suyo en la piedra ni lo está sacando)
+  forgeOffer() {
     const g = this.g;
-    g.weapons.sable.give(0);
+    if (g.weapons.has('sable') || this.inPap()) return false;
+    if (globalThis.__mduNoSableTumba) return true;
+    return this.buriedOf(myId(g)) < 0 && this.tumbaPull?.by !== myId(g);
+  }
+
+  giveSable(up = 0) {
+    const g = this.g;
+    g.weapons.sable.give(up);
     g.audio.saber?.(g.player.pos.clone().setY(g.player.pos.y + 1.4));
+  }
+
+  // ---------------- el sable perdido, clavado en la piedra de la hoja ----------------
+  buildTumba() {
+    const g = this.g;
+    // los modelos (de a uno por lugar y por mejora), cuando hacen falta
+    this.tumbaObjs = [];
+    g.interact.add({
+      kind: 'sable',
+      pos: new THREE.Vector3(HOJA.x + 0.75, HOJA.y + 0.3, HOJA.z),
+      radius: 1.9,
+      holdTime: 1.6,
+      wide: true,
+      prompt: () => {
+        const i = this.tumbaFor(myId(g));
+        if (i < 0 || g.weapons.has('sable') || this.tumbaPull) return null;
+        return { text: this.st.buried[i].up ? 'sacar el Sable de San Lorenzo' : 'sacar el Sable Corvo', noCost: true, hold: true };
+      },
+      cost: () => 0,
+      use: () => {
+        const who = g.net?.useFrom ?? myId(g);
+        const i = this.tumbaFor(who);
+        if (i < 0 || this.tumbaPull) return false;
+        if (who === myId(g) && g.weapons.has('sable')) return false;
+        if (isHost(g)) this.send({ a: 'pull', i, by: who });
+        return true;
+      },
+    });
+  }
+
+  // el sable de `id` en la piedra: índice o -1
+  buriedOf(id) {
+    return this.st.buried.findIndex((b) => b.o === id);
+  }
+
+  // el que puede sacar `id`: el suyo o, si no tiene, uno de nadie
+  tumbaFor(id) {
+    if (globalThis.__mduNoSableTumba) return -1;
+    const i = this.buriedOf(id);
+    return i >= 0 ? i : this.st.buried.findIndex((b) => b.o < 0);
+  }
+
+  // dónde va clavado el sable i (el primero donde estaba la hoja; los otros alrededor)
+  tumbaSpot(i, out) {
+    const OFF = [[0, 0], [0.42, 0.18], [-0.38, 0.22], [0.1, -0.4]];
+    const [dx, dz] = OFF[i % OFF.length];
+    return out.set(HOJA.x + dx, HOJA.y, HOJA.z + dz);
+  }
+
+  // Los modelos clavados, según la lista.
+  drawTumba() {
+    const B = this.st.buried;
+    const objs = this.tumbaObjs;
+    const n = Math.min(4, B.length);
+    for (let i = 0; i < Math.max(n, objs.length); i++) {
+      const want = i < n ? (B[i].up ? 1 : 0) : -1;
+      let o = objs[i];
+      if (o && o.userData.up !== want) {
+        o.removeFromParent();
+        o = objs[i] = null;
+      }
+      if (want < 0) continue;
+      if (!o) {
+        o = sableModel(want);
+        o.userData.up = want;
+        this.root.add(o);
+        objs[i] = o;
+      }
+      // de punta, clavado como la hoja, apenas inclinado (cada uno un poco distinto)
+      this.tumbaSpot(i, tmpV);
+      o.visible = true;
+      o.scale.setScalar(1);
+      o.rotation.set(0, Math.PI / 2 + i * 0.7, Math.PI + 0.22 - i * 0.08);
+      o.position.set(tmpV.x, tmpV.y + 0.62, tmpV.z);
+    }
+    objs.length = n;
+  }
+
+  // (cada compu) ¿Sigue teniendo el suyo? En la mano o en el Pack-a-Pava; si
+  // no lo tiene más (un rato, por lo que tarda la red con el Pack-a-Pava de un
+  // invitado), lo perdió: va a la piedra como estaba.
+  trackMine(dt) {
+    const g = this.g;
+    if (globalThis.__mduNoSableTumba || g.state !== 'playing') return;
+    const W = g.weapons;
+    const P = g.player;
+    const I = g.interact;
+    const pap = I?.pap;
+    const s = W.slots.find((x) => x.id === 'sable');
+    const inPap = !!pap?.entry && pap.entry.id === 'sable' && pap.state !== 'idle' && I.papMine();
+    if (s && P.alive) {
+      this.mine = { up: Math.min(1, tierOf(s.up)) };
+      this.lostT = 0;
+    } else if (inPap && P.alive) {
+      // (listo en la máquina: ya está mejorado)
+      this.mine = { up: Math.min(1, pap.state === 'ready' ? pap.tier : tierOf(pap.entry.up)) };
+      this.lostT = 0;
+    } else if (this.mine) {
+      // muerto (mirando hasta la próxima ronda): se pierde ya, no al volver
+      if (!P.alive && s) W.drop('sable');
+      this.lostT += dt;
+      if (this.lostT > 1.2 || !P.alive) {
+        const up = this.mine.up;
+        this.mine = null;
+        this.lostT = 0;
+        if (isHost(g)) this.send({ a: 'bury', o: myId(g), up });
+        else g.net.net.send({ t: 'pee', k: 'sbl', a: 'lose', up });
+      }
+    }
+    // al anfitrión: qué sable tiene cada uno (por si se va de la partida)
+    const own = this.mine ? this.mine.up : -1;
+    if (own !== this.ownSent) {
+      this.ownSent = own;
+      if (g.net && !g.net.host) g.net.net.send({ t: 'pee', k: 'sbl', a: 'own', up: own });
+    }
+  }
+
+  // (anfitrión) el que se fue de la partida con su sable: queda en la piedra, de nadie
+  trackGone() {
+    const g = this.g;
+    if (globalThis.__mduNoSableTumba || !g.net?.host) return;
+    for (const [id, up] of this.owners) {
+      if (g.net.remote.has(id)) continue;
+      this.owners.delete(id);
+      this.send({ a: 'bury', o: -1, up });
+    }
+  }
+
+  // El sable que sale de la piedra: sube rechinando, gira, brilla y va a la mano.
+  updateTumbaPull(dt) {
+    const T = this.tumbaPull;
+    if (!T) return;
+    const g = this.g;
+    const o = T.obj;
+    T.t += dt;
+    const t = T.t;
+    const S = T.at;
+    if (t < 0.9) {
+      const k = t / 0.9;
+      o.position.set(S.x + (Math.random() - 0.5) * 0.01 * (1 - k), S.y + 0.62 + k * k * 0.95, S.z);
+      if (Math.random() < dt * 30) g.fx.sparks(tmpV.set(S.x, S.y + 0.05, S.z), 1, { x: 0, y: 1, z: 0 });
+    } else if (t < 1.4) {
+      const k = (t - 0.9) / 0.5;
+      o.position.set(S.x, S.y + 1.57 + Math.sin(k * Math.PI) * 0.12, S.z);
+      o.rotation.y = Math.PI / 2 + k * Math.PI * 2;
+      if (!T.flash) {
+        T.flash = true;
+        g.fx.flash(tmpV.set(S.x, S.y + 1.6, S.z), T.up ? 0x9fd8ff : 0xcfe6ff, 24, 0.4, 8);
+        g.fx.sparkle(tmpV, T.up ? [0.55, 0.85, 1] : [0.75, 0.9, 1], 20, 0.6);
+      }
+    } else if (t < 1.85) {
+      const P = playerAt(g, T.by);
+      const k = (t - 1.4) / 0.45;
+      const e = k * k;
+      if (P) tmpV2.set(P.x, P.y + 1.3, P.z);
+      else tmpV2.set(S.x + 1.5, S.y + 1.2, S.z);
+      o.position.set(S.x + (tmpV2.x - S.x) * e, S.y + 1.57 + (tmpV2.y - S.y - 1.57) * e, S.z + (tmpV2.z - S.z) * e);
+      o.scale.setScalar(1 - e * 0.7);
+    } else {
+      o.removeFromParent();
+      this.tumbaPull = null;
+      if (T.by === myId(g)) {
+        this.giveSable(T.up);
+        g.fx.sparkle(tmpV.copy(g.player.pos).setY(g.player.pos.y + 1.3), [0.7, 0.88, 1], 10, 0.4);
+      }
+    }
   }
 
   updateForge(dt) {
@@ -494,16 +701,22 @@ export default class SableQuest {
         }
       }
       // 2,2 s en adelante: el sable sale de la llama al rojo, sube y se enfría
+      // (y se viene adelante del fuego, a la altura de la vista: arriba de la
+      // llama quedaba fuera de pantalla y metido en el resplandor)
       const up = Math.max(0, Math.min(1, (t - 2.2) / 2.6));
+      const ue = 1 - (1 - up) * (1 - up);
       S.obj.visible = t > 2.2;
-      S.obj.position.set(L.x, L.y + 2.3 + (1 - (1 - up) * (1 - up)) * 1.7, L.z + 0.15);
-      S.obj.rotation.set(0, t * 1.4, 0);
+      if (globalThis.__mduNoForgeFront) S.obj.position.set(L.x, L.y + 2.3 + ue * 1.7, L.z + 0.15);
+      else S.obj.position.set(L.x + ue * 0.5, L.y + 1.5 + ue * 0.4, L.z + 0.15 + ue * 1.0);
+      // (al salir se acuesta: de canto o parado se perdía en el resplandor de la llama)
+      if (globalThis.__mduNoForgeFront) S.obj.rotation.set(0, t * 1.4, 0);
+      else S.obj.rotation.set(0, t * 1.4 * (1 - ue), (Math.PI / 2) * ue);
       const heat = t < 6 ? 1 : Math.max(0, 1 - (t - 6) / 2.5);
       for (const m of S.mats) {
         m.emissive.setRGB(1, 0.2, 0.03);
         m.emissiveIntensity = heat * 3.2;
       }
-      if (t > 2.2 && Math.random() < dt * 20 * heat) g.fx.sparkle(tmpV.set(L.x, S.obj.position.y + Math.random() * 1.2, L.z + 0.15), [1, 0.6, 0.2], 1, 0.3);
+      if (t > 2.2 && Math.random() < dt * 20 * heat) g.fx.sparkle(tmpV.set(L.x, S.obj.position.y + Math.random() * 1.2 - 0.3, S.obj.position.z), [1, 0.6, 0.2], 1, 0.3);
       if (t - dt < 6 && t >= 6) {
         g.fx.steam(tmpV.set(L.x, L.y + 4.4, L.z), 16, 0.5);
         g.audio.kettle?.(tmpV.clone(), 0.4);
@@ -511,12 +724,17 @@ export default class SableQuest {
       if (t >= FORGE_T && isHost(g)) this.send({ a: 'ready' });
       return;
     }
-    // listo: flota sobre la Llama, girando despacio
-    S.obj.visible = true;
-    S.obj.position.set(L.x, L.y + 4.0 + Math.sin(g.time * 1.3) * 0.06, L.z + 0.15);
-    S.obj.rotation.set(0, g.time * 0.7, 0);
+    // listo: flota delante de la Llama, girando despacio (solo para el que
+    // lo puede agarrar: con el suyo en la mano o en el Pack-a-Pava quedaba
+    // flotando de más)
+    S.obj.visible = globalThis.__mduNoForgeHide ? true : this.forgeOffer();
+    if (!S.obj.visible) return;
+    if (globalThis.__mduNoForgeFront) S.obj.position.set(L.x, L.y + 4.0 + Math.sin(g.time * 1.3) * 0.06, L.z + 0.15);
+    else S.obj.position.set(L.x + 0.5, L.y + 1.9 + Math.sin(g.time * 1.3) * 0.06, L.z + 1.15);
+    if (globalThis.__mduNoForgeFront) S.obj.rotation.set(0, g.time * 0.7, 0);
+    else S.obj.rotation.set(0, Math.sin(g.time * 0.8) * 0.35, Math.PI / 2);
     for (const m of S.mats) m.emissiveIntensity = 0;
-    if (Math.random() < dt * 3) g.fx.sparkle(tmpV.set(L.x, L.y + 4.6, L.z + 0.15), [0.7, 0.85, 1], 1, 0.6);
+    if (Math.random() < dt * 3) g.fx.sparkle(tmpV.copy(S.obj.position).setY(S.obj.position.y + 0.6), [0.7, 0.85, 1], 1, 0.6);
   }
 
   // ---------------- piezas ----------------
@@ -569,7 +787,13 @@ export default class SableQuest {
 
   onGuest(m, from) {
     if (m.a === 'hit') this.ghostHit();
-    void from;
+    else if (m.a === 'own') {
+      if (m.up >= 0) this.owners.set(from, m.up);
+      else this.owners.delete(from);
+    } else if (m.a === 'lose') {
+      this.owners.delete(from);
+      this.send({ a: 'bury', o: from, up: m.up ? 1 : 0 });
+    }
   }
 
   apply(m) {
@@ -580,17 +804,27 @@ export default class SableQuest {
         if (st.got[m.p]) return;
         st.got[m.p] = 1;
         if (m.p === 'hoja') {
-          this.hoja.obj.visible = false;
-          g.fx.sparks(tmpV.set(HOJA.x, HOJA.y + 0.4, HOJA.z), 2, { x: 0, y: 1, z: 0 });
+          // sale de la piedra: sube despacio rechinando, brilla y vuela a la
+          // mano del que la sacó (antes desaparecía y casi no se notaba)
+          this.hojaPull = { t: 0, by: m.by ?? 0 };
+          g.fx.sparks(tmpV.set(HOJA.x, HOJA.y + 0.1, HOJA.z), 2, { x: 0, y: 1, z: 0 });
           sfxClang(g.audio, tmpV.clone(), 0.8);
-          g.fx.dust?.(tmpV.set(HOJA.x, HOJA.y + 0.05, HOJA.z), { x: 0, y: 1, z: 0 }, [0.6, 0.55, 0.48], 10);
+          g.fx.dust?.(tmpV.set(HOJA.x, HOJA.y + 0.05, HOJA.z), { x: 0, y: 1, z: 0 }, [0.6, 0.55, 0.48], 16);
+          this.sfxDraw();
         } else if (m.p === 'vaina') this.valve.vaina.visible = false;
         else if (m.p === 'emp' && this.ghost) this.ghost.emp.visible = this.ghost.ring.visible = false;
         if (m.by === myId(g) || !g.net) g.audio.powerupGrab?.();
         g.hud.toast?.(`${NAME[m.p]} del Sable Corvo`);
         this.syncHud();
-        // las tres: a dónde se llevan
+        // las tres: a dónde se llevan; si no, qué falta y dónde está
         if (PARTS.every((k) => st.got[k])) g.hud.subtitle?.('El Sable Corvo se forja en la Llama Votiva', 4);
+        else {
+          // (la empuñadura: el granadero sale recién en la ronda 3; la vaina, en el espejo norte, el de la válvula)
+          const old = globalThis.__mduNoSableText;
+          const where = { hoja: 'la hoja (pie de la Proa)', emp: old || st.ghost ? 'la empuñadura (granadero del Parque)' : 'la empuñadura (granadero del Parque, desde la ronda 3)', vaina: old ? 'la vaina (fondo del espejo del Pasaje)' : 'la vaina (espejo norte del Pasaje)' };
+          const miss = PARTS.filter((k) => !st.got[k]).map((k) => where[k]);
+          g.hud.subtitle?.(`Falta ${miss.join(' y ')}.`, 5);
+        }
         break;
       }
       case 'drain':
@@ -604,7 +838,8 @@ export default class SableQuest {
         this.ghostS = 0;
         this.ensureGhost();
         g.audio.bugle?.(tmpV.set(100.5, TRACK.y + 2, 30));
-        if (Math.hypot(g.player.pos.x - 100.5, g.player.pos.z - 30) < 40) g.hud.subtitle?.('Un granadero fantasma galopa en el Parque.', 3);
+        // (a todos: de lejos no se enteraban de que había salido)
+        if (!globalThis.__mduNoSableText || Math.hypot(g.player.pos.x - 100.5, g.player.pos.z - 30) < 40) g.hud.subtitle?.('Un granadero fantasma galopa en el Parque.', 3.5);
         break;
       case 'fall': {
         if (st.ghost === 2) return;
@@ -635,6 +870,42 @@ export default class SableQuest {
       case 'give':
         if (m.id === myId(g)) this.giveSable();
         break;
+      // un sable perdido vuelve a la piedra de la hoja
+      case 'bury': {
+        if (m.o >= 0 && this.buriedOf(m.o) >= 0) return;
+        st.buried.push({ o: m.o, up: m.up ? 1 : 0 });
+        this.drawTumba();
+        this.tumbaSpot(Math.min(3, st.buried.length - 1), tmpV);
+        g.fx.flash(tmpV2.copy(tmpV).setY(tmpV.y + 1), 0xcfe6ff, 18, 0.4, 8);
+        g.fx.sparkle(tmpV2, [0.75, 0.9, 1], 14, 0.5);
+        g.fx.dust?.(tmpV2.copy(tmpV).setY(HOJA.y + 0.05), { x: 0, y: 1, z: 0 }, [0.6, 0.55, 0.48], 10);
+        sfxClang(g.audio, tmpV2.clone(), 0.6);
+        // (el dueño: dónde está; si era de uno que se fue, a todos)
+        if (m.o === myId(g)) g.hud.subtitle?.('Tu sable volvió a la piedra, al pie de la Proa.', 4);
+        else if (m.o < 0) g.hud.subtitle?.('Un Sable Corvo quedó en la piedra, al pie de la Proa.', 4);
+        break;
+      }
+      case 'pull': {
+        const b = st.buried[m.i];
+        if (!b || this.tumbaPull) return;
+        st.buried.splice(m.i, 1);
+        // (el modelo que estaba clavado en ese lugar es el que sale)
+        const at = this.tumbaSpot(Math.min(3, m.i), new THREE.Vector3());
+        let o = this.tumbaObjs[m.i];
+        this.tumbaObjs.splice(m.i, 1);
+        if (!o) {
+          o = sableModel(b.up);
+          this.root.add(o);
+          o.rotation.set(0, Math.PI / 2, Math.PI + 0.22);
+        }
+        this.tumbaPull = { t: 0, by: m.by ?? 0, up: b.up, obj: o, at };
+        if (isHost(g) && m.by !== myId(g)) this.owners.set(m.by, b.up);
+        g.fx.sparks(tmpV.copy(at).setY(HOJA.y + 0.1), 2, { x: 0, y: 1, z: 0 });
+        g.fx.dust?.(tmpV, { x: 0, y: 1, z: 0 }, [0.6, 0.55, 0.48], 16);
+        this.sfxDraw();
+        this.drawTumba();
+        break;
+      }
       default:
     }
   }
@@ -665,7 +936,7 @@ export default class SableQuest {
 
   state() {
     const st = this.st;
-    return { got: { ...st.got }, drained: st.drained, forge: st.forge, ghost: st.ghost, hits: st.hits, fx: st.fx, fz: st.fz };
+    return { got: { ...st.got }, drained: st.drained, forge: st.forge, ghost: st.ghost, hits: st.hits, fx: st.fx, fz: st.fz, bur: st.buried.map((b) => [b.o, b.up]) };
   }
 
   applyFull(s) {
@@ -687,12 +958,75 @@ export default class SableQuest {
     }
     st.forge = s.forge || 0;
     if (st.forge === 1) this.forgeT = 0;
+    if (Array.isArray(s.bur)) {
+      st.buried = s.bur.map(([o, up]) => ({ o, up }));
+      this.drawTumba();
+    }
     this.syncHud();
+  }
+
+  // La hoja que sale de la piedra: sube 0,9 s rechinando, gira y brilla, y
+  // vuela hasta el que la sacó.
+  updatePull(dt) {
+    const H = this.hojaPull;
+    if (!H) return;
+    const g = this.g;
+    const o = this.hoja.obj;
+    H.t += dt;
+    const t = H.t;
+    if (t < 0.9) {
+      const k = t / 0.9;
+      o.position.set(HOJA.x + (Math.random() - 0.5) * 0.01 * (1 - k), HOJA.y + 0.62 + k * k * 0.95, HOJA.z);
+      if (Math.random() < dt * 30) g.fx.sparks(tmpV.set(HOJA.x, HOJA.y + 0.05, HOJA.z), 1, { x: 0, y: 1, z: 0 });
+    } else if (t < 1.4) {
+      // arriba, de punta, gira y brilla
+      const k = (t - 0.9) / 0.5;
+      o.position.set(HOJA.x, HOJA.y + 1.57 + Math.sin(k * Math.PI) * 0.12, HOJA.z);
+      o.rotation.y = Math.PI / 2 + k * Math.PI * 2;
+      if (!H.flash) {
+        H.flash = true;
+        g.fx.flash(tmpV.set(HOJA.x, HOJA.y + 1.6, HOJA.z), 0xcfe6ff, 22, 0.35, 8);
+        g.fx.sparkle(tmpV, [0.75, 0.9, 1], 18, 0.6);
+      }
+    } else if (t < 1.85) {
+      // a la mano del que la sacó
+      const P = playerAt(g, H.by);
+      const k = (t - 1.4) / 0.45;
+      const e = k * k;
+      if (P) tmpV2.set(P.x, P.y + 1.3, P.z);
+      else tmpV2.set(HOJA.x + 1.5, HOJA.y + 1.2, HOJA.z);
+      o.position.set(HOJA.x + (tmpV2.x - HOJA.x) * e, HOJA.y + 1.57 + (tmpV2.y - HOJA.y - 1.57) * e, HOJA.z + (tmpV2.z - HOJA.z) * e);
+      o.scale.setScalar(1 - e * 0.7);
+    } else {
+      o.visible = false;
+      o.scale.setScalar(1);
+      this.hojaPull = null;
+      if (H.by === myId(g) || !g.net) g.fx.sparkle(tmpV.copy(g.player.pos).setY(g.player.pos.y + 1.3), [0.7, 0.88, 1], 10, 0.4);
+    }
+  }
+
+  // el rechinar de la hoja contra la piedra al salir
+  sfxDraw() {
+    const A = this.g.audio;
+    if (!A?.ctx) return;
+    const o = A.out({ pos: tmpV.set(HOJA.x, HOJA.y + 0.6, HOJA.z), gain: 0.9, reverb: 0.5, ref: 4 });
+    A.noise(o, { t: A.now, dur: 0.85, type: 'bandpass', freq: 2600, freqEnd: 4200, q: 6, gain: 0.22, attack: 0.05 });
+    A.tone(o, { t: A.now + 0.9, dur: 1.6, type: 'sine', freq: 2093, gain: 0.08 });
+    A.tone(o, { t: A.now + 0.9, dur: 1.4, type: 'sine', freq: 3136, gain: 0.05 });
   }
 
   update(dt) {
     const g = this.g;
     const st = this.st;
+    this.updatePull(dt);
+    this.trackMine(dt);
+    this.trackGone();
+    this.updateTumbaPull(dt);
+    // los sables clavados brillan con la luna de vez en cuando
+    if (st.buried.length && Math.random() < dt * 1.2) {
+      this.tumbaSpot(Math.floor(Math.random() * Math.min(4, st.buried.length)), tmpV);
+      g.fx.sparkle(tmpV.setY(HOJA.y + 0.6 + Math.random() * 0.9), [0.85, 0.92, 1], 1, 0.1);
+    }
     // la hoja brilla con la luna de vez en cuando
     if (!st.got.hoja && Math.random() < dt * 0.8) g.fx.sparkle(tmpV.set(HOJA.x, HOJA.y + 0.4 + Math.random() * 0.4, HOJA.z), [0.85, 0.92, 1], 1, 0.1);
     // el agua que se va por la válvula (gira el volante, baja el nivel, burbujea)

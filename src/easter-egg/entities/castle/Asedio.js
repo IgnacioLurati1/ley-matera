@@ -8,6 +8,8 @@ import { macroY } from '../../world/Mountain';
 import { chiquiGiggle } from '../../world/Chiqui';
 import { isHost, myId, announce, players } from './common';
 import { ARM_COCK, ARM_FIRE, bannerTex, lavaTex, streamTex, buildCatapult, buildLadder, buildRam, buildCauldron, buildChest, boulderGeo, buildGateIce, buildStandards } from './asedioModels';
+import { sleepHidden } from '../../world/castleLean';
+import { SpriteBatch, spriteBatchOn } from '../../fx/spriteBatch';
 
 // El asedio del castillo (cada 10 rondas, y una vez durante el easter egg):
 // el Chiquitijuein sitia el castillo del Mateendrache.
@@ -156,6 +158,8 @@ export default class Asedio {
     this.root = new THREE.Group();
     this.root.visible = false;
     g.scene.add(this.root);
+    // (escondido hasta el primer asedio: no se recorre)
+    sleepHidden(this.root);
     this.disposables = [];
     this.makeMats();
     this.buildGate();
@@ -294,6 +298,7 @@ export default class Asedio {
       const group = buildLadder(g.world.M, len + 0.6);
       group.visible = false;
       this.root.add(group);
+      sleepHidden(group);
       const L = { i, x, foot, top, land: new THREE.Vector3(x, ly, landZ), len, phi0, phi: 0.1, group, st: 'off', t: 0, cd: 0, lastSpawn: -9, fire: 0, wind: 0, by: null, roll: 0, slide: 0, sink: 0, mats: [] };
       group.traverse((o) => {
         if (o.isMesh) L.mats.push([o, o.material]);
@@ -391,6 +396,7 @@ export default class Asedio {
       m.root.position.set(x, y, z);
       m.root.visible = false;
       this.root.add(m.root);
+      sleepHidden(m.root);
       // la cascada adentro de la barbacana (del muro de ese lado) y el vapor
       const sx = dir > 0 ? 50.15 : 53.85;
       const top = 29.7;
@@ -436,6 +442,7 @@ export default class Asedio {
     const g = this.g;
     const grp = buildRam(g.world.M, this.mat.eye, this.mat.ramHot, this.mat.fireS);
     grp.visible = false;
+    sleepHidden(grp);
     // la cabeza hacia el rastrillo (al norte)
     grp.rotation.order = 'YXZ';
     this.root.add(grp);
@@ -453,6 +460,7 @@ export default class Asedio {
     m.root.rotation.y = Math.PI;
     m.root.visible = false;
     this.root.add(m.root);
+    sleepHidden(m.root);
     const glow = new THREE.Sprite(this.mat.goldS);
     glow.scale.setScalar(2.4);
     glow.position.set(x, y + 0.9, z);
@@ -490,6 +498,10 @@ export default class Asedio {
         this.root.add(s);
         this.smoke.push({ s, x, y, z, t: (k / 7) * 9, life: 9 });
       }
+    }
+    // (las 16 llamas y los 35 humos en un dibujo cada uno: fx/spriteBatch.js)
+    if (spriteBatchOn()) {
+      this.batches = [new SpriteBatch(S.flames), new SpriteBatch(this.smoke.map((p) => p.s), { sort: true })];
     }
     this.skyK = 0;
   }
@@ -1089,6 +1101,9 @@ export default class Asedio {
     G.x = fr.x - 1.35 + ((z.id * 7) % 4) * 0.9;
     G.z = fr.z + 0.15 + ((z.id * 3) % 3) * 0.3;
     G.d = Math.hypot(G.x - z.pos.x, G.z - z.pos.z);
+    // al llegar miran derecho a la reja (Zombies.chase): mirando al punto,
+    // empujados por los de al lado, daban vueltas sin parar
+    G.face = window.__gateFaceOff ? null : Math.atan2(0, fr.z - G.z);
     const nav = this.gate.nav;
     nav.update(fr.x, fr.z + 0.6);
     G.nav = nav;
@@ -3028,6 +3043,7 @@ export default class Asedio {
     this.skyK = Math.min(1, this.skyK + dt / 5);
     this.updateStandards(dt, 1);
     this.updateSmoke(dt, this.skyK);
+    if (this.batches) for (const b of this.batches) b.sync(g.camera);
     for (const c of this.camps) {
       c.s.scale.setScalar((5 + Math.sin(g.time * 9 + c.x) * 0.6) * this.skyK);
       if (Math.random() < dt * 6) g.fx.fire(tmpA.set(c.x + R2(), c.y + 0.4, c.z + R2()), 0.8, 2);
@@ -3038,6 +3054,7 @@ export default class Asedio {
     this.skyK = Math.max(0, this.skyK - dt / 5);
     this.updateStandards(dt, 0);
     this.updateSmoke(dt, this.skyK);
+    if (this.batches) for (const b of this.batches) b.sync(this.g.camera);
     for (const c of this.camps) c.s.scale.setScalar(5 * this.skyK);
     for (const C of this.cats) {
       // se van para atrás, al humo

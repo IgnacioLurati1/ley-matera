@@ -378,7 +378,8 @@ export default class Bounce extends Pass {
     if (cam && scene) {
       const ce = cam.matrixWorld.elements;
       for (const l of this.points) {
-        if (!(l.intensity > 0)) continue;
+        // (las adoptadas de World.adoptLight no: ya están en las del pool)
+        if (!(l.intensity > 0) || !l.layers.isEnabled(0)) continue;
         let o = l;
         while (o.visible && o.parent) o = o.parent;
         if (!o.visible || o !== scene) continue;

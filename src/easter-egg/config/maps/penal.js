@@ -304,7 +304,9 @@ export const PROPS = [
   { type: 'yerbahang', pos: [46, 62], y: 1.8 },
   { type: 'yerbahang', pos: [46, 69.6], y: 1.8 },
   { type: 'firewood', pos: [49.4, 66.8], rot: Math.PI / 2 },
-  { type: 'sacks', pos: [49.4, 68.9], rot: 0.4 },
+  // (acá estaban los sacos de adelante de la caja: sacados por pedido del
+  // usuario 2026-10-02; el lugar vacío conserva la semilla de los que siguen)
+  { type: 'vacio', pos: [49.4, 68.9] },
   { type: 'bote', pos: [28.2, 85], rot: 0.1, y: -0.5 },
   { type: 'bote', pos: [34.8, 86.5], rot: -0.25, y: -0.5 },
   { type: 'bote', pos: [48.2, 87], rot: 0.2, y: -0.5 },
@@ -323,8 +325,9 @@ export const PROPS = [
   { type: 'lamppost', pos: [36, 75.6] },
   { type: 'lamppost', pos: [54, 75.6] },
   { type: 'sacks', pos: [61.4, 76.4], rot: 0.4 },
-  { type: 'cajones', pos: [51.2, 80.4], rot: 0.2 },
-  { type: 'cajones', pos: [42.2, 80.5], rot: -0.3 },
+  // (2026-10-05, el usuario: más adentro del muelle, que se pueda pasar por el lado del agua)
+  { type: 'cajones', pos: [51.2, 78.4], rot: 0.2 },
+  { type: 'cajones', pos: [42.2, 78.5], rot: -0.3 },
   { type: 'celdaK', pos: [19.0, 51.5], rot: Math.PI / 2, w: 4, d: 4 },
   { type: 'celdaK', pos: [19.0, 71.0], rot: Math.PI / 2, w: 4, d: 4, open: 1 },
   { type: 'celdaK', pos: [26.5, 64.0], rot: -Math.PI / 2, w: 7, d: 5, open: 1 },
@@ -392,12 +395,14 @@ export const PROPS = [
   { type: 'tree', pos: [26, 51] },
   { type: 'tree', pos: [39, 56] },
   { type: 'tree', pos: [82, 55.5] },
-  { type: 'tree', pos: [14, 37] },
+  // (los muertos de las ventanas [19,37] y [41,14] los atravesaban al venir:
+  // corridos a un costado de su camino; __mduOldPenalTrees, donde estaban)
+  { type: 'tree', pos: globalThis.__mduOldPenalTrees ? [14, 37] : [14, 33.5] },
   { type: 'tree', pos: [80, 67] },
   { type: 'tree', pos: [15, 57] },
   { type: 'tree', pos: [16, 27] },
   { type: 'tree', pos: [27, 19] },
-  { type: 'tree', pos: [41, 10] },
+  { type: 'tree', pos: globalThis.__mduOldPenalTrees ? [41, 10] : [44.5, 10] },
   { type: 'santuario', pos: [30.5, 69.5] },
   { type: 'torre', pos: [78, 43] },
   { type: 'reflector', pos: [69.9, 44.9], lift: 5.4 },

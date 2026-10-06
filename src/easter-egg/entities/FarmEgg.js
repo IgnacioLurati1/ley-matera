@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { EE } from '../config/map';
 import { zombieHealth, maxAlive } from '../config/rules';
-import { mesh, boxGeo, cylGeo } from '../world/props';
+import { mesh, boxGeo, cylGeo, mergeByMaterial, compactGroup } from '../world/props';
 import { missingIn, missingText } from './Encierro';
 import FarmDefense from './FarmDefense';
 import SongEgg from '../world/SongEgg';
@@ -368,6 +368,9 @@ export default class FarmEgg {
       f.position.set(cx, 0.27, cz);
       candles.add(f);
     }
+    // (se prenden enteras: una malla de cera y una de llamas, sin sombra de llama)
+    mergeByMaterial(candles);
+    for (const o of candles.children) if (o.material === this.M.flame) o.castShadow = false;
     candles.visible = false;
     group.add(candles);
     this.root.add(group);
@@ -390,6 +393,9 @@ export default class FarmEgg {
       f.position.set(pos[0] + Math.cos(a) * (r + 0.2), y + 0.27, pos[1] + Math.sin(a) * (r + 0.2));
       candles.add(f);
     }
+    // (se prenden enteras: una malla de cera y una de llamas, sin sombra de llama)
+    mergeByMaterial(candles);
+    for (const o of candles.children) if (o.material === this.M.flame) o.castShadow = false;
     candles.visible = false;
     this.root.add(candles);
     return { ring, candles, pos: new THREE.Vector3(pos[0], y, pos[1]), r };
@@ -403,6 +409,7 @@ export default class FarmEgg {
     g.add(mesh(cylGeo(0.42, 0.5, 0.9, 10), M.stone, 0, 0.45, 0));
     g.add(mesh(cylGeo(0.5, 0.5, 0.08, 10), M.stoneDark, 0, 0.93, 0));
     for (let i = 0; i < 3; i++) g.add(mesh(cylGeo(0.02, 0.02, 0.16, 6), M.candle, Math.cos(i * 2.1) * 0.36, 1.05, Math.sin(i * 2.1) * 0.36));
+    mergeByMaterial(g);
     this.root.add(g);
     this.g.world.addBox([x - 0.5, y, z - 0.5, x + 0.5, y + 1, z + 0.5], { kind: 'prop' });
     const piece = this.pieceModel(def.id);
@@ -428,6 +435,7 @@ export default class FarmEgg {
     g.add(mesh(boxGeo(0.06, 0.2, 0.2), M.iron, 0.48, 1.1, -0.15));
     g.add(mesh(cylGeo(0.02, 0.02, 0.3, 6), M.iron, 0.6, 1.14, 0.02, 0, 0, Math.PI / 2));
     g.add(mesh(cylGeo(0.25, 0.25, 0.08, 16), M.stone, -0.55, 1.2, 0, Math.PI / 2, 0, 0));
+    mergeByMaterial(g);
     this.root.add(g);
     this.g.world.addBox([x - 1.05, 0, z - 0.45, x + 1.05, 1.05, z + 0.45], { kind: 'prop' });
     // los pedazos se van poniendo arriba de la mesa a medida que llegan
@@ -468,17 +476,21 @@ export default class FarmEgg {
           const a = k * 2.4;
           fl.add(mesh(new THREE.IcosahedronGeometry(0.035, 0), this.flowerMat, Math.cos(a) * (0.2 + (k % 3) * 0.08), 0.9 + (k % 4) * 0.13, Math.sin(a) * (0.2 + (k % 3) * 0.08)));
         }
+        mergeByMaterial(fl);
         g.add(fl);
       }
       g.add(mesh(cylGeo(0.05, 0.08, 0.6, 6), M.bark, 0, 0.3, 0));
-      const leaves = [];
+      // (las siete matas en una malla: se esconden y cambian de material juntas)
+      const lg = new THREE.Group();
       for (let k = 0; k < 7; k++) {
         const a = (k / 7) * Math.PI * 2;
         const m = mesh(new THREE.IcosahedronGeometry(1, 1), M.yerbaBush, Math.cos(a) * 0.25, 0.85 + (k % 3) * 0.18, Math.sin(a) * 0.25);
         m.scale.setScalar(0.3 + (k % 2) * 0.08);
-        g.add(m);
-        leaves.push(m);
+        lg.add(m);
       }
+      if (!globalThis.__mduNoMerge) compactGroup(lg);
+      g.add(lg);
+      const leaves = [...lg.children];
       const stump = mesh(cylGeo(0.09, 0.1, 0.18, 6), M.bark, 0, 0.09, 0);
       stump.visible = false;
       g.add(stump);
@@ -528,6 +540,7 @@ export default class FarmEgg {
     g.add(mesh(cylGeo(0.12, 0.15, 0.08, 12), M.redPaint, 0.5, 0.93, 0));
     g.add(mesh(cylGeo(0.17, 0.17, 0.02, 14), M.metal, 0.5, 1.12, 0));
     for (let i = 0; i < 4; i++) g.add(mesh(boxGeo(0.3, 0.01, 0.4), M.paper, -0.4, 0.9 + i * 0.012, 0.05, 0, i * 0.15, 0));
+    mergeByMaterial(g);
     this.root.add(g);
     const pk = new THREE.Group();
     pk.add(mesh(boxGeo(0.16, 0.26, 0.1), new THREE.MeshStandardMaterial({ map: packTexture(), roughness: 0.7 }), 0, 0.13, 0));
@@ -573,7 +586,8 @@ export default class FarmEgg {
     this.root.add(this.flareGlow);
     this.dryLight = new THREE.PointLight(0xff7a2a, 0, 9, 1.6);
     this.dryLight.position.copy(w.mouth).setY(0.7);
-    this.root.add(this.dryLight);
+    // (no cuenta como luz mientras está apagada: World.adoptLight)
+    this.root.add(this.g.world.adoptLight(this.dryLight));
     this.deck = { x0, z0, x1, z1, y, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2 };
     this.deckPos = new THREE.Vector3(this.deck.cx, y + 1, this.deck.cz);
     this.mouthPos = new THREE.Vector3(w.mouth.x, 1, w.mouth.z + 0.4);

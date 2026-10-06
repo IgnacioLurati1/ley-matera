@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EE } from '../config/map';
 import { zombieHealth, maxAlive, SPEEDS } from '../config/rules';
-import { mesh, boxGeo, cylGeo } from '../world/props';
+import { mesh, boxGeo, cylGeo, mergeByMaterial } from '../world/props';
 import { bars, cot, bucket } from '../world/penalProps';
 import Avatars from '../net/Avatars';
 import Encierro, { missingIn, missingText } from './Encierro';
@@ -18,7 +18,11 @@ import { fireflies } from '../fx/Fireflies';
 import { reachableSpot } from './reach';
 import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
 import PenalForge from './penalForge';
+import { devKeys } from '../core/devKeys';
 import PenalMotin from './penalMotin';
+import CineActors from '../ui/cineActors';
+import { cineClip, poseCineClip, cineSnap, cineBlendFrom } from '../net/gauchoSkin';
+import { assetUrl } from '../../lib/assets';
 
 // Easter egg del penal: "Los Tres Gauchos". En tres celdas hay tres gauchos
 // presos (Anacleto en el pabellón, Cirilo en los calabozos, Benito en la
@@ -195,6 +199,8 @@ export default class PenalEgg {
     this.myKnifeUp = false;
     this.voiceT = 80;
     this.npc = new Avatars(game, null);
+    // (fuera de cuadro no se animan: net/Avatars offCull)
+    this.npc.offCull = true;
     this.buildCells();
     this.buildDogs();
     this.buildParts();
@@ -234,7 +240,7 @@ export default class PenalEgg {
     this.mergeStatic();
     // atajos de prueba (solo, jugando): Alt+N el cuchillo, Alt+B el bote
     this.onKey = (e) => {
-      if (!import.meta.env.DEV || !e.altKey || game.state !== 'playing' || game.net) return;
+      if (!devKeys() || !e.altKey || game.state !== 'playing' || game.net) return;
       if (e.code === 'KeyN') {
         e.preventDefault();
         this.debugKnife();
@@ -316,6 +322,9 @@ export default class PenalEgg {
       g.add(door);
       cot(g, M, -w / 2 + 0.55, -d / 2 + 1.1, 0, false);
       bucket(g, M, w / 2 - 0.4, 0, -d / 2 + 0.4);
+      // la puerta se abre entera: sus barrotes, en una malla por material (lo
+      // demás de la celda lo funde mergeStatic con la utilería del mapa)
+      mergeByMaterial(door);
       this.root.add(g);
       // colisión de la reja (la puerta se abre)
       const world = this.g.world;
@@ -329,9 +338,13 @@ export default class PenalEgg {
       box([0.5, d / 2], [w / 2, d / 2]);
       const doorBox = box([-0.5, d / 2], [0.5, d / 2]);
       for (const s of [-1, 1]) box([s * (w / 2), -d / 2], [s * (w / 2), d / 2]);
-      // el gaucho: sentado en el catre mirando la reja
-      const gp = toWorld(-w / 2 + 0.9, -d / 2 + 1.4);
-      const npc = { id: 300 + i, name: def.name, pos: new THREE.Vector3(gp.x, y, gp.z), yaw: def.rot + Math.PI, pitch: 0, speed: 0, crouch: true, moving: false };
+      // el gaucho: sentado en el catre mirando la reja. Ya son ánimas (ni la
+      // muerte los deja salir): azules y transparentes, como en el final
+      // (con los clips de Blender, sentado de verdad en la punta del catre,
+      // mirando la reja: los pies 22 cm adelante del borde; ver npcActs)
+      const blend = globalThis.__mduBlend !== false;
+      const gp = blend ? toWorld(-w / 2 + 0.55, -d / 2 + 2.27) : toWorld(-w / 2 + 0.9, -d / 2 + 1.4);
+      const npc = { id: 300 + i, name: def.name, pos: new THREE.Vector3(gp.x, y, gp.z), yaw: def.rot + Math.PI, pitch: 0, speed: 0, crouch: true, moving: false, anima: true };
       this.npc.add(npc);
       const a = this.npc.list.get(npc.id);
       a.M.poncho.color.set(new THREE.Color(PONCHO[def.id]).multiplyScalar(1.7));
@@ -339,6 +352,95 @@ export default class PenalEgg {
       this.cells[def.id] = { def, group: g, door, doorBox, npc, front: new THREE.Vector3(front.x, y, front.z), y, open: 0 };
     });
     for (const n of this.npc.list.values()) n.hand.visible = false;
+    // lo que hacen en la celda, con clips hechos a mano en Blender
+    // (C:/Users/ignac/Tools/mdu-blender penal2_clips.py → cine-penal2.json):
+    // sentados en el catre, llaman con la mano, hablan, se paran cuando los
+    // sueltan. globalThis.__mduBlend = false: agachados como antes.
+    this.P2 = null;
+    if (globalThis.__mduBlend !== false)
+      fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-penal2.json'))
+        .then((r) => r.json())
+        .then((J) => {
+          const C = {};
+          for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+          this.P2 = C;
+        })
+        .catch(() => {});
+  }
+
+  // Quién de los presos está hablando ahora (su renglón en pantalla, mientras
+  // suena la voz): el anfitrión los hace hablar y llega a todos (Game.say).
+  npcTalking() {
+    const out = new Set();
+    for (const l of this.g.hud?.lines || []) {
+      if (l.out || l.t < 1.3) continue;
+      const who = l.el?.firstChild;
+      if (who?.tagName === 'B') out.add(who.textContent);
+    }
+    return out;
+  }
+
+  // Antes de mover los muñecos (Avatars): qué clip va para cada preso. Los
+  // cambios se funden desde la pose del cuadro anterior (cineSnap).
+  npcActs(dt) {
+    const C = this.P2;
+    if (!C) return;
+    const talking = this.npcTalking();
+    for (const [id, c] of Object.entries(this.cells)) {
+      const r = c.npc;
+      const a = this.npc.list.get(r.id);
+      if (!a?.gs?.on) continue;
+      const A = (c.act ||= { name: null, lt: 0, snap: null, sw: 1, out: 1 });
+      A.lt += dt;
+      const talk = talking.has(c.def.name);
+      let want;
+      if (this.freed[id]) {
+        // (ya libre al entrar a la partida, con la puerta abierta: parado)
+        if (A.stood == null) A.stood = c.open > 0.5;
+        if (!A.stood) want = 'standUp';
+        else want = talk ? 'standTalk' : null;
+        if (A.name === 'standUp' && A.lt >= C.standUp.dur) A.stood = true;
+        if (!A.stood && A.name === 'standUp') want = 'standUp';
+      } else if (c.callT != null && this.g.time - c.callT < C.cellCall.dur) want = 'cellCall';
+      else want = talk ? 'cellTalk' : 'cellSit';
+      if (want !== A.name) {
+        A.snap = A.name || want ? cineSnap(a) : null;
+        A.sw = 0;
+        A.name = want;
+        A.lt = 0;
+        // (el que se sienta o se para queda donde estaba: sentado, el agachado
+        // de siempre no se ve nunca)
+        r.crouch = !this.freed[id];
+      }
+      A.sw = Math.min(1, A.sw + dt / 0.35);
+    }
+  }
+
+  // Después de mover los muñecos: el clip encima (o, sin clip, la pose de
+  // siempre fundiéndose desde la última del clip).
+  npcPose() {
+    const C = this.P2;
+    if (!C) return;
+    for (const c of Object.values(this.cells)) {
+      const A = c.act;
+      const r = c.npc;
+      const a = this.npc.list.get(r.id);
+      if (!A || !a?.gs?.on) continue;
+      if (a.gun) a.gun.visible = false;
+      a.hand.visible = false;
+      if (!A.name) {
+        if (A.snap && A.sw < 1) cineBlendFrom(a, A.snap, A.sw * A.sw * (3 - 2 * A.sw));
+        continue;
+      }
+      const cl = C[A.name];
+      const loop = !!cl.loop;
+      const o = { loop };
+      if (A.snap && A.sw < 1) {
+        o.snap = A.snap;
+        o.sw = A.sw * A.sw * (3 - 2 * A.sw);
+      }
+      poseCineClip(a, cl, loop ? A.lt : Math.min(A.lt, cl.dur), r.pos.x, r.pos.y, r.pos.z, r.yaw + Math.PI, o);
+    }
   }
 
   // Un perro grande y negro, atado a su cucha.
@@ -357,6 +459,8 @@ export default class PenalEgg {
       eye.position.set(s * 0.07, 0.04, 0.13);
       head.add(eye);
     }
+    // (la cabeza se mueve entera: el pelo, en una malla; los ojos, aparte)
+    mergeByMaterial(head);
     body.add(head);
     // las patas cuelgan de la cadera (así corren)
     const legs = [];
@@ -1295,8 +1399,10 @@ export default class PenalEgg {
     const g = this.g;
     if (this.items.yerba !== 'none') return;
     this.items.yerba = 'falling';
-    this.netSync();
+    // (primero la escena: el estado entero tarda en aplicarse en el invitado y
+    // le arrancaba la escena 0,3 s tarde)
     g.net?.event('pee', { scene: 1 });
+    this.netSync();
     this.playScene();
   }
 
@@ -1314,6 +1420,7 @@ export default class PenalEgg {
     g.root.appendChild(el);
     const S = { t: 0, el, text: el.querySelector('.mdu-fcine__text'), span: el.querySelector('.mdu-fcine__text span'), black: el.querySelector('.mdu-fcine__black'), step: 0, next: 0, shot: 'sky', shotT: 0, sub: null, fall: null };
     this.scene = S;
+    S.wallAt = g.net ? performance.now() : 0;
     S.steps = this.sceneSteps(S);
     S.onKey = (e) => {
       if (e.code === 'Space' || e.code === 'Enter') this.sceneOut();
@@ -1327,6 +1434,7 @@ export default class PenalEgg {
     this.yerbaObj.visible = false;
     this.yerbaGlow.visible = false;
     g.hud.show(false);
+    this.sceneCrew(S);
     // corte a negro y se abre sobre el patio, con un trueno
     this.sceneBlack(1, 0);
     void S.black.offsetWidth;
@@ -1343,25 +1451,88 @@ export default class PenalEgg {
       [0, () => 2.8],
       [0, () => {
         this.sceneShot('eye');
-        return this.sceneSay(VOICE[0]);
+        const d = this.sceneSay(VOICE[0]);
+        this.crewBeat(S, 'voz', d);
+        return d;
       }],
       // la yerba sale del ojo hecha oro y baja por la luz mientras habla
       [0.2, () => {
         const d = this.sceneSay(VOICE[1]);
         this.yerbaOut(Math.max(4.2, d - 0.3));
         this.sceneShot('fall');
+        this.crewBeat(S, 'cae', S.fall.dur);
         return S.fall.dur;
       }],
       [0, () => {
         this.yerbaLand();
         this.sceneShot('ground');
-        return 2.6;
+        this.crewBeat(S, 'piso', 2.6);
+        return S.crew ? 3.4 : 2.6;
       }],
       [0, () => {
         this.sceneOut();
         return 99;
       }],
     ];
+  }
+
+  // Los cuatro gauchos en el patio (siempre cuatro, cada uno con su carácter:
+  // ui/cineCrew), en ronda del otro lado de las cámaras, mirando al cielo.
+  // globalThis.__mduBlend = false: la escena de antes, sin ellos.
+  sceneCrew(S) {
+    const g = this.g;
+    if (globalThis.__mduBlend === false) return;
+    const Y = this.yerbaPos;
+    const C = new CineActors(g, { floor: (x, z) => this.floor(x, z) });
+    // la ronda: hacia -z (las tomas de siempre miran desde +z)
+    const a0 = -Math.PI / 2;
+    const R = 3.1;
+    S.crewAt = { dx: Math.cos(a0) * R, dz: Math.sin(a0) * R, sx: -Math.sin(a0), sz: Math.cos(a0) };
+    C.arc(Y, Y, R, 1.5, a0);
+    // (la Voz llega desde arriba de la yerba: miran hacia allá)
+    for (const r of C.list) r.yaw += (Math.random() - 0.5) * 0.2;
+    const b = C.by;
+    C.act(b.valiente, 'fists', { loop: true, look: 0.5 });
+    // el trueno: el Miedoso salta y se agacha; el Viejo trastabilla
+    C.act(b.miedoso, 'duck', { look: 0.2 });
+    C.later(1.1, () => C.act(b.miedoso, 'cower', { loop: true, fade: 0.4 }));
+    C.act(b.canchero, 'cebar', { loop: true, look: 0.3 });
+    b.canchero.mate = true;
+    C.act(b.viejo, 'stagger', { look: 0.3 });
+    C.later(1.6, () => C.act(b.viejo, 'winded', { loop: true, fade: 0.5, look: 0.3 }));
+    S.crew = C;
+    // (se abre en ellos: el trueno los agarra mirando al cielo)
+    S.shot = 'crew0';
+    if (g.net?.avatars) g.net.avatars.root.visible = false;
+  }
+
+  // Lo que hace cada uno en cada parte de la escena (d: cuánto dura).
+  crewBeat(S, k, d) {
+    const C = S.crew;
+    if (!C) return;
+    const b = C.by;
+    if (k === 'voz') {
+      // a mitad de la primera frase, corte a ellos
+      S.cutAt = S.t + Math.max(1.4, d * 0.5);
+      C.act(b.valiente, 'crossArms', { loop: true, look: 0.55, fade: 0.5 });
+      C.later(0.3, () => C.act(b.miedoso, 'santiguar', { look: 0.3, fade: 0.4 }));
+      C.later(2.2, () => C.act(b.miedoso, 'pray', { loop: true, look: 0.35, fade: 0.5 }));
+      C.later(0.9, () => C.act(b.viejo, 'pointUp', { loop: true, fade: 0.6 }));
+      // el Canchero le convida un mate a la Voz
+      C.later(Math.max(1.6, d * 0.5 + 0.6), () => C.act(b.canchero, 'offer', { look: 0.45, fade: 0.6 }));
+    } else if (k === 'cae') {
+      C.act(b.valiente, 'reachUp', { loop: true, fade: 0.5 });
+      C.later(0.4, () => C.act(b.canchero, 'cebar', { loop: true, look: 0.2, fade: 0.6 }));
+      C.later(0.15, () => C.act(b.miedoso, 'cower', { loop: true, look: 0.2, fade: 0.45 }));
+    } else if (k === 'piso') {
+      // la yerba en el piso: el Valiente festeja, el Viejo se arrodilla
+      C.act(b.valiente, 'fistUp', { loop: true, fade: 0.4 });
+      C.later(0.25, () => C.act(b.miedoso, 'pray', { loop: true, fade: 0.5 }));
+      C.later(0.6, () => C.act(b.canchero, 'cool', { loop: true, fade: 0.6 }));
+      C.later(0.4, () => (b.canchero.mate = false));
+      C.later(0.9, () => C.act(b.viejo, 'kneelDown', { fade: 0.5 }));
+      C.later(2.1, () => C.act(b.viejo, 'kneelHold', { loop: true, fade: 0.4 }));
+    }
   }
 
   sceneShot(name) {
@@ -1429,14 +1600,18 @@ export default class PenalEgg {
     // (la del espinillo se maneja sola: entities/penalForge.js)
     if (S.forge) return S.update(dt);
     const g = this.g;
-    S.t += dt;
+    // (en línea con el reloj de verdad; lo que se mueve, con 1 s a lo sumo)
+    const sdt = sceneDt(g, S, dt);
+    S.t += sdt;
+    dt = Math.min(1, sdt);
     const t = S.t;
     while (this.scene === S && S.step < S.steps.length && t >= S.next + S.steps[S.step][0]) {
       const [wait, fn] = S.steps[S.step];
       const start = S.next + wait;
       S.step++;
       const dur = fn() || 0;
-      S.next = Math.max(start, t) + dur;
+      // (en línea, una trabada no corre el resto del guion: se pone al día)
+      S.next = (g.net ? start : Math.max(start, t)) + dur;
     }
     if (this.scene !== S) return true;
     // ni la mano del gaucho life
@@ -1480,14 +1655,39 @@ export default class PenalEgg {
     } else if (S.shot === 'eye') {
       cam.position.set(Y.x + 2.8 - st * 0.1, fy + 3.2 + st * 0.12, Y.z + 3.6 - st * 0.1);
       cam.lookAt(E);
+    } else if (S.shot === 'crew0') {
+      // de abajo y de lejos: la luz de la Voz que baja les cae encima
+      const C = S.crewAt;
+      cam.position.set(Y.x - C.dx * 0.45 + C.sx * st * 0.12, fy + 0.55 + st * 0.1, Y.z - C.dz * 0.45 + C.sz * st * 0.12);
+      cam.lookAt(tmpV.set(Y.x + C.dx, fy + 1.6 + st * 0.15, Y.z + C.dz));
+    } else if (S.shot === 'crew') {
+      // los cuatro desde abajo de la Voz: miran para arriba, cada uno a su manera
+      const C = S.crewAt;
+      cam.position.set(Y.x - C.dx * 0.12 + st * 0.05, fy + 0.95 + st * 0.04, Y.z - C.dz * 0.12);
+      cam.lookAt(tmpV.set(Y.x + C.dx, fy + 1.35, Y.z + C.dz));
     } else if (S.shot === 'fall') {
       // desde el patio, un poco más abajo que la yerba: arriba queda el ojo
       const P = this.yerbaObj.position;
       cam.position.set(Y.x + 3.2, Math.min(Y.y + 5, Math.max(fy + 0.8, P.y - 2.5)), Y.z + 3.4);
       cam.lookAt(tmpV.copy(P).setY(P.y + 0.3));
+    } else if (S.shot === 'ground' && S.crew && st > 1.5) {
+      // y los cuatro alrededor de la yerba, del otro lado
+      const C = S.crewAt;
+      const u = Math.min(1, (st - 1.5) / 1.9);
+      cam.position.set(Y.x - C.dx * 0.55 + C.sx * (0.6 - u * 0.5), fy + 1.5 + u * 0.3, Y.z - C.dz * 0.55 + C.sz * (0.6 - u * 0.5));
+      cam.lookAt(tmpV.set(Y.x + C.dx * 0.55, fy + 0.9, Y.z + C.dz * 0.55));
     } else {
       cam.position.set(Y.x + 1.9 + st * 0.12, fy + 0.6 + st * 0.08, Y.z + 2.3 + st * 0.14);
       cam.lookAt(tmpV.set(Y.x, Y.y - 0.15 + st * 0.3, Y.z));
+    }
+    // los cuatro gauchos (ui/cineActors: los clips de Blender)
+    if (S.crew) {
+      if (S.cutAt != null && t >= S.cutAt) {
+        S.cutAt = null;
+        this.sceneShot('crew');
+      }
+      // (los cuatro con el reloj de la escena: siguen en hora con las tomas)
+      S.crew.tick(sdt);
     }
     // el subtítulo, letra por letra
     const sub = S.sub;
@@ -1519,6 +1719,10 @@ export default class PenalEgg {
     this.scene = null;
     window.removeEventListener('keydown', S.onKey);
     S.el.remove();
+    if (S.crew) {
+      S.crew.dispose();
+      if (g.net?.avatars) g.net.avatars.root.visible = true;
+    }
     this.voz.root.visible = false;
     this.yerbaObj.position.copy(this.yerbaPos);
     if (g.state === 'playing' || g.state === 'paused') g.hud.show(true);
@@ -2217,7 +2421,9 @@ export default class PenalEgg {
   update(dt) {
     const g = this.g;
     const t = g.time;
+    this.npcActs(dt);
     this.npc.update(dt);
+    this.npcPose();
     this.updateKnife(dt);
     this.ghosts.update(dt);
     this.boat.update(dt);
@@ -2231,7 +2437,10 @@ export default class PenalEgg {
         r.crouch = false;
         c.open = Math.min(1, c.open + dt * 1.5);
         const p = g.player.pos;
-        r.yaw += ((Math.atan2(p.x - r.pos.x, p.z - r.pos.z) + Math.PI) - r.yaw) * Math.min(1, dt * 2);
+        // (por el lado corto: sin esto Anacleto, con el yaw en 2π, daba una
+        // vuelta entera al soltarlo; parándose del catre, la cadera barría un círculo)
+        const dy = Math.atan2(p.x - r.pos.x, p.z - r.pos.z) + Math.PI - r.yaw;
+        r.yaw += Math.atan2(Math.sin(dy), Math.cos(dy)) * Math.min(1, dt * 2);
       }
       c.door.rotation.y = -c.open * 1.9;
       // cuando uno se acerca por primera vez, el gaucho llama (cada uno lo escucha en su compu)
@@ -2240,6 +2449,7 @@ export default class PenalEgg {
         const d = Math.hypot(g.player.pos.x - c.front.x, g.player.pos.z - c.front.z);
         if (d < 7 && Math.abs(g.player.pos.y - c.y) < 2) {
           c.called = true;
+          c.callT = g.time;
           g.say(SPEAKER[id], n === 1 ? '¡Psst! ¡Vos! Vení, acercate a la reja.' : n === 2 ? '¿Quién anda ahí? Si te manda Anacleto, vení.' : '¿Son pasos de vivo? ¡Acá, en la celda!', 'npc', { local: true });
         }
       }
@@ -2463,4 +2673,16 @@ export default class PenalEgg {
     this.papJug?.removeFromParent();
     this.motin?.dispose();
   }
+}
+
+// El reloj de una escena (la yerba; el cañonazo y la caída): en línea, el de
+// verdad desde que arrancó (una trabada de hasta 30 s cuenta: la compu que se
+// traba no se atrasa de las demás y no se pierde el final); solo, el dt de
+// siempre (como ui/FarmCinematic). Llamadas seguidas sin cuadro: el dt.
+function sceneDt(g, S, dt) {
+  if (!g.net) return dt;
+  const now = performance.now();
+  const w = (now - (S.wallAt || now)) / 1000;
+  S.wallAt = now;
+  return w >= 0.002 && w < 30 ? w : dt;
 }

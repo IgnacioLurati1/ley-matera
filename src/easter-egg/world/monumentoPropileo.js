@@ -30,8 +30,8 @@ export const PROP = {
 };
 // las doce columnas de cada fila, simétricas alrededor de la Llama (z 30,5)
 export const COLS = Array.from({ length: 12 }, (_, i) => 30.5 + (i - 5.5) * 1.59);
-const COL_W = 0.42; // de canto (a lo largo del frente)
-const COL_D = 0.76; // de fondo
+export const COL_W = 0.42; // de canto (a lo largo del frente)
+export const COL_D = 0.76; // de fondo
 const SHAFT_TOP = 12.9;
 
 export function buildPropileo(w, gb, extra) {
@@ -82,7 +82,18 @@ export function buildPropileo(w, gb, extra) {
   sweep(gb, 'travertinoDark', [33, P.pyN], [P.x1, P.pyN], [0, 1], Z, { y });
   // ---- el entablamento y el techo: una losa de 1,7 m con el friso de las frases
   const yE = SHAFT_TOP;
-  bbox(gb, 'travertinoBig', P.x0 - 0.05, yE, P.z0 - 0.05, P.x1 + 0.05, P.top - 0.32, P.z1 + 0.05, { b: 0.04, skip: ['top'] });
+  // (sin la cara de abajo sobre la nave: tapaba los casetones del cielorraso y
+  // titilaba con el fondo de las vigas, en el mismo plano; abajo va solo donde
+  // se ve: el vuelo de 5 cm de todo alrededor. __mduNoZfix: entera)
+  const fixE = globalThis.__mduNoZfix !== true;
+  bbox(gb, 'travertinoBig', P.x0 - 0.05, yE, P.z0 - 0.05, P.x1 + 0.05, P.top - 0.32, P.z1 + 0.05, { b: 0.04, skip: fixE ? ['top', 'bottom'] : ['top'] });
+  if (fixE) {
+    const ring = [[P.x0 - 0.05, P.z0 - 0.05, P.x1 + 0.05, P.z0], [P.x0 - 0.05, P.z1, P.x1 + 0.05, P.z1 + 0.05], [P.x0 - 0.05, P.z0, P.x0, P.z1], [P.x1, P.z0, P.x1 + 0.05, P.z1]];
+    for (const [a, b, c, d] of ring) quad(gb, 'travertinoBig', [[a, yE, b], [c, yE, b], [c, yE, d], [a, yE, d]], [0, -1, 0]);
+    // y los costados del hueco del cielorraso, arriba de las caras de los pilonos
+    quad(gb, 'travertino', [[P.x0, yE, P.pyN], [P.x1, yE, P.pyN], [P.x1, yE + 0.6, P.pyN], [P.x0, yE + 0.6, P.pyN]], [0, 0, 1]);
+    quad(gb, 'travertino', [[P.x0, yE, P.pyS], [P.x1, yE, P.pyS], [P.x1, yE + 0.6, P.pyS], [P.x0, yE + 0.6, P.pyS]], [0, 0, -1]);
+  }
   // la cornisa de remate alrededor
   const c = [[P.x0 - 0.05, P.z0 - 0.05], [P.x0 - 0.05, P.z1 + 0.05], [P.x1 + 0.05, P.z1 + 0.05], [P.x1 + 0.05, P.z0 - 0.05]];
   const outs = [[-1, 0], [0, 1], [1, 0], [0, -1]];
@@ -100,10 +111,14 @@ export function buildPropileo(w, gb, extra) {
       // un dado apenas más ancho al pie y el fuste
       bbox(gb, 'travertinoDark', x - COL_D / 2 - 0.04, y, z - COL_W / 2 - 0.04, x + COL_D / 2 + 0.04, y + 0.22, z + COL_W / 2 + 0.04, { b: 0.02 });
       bbox(gb, 'travertino', x - COL_D / 2, y + 0.22, z - COL_W / 2, x + COL_D / 2, SHAFT_TOP, z + COL_W / 2, { b: 0.025, corners: true, skip: ['top', 'bottom'] });
-      // choque: del metro para arriba es sólido (no corta la grilla de los muertos);
-      // abajo, solo para las balas (World.computeNavBlock no cuenta lo que está más arriba)
+      // choque: del metro para arriba es sólido; abajo antes era solo para las
+      // balas (no cortaba la grilla de los muertos), y los muertos se trababan
+      // queriendo pasar entre la columna y el pilono (55 cm). Ahora abajo también
+      // es sólido: World.computeNavBlock no manda a nadie por al lado de una
+      // columna. globalThis.__mduNoColNav: como antes.
+      const navCol = globalThis.__mduNoColNav !== true;
       w.addBox([x - COL_D / 2, y + 1.02, z - COL_W / 2, x + COL_D / 2, SHAFT_TOP, z + COL_W / 2], { kind: 'prop' });
-      w.addBox([x - COL_D / 2, y - 0.1, z - COL_W / 2, x + COL_D / 2, y + 1.02, z + COL_W / 2], { kind: 'prop', solid: false });
+      w.addBox([x - COL_D / 2, y - 0.1, z - COL_W / 2, x + COL_D / 2, y + 1.02, z + COL_W / 2], { kind: 'prop', solid: navCol });
     }
   }
   // ---- los frisos con las frases (al Patio y al Pasaje)
@@ -125,6 +140,8 @@ export function buildPropileo(w, gb, extra) {
       // la luz que sale del cuenco (un disco que brilla)
       extra.push(place(bowl, M.lampGlass, x + dx, y + 2.18, z));
       w.addBox([x + dx - 0.16, y + 1.02, z - 0.16, x + dx + 0.16, y + 2.25, z + 0.16], { kind: 'prop' });
+      // (y el pie, para la grilla de los muertos, como las columnas)
+      if (globalThis.__mduNoColNav !== true) w.addBox([x + dx - 0.16, y, z - 0.16, x + dx + 0.16, y + 1.02, z + 0.16], { kind: 'prop', shoot: false });
     }
   }
   // ---- las ocho urnas de bronce verde pompeyano, en la nave (cuatro por lado)
@@ -146,7 +163,12 @@ export function buildPropileo(w, gb, extra) {
 function frieze(w, extra, text, x, ry) {
   const tex = toTexture(carvedText(text, { w: 4096, h: 160, size: 92, spacing: 0.28 }));
   tex.anisotropy = 8;
-  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 });
+  // (con la luz se ilumina el friso entero, con las letras talladas más
+  // oscuras: world/monumentoLuces.js statues; el lavado de la piedra ya no
+  // pasa por delante, que las tapaba. globalThis.__mduNoFrisoLuz: como antes)
+  const lit = globalThis.__mduNoFrisoLuz !== true;
+  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, ...(lit ? { emissiveMap: tex, emissive: 0xffe6c4, emissiveIntensity: 0 } : {}) });
+  if (lit) (w.mon.litMats ||= []).push(mat), (mat.userData.litK = 0.75);
   const L = PROP.z1 - PROP.z0 - 2.2;
   const geo = new THREE.PlaneGeometry(L, (L * 160) / 4096);
   extra.push(place(geo, mat, x, SHAFT_TOP + 0.75, (PROP.z0 + PROP.z1) / 2, ry));

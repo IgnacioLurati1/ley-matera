@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { DOORS, HUECOS, ZONES } from '../config/map';
 import { warmObject } from '../fx/ghostMat';
-import { mesh, boxGeo, cylGeo, mergeByMaterial } from '../world/props';
+import { mesh, boxGeo, cylGeo, mergeByMaterial, compactGroup } from '../world/props';
+import { flatten } from '../world/perkMachines';
 
 // Los huecos del gaucho life (el penal, como el afterlife de Mob of the Dead).
 // Las rejas eléctricas no tienen la cerradura a mano: el tablero que las abre
@@ -139,6 +140,13 @@ export default class VidaHuecos {
       face: new THREE.MeshStandardMaterial({ color: 0xf0ead8, roughness: 0.5 }),
     };
     HUECOS.forEach((h, i) => this.build(h, i));
+    // (las caras de pared de los boquetes: una malla por material en cada grupo)
+    if (!globalThis.__mduNoMerge) {
+      for (const grp of [this.plug, this.holed]) {
+        compactGroup(grp);
+        for (const o of grp.children) if (o.isMesh && !this.geos.includes(o.geometry)) this.geos.push(o.geometry);
+      }
+    }
     this.wrapPrompts();
     // (los materiales son los de la pared: ya están; el tablero, compilado ya)
     warmObject(game, this.root);
@@ -387,7 +395,13 @@ export default class VidaHuecos {
     const lampMat = new THREE.MeshStandardMaterial({ color: 0x1a2430, emissive: COLOR, emissiveIntensity: 1.6, roughness: 0.3 });
     const lamp = mesh(new THREE.SphereGeometry(0.035, 12, 8), lampMat, 0.14, y - 0.16, 0.18);
     grp.add(lamp);
-    mergeByMaterial(grp, [blades, needle, lamp, label]);
+    // (lo quieto del tablero, una malla con el color de cada pieza en los
+    // vértices: world/perkMachines flatten; aparte lo que se mueve o cambia)
+    if (globalThis.__mduNoMerge) mergeByMaterial(grp, [blades, needle, lamp, label]);
+    else {
+      flatten(grp, new Set([blades, needle, lamp, label]), new Set([lampMat]));
+      compactGroup(blades);
+    }
     for (const o of grp.children) if (o.isMesh) this.geos.push(o.geometry);
     this.root.add(grp);
     grp.updateMatrixWorld(true);

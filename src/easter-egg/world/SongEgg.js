@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { assetUrl } from '../../lib/assets';
-import { mergeByMaterial } from './props';
+import { mergeByMaterial, compactGroup } from './props';
 
 // Easter eggs musicales: tres cosas escondidas por el mapa; cuando el equipo
 // encuentra las tres, suena una canción para todos. Son fáciles a propósito:
@@ -34,7 +34,7 @@ export const SONGS = {
     spots: [
       [36.4, 48.5, 0.35], // arriba de la mesa larga del comedor
       [60.4, 52.4, 0.08], // olvidada arriba del banco de piedra del patio de recreo (en el piso, el mástil atravesaba el banco)
-      [28.4, 76.6, 1.9], // en el muelle, al lado de la baranda
+      [29.5, 76.4, 1.9], // en el muelle, al lado de los cajones (más cerca se metía adentro de uno)
     ],
     model: 'guitar',
     sound: 'strum',
@@ -363,6 +363,9 @@ export default class SongEgg {
         });
     this.items = places.map((p, i) => {
       const obj = make();
+      // (una malla por material: la guitarra eran 22 pedazos; la verdulera abre
+      // el fuelle, queda como está)
+      if (!obj.userData.play && !globalThis.__mduNoMerge) compactGroup(obj);
       obj.position.set(p.x, p.y, p.z);
       obj.rotation.y = p.rot;
       this.root.add(obj);

@@ -20,7 +20,7 @@ import { players, playerById, myId, isHost, isDown, announce } from '../entities
 //     del muelle hay una caña: mantener F para tirar, el clic recoge (si el
 //     hilo se pone rojo, soltar, o se corta). Lo que muerde es el Surubí: hay
 //     que bajarle media vida, escupe la pava y se vuelve al agua.
-//  4. La pava, pesada (se camina despacio, sin armas), a la Llama: silba y
+//  4. La pava (sin armas; se puede correr), a la Llama: silba y
 //     queda el Pack-a-Pava.
 // Lo arma world/PapQuest.js (kind 'llama'): prompt, use, update, state/apply,
 // onGuest y complete. Lo decide el anfitrión; los invitados avisan con 'papq'.
@@ -35,6 +35,16 @@ const PEB_R = 1.7;
 const CANA_HOLD = 1.0;
 const tmpV = new THREE.Vector3();
 const tmpW = new THREE.Vector3();
+// la mejora en la Llama (papAnim): entra al fuego, las llamas se avivan, sale
+// mejorado del medio subiendo envuelto en fuego y queda flotando arriba.
+// (s del Pack-a-Pava: Interactables.updatePap lo deja listo a los 3,4)
+const PA_IN = 0.85;
+const PA_SWAP = 1.55;
+const PA_OUT = 1.8;
+const PA_TOP = 3.3;
+// adelante de la pava (el radio de la pava es 0,43) y todavía en la llama
+const PA_Z = 0.7;
+const HOT = new THREE.Color(1, 0.35, 0.06);
 
 export default class PapLlama {
   constructor(q) {
@@ -132,6 +142,14 @@ export default class PapLlama {
     // dónde aparece el mate cuando se mejora: arriba, delante de la pava
     pap.slotPos = new THREE.Vector3(lx, LLAMA_Y + 2.4, lz + 0.9);
     pap.face = new THREE.Vector3(0, 0, 1);
+    // la mejora: el mate entra al fuego y sale del medio de la llama, que se
+    // aviva (el usuario, 2026-10-05; __mduNoLlamaPap: como en la máquina)
+    this.boost = 0;
+    this.boostTo = 0;
+    if (!globalThis.__mduNoLlamaPap) {
+      pap.slotPos.set(lx, LLAMA_Y + BOWL_Y + 1.95, lz + PA_Z);
+      pap.anim = (p, dt) => this.papAnim(p, dt);
+    }
     for (const it of [this.q.papIt, ...g.interact.list.filter((x) => x.kind === 'papq')]) {
       it.pos.set(lx, LLAMA_Y + 1.2, lz);
       it.front?.set(lx, LLAMA_Y, lz + 1.6);
@@ -233,15 +251,43 @@ export default class PapLlama {
     const g = this.g;
     const [cx, cz] = EE.cana;
     const y = g.world.floorAt(cx, cz);
+    // la caña apoyada como la deja un pescador: el mango en un portacañas de
+    // caño atado al parante de la baranda del muelle, la punta sobre el agua
+    // (antes giraba sobre su mitad y quedaba flotando en el aire), con el
+    // reel, el hilo hasta el agua, el balde y la caja de los anzuelos
     const rod = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.02, 2.6, 6), M.woodDark);
-    pole.position.set(0, 1.3, 0);
-    pole.rotation.x = -0.9;
+    const lean = 0.62;
+    const L = 2.6;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.022, L, 6).translate(0, L / 2, 0), M.woodDark);
+    pole.rotation.x = -lean;
     rod.add(pole);
-    rod.position.set(cx, y + 0.3, cz);
-    rod.rotation.y = Math.PI / 2;
+    const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.035, 12).rotateZ(Math.PI / 2), M.iron);
+    reel.position.set(0.04, Math.cos(lean) * 0.42, -Math.sin(lean) * 0.42);
+    rod.add(reel);
+    const holder = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.34, 8).translate(0, 0.17, 0), M.iron);
+    holder.rotation.x = -lean;
+    rod.add(holder);
+    // el hilo: de la punta al agua (el río, a -5,2)
+    const tip = new THREE.Vector3(0, Math.cos(lean) * L, -Math.sin(lean) * L);
+    const waterY = -5.15 - (y + 0.02);
+    const line = new THREE.Mesh(new THREE.CylinderGeometry(0.0025, 0.0025, tip.y - waterY, 4), new THREE.MeshBasicMaterial({ color: 0xd8dcd8, transparent: true, opacity: 0.55 }));
+    line.position.set(0, (tip.y + waterY) / 2, tip.z - 0.25);
+    line.rotation.x = 0.08;
+    rod.add(line);
+    // la boya de telgopor en el agua
+    const buoy = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), new THREE.MeshStandardMaterial({ color: 0xe8401a, roughness: 0.5 }));
+    buoy.position.set(0, waterY + 0.02, tip.z - 0.45);
+    rod.add(buoy);
+    rod.position.set(cx, y + 0.02, cz - 0.38);
     this.root.add(rod);
     this.rod = rod;
+    // el balde y la caja de pesca, al lado
+    const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 0.28, 12, 1, true), new THREE.MeshStandardMaterial({ color: 0x2a5a8a, roughness: 0.6, side: THREE.DoubleSide }));
+    bucket.position.set(cx + 0.55, y + 0.16, cz + 0.05);
+    const tackle = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.2), M.metalGreen || M.iron);
+    tackle.position.set(cx - 0.5, y + 0.09, cz + 0.12);
+    tackle.rotation.y = 0.3;
+    this.root.add(bucket, tackle);
     this.canaIt = g.interact.add({
       kind: 'cana',
       pos: new THREE.Vector3(cx, y + 1.0, cz),
@@ -262,11 +308,13 @@ export default class PapLlama {
         return true;
       },
     });
-    // la barra del hilo (en pantalla, mientras pesca uno mismo)
+    // la barra del hilo (en pantalla, mientras pesca uno mismo), con lo que
+    // hay que hacer arriba. (Va en el HUD: colgada del body quedaba debajo
+    // del juego, que tapa todo, y no se veía.)
     const el = document.createElement('div');
-    el.style.cssText = 'position:fixed;left:50%;bottom:22%;width:260px;height:14px;margin-left:-130px;border:2px solid rgba(255,255,255,0.7);border-radius:8px;background:rgba(0,0,0,0.45);display:none;z-index:30;overflow:hidden';
-    el.innerHTML = '<div style="position:absolute;inset:0;background:linear-gradient(90deg,#3a8a4a 0%,#3a8a4a 62%,#c8a020 62%,#c8a020 82%,#c82020 82%)"></div><div class="mon-t" style="position:absolute;top:-3px;bottom:-3px;width:4px;background:#fff;left:0"></div><div class="mon-k" style="position:absolute;left:0;bottom:0;height:3px;background:#9ad0ff;width:0"></div>';
-    document.body.appendChild(el);
+    el.style.cssText = 'position:absolute;left:50%;bottom:31%;width:260px;margin-left:-130px;display:none;z-index:30;text-align:center';
+    el.innerHTML = '<div style="font-size:15px;margin-bottom:6px">Clic: recoger · en lo rojo, soltá</div><div style="position:relative;height:14px;border:2px solid rgba(255,255,255,0.7);border-radius:8px;background:rgba(0,0,0,0.45);overflow:hidden"><div style="position:absolute;inset:0;background:linear-gradient(90deg,#3a8a4a 0%,#3a8a4a 62%,#c8a020 62%,#c8a020 82%,#c82020 82%)"></div><div class="mon-t" style="position:absolute;top:-3px;bottom:-3px;width:4px;background:#fff;left:0"></div><div class="mon-k" style="position:absolute;left:0;bottom:0;height:3px;background:#9ad0ff;width:0"></div></div>';
+    (globalThis.__mduNoFishHud ? document.body : g.hud?.root || document.body).appendChild(el);
     this.bar = el;
   }
 
@@ -297,7 +345,7 @@ export default class PapLlama {
       kind: 'pavaRio',
       pos: new THREE.Vector3(),
       radius: 1.8,
-      prompt: () => (this.pava.at === 'floor' && !this.carry.kind ? { text: 'levantar la pava (pesa)', noCost: true } : null),
+      prompt: () => (this.pava.at === 'floor' && !this.carry.kind ? { text: globalThis.__mduNoPavaRun ? 'levantar la pava (pesa)' : 'levantar la pava', noCost: true } : null),
       cost: () => 0,
       use: () => {
         if (this.pava.at !== 'floor') return false;
@@ -383,7 +431,9 @@ export default class PapLlama {
     // el pez tira a ratos (más fuerte cuanto más cerca)
     const pull = 0.35 + Math.max(0, Math.sin(g.time * 2.3) * Math.sin(g.time * 0.7)) * (0.9 + F.k);
     F.tension = Math.max(0, Math.min(1.2, F.tension + (reel ? 0.75 : -0.9) * dt + pull * dt * (reel ? 0.6 : 0.2)));
-    if (reel && F.tension < 0.82) F.k += dt * 0.12;
+    // (más rápido: ~8 s recogiendo y soltando en vez de ~20; el usuario,
+    // 2026-10-05; __mduNoFishFast: como antes)
+    if (reel && F.tension < 0.82) F.k += dt * (globalThis.__mduNoFishFast ? 0.12 : 0.27);
     if (F.tension >= 1) {
       g.audio.deny();
       g.hud.subtitle('¡Se cortó el hilo! Volvé a tirar.', 2.5);
@@ -421,7 +471,7 @@ export default class PapLlama {
     // muerde algo enorme: el Surubí (si está), si no, la pava sale sola
     if (g.surubi?.emergeWithPava) {
       this.st = 3;
-      announce(g, '¡Algo enorme muerde! ¡El Surubí del Paraná!', 4, true);
+      announce(g, globalThis.__mduNoLlamaText ? '¡Algo enorme muerde! ¡El Surubí del Paraná!' : '¡El Surubí tiene la pava! Lastimalo y la suelta.', 4, true);
       g.surubi.emergeWithPava(() => this.pavaOut());
     } else this.pavaOut();
     this.sync();
@@ -435,19 +485,21 @@ export default class PapLlama {
     this.pava.at = 'floor';
     this.pava.pos.set(cx - 1.4, g.world.floorAt(cx - 1.4, cz), cz + 0.6);
     g.water?.splash?.(cx + 2, cz, 2);
-    announce(g, 'La pava de la Llama. Llevala al Propileo (pesa).', 4, true);
+    announce(g, globalThis.__mduNoPavaRun ? 'La pava de la Llama. Llevala al Propileo (pesa).' : 'La pava de la Llama. Llevala a la Llama del Propileo.', 4, true);
     this.sync();
   }
 
   // ---------------- la máquina ----------------
   prompt() {
     const info = (text) => ({ text, noCost: true, info: true });
-    if (this.st === 0) return info('La Llama Votiva está apagada. El fuego sale de la Batería Libertad');
+    // (qué y dónde: el usuario no sabía dónde quedaba la Batería ni de dónde sale la pava)
+    const old = globalThis.__mduNoLlamaText;
+    if (this.st === 0) return info(old ? 'La Llama Votiva está apagada. El fuego sale de la Batería Libertad' : 'La Llama Votiva está apagada. El fuego sale del cañón del Parque');
     if (this.st === 1) {
       if (this.carry.mine && this.carry.kind === 'antorcha') return { text: 'prender la Llama Votiva', noCost: true, hold: true };
-      return info('Hay que traer la antorcha prendida');
+      return info(old ? 'Hay que traer la antorcha prendida' : 'Falta la antorcha del cañón del Parque');
     }
-    if (this.st === 2 || this.st === 3) return info('La Llama arde, pero no tiene pava. Está en el fondo del río');
+    if (this.st === 2 || this.st === 3) return info(old ? 'La Llama arde, pero no tiene pava. Está en el fondo del río' : this.st === 3 ? 'La pava la tiene el Surubí, en la Costanera' : 'Falta la pava. Se pesca con la caña del muelle');
     if (this.st === 4) {
       if (this.carry.mine && this.carry.kind === 'pava') return { text: 'poner la pava en la Llama', noCost: true, hold: true };
       return info('Falta la pava. Está en el muelle');
@@ -477,7 +529,7 @@ export default class PapLlama {
       this.st = 2;
       this.torch.at = 'none';
       this.torch.carrier = -1;
-      announce(g, '¡La Llama Votiva arde! Arriba no hay pava: se la llevó el río.', 4.5, true);
+      announce(g, globalThis.__mduNoLlamaText ? '¡La Llama Votiva arde! Arriba no hay pava: se la llevó el río.' : '¡La Llama Votiva arde! Falta la pava: se pesca con la caña del muelle.', 4.5, true);
       this.sync();
     }
     g.fx.flash(this.q.pap.group.position.clone().setY(LLAMA_Y + 2), 0xffa040, 40, 0.5, 20);
@@ -603,14 +655,20 @@ export default class PapLlama {
     const on = this.st >= 2;
     this.lit += ((on ? 1 : 0) - this.lit) * Math.min(1, dt * 1.2);
     this.llama.flames.visible = this.lit > 0.03;
-    this.llama.flames.scale.set(0.5 + this.lit * 0.5, 0.2 + this.lit * 0.8 + Math.sin(t * 7) * 0.04 * this.lit, 0.5 + this.lit * 0.5);
+    // (avivadas mientras mejora algo: papAnim pone a dónde van; si no, se calman)
+    this.boost += (this.boostTo - this.boost) * Math.min(1, dt * (this.boostTo > this.boost ? 6 : 1.4));
+    this.boostTo = 0;
+    const B = this.boost;
+    this.llama.flames.scale.set((0.5 + this.lit * 0.5) * (1 + B * 0.2), (0.2 + this.lit * 0.8 + Math.sin(t * 7) * 0.04 * this.lit) * (1 + B * 0.5) + Math.sin(t * 13) * 0.05 * B, (0.5 + this.lit * 0.5) * (1 + B * 0.2));
     if (this.light) {
-      this.light.base = this.lightBase * Math.max(0.04, this.lit);
+      this.light.base = this.lightBase * Math.max(0.04, this.lit) * (1 + B * 0.6 + Math.sin(t * 17) * 0.08 * B);
       this.light.target = this.light.base;
     }
     if (on && !this.fireOn) {
       this.fireOn = true;
-      g.audio.startFire(this.q.pap.group.position.clone().setY(LLAMA_Y + 1.6));
+      // (el rumor suave del fuego, sin el tic-tic del crepitar: el usuario,
+      // 2026-10-05; __mduNoLlamaQuiet: con el crepitar, como antes)
+      g.audio.startFire(this.q.pap.group.position.clone().setY(LLAMA_Y + 1.6), { crackle: !!globalThis.__mduNoLlamaQuiet });
     }
     // los pebeteros prendidos
     this.pebs.forEach((p, i) => {
@@ -709,6 +767,137 @@ export default class PapLlama {
 
   inMirror(p) {
     return p.x > 5 && p.x < 20.5 && p.z > 33 && p.z < 40 && p.y < 3.7;
+  }
+
+  // ---------------- la mejora en la Llama ----------------
+  // Cada cuadro mientras el Pack-a-Pava tiene algo (después de lo de
+  // Interactables.updatePap, que lo deja en su lugar): lo mueve por la llama.
+  // 0-0,85 s: sube un poco y se tira de cabeza al fuego (entra girando);
+  // 0,85-1,8 s: adentro, las llamas se avivan (fogonazo, chispas, columna de
+  // fuego); 1,8-3,3 s: sale mejorado del medio de la llama, subiendo despacio
+  // envuelto en fuego (el sable, de punta, y arriba se acuesta); listo: flota
+  // arriba de la punta del fuego, meciéndose, hasta que lo agarren (o se lo
+  // quede el Pack-a-Pava). En todas las compus igual.
+  papAnim(pap, dt) {
+    const g = this.g;
+    const I = g.interact;
+    const m = pap.model;
+    // (el reloj de toda la vuelta: listo arranca a los 3,4)
+    const T = pap.state === 'working' ? pap.t : 3.4 + pap.t;
+    const [lx, lz] = EE.llama;
+    const yIn = LLAMA_Y + BOWL_Y + 0.12;
+    const sable = pap.entry?.id === 'sable';
+    // dónde queda flotando: arriba de la punta de la llama (adentro se perdía en el resplandor)
+    const yTop = LLAMA_Y + BOWL_Y + (sable ? 1.95 : 1.95);
+    const z = lz + PA_Z;
+    // una vuelta nueva (cada mate que entra)
+    if (this.paEntry !== pap.entry) {
+      this.paEntry = pap.entry;
+      this.paSwap = null;
+      this.paFx = 0;
+    }
+    const fire = (x, y, zz, spread, n) => g.fx.fire(tmpV.set(x, y, zz), spread, n);
+    // (más grandes que en la máquina: se los ve de más lejos y de abajo)
+    const S = sable ? 3.0 : 3.3;
+    // el que salió del fuego al rojo se enfría al subir (sus materiales son
+    // propios: los del mate de la mano no se tocan); al quedar listo,
+    // Interactables pone el de siempre y los propios se tiran
+    if (this.paMats && pap.model !== this.paSwap) {
+      for (const mt of this.paMats) mt.dispose();
+      this.paMats = null;
+    }
+    // el sable: de punta para arriba al salir del fuego y, arriba, acostado
+    // (como en la máquina; el medio de la hoja sobre la llama)
+    const flat = sable ? Math.min(1, Math.max(0, (T - 3.0) / 0.6)) : 1;
+    const fe = flat * flat * (3 - 2 * flat);
+    if (sable && m.children[0]) m.children[0].rotation.z = (Math.PI / 2) * fe;
+    const dx = sable ? 0.36 * fe : 0;
+    if (T < PA_IN) {
+      // sube un poquito y se tira al fuego, de cabeza, girando
+      const k = T / PA_IN;
+      const up = Math.sin(Math.min(1, k * 1.6) * Math.PI) * 0.3;
+      const dive = k < 0.35 ? 0 : ((k - 0.35) / 0.65) ** 2;
+      m.position.set(lx + dx, yTop + up - (yTop - yIn) * dive, z + 0.25 * (1 - dive));
+      m.rotation.set(dive * 0.6, T * 5, 0);
+      m.scale.setScalar(S * (1 - dive * 0.25));
+      m.visible = true;
+      this.boostTo = 0.3 * k;
+      if (dive > 0.5 && Math.random() < dt * 30) fire(m.position.x, m.position.y - 0.1, m.position.z, 0.3, 1);
+      return;
+    }
+    if (T < PA_OUT) {
+      // adentro: no se ve; las llamas se avivan
+      m.visible = false;
+      this.boostTo = 1;
+      if (!this.paFx) {
+        this.paFx = 1;
+        g.fx.flash(tmpV.set(lx, LLAMA_Y + BOWL_Y + 1, lz), 0xff9a30, 22, 0.5, 14);
+        g.fx.sparks(tmpV.set(lx, LLAMA_Y + BOWL_Y + 0.4, z - 0.2), 12, { x: 0, y: 1, z: 0 });
+        g.audio.whoosh?.(tmpV.clone());
+      }
+      if (Math.random() < dt * 25) fire(lx, LLAMA_Y + BOWL_Y + 0.1 + Math.random() * 0.3, lz + (Math.random() - 0.3) * 0.5, 0.9, 1);
+      if (Math.random() < dt * 12) g.fx.sparks(tmpV.set(lx + (Math.random() - 0.5) * 0.8, LLAMA_Y + BOWL_Y + 0.5, lz + (Math.random() - 0.5) * 0.8), 1, { x: 0, y: 1, z: 0 });
+      // (ya mejorado, adentro del fuego: el que va a salir)
+      if (T >= PA_SWAP && !this.paSwap) {
+        m.removeFromParent();
+        const n = I.papModel(pap.entry.id, pap.tier);
+        const own = new Map();
+        n.traverse((o) => {
+          if (!o.isMesh || !o.material?.emissive) return;
+          let mt = own.get(o.material);
+          if (!mt) {
+            const src = o.material;
+            own.set(src, (mt = src.clone()));
+            // (con el mismo programa que el de siempre: clone no copia el
+            // onBeforeCompile ni la clave, y compilaba uno nuevo al salir del
+            // fuego, ~0,8 s de trabada en calidad alta)
+            mt.onBeforeCompile = src.onBeforeCompile;
+            if (Object.prototype.hasOwnProperty.call(src, 'customProgramCacheKey')) mt.customProgramCacheKey = src.customProgramCacheKey;
+            mt.userData.e0 = [mt.emissive.clone(), mt.emissiveIntensity];
+          }
+          o.material = mt;
+        });
+        this.paMats = [...own.values()];
+        I.root.add(n);
+        pap.model = n;
+        this.paSwap = n;
+        n.visible = false;
+      }
+      return;
+    }
+    m.visible = true;
+    if (T < PA_TOP) {
+      // sale del medio de la llama, despacio, envuelto en fuego
+      const k = (T - PA_OUT) / (PA_TOP - PA_OUT);
+      const e = 1 - (1 - k) ** 3;
+      m.position.set(lx + dx, yIn + (yTop - yIn) * e, z);
+      m.rotation.set(0, Math.PI * 1.5 * (1 - e) + Math.sin(g.time * 0.9) * 0.25, 0);
+      m.scale.setScalar(S * (0.75 + 0.25 * e));
+      this.boostTo = 1 - k * 0.5;
+      // al rojo, enfriándose mientras sube
+      const heat = Math.max(0, 1 - k * 1.15);
+      for (const mt of this.paMats || []) {
+        const [e0, i0] = mt.userData.e0;
+        mt.emissive.copy(e0).lerp(HOT, heat);
+        mt.emissiveIntensity = i0 + ((sable ? 2.8 : 1.8) - i0) * heat;
+      }
+      // el fuego que lo envuelve (abajo de él, mientras sube por la llama)
+      if (Math.random() < dt * 28) fire(lx, m.position.y - 0.2 + Math.random() * (sable ? 0.7 : 0.35), z, sable ? 0.2 : 0.35, 1);
+      if (Math.random() < dt * 6) g.fx.sparkle(tmpV.set(lx, m.position.y + (sable ? 0.5 : 0.15), z), [1, 0.7, 0.3], 1, 0.5);
+      if (this.paFx === 1) {
+        this.paFx = 2;
+        g.fx.flash(tmpV.set(lx, LLAMA_Y + BOWL_Y + 0.8, z), 0xffb040, 16, 0.5, 12);
+        g.audio.whoosh?.(tmpV.clone());
+      }
+      return;
+    }
+    // listo: flota arriba del fuego meciéndose (las llamas, un poco avivadas)
+    m.position.set(lx + dx, yTop + Math.sin(g.time * 2.2) * 0.05, z);
+    m.rotation.set(0, Math.sin(g.time * 0.9) * 0.35, 0);
+    m.scale.setScalar(S);
+    this.boostTo = 0.3;
+    if (Math.random() < dt * 6) fire(lx, yTop - 0.3, z, 0.3, 1);
+    if (Math.random() < dt * 3) g.fx.sparkle(tmpV.set(lx, yTop + 0.1, z), [1, 0.75, 0.35], 1, 0.5);
   }
 
   dispose() {

@@ -68,8 +68,11 @@ export default class LuzMala {
     // si apareciera o desapareciera con la esfera cambiaría la cantidad de
     // luces y se recompilarían todos los materiales (el tirón al aparecer)
     const light = new THREE.PointLight(0xb8ff70, 0, 9, 1.6);
+    // (anda flotando: sin sombra de fuego, fx/Epic)
+    light.userData.noShadow = true;
     light.position.y = -50;
-    g.scene.add(light);
+    // (no cuenta como luz mientras está apagada: World.adoptLight)
+    g.scene.add(g.world.adoptLight(light));
     root.visible = false;
     g.scene.add(root);
     this.glow = glow;
@@ -188,6 +191,8 @@ export default class LuzMala {
       const key = zones[Math.floor(Math.random() * zones.length)];
       const zn = ZONES[key];
       if (!zn) continue;
+      // (el patio de la 2043 del Monumento no: es de día y las rondas esperan)
+      if (key === 'P' && zn.y === 150 && !globalThis.__mduNoLuzPatio) continue;
       // cualquiera de los rectángulos de la zona (o el cuadrado del círculo)
       const rects = zoneRects(key);
       if (zn.circle) rects.push([zn.circle.x - zn.circle.r, zn.circle.z - zn.circle.r, zn.circle.x + zn.circle.r, zn.circle.z + zn.circle.r]);

@@ -41,6 +41,8 @@ export default class Barriers {
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
+    // (en las sombras de Épica va siempre con lo que se mueve: fx/Epic keepDyn)
+    this.mesh.userData.shadowDyn = true;
     // (sus límites se calculan una vez: el que entra con ventanas rotas los
     // tenía chicos y las tablas que volvían podían no dibujarse)
     this.mesh.frustumCulled = false;
@@ -71,7 +73,9 @@ export default class Barriers {
       for (let b = 0; b < BOARDS; b++) {
         const [y, roll] = (low ? LAYOUT_LOW : LAYOUT)[b];
         const jitter = (Math.random() - 0.5) * 0.1;
-        const inset = low ? 0.05 : 0.42;
+        // (la diagonal, 1 cm más adentro: en el mismo plano que las horizontales,
+        // donde se cruzaban titilaba. __mduNoTablaZ: como antes)
+        const inset = (low ? 0.05 : 0.42) + (b === 5 && globalThis.__mduNoTablaZ !== true ? 0.01 : 0);
         v.set(cx + 0.5 - ox * inset, fy + y + jitter * 0.3, cz + 0.5 - oz * inset);
         q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
         qa.setFromAxisAngle(new THREE.Vector3(0, 0, 1), roll + jitter);
@@ -165,6 +169,7 @@ export default class Barriers {
         if (b.state === 'tear' || b.state === 'repair') {
           b.t += dt;
           changed = true;
+          this.g.post?.epic?.kickShadow?.(w.center, 2);
           if (b.state === 'tear' && b.t > 0.6) b.state = 'off';
           if (b.state === 'repair' && b.t > 0.3) {
             b.state = 'on';
@@ -173,6 +178,7 @@ export default class Barriers {
         }
       }
     }
+    if (this.dirty) this.g.post?.epic?.kickShadow?.(null);
     if (changed) this.refresh();
     this.dirty = false;
   }

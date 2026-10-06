@@ -10,9 +10,10 @@ import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 import Epic, { LEVELS, FOLIAGE_B } from './Epic';
 import Surfaces from './Surfaces';
-import TAAPass from './TAA';
+import TAAPass, { GRASS_JIT } from './TAA';
 import FsrPass, { FSR_SCALE } from './Fsr';
-import { FEATURES } from '../config/map';
+import { FEATURES, MAP_ID } from '../config/map';
+import SliceWalk from './sliceWalk';
 
 // Lo del pasto alto del estero (Mate no Numa) va solo en ese mapa: el MSAA del
 // mundo con recortes suaves, el suavizado temporal y el grano a la mitad. En
@@ -20,9 +21,40 @@ import { FEATURES } from '../config/map';
 // sin MSAA) dejaban dientes en los bordes, y sin el grano de siempre se veía
 // el ruido de las sombras. Ahí sigue todo como era (SMAA, grano 0,06).
 const grassy = () => !!FEATURES.esteros;
+// lo de fx/Epic (LEVELS) que un mapa puede cambiarle a su calidad (Game.mapGfx)
+const LEVEL_KEYS = ['live', 'soft', 'ao', 'light', 'vol', 'gres', 'lamps', 'bounce'];
 
 // muestras por píxel del MSAA del mundo (Ultra y Épica)
 const MSAA = 4;
+// objetos de la escena que revisa sweep por cuadro (fx/sliceWalk.js)
+const SWEEP_N = 300;
+
+// El color de cada mapa (2026-10-04: el usuario lo vio en La Tapera y el penal
+// y lo quiso en todos). globalThis.__mduNoMapGrade = true: el de antes, igual
+// en todos. sat/con: saturación y contraste; sh/hi: el tinte de las sombras y
+// de las luces; gain/lift: por canal.
+// - La Tapera: atardecer de cosecha, luces doradas y sombras verdosas, el negro
+//   un poco más hondo.
+// - Mate of the Dead: el penal de noche, frío y lavado, sombras azul petróleo
+//   y las luces de las lámparas amarillentas.
+const GRADE_BASE = { sat: 0.78, con: 1.08, sh: [-0.01, 0, 0.02], hi: [0.02, 0.008, -0.012], gain: [1, 1, 1], lift: [0, 0, 0] };
+export const MAP_GRADE = {
+  granja: { sat: 0.86, con: 1.13, sh: [-0.025, 0.006, 0.012], hi: [0.05, 0.022, -0.035], gain: [1.03, 1.0, 0.93], lift: [0.004, 0.002, 0] },
+  penal: { sat: 0.64, con: 1.15, sh: [-0.03, 0.006, 0.04], hi: [0.03, 0.022, -0.015], gain: [0.96, 1.0, 1.04], lift: [0, 0.002, 0.006] },
+  // - El molino: la noche de 1911, la luz de los faroles amarilla y la sombra verdosa.
+  molino: { sat: 0.74, con: 1.11, sh: [-0.02, 0.008, 0.018], hi: [0.04, 0.024, -0.022], gain: [1.01, 1.0, 0.96], lift: [0, 0.002, 0.002] },
+  // - La torre: el remolino violeta arriba y el oro de la Voz.
+  torre: { sat: 0.8, con: 1.12, sh: [-0.006, -0.01, 0.04], hi: [0.042, 0.026, -0.012], gain: [1.0, 0.98, 1.03], lift: [0.003, 0, 0.006] },
+  // - El castillo: la nieve fría y nítida, las antorchas tibias.
+  castillo: { sat: 0.8, con: 1.13, sh: [-0.022, 0.0, 0.036], hi: [0.04, 0.022, -0.02], gain: [0.98, 1.0, 1.04], lift: [0, 0.001, 0.004] },
+  // - El estero: la noche húmeda, sombras verde agua y la luna lavada.
+  esteros: { sat: 0.82, con: 1.1, sh: [-0.022, 0.014, 0.02], hi: [0.02, 0.03, 0.004], gain: [0.97, 1.02, 1.0], lift: [0, 0.003, 0.003] },
+  // - El Monumento: Rosario con niebla, celeste y blanco, la Llama tibia.
+  monumento: { sat: 0.8, con: 1.1, sh: [-0.016, 0.0, 0.03], hi: [0.032, 0.026, 0.008], gain: [1.0, 1.0, 1.02], lift: [0, 0, 0.003] },
+  // - Eclipse Matero: el mapa final, súper colorido (cada isla con su cielo):
+  //   casi sin desaturar, las sombras apenas violetas (world/eclipseSky.js)
+  eclipse: { sat: 0.98, con: 1.07, sh: [-0.006, -0.008, 0.022], hi: [0.02, 0.01, -0.004], gain: [1.0, 1.0, 1.0], lift: [0.002, 0, 0.004] },
+};
 
 // Postproceso con la estética de BO1: mundo + mate en primera persona,
 // brillo en luces, corrección de color desaturada y contrastada, viñeta,
@@ -45,14 +77,26 @@ const GradeShader = {
     // Dying Wish (entities/dyingWish.js): la adrenalina y su latido
     uWish: { value: 0 },
     uWishBeat: { value: 0 },
+    // la Furia Cósmica del Desgarrador (weapons/Desgarrador.js tint)
+    uFuria: { value: 0 },
+    // el rasgón de la ruptura del Desgarrador del Eclipse (fuerza, ángulo, semilla)
+    uRip: { value: new THREE.Vector3() },
     uUnderCol: { value: new THREE.Color(0.06, 0.07, 0.05) },
     // (a la mitad: con la cámara en movimiento el grano hacía titilar el pasto)
     uGrain: { value: 0.03 },
     uRes: { value: new THREE.Vector2(1, 1) },
+    // el color de cada mapa (MAP_GRADE): con los valores de siempre, igual que antes
+    uSat: { value: 0.78 },
+    uCon: { value: 1.08 },
+    uShTint: { value: new THREE.Vector3(-0.01, 0.0, 0.02) },
+    uHiTint: { value: new THREE.Vector3(0.02, 0.008, -0.012) },
+    uGain: { value: new THREE.Vector3(1, 1, 1) },
+    uLift: { value: new THREE.Vector3(0, 0, 0) },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uTime, uHurt, uHit, uDown, uFlash, uGrain, uCrit, uPulse, uVida, uUnder, uWish, uWishBeat; uniform vec2 uRes, uHitDir; uniform vec3 uUnderCol;
+    uniform sampler2D tDiffuse; uniform float uTime, uHurt, uHit, uDown, uFlash, uGrain, uCrit, uPulse, uVida, uUnder, uWish, uWishBeat, uFuria; uniform vec2 uRes, uHitDir; uniform vec3 uUnderCol; uniform float uSat, uCon; uniform vec3 uShTint, uHiTint, uGain, uLift;
+    uniform vec3 uRip;
     varying vec2 vUv;
     float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main(){
@@ -69,16 +113,29 @@ const GradeShader = {
       uv += uVida * vec2(sin(uv.y * 24.0 + uTime * 2.3), cos(uv.x * 20.0 + uTime * 1.9)) * 0.0022;
       // abajo del agua: la imagen ondula despacio
       uv += uUnder * vec2(sin(uv.y * 13.0 + uTime * 1.5), cos(uv.x * 10.0 + uTime * 1.2)) * 0.0045;
+      // el rasgón (la ruptura del Desgarrador del Eclipse): la imagen se parte
+      // en una raja quebrada que cruza la pantalla y las dos mitades se corren
+      float ripD = 1.0;
+      if (uRip.x > 0.001) {
+        vec2 rd = vec2(cos(uRip.y), sin(uRip.y));
+        vec2 rn = vec2(-rd.y, rd.x);
+        float al = dot(uv - 0.5, rd);
+        float jf = al * 46.0;
+        float jag = (mix(hash(vec2(floor(jf), uRip.z)), hash(vec2(floor(jf) + 1.0, uRip.z)), smoothstep(0.0, 1.0, fract(jf))) - 0.5) * 0.016 + sin(al * 17.0 + uRip.z) * 0.012;
+        ripD = dot(uv - 0.5, rn) - jag;
+        uv -= rn * sign(ripD) * uRip.x * 0.014 * (1.0 - smoothstep(0.0, 0.6, abs(ripD)));
+      }
       vec3 col;
       col.r = texture2D(tDiffuse, uv + c * ca).r;
       col.g = texture2D(tDiffuse, uv).g;
       col.b = texture2D(tDiffuse, uv - c * ca).b;
       // desaturar y contrastar (look BO1)
       float l = dot(col, vec3(0.299, 0.587, 0.114));
-      col = mix(vec3(l), col, 0.78);
-      col = (col - 0.5) * 1.08 + 0.5;
-      // sombras frías, luces cálidas
-      col += vec3(-0.01, 0.0, 0.02) * (1.0 - l) + vec3(0.02, 0.008, -0.012) * l;
+      col = mix(vec3(l), col, uSat);
+      col = (col - 0.5) * uCon + 0.5;
+      // sombras frías, luces cálidas (y el tono de cada mapa)
+      col += uShTint * (1.0 - l) + uHiTint * l;
+      col = col * uGain + uLift;
       // caído: gris y oscuro
       float lg = dot(col, vec3(0.299, 0.587, 0.114));
       col = mix(col, vec3(lg) * vec3(0.9, 0.9, 1.0), uDown * 0.85);
@@ -118,6 +175,26 @@ const GradeShader = {
         col = (col - 0.5) * (1.0 + 0.35 * uWish) + 0.5;
         col = mix(col, vec3(0.5, 0.0, 0.03), smoothstep(0.06, 0.45, r2) * uWish * (0.45 + 0.5 * uWishBeat));
         col += vec3(0.16, 0.0, 0.02) * wb;
+      }
+      // la Furia Cósmica: lo oscuro se va al morado, lo claro a violeta neón y
+      // los bordes laten violeta
+      if (uFuria > 0.001) {
+        float lf = dot(col, vec3(0.299, 0.587, 0.114));
+        vec3 neon = mix(vec3(0.14, 0.02, 0.28), vec3(1.0, 0.72, 1.15), lf);
+        col = mix(col, col * 0.55 + neon * 0.6, uFuria * 0.55);
+        float fb = 0.5 + 0.5 * sin(uTime * 9.0);
+        col += vec3(0.5, 0.1, 0.85) * smoothstep(0.08, 0.5, r2) * uFuria * (0.4 + 0.35 * fb);
+      }
+      // el rasgón: adentro, el vacío con estrellas; el borde, violeta
+      if (uRip.x > 0.001) {
+        float rw = 0.002 + 0.011 * uRip.x;
+        float seam = 1.0 - smoothstep(rw * 0.4, rw, abs(ripD));
+        float glow = (1.0 - smoothstep(rw, rw * 6.0, abs(ripD))) * uRip.x;
+        vec2 sp = gl_FragCoord.xy / 5.0;
+        float stv = step(0.93, hash(floor(sp) + uRip.z)) * (1.0 - smoothstep(0.1, 0.4, length(fract(sp) - 0.5)));
+        vec3 voidC = vec3(0.02, 0.0, 0.05) + vec3(1.0, 0.85, 1.0) * stv;
+        col = mix(col, voidC, seam * clamp(uRip.x * 1.4, 0.0, 1.0));
+        col += vec3(0.75, 0.35, 1.0) * glow * 0.9;
       }
       // viñeta
       col *= 1.0 - smoothstep(0.18, 0.75, r2) * 0.55;
@@ -177,6 +254,17 @@ class WorldPass extends RenderPass {
   }
 
   render(renderer, writeBuffer, readBuffer, dt, mask) {
+    // el pasto corrido (fx/TAA GRASS_JIT): solo acá, ni en el G-buffer ni en el espejo
+    const T = this.taa;
+    if (T?.enabled) GRASS_JIT.value.set((2 * T.gj.x) / this.w, (2 * T.gj.y) / this.h);
+    try {
+      return this.draw(renderer, writeBuffer, readBuffer, dt, mask);
+    } finally {
+      GRASS_JIT.value.set(0, 0);
+    }
+  }
+
+  draw(renderer, writeBuffer, readBuffer, dt, mask) {
     if (!this.samples || this.renderToScreen) return super.render(renderer, writeBuffer, readBuffer, dt, mask);
     // (con su profundidad: la usa el suavizado temporal para llevar lo de antes)
     if (!this.msaa) this.msaa = new THREE.WebGLRenderTarget(this.w, this.h, { type: THREE.HalfFloatType, samples: this.samples, depthTexture: new THREE.DepthTexture(this.w, this.h) });
@@ -234,6 +322,7 @@ export default class PostFX {
     for (const p of this.epic.passes) this.composer.addPass(p);
     // el suavizado temporal (Épica): después de la luz y antes del mate en la mano
     this.taa = new TAAPass(camera, () => this.world.msaa?.depthTexture || this.epic.gbuffer.depthTexture, () => this.epic.gbuffer.target.texture, FOLIAGE_B / 15);
+    this.world.taa = this.taa;
     this.taa.enabled = false;
     this.composer.addPass(this.taa);
     this.composer.addPass(this.vm);
@@ -259,6 +348,12 @@ export default class PostFX {
     this.composer.addPass(this.fsr);
     this.flashV = 0;
     this.sweepT = 0;
+    this.vmT = 0;
+    this.walk = new SliceWalk();
+    this.sweepVisit = (o) => {
+      sweepOne(o);
+      if (this.surfaces.on) this.surfaces.visit?.(o);
+    };
     this.epic.setScenes(scene, camera);
   }
 
@@ -285,13 +380,15 @@ export default class PostFX {
 
   // Cada calidad suma un poco sobre la anterior (lo de fx/Epic desde Alta).
   // c: la Personalizada (Game gfxFrom / settings.gfx), cada efecto por separado
-  // encima de la base q.
-  setQuality(q, c = null) {
+  // encima de la base q. m: lo de cada mapa sobre la calidad (Game.mapGfx).
+  setQuality(q, c = null, m = null) {
     this.bloom.enabled = c ? !!c.bloom : q !== 'perf';
     // bordes: FXAA en baja y media; SMAA (más nítido) de alta para arriba
     const tall = grassy();
-    let aa = c ? c.aa : q === 'perf' ? 'none' : q === 'low' || q === 'medium' ? 'fxaa' : q === 'high' ? 'smaa' : 'msaa';
-    if (aa === 'msaa' && !tall) aa = 'smaa';
+    let aa = c ? c.aa : m?.aa || (q === 'perf' ? 'none' : q === 'low' || q === 'medium' ? 'fxaa' : q === 'high' ? 'smaa' : 'msaa');
+    // (MSAA solo donde hay pasto alto, salvo que el mapa lo pida: las gradas
+    // del Monumento, finitas y paralelas, titilaban corriendo con el SMAA solo)
+    if (aa === 'msaa' && !tall && m?.aa !== 'msaa') aa = 'smaa';
     this.grade.uniforms.uGrain.value = (tall ? 0.03 : 0.06) * (c?.grain ?? 1);
     const smaa = aa === 'smaa' || aa === 'msaa';
     this.fxaa.enabled = aa === 'fxaa';
@@ -301,7 +398,7 @@ export default class PostFX {
     this.world.setSamples(ms);
     // el suavizado temporal: solo Épica (el pasto que titila al moverse). Lee
     // la máscara del pasto del G-buffer de Épica: sin oclusión ni reflejos no hay.
-    const taa = tall && (c ? !!c.taa && !!(c.ao || c.light) : q === 'epic');
+    const taa = tall && (c ? !!c.taa && !!(c.ao || c.light) : (m?.taa ?? q === 'epic'));
     if (taa !== this.taa.enabled) {
       this.taa.enabled = taa;
       this.taa.valid = false;
@@ -315,7 +412,12 @@ export default class PostFX {
     // (el rebote lee el G-buffer: sin oclusión ni reflejos no hay)
     // (vol: los haces de luna; gres: la resolución del G-buffer, 0 automática;
     // lampSoft: el borde de las sombras de fuegos)
-    const cfg = c ? { live: !!c.live, soft: c.soft || 1, ao: c.ao || 0, light: !!c.light, vol: c.vol ?? !!c.light, gres: Number(c.gres) || 0, lampSoft: c.lampSoft ?? 3, lamps: c.lamps || 0, bounce: !!c.bounce && !!(c.ao || c.light) } : LEVELS[q] || null;
+    let cfg = c ? { live: !!c.live, soft: c.soft || 1, ao: c.ao || 0, light: !!c.light, vol: c.vol ?? !!c.light, gres: Number(c.gres) || 0, lampSoft: c.lampSoft ?? 3, lamps: c.lamps || 0, bounce: !!c.bounce && !!(c.ao || c.light) } : LEVELS[q] || null;
+    // (lo del mapa, solo las claves de LEVELS que trae)
+    if (cfg && !c && m) {
+      const k = Object.keys(m).filter((k) => LEVEL_KEYS.includes(k));
+      if (k.length) cfg = { ...cfg, ...Object.fromEntries(k.map((k) => [k, m[k]])) };
+    }
     if (cfg !== this.epic.cfg) this.epic.configure(cfg, this.game);
   }
 
@@ -345,6 +447,16 @@ export default class PostFX {
 
   render(dt, t, { hurt = 0, hit = 0, hitX = 0, hitY = 0, down = 0, crit = 0, pulse = 0, vida = 0 } = {}) {
     const u = this.grade.uniforms;
+    const G = (globalThis.__mduNoMapGrade !== true && MAP_GRADE[MAP_ID]) || GRADE_BASE;
+    if (G !== this.gradeOf) {
+      this.gradeOf = G;
+      u.uSat.value = G.sat;
+      u.uCon.value = G.con;
+      u.uShTint.value.fromArray(G.sh);
+      u.uHiTint.value.fromArray(G.hi);
+      u.uGain.value.fromArray(G.gain);
+      u.uLift.value.fromArray(G.lift);
+    }
     // (el golpe va derecho, sin suavizar: ya viene con su caída)
     u.uHit.value = Math.min(1, hit) * (this.game?.settings?.calmFx ? 0.4 : 1);
     u.uHitDir.value.set(hitX, hitY);
@@ -358,18 +470,32 @@ export default class PostFX {
     const P = this.game?.player;
     u.uWish.value = (this.game?.state !== 'title' && P?.wishFx) || 0;
     u.uWishBeat.value = P?.wishBeat || 0;
+    u.uFuria.value = (globalThis.__mduNoFuriaTint !== true && this.game?.state !== 'title' && this.game?.weapons?.cosmic?.tint) || 0;
+    // (globalThis.__mduNoRip: sin el rasgón)
+    const cz = this.game?.weapons?.cosmic;
+    u.uRip.value.set(globalThis.__mduNoRip !== true && this.game?.state !== 'title' ? cz?.rip || 0 : 0, cz?.ripA || 0, cz?.ripSeed || 0);
     u.uTime.value = t;
     u.uHurt.value += (hurt - u.uHurt.value) * Math.min(1, dt * 6);
     u.uDown.value += (down - u.uDown.value) * Math.min(1, dt * 3);
     this.flashV = Math.max(0, this.flashV - dt * 1.2);
     // opción "menos destellos": la pantalla apenas se aclara
     u.uFlash.value = Math.min(1, this.flashV) * (this.game?.settings?.calmFx ? 0.3 : 1);
-    this.sweepT -= dt;
+    // (de a tajadas por cuadro; al cambiar de escena o de calidad, todo de una)
     if (this.sweepT <= 0) {
-      this.sweepT = 1;
+      this.sweepT = Infinity;
+      this.walk.reset();
       this.sweep();
+    } else if (this.world.scene) this.walk.step([this.world.scene], this.sweepVisit, SWEEP_N);
+    // (la mano es chica: entera cada segundo)
+    this.vmT -= dt;
+    if (this.vmT <= 0) {
+      this.vmT = 1;
+      this.vm.scene?.traverse(sweepOne);
     }
     this.taa.jitter();
+    // las luces de evento a las del pool (World.adoptLight), antes que las
+    // sombras de fuegos de Épica las miren; el pasto lejano (World.preRender)
+    if (this.game?.world?.scene === this.world.scene) this.game.world.preRender?.(this.world.camera, dt);
     this.epic.before(dt, this.game);
     // las matrices del mundo, una sola vez por cuadro: cada dibujo de la escena
     // (el mundo, el G-buffer de Épica) las recorría enteras otra vez. Y el
@@ -383,6 +509,8 @@ export default class PostFX {
     const water = this.game?.water;
     try {
       water?.prerender?.(this.renderer, scene, cam);
+      // (Eclipse Matero: lo que se ve adentro de los portales, world/eclipsePortals)
+      this.game?.ee?.prerender?.(this.renderer, scene, cam);
       this.composer.render(dt);
     } finally {
       scene.matrixWorldAutoUpdate = mwa;

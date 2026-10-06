@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { EE, ZONES } from '../../config/map';
 import { roofRidge } from '../../world/Castle';
 import { ELEM_RGB, ELEM_COLOR, glow, isHost, announce, players, rayHit, freeCells, myId, firstHit } from './common';
+import { compactGroup } from '../../world/props';
+import { lean, sleepHidden } from '../../world/castleLean';
 
 // La vuelta del viento: "Las Veletas del Zonda".
 //  1. Las veletas: cuatro veletas con cóndor en las cumbreras de los techos
@@ -30,6 +32,16 @@ export default class QuestViento {
     this.dirs = EE.viento.veletas.map(() => Math.floor(Math.random() * 3));
     this.caught = [0, 0, 0];
     this.vanes = EE.viento.veletas.map((k, i) => this.buildVane(k, i));
+    // (lo quieto de las veletas, junto: el palo, la cruz y las letras; gira solo la flecha)
+    if (lean()) {
+      const fixed = new THREE.Group();
+      this.root.add(fixed);
+      for (const v of this.vanes) {
+        v.grp.updateMatrixWorld(true);
+        for (const o of [...v.grp.children]) if (o !== v.vane) fixed.attach(o);
+      }
+      compactGroup(fixed);
+    }
     this.feathers = EE.viento.plumas.map((k) => this.buildFeather(k));
     this.sendT = 0;
   }
@@ -113,6 +125,7 @@ export default class QuestViento {
     grp.visible = false;
     grp.scale.setScalar(1.5);
     this.root.add(grp);
+    sleepHidden(grp);
     return { zone, grp, glow: s, pos: new THREE.Vector3(), target: null, net: null, speed: 1.8 };
   }
 

@@ -48,7 +48,10 @@ const PANOJA_TIP = new THREE.Color(0x8a6a4a);
 // Una mata de 1 m de alto (la instancia la estira a su altura).
 // tip: el ancho de la punta de cada hoja (m, antes de estirar la mata).
 // wide: cuánto más anchas las hojas y las cañas (1 = como siempre).
-export function tussockGeometry(seed, { leaves = 34, stems = 7, tip = 0.002, wide = 1 } = {}) {
+// Para las de lejos (LODS): la misma mata (las mismas hojas en el mismo lugar)
+// con menos tramos por hoja (segs), una de cada `step` hojas y cañas (más
+// anchas, leafWide: tapa lo mismo), y la caña y la panoja más cortadas.
+export function tussockGeometry(seed, { leaves = 34, stems = 7, tip = 0.002, wide = 1, segs = LEAF_SEGS, step = 1, leafWide = 1, stemSegs = 3, strandSegs = 2, strandStep = 1 } = {}) {
   const r = rng(seed);
   const P = [];
   const N = [];
@@ -86,14 +89,16 @@ export function tussockGeometry(seed, { leaves = 34, stems = 7, tip = 0.002, wid
     const len = (0.95 + r() * 0.3) * (1 - out * 0.3);
     const droop = 0.08 + out * 0.4 + r() * 0.12;
     const r0 = r() * 0.07;
-    const w0 = (0.022 + r() * 0.018) * wide;
+    const w0 = (0.022 + r() * 0.018) * wide * leafWide;
     const dry = r() < 0.28;
     const twist = (r() - 0.5) * 1.2;
+    // (los números de esta hoja ya salieron: la que se saltea no corre a las demás)
+    if (k % step) continue;
     const pts = [];
     const widths = [];
     const cols = [];
-    for (let s = 0; s <= LEAF_SEGS; s++) {
-      const t = s / LEAF_SEGS;
+    for (let s = 0; s <= segs; s++) {
+      const t = s / segs;
       const h = Math.sin(tilt) * len * t;
       const y = Math.cos(tilt) * len * t - droop * len * t * t;
       pts.push([dx * (r0 + h), Math.max(0, y), dz * (r0 + h)]);
@@ -115,15 +120,18 @@ export function tussockGeometry(seed, { leaves = 34, stems = 7, tip = 0.002, wid
     const dz = Math.sin(az);
     const lean = r() * 0.22;
     const top = 1.04 + r() * 0.22;
+    // (la que se saltea igual saca los números de su panoja)
+    const skip = k % step !== 0;
     const pts = [];
     const cols = [];
-    for (let s = 0; s <= 3; s++) {
-      const t = s / 3;
+    for (let s = 0; s <= stemSegs; s++) {
+      const t = s / stemSegs;
       pts.push([dx * Math.sin(lean) * top * t * t, top * t, dz * Math.sin(lean) * top * t * t]);
       cols.push(c.copy(BASE).lerp(DRY_MID, t).clone());
     }
     const side = [-dz, 0, dx];
-    ribbon(pts, [0.012, 0.01, 0.009, 0.008].map((v) => v * wide), cols, side, [dx * 0.5, 0.86, dz * 0.5]);
+    const sw = [0.012, 0.01, 0.009, 0.008];
+    if (!skip) ribbon(pts, pts.map((_, s) => sw[Math.round((s / stemSegs) * 3)] * wide * leafWide), cols, side, [dx * 0.5, 0.86, dz * 0.5]);
     // la panoja: unas hebras que cuelgan de la punta, abiertas en abanico
     const [tx, ty, tz] = pts[pts.length - 1];
     const strands = 5;
@@ -132,12 +140,16 @@ export function tussockGeometry(seed, { leaves = 34, stems = 7, tip = 0.002, wid
       const ex = Math.cos(a);
       const ez = Math.sin(a);
       const l = 0.16 + r() * 0.14;
+      if (skip || j % strandStep) continue;
       const sp = [
         [tx, ty, tz],
         [tx + ex * l * 0.35 + dx * 0.02, ty - l * 0.45, tz + ez * l * 0.35 + dz * 0.02],
         [tx + ex * l * 0.5 + dx * 0.03, ty - l, tz + ez * l * 0.5 + dz * 0.03],
       ];
-      ribbon(sp, [0.03, 0.035, 0.004], [PANOJA, c.copy(PANOJA).lerp(PANOJA_TIP, 0.6).clone(), PANOJA_TIP], [-ez, 0, ex], [ex * 0.5, 0.86, ez * 0.5]);
+      const sc = [PANOJA, c.copy(PANOJA).lerp(PANOJA_TIP, 0.6).clone(), PANOJA_TIP];
+      const sws = [0.03, 0.035, 0.004].map((v) => v * leafWide);
+      if (strandSegs >= 2) ribbon(sp, sws, sc, [-ez, 0, ex], [ex * 0.5, 0.86, ez * 0.5]);
+      else ribbon([sp[0], sp[2]], [sws[1], sws[2]], [sc[0], sc[2]], [-ez, 0, ex], [ex * 0.5, 0.86, ez * 0.5]);
     }
   }
   const geo = new THREE.BufferGeometry();
@@ -149,12 +161,38 @@ export function tussockGeometry(seed, { leaves = 34, stems = 7, tip = 0.002, wid
   return geo;
 }
 
-// Las matas: spots = [x, y, z, alto, ángulo, ancho]. Por variante y por pedazo
-// de mapa (chunk celdas de lado), una InstancedMesh con su esfera para el recorte.
+// Las matas por distancia a la cámara: de cerca enteras; más allá de LOD_NEAR
+// la misma mata con menos tramos por hoja (de lejos la curva no se distingue);
+// más allá de LOD_MID la mitad de las hojas, más anchas; más allá de LOD_FAR,
+// perdidas en la niebla, nada. Eran ~1,7 millones de triángulos por pasada
+// (mundo, G-buffer y espejo): la mata más cara de la vista. Medido en Épica a
+// 1440p, parado en la tranquera de la laguna mirando al campamento.
+// (globalThis.__mduNoGrassLod: todas enteras, como antes)
+const LODS = [
+  {},
+  { segs: 3, stemSegs: 2, strandSegs: 1 },
+  { segs: 2, step: 2, leafWide: 1.45, stemSegs: 1, strandSegs: 1, strandStep: 2 },
+];
+const LOD_NEAR = 18;
+const LOD_MID = 42;
+const LOD_FAR = 78;
+// (margen para que una mata en el borde no salte de una a otra)
+const LOD_HYST = 1.5;
+// (se rehace cuando la cámara anduvo esto, en metros)
+const LOD_STEP = 1;
+
+// Las matas: spots = [x, y, z, alto, ángulo, ancho]. Una InstancedMesh por
+// variante y por detalle (LODS): 9 llamadas de dibujo. Antes iban en pedazos
+// de mapa (chunk celdas de lado) para el recorte; con los detalles por
+// distancia eran demasiadas, y ahora las de cerca y las del medio van en una
+// esfera alrededor de la cámara, que corre con ella. Devuelve las mallas;
+// `lod(cam)` (antes de dibujar, World.preRender) reparte cada mata en la de
+// su distancia. (Los números al azar salen en el mismo orden que antes, por
+// pedazo: las matas quedan iguales.)
 export function buildTussocks(root, spots, mat, { variants = 3, chunk = 21, seed = 51, leaves = 34, stems = 7 } = {}) {
   const r = rng(seed);
   const geos = [];
-  for (let k = 0; k < variants; k++) geos.push(tussockGeometry(seed * 7 + k * 131, { leaves, stems }));
+  for (let k = 0; k < variants; k++) geos.push(LODS.map((L) => tussockGeometry(seed * 7 + k * 131, { leaves, stems, ...L })));
   // (es pasto: en Épica, poca oclusión y sin reflejo; fx/Epic.js)
   mat.userData.foliage = true;
   const groups = new Map();
@@ -169,26 +207,123 @@ export function buildTussocks(root, spots, mat, { variants = 3, chunk = 21, seed
   const v = new THREE.Vector3();
   const sc = new THREE.Vector3();
   const tint = new THREE.Color();
-  const meshes = [];
+  const per = Array.from({ length: variants }, () => ({ mats: [], cols: [], xz: [] }));
   for (const [key, list] of groups) {
-    const vi = Number(key.split(',')[2]);
-    const im = new THREE.InstancedMesh(geos[vi], mat, list.length);
-    list.forEach(([x, y, z, h, a, wd = 1], k) => {
+    const V = per[Number(key.split(',')[2])];
+    for (const [x, y, z, h, a, wd = 1] of list) {
       qt.setFromAxisAngle(up, a);
       const s = h * (0.55 + r() * 0.12) * wd;
       m.compose(v.set(x, y, z), qt, sc.set(s, h, s));
-      im.setMatrixAt(k, m);
+      V.mats.push(...m.elements);
       // unas más verdes, otras más secas o más oscuras
       const d = 0.78 + r() * 0.34;
       const dry = r() * 0.12;
-      im.setColorAt(k, tint.setRGB(d * (1 + dry), d * (1 + dry * 0.5), d * (0.92 - dry)));
-    });
-    im.computeBoundingSphere();
-    im.receiveShadow = true;
-    root.add(im);
-    meshes.push(im);
+      tint.setRGB(d * (1 + dry), d * (1 + dry * 0.5), d * (0.92 - dry));
+      V.cols.push(tint.r, tint.g, tint.b);
+      V.xz.push(x, z);
+    }
   }
+  const meshes = [];
+  const sets = [];
+  for (const [vi, V] of per.entries()) {
+    const n = V.xz.length / 2;
+    if (!n) continue;
+    const S = { mats: new Float32Array(V.mats), cols: new Float32Array(V.cols), xz: new Float32Array(V.xz), lod: new Uint8Array(n).fill(255), ims: [], all: null };
+    for (let L = 0; L < LODS.length; L++) {
+      const im = new THREE.InstancedMesh(geos[vi][L], mat, n);
+      im.instanceMatrix.array.set(S.mats);
+      im.instanceColor = new THREE.InstancedBufferAttribute(S.cols.slice(), 3);
+      im.computeBoundingSphere();
+      // (la esfera con todas: la de "todas enteras"; las otras siguen a la cámara)
+      if (!L) S.all = im.boundingSphere.clone();
+      im.receiveShadow = true;
+      // las de lejos no van en el espejo del agua (fx/Water cullList): ahí
+      // su reflejo queda detrás de la orilla
+      if (L === 2) im.userData.reflect = false;
+      // (hasta el primer reparto, solo las enteras, con todas)
+      if (L) {
+        im.count = 0;
+        im.visible = false;
+      }
+      root.add(im);
+      meshes.push(im);
+      S.ims.push(im);
+    }
+    sets.push(S);
+  }
+  const at = new THREE.Vector3();
+  let lastX = Infinity;
+  let lastZ = Infinity;
+  let lastAll = null;
+  meshes.lod = (cam) => {
+    at.setFromMatrixPosition(cam.matrixWorld);
+    const all = globalThis.__mduNoGrassLod === true;
+    if (all === lastAll && Math.hypot(at.x - lastX, at.z - lastZ) < LOD_STEP) return;
+    lastAll = all;
+    lastX = at.x;
+    lastZ = at.z;
+    for (const S of sets) relod(S, at, all);
+  };
   return meshes;
+}
+
+// el radio de la esfera de cada detalle (lo más lejos que llega, más una mata)
+const REACH = [LOD_NEAR + LOD_HYST + 3, LOD_MID + LOD_HYST + 3, LOD_FAR + LOD_HYST + 3];
+
+function relod(S, at, all) {
+  const n = S.lod.length;
+  const cx = at.x;
+  const cz = at.z;
+  let changed = false;
+  for (let k = 0; k < n; k++) {
+    const d = Math.hypot(S.xz[k * 2] - cx, S.xz[k * 2 + 1] - cz);
+    const was = S.lod[k];
+    let L;
+    if (all) L = 0;
+    else {
+      // el borde de cada escalón, corrido hacia el lado de donde viene
+      const e = (edge, lo) => edge + (was === 255 ? 0 : was <= lo ? LOD_HYST : -LOD_HYST);
+      L = d < e(LOD_NEAR, 0) ? 0 : d < e(LOD_MID, 1) ? 1 : d < e(LOD_FAR, 2) ? 2 : 3;
+    }
+    if (L !== was) {
+      S.lod[k] = L;
+      changed = true;
+    }
+  }
+  // las esferas van con la cámara (a la altura del medio de todas)
+  for (let L = 0; L < S.ims.length; L++) {
+    const B = S.ims[L].boundingSphere;
+    if (all) B.copy(S.all);
+    else {
+      B.center.set(cx, S.all.center.y, cz);
+      B.radius = REACH[L];
+    }
+  }
+  if (!changed) return;
+  for (let L = 0; L < S.ims.length; L++) {
+    const im = S.ims[L];
+    const M = im.instanceMatrix.array;
+    const C = im.instanceColor.array;
+    let c = 0;
+    for (let k = 0; k < n; k++) {
+      if (S.lod[k] !== L) continue;
+      M.set(S.mats.subarray(k * 16, k * 16 + 16), c * 16);
+      C.set(S.cols.subarray(k * 3, k * 3 + 3), c * 3);
+      c++;
+    }
+    im.count = c;
+    im.visible = c > 0;
+    // (la pasada de profundidad comparte las matrices: fx/prepass)
+    const pre = im.userData.prepass;
+    if (pre) pre.count = c;
+    if (!c) continue;
+    im.instanceMatrix.clearUpdateRanges();
+    im.instanceMatrix.addUpdateRange(0, c * 16);
+    im.instanceMatrix.needsUpdate = true;
+    im.instanceColor.clearUpdateRanges();
+    im.instanceColor.addUpdateRange(0, c * 3);
+    im.instanceColor.needsUpdate = true;
+  }
 }
 
 // La copa de un árbol: muchas hojitas (rombos) repartidas en una bola de radio

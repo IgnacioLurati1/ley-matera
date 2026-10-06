@@ -8,8 +8,10 @@ import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
 import { SIX, flareTexture } from '../weapons/supremoFx';
 import { arm, leg } from '../entities/zombieGaits';
 import { solvePose, PART_COUNT } from '../entities/skeleton';
-import { crewIds, glowFront } from './cineCrew';
+import { crewIds, glowFront, personaOf, PERSONA_T } from './cineCrew';
 import { preloadBossSkin } from '../entities/bossSkin';
+import { cineClip, poseCineClip, gauchoClip, cineSnap, headProp, FACE_EYES } from '../net/gauchoSkin';
+import { assetUrl } from '../../lib/assets';
 
 // Final del penal, adentro del juego, en el Cerro del Espinillo. El Gauchito
 // Gil queda de rodillas junto al espinillo. Las almas del penal suben al
@@ -38,7 +40,8 @@ const WHO = { gil: 'El Gauchito Gil', entidad: 'La Voz de Arriba', anacleto: 'An
 const GIL_POSE = {
   down: { hipY: 0.52, torsoP: 0.6, torsoR: 0.08, headP: 0.5, shLp: -0.1, shRp: -0.55, shLr: 0.25, shRr: -0.3, elL: -0.2, elR: -1 },
   // habla estirando la mano izquierda (con la derecha sigue agarrando el facón)
-  talk: { hipY: 0.55, torsoP: 0.22, torsoR: 0, headP: -0.12, shLp: -1.3, shRp: -0.5, shLr: 0.05, shRr: -0.3, elL: -0.2, elR: -0.9 },
+  // (el brazo bajo y el antebrazo adelante: con el brazo levantado se le abría el poncho)
+  talk: { hipY: 0.55, torsoP: 0.22, torsoR: 0, headP: -0.12, shLp: -0.5, shRp: -0.5, shLr: 0.12, shRr: -0.3, elL: -1.05, elR: -0.9 },
   struck: { hipY: 0.62, torsoP: -0.5, torsoR: 0, headP: -0.75, shLp: -2.5, shRp: -2.5, shLr: -0.6, shRr: 0.6, elL: -0.15, elR: -0.15 },
   ash: { hipY: 0.45, torsoP: 1.15, torsoR: 0.1, headP: 0.7, shLp: 0.1, shRp: 0.1, shLr: 0.1, shRr: -0.1, elL: -0.2, elR: -0.2 },
 };
@@ -71,6 +74,8 @@ const tmpV = new THREE.Vector3();
 const tmpW = new THREE.Vector3();
 const tmpU = new THREE.Vector3();
 const tmpC = new THREE.Color();
+const tmpMat = new THREE.Matrix4();
+const tmpMat2 = new THREE.Matrix4();
 // (la pose de prueba de los que están acostados: lieFit)
 const LIE_MATS = Array.from({ length: PART_COUNT }, () => new THREE.Matrix4());
 const smooth = (u) => u * u * (3 - 2 * u);
@@ -103,6 +108,10 @@ export default class PenalCinematic {
   play(onDone) {
     const g = this.g;
     this.onDone = onDone;
+    // (en línea el reloj cuenta desde acá, como ui/FarmCinematic: la compu que
+    // se traba armando la escena no arranca atrasada; antes se perdía lo que
+    // tardaba el primer cuadro, 0,3 s entre dos compus)
+    this.wallAt = g.net && globalThis.__mduNoCineSync !== true ? performance.now() : 0;
     // la canción (core/music.js), desde PENAL_FROM: la calma (las almas, los
     // presos, el altar) se estira hasta que se termina, cuando el Gil quiere hablar
     this.scored = !!g.music?.play('cine-penal-final', { at: PENAL_FROM, fadeIn: PENAL_FROM ? 0.8 : 0.15, while: (G) => G.state === 'won' && !this.done });
@@ -145,6 +154,12 @@ export default class PenalCinematic {
     this.C = new THREE.Vector3(ax + 0.3, A.y, az + 3.9);
     this.people = new Avatars(g, null);
     this.buildGauchos();
+    // (los anteojos del Canchero se arman ya, escondidos: se compilan con el resto)
+    this.shades = this.buildShades();
+    this.shadesHand = new THREE.Group();
+    this.shadesHand.add(this.shades);
+    this.shadesHand.visible = false;
+    this.root.add(this.shadesHand);
     this.buildAnimas();
     this.buildGil();
     this.buildAltar();
@@ -162,6 +177,21 @@ export default class PenalCinematic {
     g.audio.setCine(true);
     if (!this.scored) g.audio.fanfare();
     this.script = this.buildScript();
+    // los gauchos con movimientos animados a mano en Blender (el sobresalto del
+    // rayo, taparse de la luz, salir despedidos, desplomarse en la playa:
+    // C:/Users/ignac/Tools/mdu-blender penal_clips.py); el agua y el gateo, con
+    // los clips de siempre (net/gauchoSkin). globalThis.__mduBlend = false: como antes.
+    this.PC = null;
+    if (globalThis.__mduBlend !== false) {
+      fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-penal.json'))
+        .then((r) => r.json())
+        .then((J) => {
+          const C = {};
+          for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+          this.PC = C;
+        })
+        .catch(() => {});
+    }
     // todo lo que va a aparecer se compila ya, en segundo plano
     warmScene(g);
   }
@@ -186,7 +216,7 @@ export default class PenalCinematic {
       const s = i - (ids.length - 1) / 2;
       const x = this.C.x + s * 1.15;
       const z = this.C.z + Math.abs(s) * 0.35;
-      const r = { id: ME + id, name: '', noTag: true, pos: new THREE.Vector3(x, g.world.floorAt(x, z), z), yaw: 0, pitch: 0, speed: 0, moving: false, crouch: false };
+      const r = { id: ME + id, name: '', noTag: true, pos: new THREE.Vector3(x, g.world.floorAt(x, z), z), yaw: 0, pitch: 0, speed: 0, moving: false, crouch: false, persona: personaOf(i) };
       this.people.add(r);
       // el color del poncho es el de cada uno en la partida
       const a = this.people.list.get(r.id);
@@ -241,6 +271,11 @@ export default class PenalCinematic {
     this.gil = z;
     this.gilPose = 'down';
     this.gilK = { ...GIL_POSE.down };
+    // (la muerte en la pelea ya lo dejó en gDown, en este mismo lugar y rumbo:
+    // entities/skins/gil.js S.downT. Sigue desde ese cuadro, sin salto al cortar.
+    // globalThis.__mduNoGilDeathCine = true: desde el principio, como antes)
+    const SK = window.__bossSkins?.gil;
+    this.downAt = globalThis.__mduNoGilDeathCine !== true && SK?.downT != null ? SK.downT : 0;
     // todavía colorado de la segunda fase: se le va apagando
     this.gilGlow = 0.8;
     // lo que queda: un montón de ceniza y el facón clavado
@@ -360,7 +395,9 @@ export default class PenalCinematic {
         this.textEl.classList.remove('is-on');
         // (con la canción: lo que falta para que se termine, menos lo que tarda el Gil en levantar la cabeza)
         // (por el reloj de la canción: con pocos cuadros el de la escena atrasa)
-        const mt = this.scored && g.music.is('cine-penal-final') ? g.music.time() : -1;
+        // (en línea, por el reloj de la escena, que es el mismo en todas: la
+        // canción de cada compu va distinta y el Gil hablaba 2 s antes en una)
+        const mt = this.scored && !(g.net && globalThis.__mduNoCineSync !== true) && g.music.is('cine-penal-final') ? g.music.time() : -1;
         // (la mitad de antes: el usuario lo encontró largo; la canción se va
         // cuando el Gil levanta la cabeza, antes de que termine la calma)
         const d = (this.scored ? Math.max(5, PENAL_PEACE - (mt >= 0 ? mt : this.t + PENAL_FROM) - 1.2) : 4.6) / 2;
@@ -376,11 +413,28 @@ export default class PenalCinematic {
         return 1.1;
       }],
       [0, () => this.say('gil', 'Esperen, gauchos... Esa voz que los fue guiando hasta acá...')],
-      [0.3, () => this.say('gil', CUT_LINE, { cut: true })],
+      [0.3, () => {
+        this.urgent = this.t;
+        const d = this.say('gil', CUT_LINE, { cut: true });
+        // (en "Esa voz es de—" levanta la mano hacia el cielo: el último tercio)
+        this.pointT = this.t + Math.max(1, d * 0.66);
+        return d;
+      }],
       // el rayo lo parte a mitad de la frase
       [0, () => {
         this.strike();
+        // con los clips de Blender del Gil, de cerca: el rayo, cómo se arquea y
+        // cómo se desarma hasta hundirse en la ceniza; recién ahí las caras
+        // (sin canción en este tramo: alargar el paso no corre nada; en línea
+        // la duración es la misma en todas las compus)
+        if (this.gilClips()) {
+          this.shotStrike(3.1);
+          if (this.PC) this.later(3.1, () => this.shotFaces(2));
+          return 5.1;
+        }
         this.shotBolt();
+        // (los gauchos se sobresaltan: de frente, si están los clips de Blender)
+        if (this.PC) this.later(1.5, () => this.shotFaces(2.3));
         return 3.8;
       }],
       // la Voz baja
@@ -389,7 +443,10 @@ export default class PenalCinematic {
         this.shotVoice();
         return 3;
       }],
-      [0, () => this.say('entidad', 'Pobre Gil. Siempre habló de más.')],
+      [0, () => {
+        if (this.PC) this.shotFaces(3.2, true);
+        return this.say('entidad', 'Pobre Gil. Siempre habló de más.');
+      }],
       // el robo: la luz de la Voz se vuelve violeta y agarra el mate, que se resiste
       [0.3, () => {
         this.grab();
@@ -560,6 +617,16 @@ export default class PenalCinematic {
     this.warmLight.color.set(0xffe0c0);
     this.warmLight.intensity = 30;
     this.look = 'gil';
+    // cada uno a su manera (ui/cineCrew PERSONA): el Valiente levanta los
+    // puños, el Miedoso se agacha y queda temblando, el Canchero apenas pega un
+    // respingo y se sacude el polvo, el Viejo trastabilla
+    const REACT = { valiente: ['flinch', 'fists', 1.2], miedoso: ['duck', 'cower', 1.5], canchero: ['dust', 'cool', 1.9], viejo: ['stagger', 'winded', 1.45] };
+    for (const r of this.gauchos) {
+      const [a, b, d] = REACT[r.persona] || REACT.valiente;
+      const t0 = (PERSONA_T[r.persona]?.delay || 0) * 0.35;
+      this.later(t0, () => this.act(r, a, { fade: 0.28 }));
+      this.later(t0 + d, () => this.act(r, b, { loop: true, fade: 0.4 }));
+    }
   }
 
   voiceIn() {
@@ -571,6 +638,27 @@ export default class PenalCinematic {
     g.audio.whoosh?.(this.voz.root.position);
     if (g.weather) g.weather.flash = 1;
     this.look = 'sky';
+    // el Valiente le muestra el puño, el Miedoso se santigua y reza, el
+    // Canchero se pone los anteojos de sol, el Viejo cae de rodillas
+    for (const r of this.gauchos) {
+      const t0 = 0.3 + (PERSONA_T[r.persona]?.delay || 0) * 1.4;
+      if (r.persona === 'miedoso') {
+        this.later(t0, () => this.act(r, 'santiguar', { fade: 0.4 }));
+        this.later(t0 + 2, () => this.act(r, 'pray', { loop: true, fade: 0.3 }));
+      } else if (r.persona === 'canchero') {
+        this.later(t0, () => {
+          this.act(r, 'shades', { fade: 0.4 });
+          this.shadesT = this.t;
+          this.shadesR = r;
+        });
+        // el chiste se ve de cerca: los saca del poncho y se los pone
+        this.later(t0 + 0.1, () => this.shotShades(r, 2.75 - t0));
+        this.later(t0 + 2.2, () => this.act(r, 'cool', { loop: true, fade: 0.3 }));
+      } else if (r.persona === 'viejo') {
+        this.later(t0, () => this.act(r, 'kneelDown', { fade: 0.4 }));
+        this.later(t0 + 1, () => this.act(r, 'kneelHold', { loop: true, fade: 0.2 }));
+      } else this.later(t0, () => this.act(r, 'fistUp', { loop: true, fade: 0.5 }));
+    }
   }
 
   // ---------------- el robo del mate supremo ----------------
@@ -828,6 +916,23 @@ export default class PenalCinematic {
     this.later(0.4, () => this.shotFlight());
   }
 
+  // Cuánto tiene que subir el arco del vuelo para pasar por arriba del cerro
+  // y del borde del barranco (con 0,6 m de aire), sin tocar el piso nunca.
+  flyArc(f) {
+    const W = this.g.world;
+    let need = FLY_H;
+    for (let i = 1; i <= 40; i++) {
+      const u = (i / 40) * 0.92;
+      const x = f.from.x + (f.to.x - f.from.x) * u;
+      const z = f.from.z + (f.to.z - f.from.z) * u;
+      const fy = W.floorAt(x, z);
+      if (!Number.isFinite(fy)) continue;
+      const base = f.from.y + (f.to.y - f.from.y) * u;
+      need = Math.max(need, (fy + 0.6 - base) / (4 * u * (1 - u)));
+    }
+    return need;
+  }
+
   // Volando: una vuelta carnero (alrededor de la cadera) que termina parado,
   // así caen de pie al agua; braceando con los brazos abiertos y pataleando.
   // (arm/leg de zombieGaits: `out` positivo es hacia afuera; antes iban
@@ -916,6 +1021,7 @@ export default class PenalCinematic {
       const r = f.r;
       f.phase = 'swim';
       f.ws = this.t + f.i * 0.25;
+      r.cc = null;
       r.pos.set(SWIM[0] + f.s * 1.3, 0, SWIM[1] + f.s * 0.3 - (f.i % 2) * 0.7);
       f.end = new THREE.Vector3(SHORE[0] + f.s * 1.3, 0, SHORE[1] + f.s * 0.3);
       r.poseFn = null;
@@ -946,29 +1052,48 @@ export default class PenalCinematic {
       if (f.phase === 'fly') {
         const u = clamp01((t - F.t0 - f.delay) / f.T);
         p.lerpVectors(f.from, f.to, u);
-        p.y = f.from.y + (f.to.y - f.from.y) * u + 4 * FLY_H * u * (1 - u);
-        // (el barranco: pasan por arriba del borde, nunca adentro)
-        const fy = W.floorAt(p.x, p.z);
-        if (u < 0.92 && Number.isFinite(fy)) p.y = Math.max(p.y, fy + 0.3);
+        // (el barranco: el arco ya sale alto para pasar por arriba del borde;
+        // antes iban pegados al piso del cerro y al pasar el borde caían 4 m de golpe)
+        if (f.arcH == null) f.arcH = this.flyArc(f);
+        p.y = f.from.y + (f.to.y - f.from.y) * u + 4 * f.arcH * u * (1 - u);
+        f.vy = ((f.to.y - f.from.y) + 4 * f.arcH * (1 - 2 * u)) / f.T;
         f.spinA = TAU * smooth(u);
-        r.yaw = faceTo(p, f.to.x, f.to.z);
+        // (con los clips de Blender el giro lo pone 'blown'; cambiar r.yaw acá
+        // los giraba de golpe antes de salir despedidos)
+        if (!this.PC) r.yaw = faceTo(p, f.to.x, f.to.z);
+        // despedido de espaldas: mira al cerro de donde vino el rayo
+        if (u > 0 && !f.ccFly) {
+          f.ccFly = true;
+          this.act(r, 'blown', { rate: 1.8 / f.T, yaw: Math.atan2(f.from.x - f.to.x, f.from.z - f.to.z), fade: 0.22 });
+        }
         if (u >= 1) {
           f.phase = 'water';
           f.wt = t;
           r.swim = 2;
+          this.act(r, 'tread', { loop: true, fade: 0.5, t: f.i * 0.6, look: 0.35 });
           r.poseFn = (P) => this.flail(f, P);
           Wa?.splash(p.x, p.z, 2.4);
           this.shake = Math.max(this.shake, 0.3);
         }
       } else if (f.phase === 'water') {
         const k = t - f.wt;
-        // se hunden del golpe y salen; después cada tanto se los traga una ola
-        const plunge = k < 0.7 ? (1 - k / 0.7) * 1.6 : 0;
-        const dip = Math.max(0, Math.sin(k * 2.3 + f.i * 1.7)) ** 6 * 0.8;
+        // se hunden del golpe y salen (con la velocidad con que cayeron: antes
+        // bajaban 3 m de golpe); después cada tanto se los traga una ola
+        const dip = Math.max(0, Math.sin(k * 2.3 + f.i * 1.7)) ** 6 * 0.8 * clamp01(k - 1);
         tmpV.set(SHORE[0] - p.x, 0, SHORE[1] - p.z);
         const d = tmpV.length();
         if (d > 0.1) p.addScaledVector(tmpV.divideScalar(d), dt * 0.3);
-        p.y = surf(p.x, p.z) - 1.32 - plunge - dip + Math.sin(k * 3 + f.i) * 0.07;
+        // (lo que traían de la caída se frena en el agua, no de golpe)
+        f.hv ??= new THREE.Vector3(f.to.x - f.from.x, 0, f.to.z - f.from.z).divideScalar(f.T);
+        p.addScaledVector(f.hv, dt);
+        f.hv.multiplyScalar(Math.exp(-dt * 4));
+        const rest = surf(p.x, p.z) - 1.32 - dip + Math.sin(k * 3 + f.i) * 0.07;
+        f.wy ??= p.y;
+        f.wv ??= Math.max(-9, f.vy ?? -6);
+        const h = Math.min(dt, 1 / 30);
+        f.wv += (-26 * (f.wy - rest) - 7 * f.wv) * h;
+        f.wy += f.wv * h;
+        p.y = f.wy;
         r.yaw = faceTo(p, SHORE[0], SHORE[1]);
         if (k > 0.7 && !f.gasped) {
           f.gasped = true;
@@ -977,7 +1102,8 @@ export default class PenalCinematic {
         if (Math.random() < dt * 3) Wa?.splash(p.x + rnd() * 0.6, p.z + rnd() * 0.6, 0.35, { sound: Math.random() < 0.25 });
       } else if (f.phase === 'swim') {
         if (t < f.ws) {
-          p.y = surf(p.x, p.z) - 1.32 + Math.sin(t * 3 + f.i) * 0.08;
+          // (a la altura de cuando nadan: al arrancar subían 12 cm de golpe)
+          p.y = surf(p.x, p.z) - 1.2 + Math.sin(t * 5 + f.i) * 0.05;
           continue;
         }
         tmpV.set(f.end.x - p.x, 0, f.end.z - p.z);
@@ -993,6 +1119,8 @@ export default class PenalCinematic {
         const deep = (x, z) => (Wa ? Wa.depthAt(x, z) : 0);
         if (deep(p.x, p.z) < 0.9 || deep(p.x - Math.sin(r.yaw), p.z - Math.cos(r.yaw)) < 0.6) {
           f.phase = 'crawl';
+          // gatea (el clip de los compañeros, al paso de lo que avanza)
+          this.act(r, 'crawl', { loop: true, fade: 0.7, rate: 1.3, slope: f, t: f.i * 0.4 });
           r.swim = 0;
           r.clips = false;
           r.downed = true;
@@ -1008,6 +1136,14 @@ export default class PenalCinematic {
           // y ahí quedan, tirados, respirando fuerte
           f.phase = 'rest';
           r.corpse = true;
+          // el Viejo queda en cuatro patas tosiendo, el Canchero se sienta (con
+          // los anteojos puestos), los otros se desploman
+          if (r.persona === 'viejo') this.act(r, 'allFours', { loop: true, fade: 0.5, slope: f });
+          else if (r.persona === 'canchero') this.act(r, 'sitRest', { loop: true, fade: 0.9, slope: f });
+          else {
+            this.act(r, 'collapse', { fade: 0.25, slope: f });
+            this.later(1.5, () => this.act(r, 'rest', { loop: true, fade: 0.3, slope: f, t: f.i * 0.5 }));
+          }
           r.poseFn = (P) => {
             P.torsoP += Math.sin(this.t * 2.6 + f.i) * 0.05;
             this.lieFit(f, P);
@@ -1055,10 +1191,13 @@ export default class PenalCinematic {
   shotYerba(d = 2.3) {
     const A = this.A;
     // (la segunda mitad del paneo de antes: termina en el mismo cuadro)
+    // (más atrás y mirando entre el altar y el Gil: el vencido de rodillas entra
+    // entero, del sombrero a las rodillas; a 2,3 m le cortaba la cabeza)
+    const G = this.G;
     this.shot(d, (u) => {
       const a = -0.45 + (0.5 + smooth(u) * 0.5) * 1.35;
-      tmpV.set(A.x + Math.sin(a) * 2.3, A.y + 1.55 - u * 0.15, A.z + Math.cos(a) * 2.3);
-      tmpW.set(A.x - 0.2, A.y + 1.05, A.z);
+      tmpV.set(A.x + Math.sin(a) * 3.5, A.y + 1.65 - u * 0.15, A.z + Math.cos(a) * 3.5);
+      tmpW.set(A.x + (G.x - A.x) * 0.43, A.y + 1.45, A.z + (G.z - A.z) * 0.43);
     }, 50);
   }
 
@@ -1074,6 +1213,25 @@ export default class PenalCinematic {
     }, 45);
   }
 
+  // ¿El Gil va con los clips de Blender? (entities/skins/gil.js los carga)
+  gilClips() {
+    return globalThis.__mduBlend !== false && !!window.__bossSkins?.gil?.cineGil;
+  }
+
+  // El rayo, de cerca: un poco de costado y desde abajo, entero en el cuadro (es
+  // un gigante de rodillas), acercándose despacio; al final baja con él.
+  shotStrike(dur) {
+    const G = this.G;
+    const d = tmpU.set(this.C.x - G.x, 0, this.C.z - G.z).normalize().clone();
+    const side = new THREE.Vector3(d.z, 0, -d.x);
+    this.shot(dur, (u) => {
+      const e = smooth(u);
+      const k = 5.2 - 0.9 * e;
+      tmpV.set(G.x + d.x * k + side.x * 1.6, G.y + 1.5 - 0.3 * e, G.z + d.z * k + side.z * 1.6);
+      tmpW.set(G.x, G.y + 1.75 - 0.7 * smooth(clamp01((u - 0.45) / 0.55)), G.z);
+    }, 50);
+  }
+
   shotBolt() {
     const G = this.G;
     const d = tmpU.set(this.C.x - G.x, 0, this.C.z - G.z).normalize().clone();
@@ -1082,6 +1240,37 @@ export default class PenalCinematic {
       tmpV.set(G.x + d.x * 6.2 - side.x * 2.2, G.y + 2.4, G.z + d.z * 6.2 - side.z * 2.2);
       tmpW.set(G.x, G.y + 1.6 + u * 1.2, G.z);
     });
+  }
+
+  // De frente a los gauchos, a la altura del pecho: cómo reaccionan (el rayo,
+  // la luz de la Voz). up: mirando un poco desde abajo, con el cielo atrás.
+  shotFaces(dur, up = false) {
+    const C = this.C;
+    const n = this.gauchos.length;
+    const c = new THREE.Vector3();
+    for (const r of this.gauchos) c.add(r.pos);
+    c.divideScalar(n || 1);
+    // (del lado de adonde miran: el altar y el Gil)
+    const d = tmpU.set(this.A.x - c.x, 0, this.A.z - c.z).normalize().clone();
+    const side = new THREE.Vector3(d.z, 0, -d.x);
+    this.shot(dur, (u) => {
+      const k = (up ? 3.1 : 3.7) - 0.35 * u;
+      tmpV.set(c.x + d.x * k + side.x * (0.5 - 0.3 * u), c.y + (up ? 0.85 : 1.3), c.z + d.z * k + side.z * (0.5 - 0.3 * u));
+      tmpW.set(c.x, c.y + (up ? 1.55 : 1.25), c.z);
+    }, 42);
+  }
+
+  // De cerca, la cara del Canchero (se pone los anteojos de sol).
+  shotShades(r, dur) {
+    const a = this.people.list.get(r.id);
+    const h = a?.gs?.on ? a.gs.bones.Head.getWorldPosition(new THREE.Vector3()) : r.pos.clone().setY(r.pos.y + 1.6);
+    const fx = -Math.sin(r.yaw);
+    const fz = -Math.cos(r.yaw);
+    this.shot(dur, (u) => {
+      const k = 1.25 - 0.3 * u;
+      tmpV.set(h.x + fx * k + fz * 0.25, h.y + 0.05, h.z + fz * k - fx * 0.25);
+      tmpW.set(h.x, h.y + 0.16, h.z);
+    }, 38);
   }
 
   // Desde atrás de los gauchos, mirando para arriba: la Voz baja.
@@ -1211,12 +1400,14 @@ export default class PenalCinematic {
     const g = this.g;
     if (!this.script) return;
     // el reloj de la escena es el de verdad, no el dt con tope de Game.loop: en
-    // línea, la compu que se traba no se atrasa de los demás ni de la música
-    // (un salto de más de 1 s es una pausa)
+    // línea, la compu que se traba no se atrasa de los demás ni de la música.
+    // Solo, un salto de más de 3 s es una pausa; en línea no hay pausa y una
+    // trabada de hasta 30 s cuenta. Llamadas seguidas, sin cuadro en el medio:
+    // una prueba que la adelanta.
     const now = performance.now();
     const w = (now - (this.wallAt || 0)) / 1000;
     this.wallAt = now;
-    this.t += w > dt && w < 1 ? w : dt;
+    this.t += w >= 0.002 && w < (g.net ? 30 : 3) ? w : dt;
     this.dt = dt;
     g.time += dt;
     g.weapons.vmRoot.visible = false;
@@ -1235,7 +1426,9 @@ export default class PenalCinematic {
       const start = this.next + wait;
       this.step++;
       const dur = fn() || 0;
-      this.next = Math.max(start, t) + dur;
+      // (en línea, una trabada no corre el resto del guion: cada compu se traba
+      // distinto y el anfitrión terminaba 5-7 s después; se pone al día)
+      this.next = (g.net && globalThis.__mduNoCineSync !== true ? start : Math.max(start, t)) + dur;
     }
     if (!this.script) return;
     this.updateSouls(dt);
@@ -1253,6 +1446,8 @@ export default class PenalCinematic {
     g.arena?.updateSouls?.(dt);
     for (const p of g.arena?.braziers || []) if (Math.random() < 0.25) g.fx.fire(p, 0.08, 1);
     this.people.update(dt);
+    this.poseGauchos(dt);
+    this.updateShades();
     // la cámara de la toma, con el temblor encima (nunca abajo del pasto)
     const cam = g.camera;
     if (this.cam) {
@@ -1295,6 +1490,111 @@ export default class PenalCinematic {
     g.weather?.update?.(dt);
     // (la toma de arriba: menos niebla, para que se vea el mapa entero)
     if (this.fogMul < 1 && g.scene.fog) g.scene.fog.density *= this.fogMul;
+  }
+
+  // Un gaucho pasa a un clip (los de Blender o los de siempre), mezclándose
+  // con el anterior `fade` segundos. o: loop, rate, t (por dónde arranca),
+  // yaw (fijo; si no, el de r), look (rad), slope (f de la caída: se inclina
+  // con la pendiente de la playa).
+  act(r, name, o = {}) {
+    if (!this.PC) return;
+    // (desde la pose que tiene ahora, sea cual sea: sin saltos al cambiar)
+    const snap = cineSnap(this.people.list.get(r.id));
+    r.cc = { name, t0: this.t - (o.t || 0) / (o.rate || 1), loop: !!o.loop, rate: o.rate || 1, yaw: o.yaw, look: o.look || 0, slope: o.slope || null, fade: o.fade ?? 0.25, at: this.t, snap };
+  }
+
+  // Los anteojos de sol del Canchero (los saca del poncho y se los pone): en la
+  // mano hasta que llegan a la cara, después colgados de la cabeza.
+  buildShades() {
+    const root = new THREE.Group();
+    const glass = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, metalness: 0.7, roughness: 0.12 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xc9a040, metalness: 1, roughness: 0.3 });
+    const E = FACE_EYES;
+    for (const sx of [-1, 1]) {
+      // (grandes, de aviador: que se lean desde lejos)
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.1, 0.4, 20).rotateX(Math.PI / 2), glass);
+      lens.scale.y = 0.85;
+      lens.position.set(E.x + sx * (E.half + 0.4), E.y - 1.3, 17.3);
+      root.add(lens);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.55, 13), gold);
+      arm.position.set(E.x + sx * (E.half + 4), E.y - 0.4, 11);
+      root.add(arm);
+    }
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(2 * E.half - 6, 0.5, 0.45), gold);
+    bridge.position.set(E.x, E.y + 0.6, 17.4);
+    root.add(bridge);
+    return root;
+  }
+
+  updateShades() {
+    const r = this.shadesR;
+    if (!r || this.shadesOn) return;
+    const a = this.people.list.get(r.id);
+    if (!a?.gs?.on) return;
+    const lt = this.t - this.shadesT;
+    // (sale del bolsillo a los 0,55 s; a los 1,15 s ya está en la cara)
+    if (lt < 0.55) return;
+    if (lt < 1.15) {
+      // en la mano, ya derechos como van en la cara (de cerca no se nota el cambio)
+      const B = a.gs.bones;
+      const head = B.Head;
+      const hand = B.RightHand.getWorldPosition(tmpV);
+      const sk = a.gs.mesh.skeleton;
+      const hi = sk.bones.indexOf(head);
+      tmpMat.copy(head.matrixWorld).multiply(sk.boneInverses[hi]).multiply(a.gs.mesh.bindMatrix);
+      this.shadesHand.matrixAutoUpdate = false;
+      this.shadesHand.matrix.copy(tmpMat);
+      // corre el centro de los lentes a la mano
+      tmpW.set(FACE_EYES.x, FACE_EYES.y, 16.4).applyMatrix4(tmpMat);
+      this.shadesHand.matrix.premultiply(tmpMat2.makeTranslation(hand.x - tmpW.x, hand.y - tmpW.y, hand.z - tmpW.z));
+      this.shadesHand.matrixWorldNeedsUpdate = true;
+      this.shadesHand.visible = true;
+      return;
+    }
+    this.shadesHand.visible = false;
+    this.shadesHand.remove(this.shades);
+    headProp(a, this.shades);
+    this.shadesOn = true;
+  }
+
+  clipOf(name) {
+    return this.PC?.[name] || gauchoClip(name);
+  }
+
+  poseGauchos(dt) {
+    if (!this.PC) return;
+    const t = this.t;
+    for (const r of this.gauchos) {
+      const S = r.cc;
+      const a = this.people.list.get(r.id);
+      // el mate: con las manos ocupadas (el rayo, la luz, el vuelo, el agua, la
+      // playa) no está; si no, quedaba donde lo dejaba la pose de antes,
+      // volando, o daba vueltas con la brazada del nado (el usuario 2026-10-03)
+      if (a && (S || this.fall)) {
+        if (a.gun) a.gun.visible = false;
+        a.hand.visible = false;
+      }
+      if (!S) continue;
+      const c = this.clipOf(S.name);
+      if (!a || !c) continue;
+      const lt = (t - S.t0) * S.rate;
+      const o = { loop: S.loop, look: S.look };
+      if (S.snap && t - S.at < S.fade) {
+        o.snap = S.snap;
+        o.sw = smooth(clamp01((t - S.at) / S.fade));
+      }
+      // en la playa: el cuerpo a lo largo de la pendiente (lo que mide lieFit)
+      if (S.slope) {
+        const fx = -Math.sin(r.yaw);
+        const fz = -Math.cos(r.yaw);
+        const h = (d) => this.ground(r.pos.x + fx * d, r.pos.z + fz * d) ?? r.pos.y;
+        const want = Math.atan2(h(0.9) - h(-0.6), 1.5);
+        S.pa = S.pa == null ? want : S.pa + (want - S.pa) * Math.min(1, (dt || 0) * 4);
+        o.tilt = -S.pa;
+      }
+      const yaw = S.yaw ?? (r.yaw || 0) + Math.PI;
+      poseCineClip(a, c, S.loop ? lt : Math.min(lt, c.dur), r.pos.x, r.pos.y, r.pos.z, yaw, o);
+    }
   }
 
   // Las almas del penal: suben de todo el mapa hacia el cielo.
@@ -1341,11 +1641,48 @@ export default class PenalCinematic {
     if (this.fall) return;
     const look = this.look;
     const at = look === 'gil' && !this.gilGone ? this.G : look === 'animas' ? tmpU.set(this.A.x + 2.8, 0, this.A.z + 1.2) : this.A;
+    // (cada uno a su tiempo y a su ritmo: ui/cineCrew PERSONA_T; antes se
+    // daban vuelta todos juntos, "una mente colmena")
+    const key = `${at.x.toFixed(1)},${at.z.toFixed(1)}`;
+    if (key !== this.lookKey) {
+      this.lookKey = key;
+      this.lookT = this.t;
+    }
     for (const r of this.gauchos) {
-      r.yaw = faceTo(r.pos, at.x, at.z);
+      const P = PERSONA_T[r.persona] || PERSONA_T.valiente;
+      if (!r.at || this.t - this.lookT >= P.delay) r.at = (r.at || new THREE.Vector3()).copy(at);
+      const k = Math.min(1, (this.dt || 0) * P.turn);
+      // (de a poco: cuando se moría el Gil daban vuelta de golpe hacia el altar)
+      let d = faceTo(r.pos, r.at.x, r.at.z) - r.yaw;
+      while (d > Math.PI) d -= TAU;
+      while (d < -Math.PI) d += TAU;
+      r.yaw += r.yawSet ? d * k : d;
+      r.yawSet = true;
       const want = look === 'sky' ? 0.9 : look === 'mate' ? 0.45 : look === 'animas' && this.animaT != null ? 0.6 : 0;
       r.pitch += (want - r.pitch) * 0.05;
     }
+  }
+
+  // El Gil con los clips de Blender (entities/skins/gil.js pick lo pregunta
+  // cada cuadro): vencido, levanta la cabeza y habla, ruega, señala el cielo,
+  // el rayo y se desarma. Cada paso desde la pose que tenía (las capas de
+  // entities/bossSkin.js se funden). null: las poses de piezas de antes.
+  gilWant(S) {
+    if (globalThis.__mduBlend === false || this.gilGone) return null;
+    const C = S.clips;
+    if (!C.gDown) return null;
+    const t = this.t;
+    const at = (k, lt, loop = false) => ({ key: k, t: loop ? lt % C[k].dur : Math.max(0, Math.min(lt, C[k].dur - 1e-3)) });
+    const hit = this.gilHit != null ? t - this.gilHit : -1;
+    if (hit >= 0) return hit < 0.9 ? at('gStruck', hit) : at('gCrumble', hit - 0.9);
+    if (this.pointT != null && t >= this.pointT) return at('gPoint', t - this.pointT);
+    if (this.urgent != null && t >= this.urgent) return at('gUrge', t - this.urgent);
+    if (this.gilPose === 'talk') {
+      this.talkT ??= t;
+      const lt = t - this.talkT;
+      return lt < C.gRaise.dur ? at('gRaise', lt) : at('gTalk', lt - C.gRaise.dur, true);
+    }
+    return at('gDown', t + (this.downAt || 0), true);
   }
 
   updateGil(dt) {
@@ -1379,6 +1716,24 @@ export default class PenalCinematic {
     if (hit < 0) {
       // respira vencido; se le apaga lo colorado de la segunda fase
       P.torsoP += Math.sin(t * 2.2) * 0.03;
+      if (this.gilPose === 'talk') {
+        // habla: gesticula con la izquierda al ritmo de la frase, cabecea y
+        // mira a uno y a otro; en "¡No le den el mate!" se inclina, estira la
+        // mano y se quiere levantar (antes quedaba quieto toda la frase)
+        this.talkT ??= t;
+        const lt = t - this.talkT;
+        const urg = this.urgent != null ? smooth(clamp01((t - this.urgent) / 0.6)) : 0;
+        // (pocos gestos, lentos: la mano abierta que acompaña la frase, sin aletear)
+        const beat = 0.5 - 0.5 * Math.cos(Math.min(1, lt / 1.2) * Math.PI) * (0.6 + 0.4 * Math.cos(lt * 1.6));
+        P.shLp += -0.12 * beat - 0.25 * urg;
+        P.elL += 0.15 * beat + 0.3 * urg;
+        P.torsoP += 0.04 * beat + 0.16 * urg;
+        P.headP += 0.03 * Math.sin(lt * 2.4) + 0.08 * urg;
+        P.headY = 0.22 * Math.sin(lt * 0.45) * (1 - urg);
+        P.torsoY = 0.08 * Math.sin(lt * 0.45) * (1 - urg);
+        P.hipY += 0.06 * urg;
+        P.shRp -= 0.12 * urg;
+      }
       this.gilGlow = Math.max(0, this.gilGlow - dt * 0.25);
       for (const m of mats) if (m.emissive) {
         m.emissive.set(0xff1a0a);
@@ -1408,6 +1763,8 @@ export default class PenalCinematic {
       Z.bossRig.eyeMat?.color.setRGB(0, 0, 0);
       const k = clamp01((hit - 1.4) / 2.2);
       P.rootY = -Math.pow(k, 1.5) * 2.4;
+      // (con los clips de Blender el cuerpo de verdad va por la altura del jefe)
+      if (globalThis.__mduBlend !== false && window.__bossSkins?.gil?.cineGil) z.baseY = this.G.y + P.rootY;
       z.scale = 1.85 * (1 - 0.35 * k);
       const a = smooth(clamp01((hit - 1.2) / 2));
       this.ash.scale.set(0.9 * a + 0.001, 0.3 * a + 0.001, 0.75 * a + 0.001);

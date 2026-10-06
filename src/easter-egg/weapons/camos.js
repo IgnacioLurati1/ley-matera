@@ -60,6 +60,8 @@ export const PAP_CAMO = {
   torre: { name: 'Remolino Cósmico', desc: 'Una galaxia que da vueltas alrededor del mate.' },
   castillo: { name: 'Éter Andino', desc: 'Hielo de la cordillera, auroras y chakanas de oro.' },
   monumento: { name: 'Celeste y Blanco', desc: 'Las franjas al viento, soles de oro y la llama votiva.' },
+  // Eclipse Matero (en obra: solo con globalThis.__mduEclipse, como en config/map.js)
+  ...(globalThis.__mduEclipse === true ? { eclipse: { name: 'Corona del Eclipse', desc: 'Nebulosa negra, coronas de oro y grietas de luz.' } } : {}),
 };
 
 // Cómo se ve cada uno, además de lo que traen sus texturas (camoPaint.js: el
@@ -102,6 +104,8 @@ const LOOK = {
   pap_esteros: { sheen: 0.5, sheenColor: 0xffb080, sheenRough: 0.5 },
   pap_torre: { cc: 1, ccr: 0.05, depth: [0.06, 0.1, 0.035, 0.6] },
   pap_castillo: { cc: 1, ccr: 0.05, depth: [0.05, 0.05] },
+  // (menos laca que la torre: con tanto reflejo no se leían los eclipses)
+  pap_eclipse: { cc: 0.7, ccr: 0.1, depth: [0.06, 0.09, 0.03, 0.5] },
 };
 
 // Los valores del shader. flow: [escala u, escala v, velocidad u, velocidad v]
@@ -152,6 +156,9 @@ const FX = {
   pap_esteros: { glow: 0xff2a10, glow2: 0xffa020, glowI: 1.4, neb: [0.55, 0.88], warp: 0.5, flow1: [1, 1, 0.035, 0], flow2: [2, 1, 0.06, 0.005], spark: 0xffd070, sparkI: 3, sparkUv: [4, 2, 0, -0.04], mapGlow: 0.7, sq: 1, band: [1, 0.5, 0.2, 8], bandC: 0xff4020, bandI: 0.8, pulse: [3.5, 0.2] },
   pap_torre: { glow: 0xa040ff, glow2: 0xff8a30, glowI: 1.6, neb: [0.55, 0.9], warp: 1, flow1: [1, 1, 0.04, 0], flow2: [2, 1, 0.07, 0.01], sparkI: 4, mapGlow: 0.9, band: [1, 0.5, 0.15, 10], bandC: 0xffa040, bandI: 0.6 },
   pap_castillo: { glow: 0x30ffd0, glow2: 0xff50e0, glowI: 1.6, neb: [0.52, 0.86], warp: 0.8, ridge: 0.6, flow1: [1, 1, 0.03, 0.005], flow2: [2, 1, -0.02, 0.01], mapGlow: 0.6, sq: 1, band: [1, 0.5, 0.2, 10], bandC: 0xfff0b0, bandI: 0.8, sparkI: 2 },
+  // la nebulosa violeta que fluye lento, las grietas y la corona que se
+  // prenden (lo más claro de la textura) y un brillo de oro que la recorre
+  pap_eclipse: { deep: 0x04020a, deepK: 0.25, glow: 0x5a1aff, glow2: 0x2a0a8a, glowI: 1.5, neb: [0.56, 0.9], warp: 0.8, flow1: [1, 1, 0.012, 0.006], flow2: [2, 1, -0.02, 0.01], spark: 0xe0c0ff, sparkI: 2.5, sparkUv: [4, 2, 0.002, 0], band: [1, 0.5, 0.07, 12], bandC: 0xffc860, bandI: 0.7, mapGlow: 0.9, sq: 1, pulse: [1.1, 0.18] },
 };
 
 // ¿Este mate puede llevar camuflaje? (los especiales, los de un rato y las
@@ -163,6 +170,8 @@ const NO_CAMO = new Set(['meme', 'gut']);
 export const KNIGHT = 'caballero';
 export const knightEarned = () => isKnight();
 export function camoable(id) {
+  // (la guadaña de Eclipse Matero no se lista en la armería mientras el mapa está en obra)
+  if (id === 'desgarrador' && globalThis.__mduEclipse !== true) return false;
   const w = WEAPONS[id];
   return !!w && !w.special && !w.temp && w.kind !== 'tactical' && !NO_CAMO.has(id);
 }

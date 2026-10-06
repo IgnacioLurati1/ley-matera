@@ -27,13 +27,21 @@ const write = (k, v) => {
 };
 
 // Los mapas con el easter egg completado (en el orden del juego). Los mapas
-// bonus (el Monumento) no cuentan para el super easter egg.
+// bonus (el Monumento) no cuentan para el super easter egg, y el final
+// canónico (Eclipse Matero, `final`) tampoco: va aparte de la ronda.
 export function eggsDone() {
   const d = read(KEY) || {};
-  return MAP_LIST.filter((m) => !m.bonus && d[m.id]).map((m) => m.id);
+  return MAP_LIST.filter((m) => !m.bonus && !m.final && d[m.id]).map((m) => m.id);
 }
 
-export const eggsTotal = () => MAP_LIST.filter((m) => !m.bonus).length;
+export const eggsTotal = () => MAP_LIST.filter((m) => !m.bonus && !m.final).length;
+
+// Todos los mapas con el easter egg completado, bonus incluidos (el libro,
+// ui/BookReader.js, abre un capítulo por cada uno).
+export function eggsAll() {
+  const d = read(KEY) || {};
+  return MAP_LIST.filter((m) => d[m.id]).map((m) => m.id);
+}
 
 // Anota el mapa; devuelve true si es la primera vez.
 export function markEgg(id) {

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import GeoBuilder from './GeoBuilder';
 import Water from '../fx/Water';
-import { bbox, quad, sweep, PROFILE, mergeMeshes, lathe, place } from './monumentoKit';
+import { bbox, quad, sweep, PROFILE, mergeMeshes, lathe, place, cylUV } from './monumentoKit';
 import { streetY, riverBed } from './Monumento';
 import { heightAt } from './Levels';
 import { rng } from '../core/noise';
@@ -52,7 +52,8 @@ function buildStreets(w, gb) {
   // sigue a la avenida por delante del murete y la vereda de enfrente también.
   for (const [zs, zr0, zr1, ze, s, zm] of [[[13.6, 16.4], 6.4, 13.4, [2.6, 6.2], 1, 10], [[43.6, 46.4], 46.6, 53.6, [53.8, 57.4], -1, 51]]) {
     strip(gb, 'baldosa', 20, 73, zs[0], zs[1], 0.12);
-    strip(gb, 'baldosa', 20, 91, ze[0] - (s > 0 ? 4.1 : 0), ze[1] + (s < 0 ? 4.1 : 0), 0.12);
+    // (la vereda de enfrente, de 3,6 m: era de casi 8 y la calle quedaba corrida)
+    strip(gb, 'baldosa', 20, 91, ze[0], ze[1], 0.12);
     strip(gb, 'adoquin', 20, 73, zr0 - 0.2, zr1 + 0.2, 0);
     // la esquina: la calzada sigue bajando hasta la avenida, delante del murete de la explanada
     strip(gb, 'adoquin', 73, 91, s > 0 ? zr0 - 0.2 : zm, s > 0 ? zm : zr1 + 0.2, 0);
@@ -65,7 +66,7 @@ function buildStreets(w, gb) {
   // Costanera, que también siguen (si no, al final de la Costanera se ve el vacío)
   for (const [z0, z1, s] of [[-150, 4, -1], [57, 210, 1]]) {
     quad(gb, 'asfalto', [[90.9, -2.62, z1], [96.1, -2.62, z1], [96.1, -2.62, z0], [90.9, -2.62, z0]], [0, 1, 0]);
-    const zb = s < 0 ? [z0, -1.5] : [61.5, z1];
+    const zb = s < 0 ? [z0, 2.6] : [57.4, z1];
     quad(gb, 'baldosa', [[82, -2.5, zb[1]], [90.9, -2.5, zb[1]], [90.9, -2.5, zb[0]], [82, -2.5, zb[0]]], [0, 1, 0]);
     for (const x of [90.85, 96.15]) bbox(gb, 'granito', x - 0.15, -3.1, z0, x + 0.15, -2.48, z1, { b: 0.03 });
     quad(gb, 'grass', [[96.1, -2.6, z1], [104.65, -2.6, z1], [104.65, -2.6, z0], [96.1, -2.6, z0]], [0, 1, 0]);
@@ -127,21 +128,44 @@ function block(gb, extra, w, x0, x1, zf, depth, yb, hgt, face, fi, r) {
   // el pretil de la azotea
   bbox(gb, 'revoqueDark', x0, yt, Math.min(zf, zb), x1, yt + 0.9, Math.min(zf, zb) + 0.2, { b: 0.02 });
   bbox(gb, 'revoqueDark', x0, yt, Math.max(zf, zb) - 0.2, x1, yt + 0.9, Math.max(zf, zb), { b: 0.02 });
-  // los balcones: losas corridas cada piso, con baranda de caño
-  for (let y = yb + 3; y < yt - 1; y += 3) {
+  // los balcones: losas corridas cada piso, con baranda de caño. Cada piso a la
+  // altura de los de la fachada (la textura tiene 7, 8 o 9 pisos en 24 m: con
+  // las losas cada 3 m cortaban las ventanas) y la baranda con sus parantes
+  // (antes era un caño solo, volando delante de las ventanas).
+  // globalThis.__mduNoBalcones: como antes.
+  const fix = globalThis.__mduNoBalcones !== true;
+  const rowH = fix ? 24 / (mat.userData.rows || 8) : 3;
+  for (let y = yb + rowH; y < yt - 1; y += rowH) {
     const z0 = zf;
     const z1 = zf + face * 0.9;
     bbox(gb, 'revoqueDark', x0 + 0.3, y - 0.12, Math.min(z0, z1), x1 - 0.3, y, Math.max(z0, z1), { b: 0.02 });
-    bbox(gb, 'ironBar', x0 + 0.3, y + 0.9, face > 0 ? z1 - 0.04 : z1, x1 - 0.3, y + 0.95, face > 0 ? z1 : z1 + 0.04, { b: 0.005 });
+    const zr0 = face > 0 ? z1 - 0.04 : z1;
+    const zr1 = face > 0 ? z1 : z1 + 0.04;
+    // (la baranda va sobre el borde de la losa, que llega a 0,88 de la pared)
+    const zb0 = fix ? zr0 - face * 0.03 : zr0;
+    const zb1 = fix ? zr1 - face * 0.03 : zr1;
+    bbox(gb, 'ironBar', x0 + 0.3, y + 0.9, Math.min(zb0, zb1), x1 - 0.3, y + 0.95, Math.max(zb0, zb1), { b: 0.005 });
+    if (!fix) continue;
+    // los parantes (cada ~0,9 m) y los de las puntas, que bajan a la losa
+    const n = Math.max(1, Math.round((x1 - x0 - 0.6) / 0.9));
+    for (let k = 0; k <= n; k++) {
+      const x = x0 + 0.32 + ((x1 - x0 - 0.64) * k) / n;
+      bbox(gb, 'ironBar', x - 0.015, y, Math.min(zb0, zb1) + 0.005, x + 0.015, y + 0.9, Math.max(zb0, zb1) - 0.005, { b: 0.003 });
+    }
+    // y los costados de la baranda, de la punta a la pared
+    for (const x of [x0 + 0.3, x1 - 0.34]) bbox(gb, 'ironBar', x, y + 0.9, Math.min(zf, zb0), x + 0.04, y + 0.95, Math.max(zf, zb1), { b: 0.005 });
   }
   // el tanque de agua y la sala de máquinas
-  if (r() < 0.7) bbox(gb, 'revoqueDark', x0 + W * 0.3, yt, Math.min(zf, zb) + depth * 0.3, x0 + W * 0.3 + 3, yt + 2.6, Math.min(zf, zb) + depth * 0.3 + 3, { b: 0.05 });
+  // (en los angostos de la esquina el tanque de 3 m se salía del costado y
+  // quedaba volando: a lo sumo la mitad del ancho)
+  const tw = Math.min(3, W * 0.5);
+  if (r() < 0.7) bbox(gb, 'revoqueDark', x0 + W * 0.3, yt, Math.min(zf, zb) + depth * 0.3, x0 + W * 0.3 + tw, yt + 2.6, Math.min(zf, zb) + depth * 0.3 + 3, { b: 0.05 });
 }
 
 function buildBuildings(w, gb, extra) {
   const r = rng(1957);
   // el norte (calle Córdoba): frentes en z 2,6 mirando al sur; el sur (Santa Fe): en z 57,4
-  for (const [zf, face] of [[-1.5, 1], [61.5, -1]]) {
+  for (const [zf, face] of [[2.6, 1], [57.4, -1]]) {
     let x = 20;
     let fi = 0;
     while (x < 90) {
@@ -152,7 +176,8 @@ function buildBuildings(w, gb, extra) {
       block(gb, extra, w, x, x1, zf, 14, yb, hgt, face, fi++, r);
       // a veces un pasillo angosto entre dos edificios: con su piso
       const gap = r() < 0.2 ? 0.4 : 0;
-      if (gap) quad(gb, 'adoquin', [[x1, streetY(x1) + 0.1, zf], [x1 + gap, streetY(x1 + gap) + 0.1, zf], [x1 + gap, streetY(x1 + gap) + 0.1, zf - face * 14], [x1, streetY(x1) + 0.1, zf - face * 14]], [0, 1, 0]);
+      // (al lado de la avenida el piso es la vereda de la avenida: dos pisos en el mismo plano titilaban)
+      if (gap && (x1 < 82 || globalThis.__mduNoZfix === true)) quad(gb, 'adoquin', [[x1, streetY(x1) + 0.1, zf], [x1 + gap, streetY(x1 + gap) + 0.1, zf], [x1 + gap, streetY(x1 + gap) + 0.1, zf - face * 14], [x1, streetY(x1) + 0.1, zf - face * 14]], [0, 1, 0]);
       x = x1 + gap;
     }
     // el fondo de la manzana (lo que se ve al final de los pasillos)
@@ -175,7 +200,8 @@ function buildCatedral(w, gb, extra) {
   // el muro del costado: revoque crema con zócalo, pilastras y cornisa
   bbox(gb, 'revoque', -14, y0 - 1, z, 21, y0 + 14, z + 18, { b: 0.06, skip: ['bottom'] });
   for (let x = -12; x <= 20; x += 4) {
-    bbox(gb, 'revoqueDark', x - 0.35, y0, z - 0.25, x + 0.35, y0 + 13.2, z, { b: 0.03 });
+    // (la del medio de la puerta lateral arranca arriba del dintel)
+    bbox(gb, 'revoqueDark', x - 0.35, x === 12 ? y0 + 4.2 : y0, z - 0.25, x + 0.35, y0 + 13.2, z, { b: 0.03 });
   }
   sweep(gb, 'revoque', [21, z], [-14, z], [0, -1], PROFILE.cornisa(1.6), { y: y0 + 13.2, caps: false });
   sweep(gb, 'revoqueDark', [21, z], [-14, z], [0, -1], PROFILE.zocalo(2.4), { y: y0, caps: false });
@@ -187,15 +213,23 @@ function buildCatedral(w, gb, extra) {
     const arc = new THREE.CircleGeometry(0.7, 16, 0, Math.PI);
     extra.push(place(arc, vit, x, y0 + 9.2, z - 0.02, Math.PI));
   }
-  // la puerta lateral (por donde salen los muertos): un portal con frontón
-  bbox(gb, 'revoqueDark', 10.6, y0 - 0.4, z - 0.4, 13.4, y0 + 4.2, z, { b: 0.04 });
+  // la puerta lateral (por donde salen los muertos): un portal con las jambas
+  // y el dintel salientes y la puerta metida en el muro, enfrente de la
+  // ventana de config WINDOWS [12, 40] (antes el portal era un bloque macizo
+  // con la puerta pegada adelante y las tablas quedaban adentro del bloque)
+  // (el vano, de 1,2 m: las tablas de la ventana llegan de jamba a jamba)
+  const pc = 12.5;
+  for (const x of [pc - 1.4, pc + 0.6]) bbox(gb, 'revoqueDark', x, y0 - 0.4, z - 0.4, x + 0.8, y0 + 4.2, z, { b: 0.04 });
+  bbox(gb, 'revoqueDark', pc - 0.6, y0 + 3.2, z - 0.4, pc + 0.6, y0 + 4.2, z, { b: 0.04, skip: ['-x', '+x'] });
   const door = new THREE.MeshStandardMaterial({ color: 0x3a2414, roughness: 0.7 });
-  extra.push(place(new THREE.PlaneGeometry(1.8, 3.2), door, 12, y0 + 1.6, z - 0.42, Math.PI));
+  extra.push(place(new THREE.PlaneGeometry(1.2, 3.2), door, pc, y0 + 1.6, z - 0.01, Math.PI));
   // el campanario (sobre la esquina del Pasaje) y la cúpula sobre el crucero
   bbox(gb, 'revoque', -8, y0 + 14, z + 2, -2, y0 + 26, z + 8, { b: 0.06, corners: true });
   bbox(gb, 'revoqueDark', -8.4, y0 + 26, z + 1.6, -1.6, y0 + 27, z + 8.4, { b: 0.04 });
   const dome = lathe([[0, 0], [5.2, 0], [5.2, 3.2], [5.0, 3.6], [4.6, 5.2], [3.8, 6.8], [2.6, 8.0], [1.2, 8.8], [0.6, 9.0], [0.6, 10.2], [0.9, 10.6], [0, 11.6]], 32);
-  const tamb = new THREE.CylinderGeometry(5.6, 5.8, 4, 32);
+  // (UV en metros: si no, el revoque quedaba estirado alrededor; __mduNoCylUV)
+  const uvm = (g) => (globalThis.__mduNoCylUV === true ? g : cylUV(g));
+  const tamb = uvm(new THREE.CylinderGeometry(5.6, 5.8, 4, 32));
   const domeMat = new THREE.MeshStandardMaterial({ color: 0x6aa08a, roughness: 0.55, metalness: 0.4, emissive: 0x1a3a30, emissiveIntensity: 0.6 });
   extra.push(place(tamb, M.revoque, 6, y0 + 16, z + 9));
   extra.push(place(dome, domeMat, 6, y0 + 18, z + 9));
@@ -210,11 +244,14 @@ function buildCatedral(w, gb, extra) {
 function buildPalacio(w, gb, extra) {
   const z = 13.9;
   const y0 = 3.3;
-  bbox(gb, 'revoque', -14, y0 - 1, -4, 20.4, y0 + 13, z, { b: 0.06, skip: ['bottom'] });
+  // (la azotea a la altura de la balaustrada: el cuerpo subía hasta 13 m y la
+  // balaustrada quedaba metida adentro de la pared, con el pasamanos asomando)
+  bbox(gb, 'revoque', -14, y0 - 1, -4, 20.4, y0 + (globalThis.__mduNoPalacio === true ? 13 : 9.8), z, { b: 0.06, skip: ['bottom'] });
+  // (las columnas bajan hasta la vereda: arrancaban 30 cm arriba, en el aire)
   for (let x = -12; x <= 19; x += 3.1) {
     for (const dx of [-0.32, 0.32]) {
-      const col = new THREE.CylinderGeometry(0.2, 0.22, 8.6, 12);
-      extra.push(place(col, w.M.revoque, x + dx, y0 + 4.6, z + 0.25));
+      const col = globalThis.__mduNoCylUV === true ? new THREE.CylinderGeometry(0.2, 0.22, 8.9, 12) : cylUV(new THREE.CylinderGeometry(0.2, 0.22, 8.9, 12));
+      extra.push(place(col, w.M.revoque, x + dx, y0 + 4.45, z + 0.25));
     }
   }
   sweep(gb, 'revoque', [-14, z], [20.4, z], [0, 1], PROFILE.cornisa(1.6), { y: y0 + 9.2, caps: false });
@@ -270,7 +307,9 @@ export function buildRio(w) {
     if (x >= 0 && z >= 0 && x < W && z < H) return heightAt(w, x, z);
     return 3;
   };
-  w.waterDepth = (x, z) => Math.max(0, RIVER_Y - groundAt(x, z));
+  // (para nadar: arriba del muelle no hay agua, ni en el patio de la 2043, que
+  // flota arriba del río; el dibujo del agua sigue por debajo, groundAt)
+  w.waterDepth = (x, z, y) => (y > 50 ? 0 : Math.max(0, RIVER_Y - (x >= 113 ? w.floorAt(x, z, y ?? 0) : groundAt(x, z))));
   w.water = new Water(w.g, { level: RIVER_Y, groundAt, bounds: [100, -40, 180, 100], body: 0x0c171c, clear: 1.2, flow: [0.0, 0.05], wind: 0.5, swell: 0.6 });
   w.root.add(w.water.mesh);
 }

@@ -19,8 +19,9 @@ const LAYERS = [
   [0.55, 0.11],
   [0.85, 0.07],
 ];
-// en Baja van menos capas; en Rendimiento, nada (como el resto del ambiente)
-const TIER_LAYERS = { perf: 0, low: 2, medium: 3 };
+// en Baja, Media y Alta van menos capas (cada una es un plano transparente
+// sobre media pantalla); en Rendimiento, nada (como el resto del ambiente)
+const TIER_LAYERS = { perf: 0, low: 2, medium: 3, high: 2 };
 // lo que guarda el mapa de profundidad de fx/Water (base - fondo, de -2,5 a 6 m)
 const DEP_SCALE = 8.5;
 const DEP_OFF = 2.5;

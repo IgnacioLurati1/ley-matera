@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mesh, boxGeo, cylGeo } from '../../world/props';
+import { lean, mergeFixed } from '../../world/castleLean';
 
 // Las crónicas de la Gran Guerra: cinco pergaminos por el castillo (el atril
 // de la biblioteca, al lado del altar de la capilla, la sala del trono, la
@@ -94,6 +95,7 @@ export default class Cronicas {
     const g = (this.g = egg.g);
     const M = g.world.M;
     this.read = 0;
+    const peds = [];
     this.list = CRONICAS.map((def, i) => {
       const [x, z] = def.pos;
       const y = g.world.floorAt(x, z);
@@ -110,6 +112,7 @@ export default class Cronicas {
         grp.add(page);
         for (const s of [-1, 1]) grp.add(mesh(cylGeo(0.04, 0.04, 0.34, 8), M.paper || pageMat(), s * 0.25, 1.02, -0.03, 0, 0, Math.PI / 2));
         egg.root.add(grp);
+        peds.push(grp);
         at = new THREE.Vector3(x, y + 1.05, z);
       }
       const c = { def, i, at, done: false, reading: false, glowT: Math.random() };
@@ -124,6 +127,8 @@ export default class Cronicas {
       });
       return c;
     });
+    // (los pedestales: una malla por material para todos)
+    if (lean()) mergeFixed(egg.root, peds);
   }
 
   readOne(c) {

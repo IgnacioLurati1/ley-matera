@@ -5,7 +5,8 @@ import { walkLegs, stepPerson } from '../entities/personWalk';
 import { shieldModel } from '../world/shieldModels';
 import { CAMO_BY_ID, camoable } from '../weapons/camos';
 import { VM } from '../weapons/viewmodels';
-import { gauchoSkin } from './gauchoSkin';
+import { gauchoSkin, whenGaucho, TWO_HAND } from './gauchoSkin';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // Los otros jugadores: un gaucho con sombrero, cara con bigote, poncho de
 // color que se bambolea al moverse y su mate en la mano, animado con el mismo
@@ -28,8 +29,151 @@ const SHIELD_FRONT = new THREE.Matrix4().makeRotationX(-0.1).multiply(new THREE.
 // mano al origen del modelo (en el marco de la mirada: +x derecha, -z adelante).
 const GUN_OFF = new THREE.Vector3(0, 0.02, -0.02);
 const tmpQ = new THREE.Quaternion();
+const tmpQ2 = new THREE.Quaternion();
+const DOWN = new THREE.Vector3(0, -1, 0);
+const AXIS_Z = new THREE.Vector3(0, 0, 1);
+const tmpM = new THREE.Matrix4();
 const tmpE = new THREE.Euler(0, 0, 0, 'YXZ');
+// (los muñecos de los easter eggs fuera de cuadro: offCull)
+const cullFr = new THREE.Frustum();
+const cullM = new THREE.Matrix4();
+const cullS = new THREE.Sphere(new THREE.Vector3(), 1.8);
+// el cuerpo del termo de los compañeros: rojo, el de siempre (el de primera
+// persona se tiñe según el mate que se ceba)
+const TERMO_BODY = new THREE.MeshStandardMaterial({ color: 0xa81c1c, roughness: 0.3, metalness: 0.3 });
 const ONE = new THREE.Vector3(1, 1, 1);
+// los mates (los que tienen boca) en la mano de un compañero: la copia del de
+// primera persona viene inclinada para la cámara y chica para la mano del
+// gaucho. Derecho, más grande y con la panza en la palma (MATE_AT: desde lo
+// que agarra la mano, girado con el cuerpo)
+const MATE_K = 1.5;
+const MATE_AT = new THREE.Vector3(0, -0.02, 0.01);
+// (la bombilla del de primera persona sale para adelante, como un caño:
+// echado para atrás, la bombilla sube y la boca mira al que lo tiene)
+const MATE_BACK = 0.75;
+// el termo al cebar (gauchoSkin pourArm): en la mano libre, agarrado del medio
+const TERMO_K = 1.3;
+const TERMO_GRIP = 0.12;
+const TERMO_TILT = 1.9;
+const tmpA = new THREE.Vector3();
+const tmpB = new THREE.Vector3();
+// (anim-online: el porongo del Liquidificador para cebarlo, agarrado de la cintura)
+const PORONGO_K = 1.75;
+const PORONGO_GRIP = 0.07;
+const UP_Y = new THREE.Vector3(0, 1, 0);
+
+// La copia del mate de primera persona para la mano de un compañero, una vez
+// por modelo (TPL): sin la mano ni el fogonazo de primera persona (el muñeco
+// tiene los suyos); un mate (con boca), derecho y del tamaño de la mano del
+// gaucho; y las piezas juntas por material: la del de primera persona son
+// sueltas, 8-18 dibujos por compañero (lo que se mueve en primera persona acá
+// no se anima). iMuzzle / iMouth: la punta y la boca en el orden de la copia.
+// palm: el mate de una mano, parado en la palma (net/gauchoSkin palmMate):
+// la calabaza derecha y la bombilla apenas inclinada hacia el que lo tiene
+// (la de primera persona sale casi acostada, como un caño).
+const TPL = new WeakMap();
+const TPL_PALM = new WeakMap();
+const STRAW_LEAN = 0.38;
+function gunTemplate(src, W, palm = false) {
+  const tpl = palm ? TPL_PALM : TPL;
+  let T = tpl.get(src);
+  if (T) return T;
+  const gun = src.root.clone();
+  // la punta y la boca en la copia (las mismas piezas en el mismo orden)
+  const idx = new Map();
+  let n = 0;
+  src.root.traverse((o) => idx.set(o, n++));
+  const pick = (want) => {
+    let k = 0;
+    let out = null;
+    gun.traverse((o) => {
+      if (k++ === want) out = o;
+    });
+    return out;
+  };
+  const muzzle = src.muzzle ? pick(idx.get(src.muzzle)) : null;
+  const mouth = src.mouth && src.mate ? pick(idx.get(src.mouth)) : null;
+  const mate = mouth ? pick(idx.get(src.mate)) : null;
+  const bomb = mate && src.bombGroup ? pick(idx.get(src.bombGroup)) : null;
+  // (las manos van marcadas en weapons/viewmodels.js; las hechas aparte, por el material)
+  const M = W.T ? VM.mats(W.T) : null;
+  const handMats = M ? new Set([M.skin, M.nail, M.sleeve, M.cuff]) : new Set();
+  const drop = [];
+  gun.traverse((o) => {
+    if (W.flash && o.material === W.flash.material) drop.push(o);
+    else if (o.userData.hand || (o.isMesh && handMats.has(o.material))) drop.push(o);
+    o.castShadow = false;
+  });
+  for (const o of drop) o.removeFromParent();
+  gun.visible = true;
+  let base = null;
+  if (mate) {
+    gun.rotation.set(0, 0, 0);
+    gun.scale.multiplyScalar(MATE_K);
+    if (palm) {
+      mate.rotation.set(0, 0, 0);
+      for (const b of bomb?.children || []) b.rotation.x = STRAW_LEAN;
+      // lo de abajo de la calabaza (sin la bombilla): lo que se apoya en la palma
+      gun.updateMatrixWorld(true);
+      const box = new THREE.Box3();
+      const b2 = new THREE.Box3();
+      gun.traverse((o) => {
+        if (!o.isMesh || !o.geometry) return;
+        // (anim-online: sin lo escondido, el porongo del Liquidificador o los
+        // efectos de los elementales: si no, el mate quedaba flotando lejos de la palma)
+        for (let q = o; q; q = q.parent) if (q === bomb || (!q.visible && globalThis.__mduNoAvatarBlend !== true)) return;
+        if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        box.union(b2.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld));
+      });
+      if (!box.isEmpty()) base = new THREE.Vector3((box.min.x + box.max.x) / 2, box.min.y, (box.min.z + box.max.z) / 2);
+    } else mate.rotation.set(MATE_BACK, 0, 0);
+  }
+  mergeParts(gun);
+  T = { gun, iMuzzle: -1, iMouth: -1, base };
+  n = 0;
+  gun.traverse((o) => {
+    if (o === muzzle) T.iMuzzle = n;
+    if (o === mouth) T.iMouth = n;
+    n++;
+  });
+  tpl.set(src, T);
+  return T;
+}
+
+// Las mallas sueltas de un grupo, juntas por material (las que se ven, sin
+// hijos ni huesos). Lo que no se puede juntar queda como estaba.
+function mergeParts(root) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const sets = new Map();
+  root.traverse((o) => {
+    if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh || o.children.length || Array.isArray(o.material) || o.morphTargetInfluences) return;
+    for (let x = o; x && x !== root; x = x.parent) if (!x.visible) return;
+    const geo = o.geometry;
+    if (!geo?.attributes?.position) return;
+    const k = `${o.material.uuid}|${Object.keys(geo.attributes).sort().join(',')}|${geo.index ? 1 : 0}`;
+    let L = sets.get(k);
+    if (!L) sets.set(k, (L = []));
+    L.push(o);
+  });
+  for (const L of sets.values()) {
+    if (L.length < 2) continue;
+    // (las caras de una caja o un cilindro vienen en grupos: con un material, sobran)
+    const geos = L.map((o) => {
+      const g = o.geometry.clone().applyMatrix4(tmpM.multiplyMatrices(inv, o.matrixWorld));
+      g.clearGroups();
+      return g;
+    });
+    const merged = mergeGeometries(geos);
+    for (const g of geos) g.dispose();
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, L[0].material);
+    m.castShadow = false;
+    m.renderOrder = L[0].renderOrder;
+    root.add(m);
+    for (const o of L) o.removeFromParent();
+  }
+}
 
 export default class Avatars {
   constructor(game, session) {
@@ -38,6 +182,8 @@ export default class Avatars {
     this.list = new Map();
     this.root = new THREE.Group();
     game.scene.add(this.root);
+    // (las pruebas de cinemáticas, Tools/mdu-blender/t_cineqa.mjs, revisan a todos los muñecos)
+    if (globalThis.__mduCineQA) (globalThis.__mduAvatarSets ||= new Set()).add(this);
   }
 
   materials(id) {
@@ -146,6 +292,8 @@ export default class Avatars {
     const hand = new THREE.Object3D();
     hand.add(mate);
     mate.position.set(0, -0.2, 0.06);
+    // (net/gauchoSkin lo para en la palma del gaucho de verdad)
+    mate.userData.handMate = true;
     hand.matrixAutoUpdate = false;
     group.add(hand);
     // cartelito con el nombre
@@ -180,7 +328,8 @@ export default class Avatars {
       slot: r.id,
       scale: 1,
     };
-    this.list.set(r.id, { r, group, parts, hand, tag, fake, M, extras, poncho: ponchoAt, sway: new THREE.Vector2(), lastYaw: r.yaw, mats: Array.from({ length: PART_COUNT }, () => new THREE.Matrix4()), name: r.name, xray, xparts, xk: 0 });
+    // (people y g: ui/cineLife, la vida de los muñecos de escena)
+    this.list.set(r.id, { r, group, parts, hand, tag, fake, M, extras, poncho: ponchoAt, sway: new THREE.Vector2(), lastYaw: r.yaw, mats: Array.from({ length: PART_COUNT }, () => new THREE.Matrix4()), name: r.name, xray, xparts, xk: 0, people: this, g: this.g });
     // el gaucho de verdad (net/gauchoSkin.js): cuando baja, las piezas se esconden
     gauchoSkin(this.list.get(r.id), [...parts, hat, face, ponchoAt]);
   }
@@ -231,40 +380,104 @@ export default class Avatars {
     const camo = gold || (!u && c && CAMO_BY_ID[c] && camoable(w)) ? c : null;
     const src = w && ((camo && W?.modelOf?.(w, gold ? u : 0, camo)) || W?.models?.get(`${w}|${u}`) || W?.models?.get(`${w}|0`));
     if (!src?.root) return;
-    const gun = src.root.clone();
-    // la boca del mate en la copia (de ahí salen sus tiros en esta pantalla:
-    // muzzleOf; la copia tiene las mismas piezas en el mismo orden)
+    // (la copia de primera persona ya preparada para la mano del muñeco, una
+    // por modelo: gunTemplate; cada compañero la suya, con las mismas mallas)
+    // (los de una mano, parados en la palma: net/gauchoSkin)
+    // (anim-online: los mates de dos manos también, parados en la palma; __mduNoAvatarBlend: como fusil)
+    const T = gunTemplate(src, W, !TWO_HAND.has(w) || (globalThis.__mduNoAvatarBlend !== true && !!src.mouth && !!src.mate));
+    const gun = T.gun.clone();
+    let n = 0;
     a.muzzle = null;
-    if (src.muzzle) {
-      let mi = -1;
-      let n = 0;
-      src.root.traverse((o) => {
-        if (o === src.muzzle) mi = n;
-        n++;
-      });
-      n = 0;
-      gun.traverse((o) => {
-        if (n++ === mi) a.muzzle = o;
-      });
-    }
-    // (el fogonazo de la mano propia no viaja con la copia, ni la mano y el
-    // brazo de primera persona: el muñeco ya tiene los suyos. Las manos van
-    // marcadas en weapons/viewmodels.js; las hechas aparte, por el material)
-    const M = W.T ? VM.mats(W.T) : null;
-    const handMats = M ? new Set([M.skin, M.nail, M.sleeve, M.cuff]) : new Set();
-    const drop = [];
+    a.mouth = null;
     gun.traverse((o) => {
-      if (W.flash && o.material === W.flash.material) drop.push(o);
-      else if (o.userData.hand || (o.isMesh && handMats.has(o.material))) drop.push(o);
-      o.castShadow = false;
+      if (n === T.iMuzzle) a.muzzle = o;
+      if (n === T.iMouth) a.mouth = o;
+      n++;
     });
-    for (const o of drop) o.removeFromParent();
-    gun.visible = true;
     const holder = new THREE.Group();
     holder.matrixAutoUpdate = false;
     holder.add(gun);
     a.group.add(holder);
     a.gun = holder;
+    a.gunBase = T.base || null;
+  }
+
+  // El termo de cebar de un compañero (una copia del de primera persona, sin
+  // la mano) y su chorro. Se arma la primera vez que ceba.
+  termo(a) {
+    if (a.termo) return a.termo;
+    const W = this.g.weapons;
+    const src = W?.termo;
+    if (!src?.root) return null;
+    const M = W.T ? VM.mats(W.T) : null;
+    const handMats = M ? new Set([M.skin, M.nail, M.sleeve, M.cuff]) : new Set();
+    const t = src.root.clone();
+    const drop = [];
+    t.traverse((o) => {
+      if (o.userData.hand || (o.isMesh && handMats.has(o.material))) drop.push(o);
+      else if (o.isMesh && o.material === src.body?.material) o.material = TERMO_BODY;
+      o.castShadow = false;
+    });
+    for (const o of drop) o.removeFromParent();
+    // (el pico mira a +x: para el lado del mate, la mano derecha; el de
+    // primera persona puede estar a medio cebar: sin su giro)
+    t.rotation.set(0, 0, 0);
+    t.position.set(0, -TERMO_GRIP, 0);
+    t.visible = true;
+    const pivot = new THREE.Group();
+    pivot.matrixAutoUpdate = false;
+    pivot.add(t);
+    pivot.scale.setScalar(TERMO_K);
+    a.group.add(pivot);
+    // la punta del pico en la copia (girada con el termo)
+    const tip = new THREE.Object3D();
+    tip.position.set(0.032, 0.262 - TERMO_GRIP, 0);
+    pivot.add(tip);
+    const stream = new THREE.Mesh(src.stream.geometry, src.stream.material);
+    stream.matrixAutoUpdate = true;
+    stream.visible = false;
+    stream.frustumCulled = false;
+    this.root.add(stream);
+    a.termo = { pivot, tip, stream };
+    return a.termo;
+  }
+
+  // El porongo del Liquidificador (la copia del de primera persona, sin la mano),
+  // con el que el compañero lo carga (net/gauchoSkin termoAt, prop 'porongo').
+  porongo(a) {
+    if (a.porongoP !== undefined) return a.porongoP;
+    a.porongoP = null;
+    const W = this.g.weapons;
+    const src = W?.models?.get('liquidificador|0')?.pava?.porongo;
+    const s0 = W?.termo?.stream;
+    if (!src || !s0) return null;
+    const M = W.T ? VM.mats(W.T) : null;
+    const handMats = M ? new Set([M.skin, M.nail, M.sleeve, M.cuff]) : new Set();
+    const t = src.clone();
+    const drop = [];
+    t.traverse((o) => {
+      if (o.userData.hand || (o.isMesh && handMats.has(o.material))) drop.push(o);
+      o.castShadow = false;
+    });
+    for (const o of drop) o.removeFromParent();
+    t.visible = true;
+    t.rotation.set(0, 0, 0);
+    t.scale.setScalar(PORONGO_K);
+    t.position.set(0, -PORONGO_GRIP * PORONGO_K, 0);
+    const pivot = new THREE.Group();
+    pivot.matrixAutoUpdate = false;
+    pivot.add(t);
+    a.group.add(pivot);
+    const tip = new THREE.Object3D();
+    tip.position.set(0.03 * PORONGO_K, (0.14 - PORONGO_GRIP) * PORONGO_K, 0);
+    pivot.add(tip);
+    const stream = new THREE.Mesh(s0.geometry, s0.material);
+    stream.matrixAutoUpdate = true;
+    stream.visible = false;
+    stream.frustumCulled = false;
+    this.root.add(stream);
+    a.porongoP = { pivot, tip, stream };
+    return a.porongoP;
   }
 
   // De dónde sale, en esta pantalla, un tiro de un compañero (Session.remoteShot):
@@ -379,11 +592,75 @@ export default class Avatars {
     const a = this.list.get(id);
     if (!a) return;
     a.group.removeFromParent();
+    a.termo?.stream.removeFromParent();
     a.tag.material.map.dispose();
     a.tag.material.dispose();
     for (const m of Object.values(a.M)) m.dispose();
     a.xray?.dispose();
     this.list.delete(id);
+  }
+
+  // En gaucho life el compañero se ve como un alma azul (transparente).
+  ghostLook(a, on) {
+    a.ghost = on;
+    for (const m of Object.values(a.M)) {
+      m.transparent = on;
+      m.opacity = on ? 0.42 : 1;
+      m.depthWrite = !on;
+      if (m.emissive) m.emissive.set(on ? 0x2a70c8 : 0x000000);
+      m.needsUpdate = true;
+    }
+  }
+
+  // Para la carga (ui/Arrival.load, antes de compilar): compañeros de muestra
+  // con el gaucho de verdad, su silueta y el termo de cebar, a la vista, así
+  // sus programas se compilan con el mapa y no al aparecer el primero (un
+  // cuadro de 170-300 ms en línea); con gaucho life (el penal), también uno
+  // como alma (transparente: otro programa). Espera el modelo del gaucho.
+  // Devuelve con qué sacarlos (después de warmWorld).
+  async warm() {
+    if (!this.team) return () => {};
+    await new Promise((res) => {
+      whenGaucho(res);
+      setTimeout(res, 4000);
+    });
+    const p = this.g.player?.pos;
+    const made = [];
+    const mk = (id, ghost) => {
+      if (this.list.has(id)) this.remove(id);
+      this.add({ id, name: '', noTag: true, ghost, pos: new THREE.Vector3((p?.x || 0) + made.length, (p?.y || 0) - 30, p?.z || 0), yaw: 0, pitch: 0, speed: 0, moving: false, crouch: false, net: {} });
+      const a = this.list.get(id);
+      if (!a) return null;
+      a.tag.visible = false;
+      if (ghost) this.ghostLook(a, true);
+      solvePose(a.mats, a.r.pos.x, a.r.pos.z, 0, 1, a.fake.P);
+      a.gs?.pose(true, 0, this.g);
+      if (a.gs?.xray) a.gs.xray.visible = true;
+      else for (const x of a.xparts) x.visible = true;
+      made.push(a);
+      return a;
+    };
+    const a = mk(9999, false);
+    if (this.g.vida) mk(9998, true);
+    const T = a && this.termo(a);
+    if (T) {
+      T.pivot.visible = true;
+      T.pivot.matrix.makeTranslation(a.r.pos.x, a.r.pos.y + 1, a.r.pos.z);
+      T.pivot.matrixWorldNeedsUpdate = true;
+      T.stream.visible = true;
+      T.stream.position.set(a.r.pos.x, a.r.pos.y + 1, a.r.pos.z);
+    }
+    for (const m of made) m.group.updateMatrixWorld(true);
+    // (al sacarlos, sin tirar sus materiales: si no, three soltaba los
+    // programas y el primer compañero de verdad los volvía a compilar)
+    return () => {
+      for (const m of made) {
+        m.group.removeFromParent();
+        m.termo?.stream.removeFromParent();
+        this.list.delete(m.r.id);
+        (this.warmed ||= []).push(m);
+      }
+    };
   }
 
   // El mundo se rearmó (partida nueva): los muñecos pasan a la escena nueva,
@@ -399,6 +676,12 @@ export default class Avatars {
 
   update(dt) {
     const g = this.g;
+    // los muñecos de los easter eggs (presos, Fierro: offCull = true) fuera de
+    // cuadro no se animan ni se recorren: quedan en su última pose hasta volver
+    // a verse (0,14 ms por cuadro los presos del penal). No en las cinemáticas.
+    // (globalThis.__mduNoNpcCull: como antes)
+    const cull = this.offCull === true && globalThis.__mduNoNpcCull !== true && !g.cine && !g.intro?.active && !g.ee?.scene?.cine && g.state === 'playing';
+    if (cull) cullFr.setFromProjectionMatrix(cullM.multiplyMatrices(g.camera.projectionMatrix, g.camera.matrixWorldInverse));
     for (const a of this.list.values()) {
       const r = a.r;
       const P = a.fake.P;
@@ -410,6 +693,32 @@ export default class Avatars {
       // los que esperan la próxima ronda no se ven (como en el original)
       a.group.visible = !r.dead || !!r.corpse;
       if (!a.group.visible) continue;
+      if (cull) {
+        cullS.center.set(r.pos.x, (r.pos.y || 0) + 1, r.pos.z);
+        const off = !cullFr.intersectsSphere(cullS);
+        if (a.group.mcFrozen !== off) {
+          a.group.mcFrozen = off;
+          a.group.matrixWorldNeedsUpdate = true;
+        }
+        if (off) continue;
+      } else if (a.group.mcFrozen) a.group.mcFrozen = false;
+      // un compañero pegado a la cámara (la bajada de una entrada a tus ojos,
+      // dos parados en el mismo lugar) no se ve desde adentro: se esconde
+      // mientras la cámara esté dentro de su cuerpo (caído, solo si está a su
+      // altura: al levantarlo se ve). (globalThis.__mduNoNearHide: como antes)
+      if (this.team && globalThis.__mduNoNearHide !== true) {
+        const c = g.camera.position;
+        const dx = c.x - r.pos.x;
+        const dz = c.z - r.pos.z;
+        const h = c.y - (r.pos.y || 0);
+        const lim = a.inCam ? 0.72 : 0.6;
+        a.inCam = dx * dx + dz * dz < lim * lim && h > -0.3 && h < (r.downed || r.corpse ? 0.7 : 2.1);
+        if (a.inCam) {
+          a.group.visible = false;
+          a.tag.visible = false;
+          continue;
+        }
+      }
       // el mate que tiene en la mano (Session 'wpn')
       const wp = this.team ? this.s.wpn?.get(r.id) : null;
       const wkey = wp?.w ? `${wp.w}|${wp.u | 0}|${wp.c || ''}` : '';
@@ -439,7 +748,8 @@ export default class Avatars {
       } else {
         P.rootFwd = 0;
         P.rootPitch = 0;
-        P.rootY = Math.max(0, r.pos.y);
+        // (el Monumento tiene pisos bajo cero: el Parque, la Cripta y la Costanera)
+        P.rootY = g.world.mon ? r.pos.y || 0 : Math.max(0, r.pos.y);
         a.fake.speedType = r.speed > 5 ? 'run' : 'walk';
         // (los de escena, caminando: el paso de gente por lo que avanzan hacia
         // donde miran, para atrás al revés (entities/personWalk); con el de los
@@ -523,32 +833,102 @@ export default class Avatars {
       if (a.gun) {
         // en la mano derecha (el brazo va adelante), girado con la mirada
         // (yaw y pitch, como la cámara)
-        a.gun.visible = armed && (r.swim || 0) < 2 && !front;
+        // (anim-online: con el brazo ocupado en el facón, la granada o tomando, el mate escondido)
+        a.gun.visible = armed && (r.swim || 0) < 2 && !front && !(a.gs?.actW > 0.05 && globalThis.__mduNoAvatarBlend !== true);
         if (a.gun.visible) {
-          tmpE.set(Math.max(-1.2, Math.min(1.2, r.pitch || 0)), r.yaw, 0, 'YXZ');
-          tmpQ.setFromEuler(tmpE);
-          tmpP.copy(GUN_OFF).applyQuaternion(tmpQ);
-          tmpD.set(0, -0.19, 0).applyMatrix4(a.mats[6]);
-          tmpP.add(tmpD);
+          // (un mate: derecho, girado con el cuerpo y apenas con la mirada)
+          const mate = !!a.mouth;
+          tmpE.set(mate ? Math.max(-0.3, Math.min(0.3, (r.pitch || 0) * 0.3)) : Math.max(-1.2, Math.min(1.2, r.pitch || 0)), r.yaw, 0, 'YXZ');
+          const palm = mate && a.gunBase && a.gs?.palm?.k > 0.01 ? a.gs.palm : null;
+          if (palm) {
+            // parado en la palma del gaucho (net/gauchoSkin palmMate), derecho
+            tmpE.x = 0;
+            tmpQ.setFromEuler(tmpE);
+            // (los Gemelos volcando: el mate sigue a la palma; anim-online)
+            if (a.gs.mateRoll) tmpQ.premultiply(tmpQ2.setFromUnitVectors(UP_Y, palm.up));
+            tmpP.copy(a.gunBase).applyQuaternion(tmpQ);
+            tmpD.copy(palm.at).applyMatrix4(tmpM.copy(a.group.matrixWorld).invert()).sub(tmpP);
+            tmpP.set(0, -0.19, 0).applyMatrix4(a.mats[6]).add(tmpA.copy(MATE_AT).applyQuaternion(tmpQ));
+            tmpP.lerp(tmpD, Math.min(1, palm.k));
+          } else {
+            tmpQ.setFromEuler(tmpE);
+            // el Sable Corvo en un tajo o en el saludo: gira con el brazo
+            // (net/gauchoSkin sableArm; los ejes del arma, girados media vuelta)
+            const sq = a.gs?.sabQ;
+            if (sq && !mate) tmpQ.multiply(tmpQ2.set(-sq.x, sq.y, -sq.z, sq.w));
+            tmpP.copy(mate ? MATE_AT : GUN_OFF).applyQuaternion(tmpQ);
+            tmpD.set(0, -0.19, 0).applyMatrix4(a.mats[6]);
+            tmpP.add(tmpD);
+          }
           a.gun.matrix.compose(tmpP, tmpQ, ONE);
           a.gun.matrixWorldNeedsUpdate = true;
         }
+      }
+      // cebando (gauchoSkin pourArm): el termo en la mano libre, inclinado
+      // hacia el mate, y el chorro del pico a la boca
+      const pk = a.gs?.pourK || 0;
+      // (anim-online: el cebado de Blender; el termo rígido en la mano izquierda, net/gauchoSkin termoAt)
+      const tm = globalThis.__mduNoAvatarBlend !== true ? a.gs?.tm : null;
+      const pp = tm?.on && tm.prop === 'porongo' ? this.porongo(a) : null;
+      for (const X of [a.porongoP, a.termo]) {
+        if (X && X !== (pp || (tm?.on ? a.termo : null))) {
+          X.pivot.visible = false;
+          X.stream.visible = false;
+        }
+      }
+      if (tm?.on && armed && a.gun?.visible && a.mouth) {
+        const T = pp || this.termo(a);
+        if (T) {
+          T.pivot.visible = true;
+          T.pivot.matrix.compose(tm.pos, tm.q, tmpB.setScalar(tm.k)).premultiply(tmpM.copy(a.group.matrixWorld).invert());
+          T.pivot.matrixWorldNeedsUpdate = true;
+          T.stream.visible = tm.pour;
+          if (tm.pour) {
+            const mo = a.mouth;
+            T.pivot.updateMatrixWorld(true);
+            a.gun.updateMatrixWorld(true);
+            const s0 = T.tip.getWorldPosition(tmpA);
+            const s1 = mo.getWorldPosition(tmpB);
+            const len = s0.distanceTo(s1);
+            T.stream.position.copy(s0);
+            T.stream.quaternion.setFromUnitVectors(DOWN, tmpB.sub(s0).normalize());
+            T.stream.scale.set(1.3, len, 1.3);
+          }
+        }
+      } else if (a.gs?.pour && armed && a.gun?.visible && a.mouth) {
+        const T = this.termo(a);
+        if (T) {
+          T.pivot.visible = true;
+          tmpQ.setFromEuler(tmpE.set(0, r.yaw, 0, 'YXZ'));
+          tmpQ.multiply(tmpQ2.setFromAxisAngle(AXIS_Z, -TERMO_TILT * pk));
+          tmpD.set(0, -0.19, 0).applyMatrix4(a.mats[5]);
+          T.pivot.matrix.compose(tmpD, tmpQ, tmpB.setScalar(TERMO_K));
+          T.pivot.matrixWorldNeedsUpdate = true;
+          T.stream.visible = pk > 0.9;
+          if (T.stream.visible) {
+            T.pivot.updateMatrixWorld(true);
+            a.gun.updateMatrixWorld(true);
+            const s0 = T.tip.getWorldPosition(tmpA);
+            const s1 = a.mouth.getWorldPosition(tmpB);
+            const len = s0.distanceTo(s1);
+            T.stream.position.copy(s0);
+            T.stream.quaternion.setFromUnitVectors(DOWN, tmpB.sub(s0).normalize());
+            T.stream.scale.set(1.3, len, 1.3);
+          }
+        }
+      } else if (a.termo) {
+        a.termo.pivot.visible = false;
+        a.termo.stream.visible = false;
       }
       // (el alma de gaucho life no lo lleva)
       const shield = !!r.shield && !r.ghost;
       const skey = shield ? `${r.shieldUp ? 1 : 0}${front ? 1 : 0}` : '';
       if (shield !== !!a.shieldOn || skey !== (a.shieldKey || '')) this.backShield(a, shield, !!r.shieldUp, front);
-      // en gaucho life el compañero se ve como un alma azul
-      if (!!r.ghost !== !!a.ghost) {
-        a.ghost = !!r.ghost;
-        for (const m of Object.values(a.M)) {
-          m.transparent = a.ghost;
-          m.opacity = a.ghost ? 0.42 : 1;
-          m.depthWrite = !a.ghost;
-          if (m.emissive) m.emissive.set(a.ghost ? 0x2a70c8 : 0x000000);
-          m.needsUpdate = true;
-        }
-      }
+      // en gaucho life el compañero se ve como un alma azul (y los muertos que
+      // hablan, r.anima: los presos del penal, Fierro en la torre; esos con su
+      // pose de siempre, sentados o parados)
+      const ghost = !!(r.ghost || r.anima);
+      if (ghost !== !!a.ghost) this.ghostLook(a, ghost);
       a.tag.position.set(r.pos.x, r.pos.y + (r.downed ? 0.9 : 2.05), r.pos.z);
       const d = a.tag.position.distanceTo(g.camera.position);
       a.tag.material.opacity = d > 34 ? 0 : 0.95;
@@ -567,6 +947,7 @@ export default class Avatars {
     if (this.team) this.g.hud.setRevives([]);
     for (const id of [...this.list.keys()]) this.remove(id);
     this.root.removeFromParent();
+    globalThis.__mduAvatarSets?.delete(this);
   }
 }
 

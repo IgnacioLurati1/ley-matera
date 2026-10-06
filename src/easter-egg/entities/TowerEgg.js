@@ -3,6 +3,7 @@ import { EE, TOWER } from '../config/map';
 import { mesh, boxGeo, cylGeo } from '../world/props';
 import { toTexture } from '../core/textures';
 import Avatars from '../net/Avatars';
+import { FierroNpc } from '../ui/fierroNpc';
 import SongEgg from '../world/SongEgg';
 import { TRACKS } from '../core/music';
 import { fireflies } from '../fx/Fireflies';
@@ -13,6 +14,7 @@ import TowerBells from './towerBells';
 import TowerMk3Quest from './towerMk3Quest';
 import TowerShutters from '../world/towerShutters';
 import TowerDebris from '../world/towerDebris';
+import CineActors from '../ui/cineActors';
 
 // Easter egg de la torre: "Las Revelaciones". Lo guía el ánima de Martín
 // Fierro (el que en el molino se hacía pasar por el Abuelo), que espera junto
@@ -141,6 +143,8 @@ export default class TowerEgg {
     this.voiceT = 90;
     this.startT = 22;
     this.npc = new Avatars(game, null);
+    // (fuera de cuadro no se animan: net/Avatars offCull)
+    this.npc.offCull = true;
     this.buildFogon();
     this.buildFierro();
     this.buildCano();
@@ -195,13 +199,15 @@ export default class TowerEgg {
     this.fogonPos = new THREE.Vector3(x, 0.25, z);
     this.fogonLight = new THREE.PointLight(0xff8a3a, 14, 9, 1.8);
     this.fogonLight.position.set(x, 0.8, z);
-    this.root.add(this.fogonLight);
+    // (va con las de evento, World.adoptLight: alumbra solo de cerca)
+    this.root.add(this.g.world.adoptLight(this.fogonLight));
   }
 
   // El ánima de Martín Fierro: un gaucho de luz azulada.
   buildFierro() {
     const [x, z] = EE.fierro.pos;
-    const n = { id: 500, name: 'Martín Fierro', pos: new THREE.Vector3(x, EE.fierro.y, z), yaw: EE.fierro.rot, pitch: 0.1, speed: 0, crouch: true, moving: false };
+    // (anima: el gaucho de verdad, cuando baja, también sale transparente: net/Avatars)
+    const n = { id: 500, name: 'Martín Fierro', pos: new THREE.Vector3(x, EE.fierro.y, z), yaw: EE.fierro.rot, pitch: 0.1, speed: 0, crouch: true, moving: false, anima: true };
     this.npc.add(n);
     const a = this.npc.list.get(500);
     for (const m of Object.values(a.M)) {
@@ -216,6 +222,8 @@ export default class TowerEgg {
     a.M.poncho.color.set(0x6a8ad8);
     a.hand.visible = true;
     this.fierro = n;
+    // (con los clips de Blender: en cuclillas junto al fuego y, cuando habla, cuenta con la mano)
+    this.fierroNpc = new FierroNpc(this.g, this.npc, n);
     this.fierroGlow = this.glowSprite(0x6a9aff, 2.6);
     this.root.add(this.fierroGlow);
     this.fierroSpot = 'base';
@@ -996,6 +1004,16 @@ export default class TowerEgg {
     });
   }
 
+  // El cono del Tereré o del Tronador (Weapons.fireCone) y el cuchillazo al
+  // aire: en el Infierno también rompen calabazas y liberan ánimas.
+  onCone(o, d, range, angle) {
+    if (this.fight) this.g.arena?.onCone?.(o, d, range, angle);
+  }
+
+  onKnife(fwd) {
+    return this.fight ? !!this.g.arena?.onKnife?.(fwd) : false;
+  }
+
   hitLock(i) {
     const g = this.g;
     if (g.net?.guest) {
@@ -1094,7 +1112,7 @@ export default class TowerEgg {
     el.className = 'mdu-fcine is-on mdu-fcine--mid';
     el.innerHTML = '<i class="mdu-fcine__bar"></i><i class="mdu-fcine__bar mdu-fcine__bar--b"></i><p class="mdu-fcine__text"></p>';
     g.root.appendChild(el);
-    this.scene = { kind, t: 0, said: 0, el, text: el.querySelector('.mdu-fcine__text') };
+    this.scene = { kind, t: 0, said: 0, el, text: el.querySelector('.mdu-fcine__text'), wallAt: g.net ? performance.now() : 0 };
     // la escena ocupa la pantalla: sin HUD ni barra de jefe
     g.hud.setBossBar(null);
     g.hud.show(false);
@@ -1131,6 +1149,103 @@ export default class TowerEgg {
       S.r0 = Math.hypot(S.hold.x - TOWER.cx, S.hold.z - TOWER.cz);
       g.player.guardT = g.time + 16;
     }
+    this.sceneCrew(this.scene);
+  }
+
+  // Los cuatro gauchos (ui/cineActors: clips de Blender, cada uno con su
+  // carácter). En el cañonazo, en ronda atrás del cañón; en la caída, caen con
+  // la cámara. globalThis.__mduBlend = false: las escenas de antes, sin ellos.
+  sceneCrew(S) {
+    const g = this.g;
+    if (globalThis.__mduBlend === false) return;
+    const base = EE.canon.y;
+    // (de noche: con una luz de relleno solo para ellos, si no se leían oscuros)
+    const C = new CineActors(g, { floor: () => base, fill: 0x9ca0b4 });
+    S.crew = C;
+    const b = C.by;
+    if (S.kind === 'cannon') {
+      if (g.net?.avatars) g.net.avatars.root.visible = false;
+      // del otro lado de la cámara que da la vuelta (y lejos de Fierro)
+      const [cx, cz] = EE.canon.pos;
+      S.crewA = -Math.PI * 0.75;
+      C.arc(null, { x: cx, z: cz }, 3.4, 1.2, S.crewA);
+      for (const r of C.list) r.pos.y = base;
+      // el Valiente prendió la mecha y espera; el Miedoso se tapa; el
+      // Canchero ceba; el Viejo llega sin aire de los quince pisos
+      C.act(b.valiente, 'crossArms', { loop: true });
+      C.later(0.5, () => C.act(b.miedoso, 'handsOnHat', { loop: true, fade: 0.5 }));
+      C.act(b.miedoso, 'cower', { loop: true });
+      C.act(b.canchero, 'cebar', { loop: true });
+      b.canchero.mate = true;
+      C.act(b.viejo, 'winded', { loop: true });
+      // el cañonazo (3 s)
+      C.later(3.0, () => C.act(b.valiente, 'flinch', { fade: 0.15 }));
+      C.later(3.9, () => C.act(b.valiente, 'fists', { loop: true, look: 0.6, fade: 0.5 }));
+      C.later(3.4, () => {
+        b.canchero.mate = false;
+        C.act(b.canchero, 'dust', { fade: 0.4 });
+      });
+      C.later(5.2, () => C.act(b.canchero, 'cool', { loop: true, look: 0.4, fade: 0.6 }));
+      C.later(3.7, () => C.act(b.viejo, 'sitBack', { fade: 0.2 }));
+      C.later(4.7, () => C.act(b.viejo, 'sitLean', { loop: true, fade: 0.4 }));
+      // le pegan al ojo (6,2 s): el Valiente festeja, el Miedoso se santigua
+      C.later(6.4, () => C.act(b.valiente, 'fistUp', { loop: true, fade: 0.4 }));
+      C.later(6.5, () => C.act(b.miedoso, 'santiguar', { look: 0.5, fade: 0.4 }));
+      C.later(8.4, () => C.act(b.miedoso, 'pray', { loop: true, look: 0.6, fade: 0.5 }));
+      // se abre el cielo (8,5 s): el Viejo, sentado, lo señala
+      C.later(9.3, () => C.act(b.viejo, 'sitPoint', { loop: true, fade: 0.6 }));
+      C.later(9.0, () => C.act(b.valiente, 'crossArms', { loop: true, look: 0.7, fade: 0.6 }));
+      C.later(10.6, () => C.act(b.canchero, 'cebar', { loop: true, look: 0.5, fade: 0.6 }));
+      C.later(10.7, () => (b.canchero.mate = true));
+    } else {
+      // cayendo, cada uno a su manera (aparecen cuando la cámara sale de la escalera)
+      C.show(false);
+      C.act(b.valiente, 'fallDive', { loop: true, fade: 0 });
+      C.act(b.miedoso, 'fallFlail', { loop: true, fade: 0 });
+      C.act(b.canchero, 'fallCalm', { loop: true, fade: 0 });
+      C.act(b.viejo, 'fallTumble', { loop: true, fade: 0 });
+    }
+  }
+
+  // Los cuatro cayendo con la cámara (que mira la torre, de espaldas): al
+  // costado y un poco adelante, siempre afuera de la torre (si no, la
+  // atravesaban), y siguen cayendo cuando la cámara frena abajo.
+  fallCrew(S, cam, u, H) {
+    const C = S.crew;
+    if (!C) return;
+    const out = (x, z) => Math.max(Math.abs(x - TOWER.cx), Math.abs(z - TOWER.cz));
+    const on = C.people.root.visible;
+    if (!on) {
+      // (recién cuando la cámara ya salió de la torre)
+      if (Math.hypot(cam.position.x - TOWER.cx, cam.position.z - TOWER.cz) < 20) return;
+      C.show(true);
+      if (this.g.net?.avatars) this.g.net.avatars.root.visible = false;
+    }
+    const f = tmpV.set(TOWER.cx - cam.position.x, 0, TOWER.cz - cam.position.z).normalize();
+    const lx = -f.z;
+    const lz = f.x;
+    // la caída de verdad (la cámara frena a 3 m; ellos no)
+    const fall = H.y + 1.62 + 3 * u - 4.5 * u * u;
+    // [adelante, al costado, alto, cuánto se separa con el tiempo]
+    // (el Viejo, que da vueltas, más lejos y a un costado: en el medio y a 3 m
+    // pasaba rozando la cámara cuando ella frena y ellos siguen cayendo)
+    const SPOT = { valiente: [2.4, -1.5, 0.7, -0.15], miedoso: [2.2, 1.4, 1.5, 0.1], canchero: [2.6, 0.4, 1.2, 0.15], viejo: [4.6, 0.95, 0.65, -0.2] };
+    for (const r of C.list) {
+      const [d, l, h, k] = SPOT[r.persona];
+      let x = cam.position.x + f.x * d + lx * l;
+      let z = cam.position.z + f.z * d + lz * l;
+      // afuera de la torre
+      const o = out(x, z);
+      if (o < 12.4) {
+        const dx = x - TOWER.cx;
+        const dz = z - TOWER.cz;
+        x = TOWER.cx + (dx * 12.4) / o;
+        z = TOWER.cz + (dz * 12.4) / o;
+      }
+      r.pos.set(x, fall + h + k * u, z);
+      r.dead = r.pos.y < 1.2;
+      r.yaw = Math.atan2(-(cam.position.x - r.pos.x), -(cam.position.z - r.pos.z));
+    }
   }
 
   // Cámara de la escena (la llama Game después de mover al jugador).
@@ -1138,7 +1253,10 @@ export default class TowerEgg {
     const S = this.scene;
     if (!S) return false;
     const g = this.g;
-    S.t += dt;
+    // (en línea con el reloj de verdad; lo que se mueve, con 1 s a lo sumo)
+    const sdt = sceneDt(g, S, dt);
+    S.t += sdt;
+    dt = Math.min(1, sdt);
     const t = S.t;
     const cam = g.camera;
     const lines = S.kind === 'cannon' ? CANNON_LINES : FALL_LINES;
@@ -1153,6 +1271,7 @@ export default class TowerEgg {
     }
     if (S.kind === 'cannon') this.cannonCam(t, dt, cam);
     else this.fallCam(t, dt, cam);
+    if (S.crew && this.scene === S) S.crew.tick(sdt);
     return true;
   }
 
@@ -1200,8 +1319,28 @@ export default class TowerEgg {
     if (t > 8.5 && !S2(this.scene, 'sky')) this.T.skyOpenK = 1;
     const u = Math.min(1, (t - 6.2) / 6);
     const base = EE.canon.y;
-    cam.position.set(TOWER.cx + 11 - u * 3, base + 4 + u * 2, TOWER.cz + 11 - u * 3);
-    cam.lookAt(TOWER.cx, base + 10 + (1 - u) * 40, TOWER.cz);
+    const S = this.scene;
+    const A = S.crewA;
+    if (S.crew && t > 6.5 && t < 8.3) {
+      // los cuatro, con el cañón humeando adelante: el grito de la Voz
+      const w = t - 6.5;
+      // (el cañón a un costado del cuadro: no tapa a nadie)
+      const ca = Math.cos(A + Math.PI + 0.9);
+      const sa = Math.sin(A + Math.PI + 0.9);
+      cam.position.set(C.pos.x + ca * (2.4 - w * 0.1), base + 2.9, C.pos.z + sa * (2.4 - w * 0.1));
+      cam.lookAt(C.pos.x + Math.cos(A) * 3.4, base + 1.1, C.pos.z + Math.sin(A) * 3.4);
+    } else if (S.crew && t > 12.4) {
+      // y los cuatro de nuevo, más bajo, con el cielo de oro arriba: el Viejo,
+      // sentado, lo señala; el Canchero, de anteojos, ceba como si nada
+      const w = t - 12.4;
+      // (más al costado que la de 6,5 s: más bajo, el cañón tapaba al Viejo sentado)
+      const L = A + Math.PI + 1.25 + w * 0.03;
+      cam.position.set(C.pos.x + Math.cos(L) * (2.6 - w * 0.15), base + 1.25 + w * 0.05, C.pos.z + Math.sin(L) * (2.6 - w * 0.15));
+      cam.lookAt(C.pos.x + Math.cos(A) * 3.4, base + 2.0 + w * 0.15, C.pos.z + Math.sin(A) * 3.4);
+    } else {
+      cam.position.set(TOWER.cx + 11 - u * 3, base + 4 + u * 2, TOWER.cz + 11 - u * 3);
+      cam.lookAt(TOWER.cx, base + 10 + (1 - u) * 40, TOWER.cz);
+    }
     if (t > 15.5) this.endScene();
   }
 
@@ -1244,12 +1383,15 @@ export default class TowerEgg {
       // de la escalera hacia afuera, dando la vuelta despacio alrededor de la torre
       const u = t - FALL.crack;
       const e = Math.min(1, u / 1.2);
-      const r = S.r0 + (FALL.out - S.r0) * e * (2 - e);
+      // (con los cuatro cayendo adelante, la cámara se aleja un poco más de la
+      // torre: si no, en las esquinas no entraban sin meterse en ella)
+      const r = S.r0 + ((S.crew ? 23 : FALL.out) - S.r0) * e * (2 - e);
       const a = S.a0 + u * 0.16;
       const y = Math.max(3, eyeY + 3 * u - 4.5 * u * u);
       cam.position.set(TOWER.cx + Math.cos(a) * r, y, TOWER.cz + Math.sin(a) * r);
       // de espaldas: mira la torre de abajo hacia arriba, con el cielo roto atrás
       cam.lookAt(TOWER.cx, Math.max(y + 9, EE.canon.y + 4), TOWER.cz);
+      this.fallCrew(S, cam, u, H);
       cam.rotation.z += Math.sin(t * 3.1) * 0.08;
       if (Math.random() < 0.8) g.fx.sparkle(tmpV.set(cam.position.x + (Math.random() - 0.5) * 5, y + 2 + Math.random() * 6, cam.position.z + (Math.random() - 0.5) * 5), [1, 0.85, 0.4], 2, 0.4);
       if (t > FALL.red && !S2(S, 'red')) {
@@ -1263,6 +1405,7 @@ export default class TowerEgg {
     const A = EE.arena;
     const ay = A.y || 0;
     if (!S2(S, 'cave')) {
+      S.crew?.show(false);
       const ar = g.arena;
       if (ar?.root) ar.root.visible = true;
       for (const l of ar?.lights || []) l.intensity = 34;
@@ -1285,6 +1428,10 @@ export default class TowerEgg {
     this.scene = null;
     S.el.remove();
     g.hud.show(true);
+    if (S.crew) {
+      S.crew.dispose();
+      if (g.net?.avatars) g.net.avatars.root.visible = true;
+    }
     this.ball?.removeFromParent();
     this.ball = null;
     g.player.guardT = g.time + 2;
@@ -1438,7 +1585,7 @@ export default class TowerEgg {
       while (d < -Math.PI) d += Math.PI * 2;
       f.yaw += d * Math.min(1, dt * 1.5);
     }
-    this.npc.update(dt);
+    this.fierroNpc.update(dt);
     const a = this.npc.list.get(500);
     if (a) for (const m of Object.values(a.M)) m.opacity = 0.5 + Math.sin(t * 2.3) * 0.12;
     this.fierroGlow.position.set(f.pos.x, f.pos.y + 1.1, f.pos.z);
@@ -1779,3 +1926,14 @@ function rayHitSphere(o, d, c, r) {
   return t < 0 ? null : t;
 }
 
+// El reloj de una escena (la yerba; el cañonazo y la caída): en línea, el de
+// verdad desde que arrancó (una trabada de hasta 30 s cuenta: la compu que se
+// traba no se atrasa de las demás y no se pierde el final); solo, el dt de
+// siempre (como ui/FarmCinematic). Llamadas seguidas sin cuadro: el dt.
+function sceneDt(g, S, dt) {
+  if (!g.net) return dt;
+  const now = performance.now();
+  const w = (now - (S.wallAt || now)) / 1000;
+  S.wallAt = now;
+  return w >= 0.002 && w < 30 ? w : dt;
+}

@@ -3,6 +3,7 @@ import { makeNoise, rng } from '../core/noise';
 import { MAP_W, MAP_H, ZONES, WINDOWS } from '../config/map';
 import GeoBuilder from './GeoBuilder';
 import { ceilMax } from './Levels';
+import { windy } from '../fx/grassPush';
 
 // La montaña del castillo del Mateendrache: el terreno de afuera (con la
 // nieve arriba y la roca en lo empinado), el precipicio del puente levadizo,
@@ -678,7 +679,9 @@ function buildAraucarias(w, M, ground) {
     geo.computeVertexNormals();
     return geo;
   };
-  const leaf = new THREE.MeshStandardMaterial({ color: 0x28452a, roughness: 0.95 });
+  const leaf = windy(new THREE.MeshStandardMaterial({ color: 0x28452a, roughness: 0.95 }), { crown: true, amp: 0.6 });
+  // (la nieve de las ramas se mece con ellas: una copia, la de los techos queda quieta)
+  const branchSnow = windy(M.snowCap.clone(), { crown: true, amp: 0.6 });
   // [bajada desde la punta del tronco, ramas, largo, inclinación]
   const WHORLS = [
     [0.05, 6, 0.4, 0.12],
@@ -694,7 +697,7 @@ function buildAraucarias(w, M, ground) {
   const per = WHORLS.reduce((n, [, c]) => n + c, 0);
   const trunk = new THREE.InstancedMesh(trunkGeo, M.bark, list.length);
   const branches = new THREE.InstancedMesh(rope(branchCurve, 8, 5, 0.09, 0), leaf, list.length * per);
-  const snows = new THREE.InstancedMesh(rope(branchCurve, 6, 3, 0.055, 0.06, 0.15), M.snowCap, list.length * per);
+  const snows = new THREE.InstancedMesh(rope(branchCurve, 6, 3, 0.055, 0.06, 0.15), branchSnow, list.length * per);
   const twigs = new THREE.InstancedMesh(rope(twigCurve, 4, 4, 0.16, 0), leaf, list.length * per * TWIGS.length);
   const tops = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), leaf, list.length);
   const m4 = new THREE.Matrix4();

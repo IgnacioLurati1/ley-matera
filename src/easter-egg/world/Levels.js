@@ -3,6 +3,7 @@ import GeoBuilder from './GeoBuilder';
 import Water from '../fx/Water';
 import { rng } from '../core/noise';
 import { MAP_W, MAP_H, WALL_H, ZONES, RAMPS, WINDOWS, RIVER, FEATURES } from '../config/map';
+import { windy } from '../fx/grassPush';
 
 // Mapas con pisos a distintas alturas (el penal): cada zona (o cada
 // rectángulo de una zona) tiene su altura, las rampas y escaleras van de una
@@ -488,21 +489,25 @@ export function addLevelBoxes(w, DOORS) {
       const t = w.grid[i];
       const e = w.edge[i];
       const fy = w.fy[i];
-      const top = w.top[i];
+      // (el Monumento tiene pisos abajo de 0 —la Costanera a -4,4—: una caja de
+      // -1 hasta la baranda quedaba dada vuelta y no frenaba a nadie, y la
+      // gente se iba al río por la baranda de la costanera y por las puntas)
+      const lo = FEATURES.monumento ? Math.min(-1, fy - 3) : -1;
+      const top = FEATURES.monumento ? Math.max(w.top[i], fy + 3.4) : w.top[i];
       if (t === WALL) {
-        if (e === EDGE_RAIL) w.addBox([x, -1, z, x + 1, fy + RAIL_H, z + 1], { kind: 'fence', shoot: false });
-        else if (e === EDGE_BARS) w.addBox([x, -1, z, x + 1, fy + BARS_H, z + 1], { kind: 'fence', shoot: false });
+        if (e === EDGE_RAIL) w.addBox([x, lo, z, x + 1, fy + RAIL_H, z + 1], { kind: 'fence', shoot: false });
+        else if (e === EDGE_BARS) w.addBox([x, lo, z, x + 1, fy + BARS_H, z + 1], { kind: 'fence', shoot: false });
         // alambrado: frena al que camina pero los tiros y la vista pasan por arriba
-        else if (e === EDGE_FENCE) w.addBox([x, -1, z, x + 1, fy + FENCE_H, z + 1], { kind: 'fence', shoot: false });
-        else if (e === EDGE_CORN) w.addBox([x, -1, z, x + 1, fy + CORN_H, z + 1], { kind: 'corn' });
-        else w.addBox([x, -1, z, x + 1, top, z + 1], { kind: 'wall' });
+        else if (e === EDGE_FENCE) w.addBox([x, lo, z, x + 1, fy + FENCE_H, z + 1], { kind: 'fence', shoot: false });
+        else if (e === EDGE_CORN) w.addBox([x, lo, z, x + 1, fy + CORN_H, z + 1], { kind: 'corn' });
+        else w.addBox([x, lo, z, x + 1, top, z + 1], { kind: 'wall' });
       } else if (t === WINDOW) {
         const win = w.windowAt[i];
         if (e !== 0) {
-          w.addBox([x, -1, z, x + 1, fy, z + 1], { kind: 'wall' });
+          w.addBox([x, lo, z, x + 1, fy, z + 1], { kind: 'wall' });
           w.addBox([x, fy, z, x + 1, fy + WALL_H, z + 1], { kind: 'window', shoot: false, window: win });
         } else {
-          w.addBox([x, -1, z, x + 1, fy + SILL, z + 1], { kind: 'wall' });
+          w.addBox([x, lo, z, x + 1, fy + SILL, z + 1], { kind: 'wall' });
           w.addBox([x, fy + HEAD, z, x + 1, top, z + 1], { kind: 'wall' });
           w.addBox([x, fy, z, x + 1, fy + WALL_H, z + 1], { kind: 'window', shoot: false, window: win });
         }
@@ -528,6 +533,9 @@ export function addLevelBoxes(w, DOORS) {
           if (!w.inside(nx, nz) || !walkable(w.grid[w.idx(nx, nz)])) return;
           const hi = edgeY(w, x, z, d);
           if (hi < edgeY(w, nx, nz, d ^ 1)) return;
+          // (el Monumento: donde no hay baranda dibujada uno se tira para
+          // abajo: el costado de las escaleras de la Cripta)
+          if (w.dropOk?.(i, w.idx(nx, nz))) return;
           const ex = x + 0.5 + dx * 0.5;
           const ez = z + 0.5 + dz * 0.5;
           const th = 0.06;
@@ -963,8 +971,11 @@ export function buildLevelArchitecture(w, DOORS) {
     const pz = ox !== 0 ? 0.5 : 0.04;
     gb.box('trim', ix - px, fy + SILL - 0.06, iz - pz, ix + px, fy + SILL + 0.02, iz + pz, 1);
     gb.box('trim', ix - px, fy + HEAD - 0.02, iz - pz, ix + px, fy + HEAD + 0.06, iz + pz, 1);
-    // rejas de la ventana (es una cárcel; la granja no)
-    for (let k = -2; k <= 2 && !FEATURES.farm && !w.noBars; k++) {
+    // rejas de la ventana (es una cárcel; la granja no). En el penal no van:
+    // son ventanas de los muertos, que entran por el hueco y las atravesaban
+    // (el usuario, 2026-10-05)
+    const noReja = FEATURES.penal && !globalThis.__mduNoRejaVentana;
+    for (let k = -2; k <= 2 && !FEATURES.farm && !w.noBars && !noReja; k++) {
       const off = k * 0.18;
       const bx = ix + (oz !== 0 ? off : 0) + ox * 0.35;
       const bz = iz + (ox !== 0 ? off : 0) + oz * 0.35;
@@ -1151,7 +1162,7 @@ export function buildTerrain(w) {
   // juncos: matas de cañitas finas en la orilla
   if (reeds.length) {
     const blade = new THREE.ConeGeometry(0.025, 1, 3).translate(0, 0.5, 0);
-    const mat = new THREE.MeshStandardMaterial({ color: 0x4a5a2a, roughness: 1 });
+    const mat = windy(new THREE.MeshStandardMaterial({ color: 0x4a5a2a, roughness: 1 }));
     const per = 7;
     const im = new THREE.InstancedMesh(blade, mat, reeds.length * per);
     const m4 = new THREE.Matrix4();

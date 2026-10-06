@@ -23,6 +23,10 @@ export const ACTIONS = [
   { id: 'shield', label: 'Escudo adelante', key: 'KeyZ' },
   { id: 'vida', label: 'Gaucho life (el penal)', key: 'KeyX' },
   { id: 'empanada', label: 'Comer la empanada (las que se usan)', key: 'KeyB' },
+  // (la Furia Cósmica del Desgarrador mejorado: weapons/Desgarrador.js. Solo
+  // con el mapa de Eclipse Matero prendido: mientras está en obra no aparece en
+  // el menú de controles de nadie)
+  ...(globalThis.__mduEclipse === true ? [{ id: 'furia', label: 'Furia Cósmica (Desgarrador mejorado)', key: 'KeyH' }] : []),
 ];
 
 const BY_ID = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));

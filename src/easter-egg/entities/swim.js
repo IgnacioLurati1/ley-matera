@@ -186,7 +186,8 @@ export function swimMove(p, dt, input, W, wx, wz, f) {
     const az = p.pos.z - Math.cos(p.yaw) * 0.6;
     const fa = g.world.floorAt(ax, az, W.surface + 1.2);
     const dA = g.world.waterDepth(ax, az, fa + 0.5) || 0;
-    if (fa > p.pos.y + 0.4 && fa < W.surface + 0.9 && dA < SWIM) {
+    // (el mapa puede decir por dónde sí: world.swimClimb, el Monumento por la escalerilla)
+    if (fa > p.pos.y + 0.4 && fa < W.surface + 0.9 && dA < SWIM && (g.world.swimClimb?.(ax, az, p) ?? true)) {
       p.pos.set(ax, fa, az);
       p.vel.set(0, 0, 0);
       p.onGround = true;
@@ -225,7 +226,10 @@ export function soak(g, z, t, deep = SWIM) {
   const dt = Math.min(0.1, Math.max(0, t - (z.soakT ?? t)));
   z.soakT = t;
   z.wetD = W.depth;
-  z.wetY = W.surface;
+  // (saliendo del agua swimK baja de a poco: mientras tanto queda la última
+  // superficie; con -Infinity la pose de nado daba rootY infinito y la matriz
+  // del zombie NaN, que en la placa del usuario puede pintar negro)
+  z.wetY = Number.isFinite(W.surface) || !((z.swimK || 0) > 0.02) ? W.surface : z.wetY;
   z.wetMode = W.mode;
   const target = W.mode === 2 ? 1 : 0;
   z.swimK = (z.swimK || 0) + (target - (z.swimK || 0)) * Math.min(1, dt * 3.5);

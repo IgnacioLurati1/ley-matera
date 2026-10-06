@@ -12,6 +12,9 @@ import { mesh, boxGeo, rboxGeo, cylGeo, mergeByMaterial } from './props';
 //   esteros  → el Baúl del Ahogado: madera empapada, óxido, cadena y camalote, luz verde de luna
 //   monumento → el Cofre del Ejército del Norte (1812): campaña de nogal con
 //               cantoneras de bronce, correas, la escarapela y la bandera enrollada, luz celeste
+//   eclipse  → el Baúl del Desgarro: cosido con pedazos de las otras cajas
+//              (tablas del molino, chapa del penal, arcón de la torre) con
+//              grapas de oro, y partido por una grieta de luz violeta
 //
 // Devuelve { group, lid, inner, qMat, glow, glowHex, beam, glowMats }:
 // lid gira sobre su bisagra (x), inner es la luz de adentro al abrirse, glow el
@@ -25,6 +28,8 @@ const LOOK = {
   castillo: { glow: [0.75, 0.95, 1], hex: 0xbff0ff, beam: 0x9ae4ff },
   esteros: { glow: [0.7, 1, 0.8], hex: 0xb4ffd8, beam: 0x6ad8a0 },
   monumento: { glow: [0.62, 0.84, 1], hex: 0xa8d4ff, beam: 0x74acdf },
+  // (poco rojo: con más, el tono de la imagen lo vira a magenta)
+  eclipse: { glow: [0.27, 0.06, 1], hex: 0x8a4cff, beam: 0x6a2cff },
 };
 
 // Signo de pregunta blanco (el color lo pone el material de cada mapa).
@@ -91,11 +96,38 @@ export function buildBoxSkin(g, M, mapId) {
   const glowMats = [qMat];
   const build = SKINS[mapId] || SKINS.molino;
   build({ group, lid, qMat, glowMats, M, T, glow });
+  // las piezas quietas del cajón y de la tapa en una malla por material (el
+  // de algunos mapas tenía decenas: remaches, listones, paja): muchas menos
+  // llamadas de dibujo. Queda aparte lo que late (glowMats), lo transparente
+  // y lo que tiene algo colgado.
+  const apart = (p) => p.children.filter((o) => o.isMesh && (glowMats.includes(o.material) || o.material.transparent || o.children.length || Array.isArray(o.material)));
+  mergeByMaterial(lid, apart(lid));
+  mergeByMaterial(group, apart(group));
   const inner = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.7), new THREE.MeshBasicMaterial({ color: glow.clone().multiplyScalar(2), toneMapped: false, transparent: true, opacity: 0 }));
   inner.rotation.x = -Math.PI / 2;
   inner.position.y = 0.5;
   group.add(inner);
   return { group, lid, inner, qMat, glow, glowHex: L.hex, beam: L.beam, glowMats };
+}
+
+// Una grieta quebrada en el plano (x, y), de y = 0 a y = len, centrada en x = 0:
+// la luz (ancho w) y el borde oscuro de alrededor (w + rim), con el mismo zigzag.
+function crackShapes(len, w, seed, { rim = 0.022, jit = 0.035, n = 9 } = {}) {
+  const r = seeded(seed);
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const x = i === 0 || i === n ? 0 : (r() - 0.5) * 2 * jit;
+    pts.push([x, t * len, 0.35 + 0.65 * Math.sin(Math.PI * t) * (0.7 + r() * 0.6)]);
+  }
+  const shape = (ww) => {
+    const s = new THREE.Shape();
+    pts.forEach(([x, y, k], i) => (i ? s.lineTo(x - (ww * k) / 2, y) : s.moveTo(x - (ww * k) / 2, y)));
+    for (let i = pts.length - 1; i >= 0; i--) s.lineTo(pts[i][0] + (ww * pts[i][2]) / 2, pts[i][1]);
+    s.closePath();
+    return new THREE.ShapeGeometry(s);
+  };
+  return { glow: shape(w), dark: shape(w + rim), pts };
 }
 
 const SKINS = {
@@ -351,6 +383,96 @@ const SKINS = {
     for (const x of [-0.45, 0.45]) add(lid, new THREE.TorusGeometry(0.075, 0.012, 6, 14), leather, x, 0.19, 0.4, 0, Math.PI / 2, 0);
     sign(lid, qMat, 0.3, 0.62, 0.122, 0.4, -Math.PI / 2);
     sign(lid, qMat, 0.3, -0.62, 0.122, 0.4, -Math.PI / 2);
+    mergeByMaterial(group);
+    mergeByMaterial(lid);
+  },
+  // el Baúl del Desgarro (Eclipse Matero): tres pedazos de otras cajas cosidos
+  // con grapas de oro (a la izquierda las tablas y el fleje del molino con un
+  // listón colorado de La Tapera, al medio la chapa remachada del penal con
+  // su candado, a la derecha el arcón tallado de la torre con filetes de oro
+  // y las cantoneras de bronce del Monumento) y partido entre la chapa y el
+  // arcón por una grieta de luz violeta que sigue por la tapa y por atrás
+  eclipse({ group, lid, qMat, glowMats, T, glow }) {
+    const planks = std({ map: T.planks, color: 0xd8b890, roughness: 0.8 });
+    const red = std({ map: T.planks, color: 0xff6a3a, roughness: 0.8 });
+    const iron = std({ map: T.metal, color: 0x3e4148, metalness: 0.75, roughness: 0.45 });
+    // (más claros que los de sus mapas: a la luz de un farol se iban a negro)
+    const steel = std({ map: T.metal, color: 0xb4bca4, metalness: 0.2, roughness: 0.6 });
+    const band = std({ map: T.metal, color: 0x6a7260, metalness: 0.3, roughness: 0.5 });
+    const rivet = std({ color: 0x8a8a80, metalness: 0.8, roughness: 0.35 });
+    const carved = std({ map: T.woodCarved, color: 0x8a6484, roughness: 0.55 });
+    const gold = std({ color: 0xe0b050, metalness: 0.9, roughness: 0.28, emissive: 0x2a1a00 });
+    const brass = std({ color: 0xc89a48, metalness: 0.85, roughness: 0.32 });
+    const dark = new THREE.MeshBasicMaterial({ color: 0x0c0418 });
+    const rift = new THREE.MeshBasicMaterial({ color: glow.clone().multiplyScalar(1.6), toneMapped: false });
+    glowMats.push(rift);
+    // dónde se cose cada pedazo (x): molino | penal | torre
+    const A = -0.29;
+    const B = 0.27;
+    const seg = (x0, x1, mat, h = 0.55, d = 0.8) => add(group, boxGeo(x1 - x0, h, d), mat, (x0 + x1) / 2, h / 2, 0);
+    seg(-0.85, A, planks);
+    seg(A, B, steel, 0.55, 0.81);
+    seg(B, 0.85, carved);
+    // el molino: los flejes del costado y el listón colorado de la chacra, clavado encima
+    for (const z of [-0.36, 0.36]) add(group, boxGeo(0.03, 0.57, 0.09), iron, -0.85, 0.28, z);
+    add(group, boxGeo(0.03, 0.06, 0.82), iron, -0.85, 0.28, 0);
+    add(group, boxGeo(0.4, 0.13, 0.016), red, -0.57, 0.1, 0.405);
+    // el penal: las fajas remachadas y el candado (abierto: la grieta lo partió)
+    const rv = new THREE.SphereGeometry(0.011, 6, 4);
+    for (const y of [0.09, 0.47]) {
+      add(group, boxGeo(B - A - 0.07, 0.05, 0.83), band, (A + B) / 2 - 0.025, y, 0);
+      for (let i = 0; i < 4; i++) add(group, rv, rivet, A + 0.08 + i * 0.13, y, 0.417);
+    }
+    add(group, boxGeo(0.1, 0.12, 0.02), band, -0.03, 0.47, 0.42);
+    add(group, rboxGeo(0.1, 0.085, 0.04, 0.01), brass, -0.03, 0.33, 0.43, 0, 0, 0.12);
+    add(group, new THREE.TorusGeometry(0.028, 0.007, 6, 12, Math.PI), rivet, 0.005, 0.385, 0.43, 0, 0.5, 0.35);
+    // la torre: filetes de oro en las aristas y el zócalo; el Monumento: cantoneras de bronce abajo
+    for (const z of [-0.39, 0.39]) add(group, boxGeo(0.035, 0.55, 0.035), gold, 0.835, 0.275, z);
+    for (const z of [-0.39, 0.39]) add(group, boxGeo(0.85 - B, 0.03, 0.035), gold, (B + 0.85) / 2, 0.535, z);
+    for (const z of [-0.37, 0.37]) add(group, boxGeo(0.08, 0.08, 0.08), brass, 0.81, 0.04, z);
+    // las grapas de oro de la costura molino | penal (adelante, atrás y arriba)
+    const staple = boxGeo(0.07, 0.022, 0.012);
+    for (let i = 0; i < 5; i++) {
+      const y = 0.06 + i * 0.105;
+      const tw = (i % 2 ? 1 : -1) * 0.12;
+      for (const s of [1, -1]) add(group, staple, gold, A, y, s * 0.412, 0, 0, tw);
+    }
+    add(group, boxGeo(0.008, 0.55, 0.004), gold, A, 0.275, 0.405);
+    add(group, boxGeo(0.008, 0.55, 0.004), gold, A, 0.275, -0.405);
+    // la grieta, adelante y atrás: el borde negro y la luz
+    const C = crackShapes(0.53, 0.035, 7, { rim: 0.026 });
+    for (const s of [1, -1]) {
+      const zz = s * 0.41;
+      add(group, C.dark, dark, B, 0.01, zz - s * 0.003, 0, s > 0 ? 0 : Math.PI, 0);
+      add(group, C.glow, rift, B, 0.01, zz - s * 0.001, 0, s > 0 ? 0 : Math.PI, 0);
+    }
+    // astillas de vidrio violeta que asoman de la grieta (pegadas al borde)
+    const shard = new THREE.ConeGeometry(0.012, 0.055, 4);
+    const sr = seeded(29);
+    for (let i = 1; i < C.pts.length - 1; i += 2) {
+      const [x, y] = C.pts[i];
+      const side = i % 4 === 1 ? 1 : -1;
+      add(group, shard, rift, B + x + side * 0.024, 0.01 + y, 0.43, 0.9, 0, -side * (0.9 + sr() * 0.4));
+    }
+    for (const s of [-1, 1]) sign(group, qMat, 0.28, s < 0 ? -0.57 : 0.56, 0.31, 0.405);
+    // la tapa: los mismos tres pedazos, la costura de oro y la grieta que sigue
+    const lseg = (x0, x1, mat, h = 0.1) => add(lid, boxGeo(x1 - x0, h, 0.82), mat, (x0 + x1) / 2, h / 2, 0.4);
+    lseg(-0.86, A, planks);
+    lseg(A, B, steel, 0.105);
+    lseg(B, 0.86, carved, 0.11);
+    add(lid, boxGeo(B - A - 0.1, 0.03, 0.06), band, (A + B) / 2 - 0.04, 0.02, 0.8);
+    for (const z of [0.02, 0.78]) add(lid, boxGeo(0.86 - B, 0.022, 0.022), gold, (B + 0.86) / 2, 0.113, z);
+    add(lid, boxGeo(0.022, 0.022, 0.78), gold, 0.85, 0.113, 0.4);
+    for (let i = 0; i < 4; i++) add(lid, boxGeo(0.07, 0.012, 0.022), gold, A, 0.108, 0.1 + i * 0.2, 0, 0.12 * (i % 2 ? 1 : -1), 0);
+    add(lid, boxGeo(0.008, 0.004, 0.8), gold, A, 0.1055, 0.4);
+    const LC = crackShapes(0.82, 0.03, 11, { rim: 0.024 });
+    add(lid, LC.dark, dark, B, 0.112, 0.81, -Math.PI / 2, 0, 0);
+    add(lid, LC.glow, rift, B, 0.114, 0.81, -Math.PI / 2, 0, 0);
+    // y por el canto de adelante de la tapa
+    const FC = crackShapes(0.1, 0.03, 13, { rim: 0.02, n: 3, jit: 0.008 });
+    add(lid, FC.dark, dark, B, 0.0, 0.813, 0, 0, 0);
+    add(lid, FC.glow, rift, B, 0.0, 0.815, 0, 0, 0);
+    sign(lid, qMat, 0.34, -0.01, 0.107, 0.4, -Math.PI / 2);
     mergeByMaterial(group);
     mergeByMaterial(lid);
   },

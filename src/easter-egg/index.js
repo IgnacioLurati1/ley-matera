@@ -1,3 +1,5 @@
+// (primero: prende el switch de Eclipse Matero, el mapa en obra, si corresponde)
+import './core/eclipseFlag';
 import './ui/style.css';
 import './ui/hudThemes.css';
 import Game from './Game';

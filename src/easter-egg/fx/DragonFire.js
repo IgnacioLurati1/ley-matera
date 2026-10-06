@@ -331,10 +331,12 @@ export default class DragonFire {
   // El rugido de la embestida (arriba, antes de tirarse).
   roar(pos) {
     const a = this.g.audio;
+    // (ruge con la boca abierta, aunque no escupa: world/Mateendrache roarJaw)
+    const buf = a?.sfxBuf?.['dragon-rugido'];
+    this.D?.roarJaw?.(buf ? Math.min(2.6, buf.duration) : 1.4);
     if (!a?.ctx) return;
     const t = a.now;
     // el rugido grabado (si no bajó, el sintetizado)
-    const buf = a.sfxBuf?.['dragon-rugido'];
     if (buf) {
       const src = a.ctx.createBufferSource();
       src.buffer = buf;

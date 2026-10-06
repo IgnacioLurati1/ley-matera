@@ -75,7 +75,9 @@ function blur(src, w, h, r) {
   return out;
 }
 
-function bake(img) {
+// Los arreglos del normal map y de cavidad/rugosidad. Solo cuentas: también
+// corre en los workers que pintan las texturas al abrir (core/textureWorker.js).
+export function bakeArrays(img) {
   const R = img.relief;
   const w = img.width;
   const h = img.height;
@@ -152,10 +154,20 @@ function bake(img) {
     }
   }
   stats.sobel += performance.now() - t;
+  return { data, orm, mean: rough ? sum / n : null };
+}
+
+// (relief.pre: ya armado en un worker; relief.repaint: pintada en un worker
+// sin armarlo, en Baja: se repinta acá para tener su altura)
+function bake(img) {
+  let pre = img.relief.pre;
+  img.relief.pre = null;
+  if (!pre && img.relief.repaint) pre = bakeArrays(img.relief.repaint());
+  const { data, orm, mean } = pre || bakeArrays(img);
   return {
-    n: new THREE.DataTexture(data, w, h, THREE.RGBAFormat).source,
-    orm: new THREE.DataTexture(orm, w, h, THREE.RGFormat).source,
-    mean: rough ? sum / n : null,
+    n: new THREE.DataTexture(data, img.width, img.height, THREE.RGBAFormat).source,
+    orm: new THREE.DataTexture(orm, img.width, img.height, THREE.RGFormat).source,
+    mean,
   };
 }
 

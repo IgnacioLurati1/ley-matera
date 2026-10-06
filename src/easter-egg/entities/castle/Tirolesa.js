@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mesh, boxGeo, cylGeo } from '../../world/props';
+import { leanGroup } from '../../world/staticLean';
 
 // La tirolesa: del torreón del adarve (arriba de la muralla del sur) a las
 // termas del Inca, por encima del barranco. Un atajo de ida al Pack-a-Pava:
@@ -62,6 +63,12 @@ export default class Tirolesa {
     this.pulley.rotation.y = Math.atan2(dir.x, dir.z) + Math.PI / 2;
     root.add(this.pulley);
     this.home = this.pulley.position.clone();
+    // (los postes, las riendas y el cable no se mueven: una malla por material;
+    // la roldana aparte, que baja con el que se tira. world/staticLean.leanGroup)
+    const fixed = new THREE.Group();
+    root.add(fixed);
+    for (const o of [...root.children]) if (o.isMesh) fixed.add(o);
+    leanGroup(fixed);
     egg.root.add(root);
     this.riding = null;
     g.interact.add({

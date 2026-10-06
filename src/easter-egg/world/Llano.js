@@ -5,6 +5,7 @@ import { toTexture } from '../core/textures';
 import { TOWER } from '../config/map';
 import { buildProp } from './props';
 import { registerPenalProps } from './penalProps';
+import { windy } from '../fx/grassPush';
 
 // El llano alrededor de la torre (Revelaciones Materas). Adentro del remolino
 // se ve la explanada del pie de la torre: piedras que se cayeron de las
@@ -510,7 +511,7 @@ export default class Llano {
     const T = TOWER;
     const r = rng(1234);
     const tex = toTexture(tuftCanvas(), { repeat: false });
-    const mat = new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1, color: 0xd8cca0 });
+    const mat = windy(new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1, color: 0xd8cca0 }));
     // tres planos cruzados
     const parts = [0, 1, 2].map((k) => new THREE.PlaneGeometry(0.7, 0.55).translate(0, 0.27, 0).rotateY((k / 3) * Math.PI));
     const geo = mergeGeometries(parts);

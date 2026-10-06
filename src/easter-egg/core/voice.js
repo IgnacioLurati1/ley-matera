@@ -320,6 +320,14 @@ export const SPEAKERS = {
   // mojada (apagada, con un gorgoteo rápido) y más apurado que el viejo Anacleto
   sargento: { f0: 116, rate: 1.12, range: 1.35, jitter: 0.035, shimmer: 0.12, breath: 0.2, vib: { rate: 11, depth: 0.06 }, growl: 0.3, roughRate: 22, tilt: 0.46, shift: 0.95, bwMul: 2, drive: 1.5, oq: 0.58, level: 0.9 },
   caballeroHielo: { f0: 72, rate: 0.66, range: 0.3, jitter: 0.004, shimmer: 0.02, breath: 0.2, tilt: 0.22, shift: 1.02, bwMul: 0.55, oq: 0.5, level: 0.85 },
+  // Manuel Belgrano, el ánima del Monumento: voz media y culta, solemne, con
+  // mucha melodía y algo de aire de fantasma (no se confunde con Fierro: más
+  // agudo, más melodía, el susurro y las pausas largas)
+  belgrano: { f0: 114, rate: 0.88, range: 1.35, jitter: 0.012, shimmer: 0.05, breath: 0.24, whisper: 0.28, vib: { rate: 3.2, depth: 0.03 }, tilt: 0.48, shift: 0.97, oq: 0.58, pauseK: 1.3, drawl: 1.1, level: 0.9 },
+  // San Martín en San Lorenzo (Eclipse Matero): voz de mando, firme y seca, sin
+  // aire; Cabral, herido de muerte: más bajo, despacio y con mucho aire
+  sanmartin: { f0: 96, rate: 1.0, range: 1.1, jitter: 0.01, shimmer: 0.04, breath: 0.12, vib: { rate: 5, depth: 0.02 }, tilt: 0.4, shift: 0.92, drive: 1.3, oq: 0.6, pauseK: 1.1, level: 0.95 },
+  cabral: { f0: 104, rate: 0.8, range: 0.9, jitter: 0.03, shimmer: 0.09, breath: 0.42, whisper: 0.35, vib: { rate: 6, depth: 0.04 }, tilt: 0.5, shift: 0.96, oq: 0.55, pauseK: 1.5, drawl: 1.2, level: 0.8 },
 };
 
 const VOWELS_RE = /[aeiouáéíóúü]/;

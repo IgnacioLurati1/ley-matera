@@ -1,5 +1,13 @@
 import * as THREE from 'three';
-import { mesh, boxGeo, cylGeo, rboxGeo, mergeByMaterial } from './props';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mesh, boxGeo, cylGeo, rboxGeo, mergeByMaterial as mergeProps } from './props';
+
+// (lo que cada máquina deja aparte al fusionar, porque se mueve: flatten no lo toca)
+let kept = null;
+function mergeByMaterial(group, keep = []) {
+  kept?.push(...keep);
+  return mergeProps(group, keep);
+}
 
 // Las máquinas de los perks: cada una con su forma, según lo que hace el perk
 // (como en Black Ops, donde cada máquina es distinta), pero todas con el
@@ -931,10 +939,323 @@ function strawTex() {
   return t;
 }
 
+// ---------------- menos llamadas de dibujo ----------------
+// Cada máquina tenía 14-30 mallas (una por material, más un foquito por malla)
+// y con las sombras de Alta eran 35-55 dibujos por máquina. Dos arreglos:
+//  · los foquitos: un InstancedMesh por grupo, el brillo de cada uno en su
+//    color de instancia. Interactables y las anim siguen tocando
+//    bulbs[k].material.emissiveIntensity (bulbs pasa a tener sustitutos).
+//  · lo quieto sin textura: una sola malla con el color, la rugosidad, lo
+//    metálico, el brillo y el reflejo de fx/Epic de cada pieza en los
+//    vértices (mismo dibujo por píxel; Epic lo lee con userData.vRefl).
+
+const BULB_GEO = new THREE.SphereGeometry(1, 8, 6);
+let bulbMat = null;
+function bulbMaterial() {
+  if (bulbMat) return bulbMat;
+  // (el color de instancia es el brillo: no tiñe el vidrio oscuro del foco)
+  bulbMat = std({ color: 0x222222, emissive: 0xffffff, emissiveIntensity: 1 });
+  bulbMat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', '').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= vColor.rgb;');
+  };
+  bulbMat.customProgramCacheKey = () => 'perkBulb';
+  return bulbMat;
+}
+
+function instanceBulbs(bulbs) {
+  const byParent = new Map();
+  bulbs.forEach((b, i) => {
+    if (!b?.isMesh || !b.parent) return;
+    if (!byParent.has(b.parent)) byParent.set(b.parent, []);
+    byParent.get(b.parent).push(i);
+  });
+  const c = new THREE.Color();
+  const sc = new THREE.Matrix4();
+  for (const [parent, idx] of byParent) {
+    const inst = new THREE.InstancedMesh(BULB_GEO, bulbMaterial(), idx.length);
+    inst.castShadow = true;
+    inst.receiveShadow = true;
+    idx.forEach((i, n) => {
+      const b = bulbs[i];
+      b.updateMatrix();
+      const r = b.geometry.parameters?.radius ?? 0.032;
+      inst.setMatrixAt(n, sc.makeScale(r, r, r).premultiply(b.matrix));
+      const base = b.material.emissive.clone();
+      let k = b.material.emissiveIntensity;
+      inst.setColorAt(n, c.copy(base).multiplyScalar(k));
+      parent.remove(b);
+      b.material.dispose();
+      // el sustituto: el mismo emissiveIntensity de antes
+      bulbs[i] = {
+        material: {
+          get emissiveIntensity() {
+            return k;
+          },
+          set emissiveIntensity(v) {
+            if (v === k) return;
+            k = v;
+            inst.setColorAt(n, c.copy(base).multiplyScalar(v));
+            inst.instanceColor.needsUpdate = true;
+          },
+        },
+      };
+    });
+    inst.computeBoundingSphere();
+    parent.add(inst);
+  }
+}
+
+// Qué tanto refleja un material en fx/Epic (su reflOf, de 0 a 15).
+export function reflBucket(m) {
+  const r = (1 - m.roughness) * (0.35 + 0.65 * (m.metalness || 0));
+  return Math.round(Math.min(1, r / 0.8) * 15);
+}
+
+const PLAIN_OBC = THREE.Material.prototype.onBeforeCompile;
+export function flattenable(m) {
+  return (
+    m?.type === 'MeshStandardMaterial' &&
+    !m.map && !m.emissiveMap && !m.normalMap && !m.bumpMap && !m.roughnessMap && !m.metalnessMap && !m.alphaMap && !m.aoMap && !m.lightMap && !m.envMap && !m.displacementMap &&
+    !m.transparent && m.opacity === 1 && !m.alphaTest && !m.vertexColors && !m.wireframe && m.visible && m.colorWrite && m.depthWrite && m.depthTest && !m.polygonOffset &&
+    m.fog && m.toneMapped && m.blending === THREE.NormalBlending && m.onBeforeCompile === PLAIN_OBC && !Object.keys(m.userData).length
+  );
+}
+
+const flatMats = new Map();
+export function flatMaterial(side, flat, env) {
+  const key = `${side}|${flat}|${env}`;
+  let m = flatMats.get(key);
+  if (m) return m;
+  m = std({ color: 0xffffff, roughness: 1, metalness: 1, vertexColors: true, side, flatShading: flat, envMapIntensity: env });
+  // (el reflejo de fx/Epic va por vértice: attribute refl)
+  m.userData.vRefl = true;
+  m.userData.reflRough = 1;
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec2 pbr;\nattribute vec3 emi;\nvarying vec2 vPbr;\nvarying vec3 vEmi;')
+      .replace('#include <color_vertex>', '#include <color_vertex>\n\tvPbr = pbr;\n\tvEmi = emi;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vPbr;\nvarying vec3 vEmi;')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n\troughnessFactor *= vPbr.x;')
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n\tmetalnessFactor *= vPbr.y;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += vEmi;');
+  };
+  m.customProgramCacheKey = () => 'perkFlat';
+  flatMats.set(key, m);
+  return m;
+}
+
+// Junta lo quieto que cuelga de `root` (bajando por los grupos quietos) en una
+// malla (una por cara y sombra). `stop`: lo que se mueve o se deja aparte (ni se
+// fusiona ni se baja por ahí); lo de adentro se junta en su propio llamado.
+// `track` (opcional): las mallas que se quieren ubicar después en la malla
+// junta (devuelve [{ o, out, start, count }], en vértices).
+export function flatten(root, stop, dirty, track = null) {
+  const groups = new Map();
+  const recs = [];
+  // (lo quieto que no entra, como el cartel que se prende: junto por material)
+  const same = new Map();
+  const walk = (node, rel) => {
+    for (const o of [...node.children]) {
+      if (stop.has(o) || !o.visible) continue;
+      o.updateMatrix();
+      const mat = rel ? rel.clone().multiply(o.matrix) : o.matrix.clone();
+      if (!o.isMesh) {
+        walk(o, mat);
+        continue;
+      }
+      const m = o.material;
+      if (o.isInstancedMesh || o.isSkinnedMesh || o.children.length || Array.isArray(m)) continue;
+      if (dirty.has(m) || !flattenable(m)) {
+        const k = `${m.uuid}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}`;
+        if (!same.has(k)) same.set(k, []);
+        same.get(k).push({ o, node, mat });
+        continue;
+      }
+      const key = `${m.side}|${m.flatShading ? 1 : 0}|${m.envMapIntensity}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}`;
+      if (!groups.has(key)) groups.set(key, { m, o, list: [] });
+      let geo = o.geometry.clone().applyMatrix4(mat);
+      if (geo.index) geo = geo.toNonIndexed();
+      for (const n of Object.keys(geo.attributes)) if (n !== 'position' && n !== 'normal') geo.deleteAttribute(n);
+      const n = geo.attributes.position.count;
+      const col = new Float32Array(n * 3);
+      const pbr = new Float32Array(n * 2);
+      const emi = new Float32Array(n * 3);
+      const refl = new Float32Array(n).fill(reflBucket(m) / 15);
+      const e = m.emissive.clone().multiplyScalar(m.emissiveIntensity);
+      for (let i = 0; i < n; i++) {
+        col[i * 3] = m.color.r;
+        col[i * 3 + 1] = m.color.g;
+        col[i * 3 + 2] = m.color.b;
+        pbr[i * 2] = m.roughness;
+        pbr[i * 2 + 1] = m.metalness;
+        emi[i * 3] = e.r;
+        emi[i * 3 + 1] = e.g;
+        emi[i * 3 + 2] = e.b;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      geo.setAttribute('pbr', new THREE.BufferAttribute(pbr, 2));
+      geo.setAttribute('emi', new THREE.BufferAttribute(emi, 3));
+      geo.setAttribute('refl', new THREE.BufferAttribute(refl, 1));
+      groups.get(key).list.push(geo);
+      if (track?.has(o)) recs.push({ o, key, i: groups.get(key).list.length - 1, count: n });
+      node.remove(o);
+    }
+  };
+  walk(root, null);
+  for (const parts of same.values()) {
+    if (parts.length < 2) continue;
+    const list = parts.map(({ o, node, mat }) => {
+      let geo = o.geometry.clone().applyMatrix4(mat);
+      if (geo.index) geo = geo.toNonIndexed();
+      for (const n of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(n)) geo.deleteAttribute(n);
+      if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+      node.remove(o);
+      return geo;
+    });
+    const { o } = parts[0];
+    const out = new THREE.Mesh(mergeGeometries(list), o.material);
+    out.castShadow = o.castShadow;
+    out.receiveShadow = o.receiveShadow;
+    root.add(out);
+    list.forEach((x) => x.dispose());
+  }
+  for (const [key, { m, o, list }] of groups) {
+    const starts = [];
+    let at = 0;
+    for (const x of list) {
+      starts.push(at);
+      at += x.attributes.position.count;
+    }
+    const out = new THREE.Mesh(mergeGeometries(list), flatMaterial(m.side, !!m.flatShading, m.envMapIntensity));
+    out.castShadow = o.castShadow;
+    out.receiveShadow = o.receiveShadow;
+    root.add(out);
+    list.forEach((x) => x.dispose());
+    for (const r of recs) if (r.key === key) Object.assign(r, { out, start: starts[r.i] });
+  }
+  return recs;
+}
+
+// Lo que solo cambia de brillo (el cartel que se prende con la luz, lo que late,
+// los foquitos) adentro de la malla junta: el material sigue siendo el mismo
+// objeto, y al cambiarle emissiveIntensity se reescribe el brillo de sus
+// vértices (attribute emi). Lo que quedó suelto con ese material (lo que se
+// mueve) lo sigue leyendo del material.
+function liveEmissive(mat, recs) {
+  if (!recs.length) return;
+  let ei = mat.emissiveIntensity;
+  const write = (v) => {
+    const e = mat.emissive;
+    for (const r of recs) {
+      const A = r.out.geometry.attributes.emi;
+      for (let i = r.start; i < r.start + r.count; i++) A.setXYZ(i, e.r * v, e.g * v, e.b * v);
+      A.addUpdateRange(r.start * 3, r.count * 3);
+      A.needsUpdate = true;
+    }
+  };
+  Object.defineProperty(mat, 'emissiveIntensity', {
+    configurable: true,
+    enumerable: true,
+    get: () => ei,
+    set: (v) => {
+      if (v === ei) return;
+      ei = v;
+      write(v);
+    },
+  });
+}
+
+// Lo que la anim de la máquina cambia (un ensayo a ver qué se mueve): los
+// materiales que cambian y lo que se mueve, se esconde o aparece.
+function animDirty(g, anim) {
+  const mats = new Set();
+  g.traverse((o) => o.isMesh && mats.add(o.material));
+  const snap = (m) => [m.color?.getHex(), m.emissive?.getHex(), m.emissiveIntensity, m.opacity, m.roughness, m.metalness, m.visible].join('|');
+  const before = new Map([...mats].map((m) => [m, snap(m)]));
+  const snapNoEi = (m) => [m.color?.getHex(), m.emissive?.getHex(), m.opacity, m.roughness, m.metalness, m.visible].join('|');
+  const beforeNoEi = new Map([...mats].map((m) => [m, snapNoEi(m)]));
+  // (después se deja todo como estaba: de lejos la anim no corre)
+  const objs = [];
+  g.traverse((o) => objs.push([o, o.visible, o.position.clone(), o.quaternion.clone(), o.scale.clone()]));
+  const vals = [...mats].map((m) => [m, m.color?.clone(), m.emissive?.clone(), m.emissiveIntensity, m.opacity]);
+  // (unos 15 s de reloj: los parpadeos al azar caen adentro)
+  for (let i = 0; i < 150; i++) anim(i * 0.37, 0.1, i % 4 !== 3);
+  const dirty = new Set();
+  // (y los que solo cambian el brillo: pueden ir en la malla junta, liveEmissive)
+  const eiOnly = new Set();
+  for (const m of mats) {
+    if (snap(m) === before.get(m)) continue;
+    dirty.add(m);
+    if (snapNoEi(m) === beforeNoEi.get(m)) eiOnly.add(m);
+  }
+  const moved = new Set();
+  for (const [o, v, p, q, sc] of objs) {
+    if (o.visible !== v || !o.position.equals(p) || !o.quaternion.equals(q) || !o.scale.equals(sc)) moved.add(o);
+    o.visible = v;
+    o.position.copy(p);
+    o.quaternion.copy(q);
+    o.scale.copy(sc);
+  }
+  for (const [m, c, e, ei, op] of vals) {
+    if (c) m.color.copy(c);
+    if (e) m.emissive.copy(e);
+    m.emissiveIntensity = ei;
+    m.opacity = op;
+  }
+  return { dirty, moved, eiOnly };
+}
+
 // Arma la máquina del perk (id de config/perks) con su etiqueta (perkLabel).
 export function buildPerkMachine(id, perk, label) {
   const g = new THREE.Group();
+  kept = [];
   const out = (BUILD[id] || BUILD.jugg)(g, perk, label);
+  const skip = new Set(kept);
+  kept = null;
+  const { dirty, moved, eiOnly } = out.anim ? animDirty(g, out.anim) : { dirty: new Set(), moved: new Set(), eiOnly: new Set() };
+  for (const o of moved) skip.add(o);
+  // (2026-10-05, "juntá las máquinas": lo que solo cambia de brillo, el cartel,
+  // lo que late y los foquitos, va adentro de la malla junta con el brillo por
+  // vértice, liveEmissive; eran 2 o 3 dibujos más por máquina en cada pasada.
+  // globalThis.__mduNoPerkMerge, al cargar: como antes, los foquitos en un
+  // InstancedMesh y el cartel aparte)
+  const merge = globalThis.__mduNoPerkMerge !== true && globalThis.__mduNoMerge !== true;
+  const live = new Set();
+  const flatOk = (m) => {
+    if (!m || m.type !== 'MeshStandardMaterial') return false;
+    const ud = m.userData;
+    m.userData = {};
+    const ok = flattenable(m);
+    m.userData = ud;
+    return ok;
+  };
+  if (merge) {
+    const sm = out.sign?.material;
+    if (sm && flatOk(sm) && (!dirty.has(sm) || eiOnly.has(sm))) live.add(sm);
+    for (const m of eiOnly) if (flatOk(m)) live.add(m);
+    for (const b of out.bulbs || []) if (b?.isMesh && flatOk(b.material)) live.add(b.material);
+  }
+  for (const m of live) dirty.delete(m);
+  // (los foquitos venían apartados de mergeByMaterial porque cambian de brillo:
+  // ahora entran en la malla junta, salvo los que se mueven)
+  for (const b of out.bulbs || []) if (b?.isMesh && live.has(b.material) && !moved.has(b)) skip.delete(b);
+  if (!live.has(out.sign?.material)) dirty.add(out.sign?.material);
+  dirty.add(out.front);
+  if (out.bulbs && !merge) instanceBulbs(out.bulbs);
+  const track = merge ? new Set() : null;
+  if (track) g.traverse((o) => o.isMesh && live.has(o.material) && track.add(o));
+  // lo quieto de la máquina, y lo quieto de adentro de cada cosa que se mueve
+  const recs = flatten(g, skip, dirty, track);
+  for (const o of skip) if (!o.isMesh && o.parent) recs.push(...flatten(o, skip, dirty, track));
+  for (const m of live) liveEmissive(m, recs.filter((r) => r.o.material === m && r.out));
+  // (los grupos que quedaron vacíos)
+  for (;;) {
+    const empty = [];
+    g.traverse((o) => o !== g && !o.isMesh && !o.children.length && !skip.has(o) && empty.push(o));
+    if (!empty.length) break;
+    for (const o of empty) o.parent.remove(o);
+  }
   // el cartel: lo que Interactables prende con la luz (sign.material.emissiveIntensity)
   return { group: g, sign: out.sign, bulbs: out.bulbs, front: out.front, anim: out.anim };
 }

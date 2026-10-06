@@ -220,7 +220,9 @@ export default class MatorralChests {
     s.t = 0;
     s.pending = false;
     if (st === 1) {
-      g.audio.boxOpen?.(s.at);
+      // (un baúl que se abre: bisagras y madera, no la cajita de música de
+      // la caja misteriosa)
+      this.creak(s.at);
       g.fx.sparkle(tmpV.copy(s.at).setY(s.at.y + 0.2), GOLD, 26, 0.7);
       s.inner.visible = true;
       if (by != null && by === (g.net?.id ?? 0)) this.loot(s);
@@ -229,6 +231,20 @@ export default class MatorralChests {
       g.fx.fire(tmpV.copy(s.at), 0.6, 6);
       this.paint(s, true);
     }
+  }
+
+  // La tapa del baúl: chirrido de bisagras viejas, el crujido de la madera y
+  // el golpe seco de la tapa contra los flejes al quedar abierta (0,5 s).
+  creak(pos) {
+    const a = this.g.audio;
+    if (!a?.ctx) return;
+    const t = a.now;
+    const o = a.out({ pos, gain: 0.85, reverb: 0.3 });
+    a.noise(o, { t, dur: 0.38, type: 'bandpass', freq: 1900, freqEnd: 1250, q: 14, gain: 0.32, attack: 0.04 });
+    a.noise(o, { t: t + 0.06, dur: 0.3, type: 'bandpass', freq: 2600, freqEnd: 1700, q: 18, gain: 0.18, attack: 0.05 });
+    a.noise(o, { t, dur: 0.45, type: 'bandpass', freq: 420, freqEnd: 260, q: 3, gain: 0.35, attack: 0.03 });
+    a.noise(o, { t: t + 0.48, dur: 0.12, freq: 700, freqEnd: 140, gain: 0.7 });
+    a.tone(o, { t: t + 0.48, dur: 0.16, freq: 95, freqEnd: 55, gain: 0.35 });
   }
 
   // Quemado: todo en negro (el material quemado es uno solo, compartido).

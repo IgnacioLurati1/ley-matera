@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ACT } from '../config/map';
 import { mesh, boxGeo, cylGeo } from './props';
+import { leanGroup } from './staticLean';
 import { shieldModel } from './shieldModels';
 import { upgradeShield } from './shieldUpModels';
 import { buildGorriti, updateGorriti, gorritiKillFx } from './shieldGorriti';
@@ -787,12 +788,16 @@ export default class ShieldUpgrade {
     grp.rotation.y = U.rot || 0;
     this.root.add(grp);
     // el secadero de redes: dos horcones y el travesaño, con la red colgando
-    for (const s of [-1, 1]) grp.add(mesh(cylGeo(0.07, 0.09, 2.6, 8), M.log || M.woodDark, s * 1.1, 1.3, 0, 0, 0, s * 0.06));
-    grp.add(mesh(cylGeo(0.06, 0.06, 2.5, 8), M.log || M.woodDark, 0, 2.5, 0, 0, 0, Math.PI / 2));
+    // (no se mueve nunca: una malla por material, world/staticLean.leanGroup)
+    const rack = new THREE.Group();
+    grp.add(rack);
+    for (const s of [-1, 1]) rack.add(mesh(cylGeo(0.07, 0.09, 2.6, 8), M.log || M.woodDark, s * 1.1, 1.3, 0, 0, 0, s * 0.06));
+    rack.add(mesh(cylGeo(0.06, 0.06, 2.5, 8), M.log || M.woodDark, 0, 2.5, 0, 0, 0, Math.PI / 2));
     const net = new THREE.Group();
     for (let i = 0; i < 9; i++) net.add(mesh(boxGeo(0.012, 1.4, 0.012), M.rope || M.sack, -0.95 + i * 0.24, 1.75, -0.05, 0, 0, Math.sin(i) * 0.04));
     for (let j = 0; j < 6; j++) net.add(mesh(boxGeo(2.0, 0.012, 0.012), M.rope || M.sack, 0, 1.1 + j * 0.24, -0.05));
-    grp.add(net);
+    rack.add(net);
+    leanGroup(rack);
     // el cráneo del yacaré viejo, colgado al medio
     const bone = mat('skullBone', () => new THREE.MeshStandardMaterial({ color: 0xcfc2a0, roughness: 0.65 }));
     // (de perfil: el hocico largo para el costado, así se lee de lejos)

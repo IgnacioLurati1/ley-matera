@@ -4,6 +4,9 @@ import Avatars from '../net/Avatars';
 import { EE } from '../config/map';
 import { warmScene } from './cineWarm';
 import { prefetchTrack } from '../core/music';
+import { cineClip, poseCineClip, gauchoClip, cineSnap } from '../net/gauchoSkin';
+import { PERSONA_T } from './cineCrew';
+import { assetUrl } from '../../lib/assets';
 
 // El final de "Mate no Numa" (El Pacto): cayó el Luisón y los cuatro quedan
 // al pie del Algarrobo de los Colgados. La voz le habla a Gil (solo él la oye:
@@ -11,35 +14,56 @@ import { prefetchTrack } from '../core/music';
 // Antes de elegir, un momento que la voz no ve: Gil solo, la mano en el pecho,
 // lo que piensa para él (su lealtad no es entera).
 // Gil decide (el jugador que es Gil; en línea, solo él), sin soltar el mouse:
-//  · sellar el pacto (el canónico): se da vuelta y los mata a traición, uno
-//    por uno (Cirilo con el mate en la mano, Benito que retrocede, Anacleto
-//    de rodillas). Queda ensangrentado; se guarda algo para él (la hoja del
-//    códice, si la arrancó, o la cinta colorada del facón) y se va a cosechar
-//    almas de gauchos. "El ciclo continúa".
+//  · sellar el pacto (el canónico): va hasta Cirilo, que le convida un mate, y
+//    lo mata a traición; Benito retrocede con las manos arriba y Gil lo alcanza;
+//    Anacleto le ruega de rodillas. Queda ensangrentado; se guarda algo para él
+//    (la hoja del códice, si la arrancó, o la cinta colorada del facón) y se
+//    va a cosechar almas de gauchos. "El ciclo continúa".
 //  · negarse: le apunta al árbol con el facón, los tres se le ponen al lado y
 //    la voz se va con un trueno. Los cuatro se van juntos. "El ciclo se ha roto".
-// Los compañeros de la escena son siempre tres (Anacleto, Cirilo y Benito),
-// juegue quien juegue. Pasa adentro del juego (EsterosEgg.scene). Todo lo que
-// hacen es una pose que se mezcla de a poco (pose/anim), nunca un salto.
+// Los cuerpos se mueven con clips animados a mano en Blender (scratchpad
+// cine-esteros/esteros_clips.py -> modelos/gaucho/cine-esteros.json; el
+// caminar y correr, los de siempre de net/gauchoSkin). Cada uno con su
+// carácter (ui/cineCrew PERSONA): Gil el Valiente, Anacleto el Viejo (se
+// cansa, le duele la espalda, ruega de rodillas), Cirilo el Canchero (el mate
+// en la mano, no se entera de nada) y Benito el Miedoso (mira para todos lados,
+// se agacha, se santigua). Cada cambio arranca de la pose que tiene (cineSnap):
+// nada salta. Sin los clips (o con globalThis.__mduBlend = false), la versión
+// de antes: ui/EsterosEndingClassic.js.
 
 const CHOOSE_SECS = 30;
 // dónde arranca a sonar la canción de la traición (antes, 0,38 s de nada)
 const TRAICION_AT = 0.36;
 const MATES = [
-  { id: 901, key: 'anacleto', name: 'Anacleto', color: 0x3a6a2a },
-  { id: 902, key: 'cirilo', name: 'Cirilo', color: 0x2a3a7a },
-  { id: 903, key: 'benito', name: 'Benito', color: 0x7a5a2a },
+  { id: 901, key: 'anacleto', name: 'Anacleto', color: 0x3a6a2a, persona: 'viejo' },
+  { id: 902, key: 'cirilo', name: 'Cirilo', color: 0x2a3a7a, persona: 'canchero' },
+  { id: 903, key: 'benito', name: 'Benito', color: 0x7a5a2a, persona: 'miedoso' },
 ];
-const GIL = { id: 900, key: 'gil', name: 'Antonio Gil', color: 0xb01c14 };
+const GIL = { id: 900, key: 'gil', name: 'Antonio Gil', color: 0xb01c14, persona: 'valiente' };
 const WHO = { entidad: 'La voz', gil: 'Gil', anacleto: 'Anacleto', cirilo: 'Cirilo', benito: 'Benito', secreto: 'Gil, para sí' };
 const OPTS = ['kill', 'spare'];
+// el golpe de cada puñalada (s desde que arranca el clip)
+const HIT = 0.5;
+// los clips que se mueven (la cadera termina en otro lado): al terminar, la
+// persona queda donde quedó
+const MOVERS = new Set(['retreat']);
+// (de lo que cae al piso: cuánto antes queda tirado del todo)
 const tmpV = new THREE.Vector3();
 const tmpW = new THREE.Vector3();
 const tmpM = new THREE.Matrix4();
 const tmpI = new THREE.Matrix4();
 const tmpQ = new THREE.Quaternion();
 const UP = new THREE.Vector3(0, 1, 0);
+// (el cuerpo no gira más de esto, rad/s: ~9° por cuadro a 30; con lo que gira
+// la cadera al pasar de un clip a otro, no llega a los 20°)
+const MAX_TURN = 4.5;
+const turnCap = (a, b, dt) => {
+  const d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  const lim = MAX_TURN * dt;
+  return a + Math.max(-lim, Math.min(lim, d));
+};
 const ONE = new THREE.Vector3(1, 1, 1);
+const tmpS = new THREE.Vector3();
 
 const angLerp = (a, b, k) => {
   let d = b - a;
@@ -49,6 +73,22 @@ const angLerp = (a, b, k) => {
 };
 // (el yaw de Avatars mira hacia -z con yaw 0: de un punto hacia otro)
 const yawTo = (from, to) => Math.atan2(to.x - from.x, to.z - from.z) + Math.PI;
+
+// los clips: se bajan con el mapa (entities/EsterosEgg), antes del final
+let CLIPS = null;
+let loading = null;
+export function prefetchEsterosClips() {
+  loading ||= fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-esteros.json'))
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+    .then((J) => {
+      const C = {};
+      for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+      CLIPS = C;
+    })
+    .catch(() => {});
+  return loading;
+}
+export const esterosClipsReady = () => !!CLIPS && globalThis.__mduBlend !== false;
 
 export default class EsterosEnding extends CastleCine {
   constructor(game, egg, { hoja = false } = {}) {
@@ -73,7 +113,9 @@ export default class EsterosEnding extends CastleCine {
     this.H = this.egg.huecoPos?.clone() || new THREE.Vector3(hx + 0.35, w.floorAt(hx, hz) + 1.25, hz);
     const at = (x, z) => new THREE.Vector3(x, w.floorAt(x, z), z);
     this.at = at;
-    this.spots = { gil: at(10.1, 10.9), anacleto: at(8, 12.6), cirilo: at(7.6, 10.5), benito: at(8.1, 8.6) };
+    // (Anacleto y Benito un poco más abiertos: las tomas de la traición los
+    // dejan afuera del primer plano)
+    this.spots = { gil: at(10.1, 10.9), anacleto: at(8.2, 12.9), cirilo: at(7.6, 10.5), benito: at(8.3, 8.3) };
     if (g.net?.avatars) g.net.avatars.root.visible = false;
     // (sin máquinas, tizas ni cajas en cuadro: la escena es del árbol)
     this.hidInteract = g.interact.root.visible;
@@ -93,16 +135,13 @@ export default class EsterosEnding extends CastleCine {
       this.npc.add(r);
       const a = this.npc.list.get(P.id);
       a.M.poncho.color.set(P.color).multiplyScalar(1.7);
-      const person = { r, a, pose: { v: {}, want: {}, speed: 6 } };
-      r.poseFn = (Q) => this.applyPose(person.pose, Q);
-      this.people[P.key] = person;
+      this.people[P.key] = { key: P.key, r, a, persona: P.persona, cc: null, mv: null };
     }
     this.face('gil', this.H);
     for (const m of MATES) this.face(m.key, this.spots.gil);
+    // el mate: solo Cirilo, que ceba (los otros no tienen nada en la mano)
+    for (const m of ['anacleto', 'benito']) this.people[m].a.hand.children[0].visible = false;
     this.buildKnife();
-    // Gil sin el mate: el brazo derecho cae al costado (no apunta a nada)
-    this.rest = { shRp: -0.22, elR: -0.35 };
-    this.pose('gil', this.rest, 20);
     // la luz fría del hueco (la voz está ahí, pero nunca se la ve): la del
     // mapa, que ya está desde el principio (ver cineWarm); si no, una propia
     this.hl = this.egg.cineLight || new THREE.PointLight(0x9ad8c8, 0, 9, 1.6);
@@ -115,16 +154,20 @@ export default class EsterosEnding extends CastleCine {
     this.buildChoice();
     // los cuatro, el facón y lo que se vuelve a ver del estero: compilado ya,
     // en segundo plano (el relieve de Surfaces primero, si no se recompila)
+    // (de noche en el pajonal no se veían las caras: la escena, más expuesta)
+    this.expo0 = g.renderer.toneMappingExposure;
+    g.renderer.toneMappingExposure = this.expo0 * 1.45;
     g.post?.sweep?.();
     warmScene(g);
     // (la canción de la traición entra justo con la puñalada: ya bajada)
     prefetchTrack('cine-esteros-traicion');
+    // (el caminar y correr de siempre: que bajen ya)
+    gauchoClip('walk');
     return this.script0();
   }
 
-  // El facón de Gil: el cabo en el puño (el antebrazo termina a 0.2 del codo)
-  // y la hoja saliendo para adelante del puño; una cinta colorada atada al
-  // cabo (la que después va a ser suya).
+  // El facón de Gil: el cabo en el puño y la hoja saliendo para adelante del
+  // puño; una cinta colorada atada al cabo (la que después va a ser suya).
   buildKnife() {
     const gil = this.people.gil.a;
     gil.hand.children[0].visible = false;
@@ -136,7 +179,6 @@ export default class EsterosEnding extends CastleCine {
     const guard = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.016, 0.022), steel);
     guard.position.y = -0.072;
     knife.add(guard);
-    // la hoja: ancha en el lomo y en punta
     const shape = new THREE.Shape();
     shape.moveTo(-0.016, 0);
     shape.lineTo(0.017, 0);
@@ -158,41 +200,65 @@ export default class EsterosEnding extends CastleCine {
     this.bladeMat = steel;
   }
 
-  // ---------------- poses que se mezclan ----------------
-  // Pone partes de la pose de alguien (null las suelta); cada frame se van
-  // acercando a lo pedido (speed: qué tan rápido).
-  pose(key, fields, speed = 6) {
-    const S = this.people[key].pose;
-    S.speed = speed;
-    for (const [f, v] of Object.entries(fields)) {
-      if (v === null) delete S.want[f];
-      else S.want[f] = v;
+  // ---------------- los cuerpos ----------------
+  // Pasa a un clip (los de Blender o los de siempre), desde la pose que tiene.
+  // o: loop, rate, t (por dónde arranca), look (rad), fade (s).
+  act(key, name, o = {}) {
+    const p = this.people[key];
+    const prev = p.cc;
+    // (un clip que se mueve terminó: queda donde quedó la cadera)
+    if (prev && MOVERS.has(prev.name)) this.settle(p, prev);
+    p.cc = { name, lt: o.t || 0, rate: o.rate ?? 1, loop: !!o.loop, look: o.look || 0, fade: o.fade ?? 0.3, at: this.t, snap: cineSnap(p.a) };
+  }
+
+  settle(p, cc) {
+    const c = this.clipOf(cc.name);
+    if (!c) return;
+    const n = c.n - 1;
+    const h = c.hips;
+    tmpV.set(h[n * 3] - h[0], 0, h[n * 3 + 2] - h[2]).applyAxisAngle(UP, p.r.yaw + Math.PI);
+    p.r.pos.add(tmpV);
+    p.r.pos.y = this.g.world.floorAt(p.r.pos.x, p.r.pos.z);
+  }
+
+  clipOf(name) {
+    return CLIPS?.[name] || gauchoClip(name);
+  }
+
+  // Camina (o corre) hasta (x, z) en dur s, con el paso al ritmo de lo que
+  // avanza; then: el clip al llegar (y sus opciones).
+  walkTo(key, x, z, dur, { run = false, then = null, thenO = {} } = {}) {
+    const p = this.people[key];
+    const to = this.at(x, z);
+    p.mv = { from: p.r.pos.clone(), to, dur, t: 0, then, thenO };
+    this.act(key, run ? 'run' : 'walk', { loop: true, fade: 0.4, rate: 0 });
+    return to;
+  }
+
+  // Un punto a d m de otra persona, del lado de donde viene `from`.
+  near(key, from, d) {
+    const q = this.people[key].r.pos;
+    const f = this.people[from].r.pos;
+    tmpV.subVectors(f, q).setY(0).normalize().multiplyScalar(d).add(q);
+    return [tmpV.x, tmpV.z];
+  }
+
+  moveTick(p, dt) {
+    const M = p.mv;
+    if (!M) return;
+    M.t += dt;
+    const k = Math.min(1, M.t / M.dur);
+    const prev = tmpW.copy(p.r.pos);
+    p.r.pos.lerpVectors(M.from, M.to, smooth(k));
+    p.r.pos.y = this.g.world.floorAt(p.r.pos.x, p.r.pos.z);
+    const v = dt > 0 ? Math.hypot(p.r.pos.x - prev.x, p.r.pos.z - prev.z) / dt : 0;
+    const c = p.cc && this.clipOf(p.cc.name);
+    if (c?.speed) p.cc.rate = Math.min(2.2, v / c.speed);
+    if (k < 0.97) p.r.yaw = turnCap(p.r.yaw, angLerp(p.r.yaw, yawTo(M.from, M.to), Math.min(1, dt * 4)), dt);
+    if (k >= 1) {
+      p.mv = null;
+      this.act(p.key, M.then || 'gilStand', { loop: true, fade: 0.35, ...M.thenO });
     }
-  }
-
-  // Suelta toda la pose pedida (vuelve de a poco a la de siempre).
-  unpose(key, speed = 4) {
-    const S = this.people[key].pose;
-    S.speed = speed;
-    S.want = {};
-  }
-
-  // (Avatars: después de la pose de siempre, esta encima)
-  applyPose(S, Q) {
-    const k = Math.min(1, this.dtNow * S.speed);
-    for (const f of Object.keys(S.v)) {
-      const base = Q[f] ?? 0;
-      const goal = f in S.want ? S.want[f] : base;
-      S.v[f] += (goal - S.v[f]) * k;
-      Q[f] = S.v[f];
-      if (!(f in S.want) && Math.abs(S.v[f] - base) < 0.005) delete S.v[f];
-    }
-    for (const f of Object.keys(S.want)) if (!(f in S.v)) S.v[f] = Q[f] ?? 0;
-  }
-
-  // Algo que pasa en el tiempo: fn(k) de 0 a 1.
-  anim(dur, fn, done) {
-    this.anims.push({ t: 0, dur, fn, done });
   }
 
   face(key, target) {
@@ -200,34 +266,21 @@ export default class EsterosEnding extends CastleCine {
     r.yaw = yawTo(r.pos, target);
   }
 
-  turn(key, target, dur = 0.5) {
-    const r = this.people[key].r;
+  // Se da vuelta hacia algo, a su ritmo (el Viejo, despacio; el Miedoso, de golpe).
+  turn(key, target, dur = null) {
+    const p = this.people[key];
+    const r = p.r;
     const y0 = r.yaw;
     const y1 = yawTo(r.pos, target);
-    this.anim(dur, (k) => (r.yaw = angLerp(y0, y1, smooth(k))));
+    const dy = Math.abs(Math.atan2(Math.sin(y1 - y0), Math.cos(y1 - y0)));
+    // (el giro más rápido de smooth es 1,5 veces el promedio: no más de MAX_TURN)
+    const d = Math.max(dur ?? 0.9 / (PERSONA_T[p.persona]?.turn || 2) + 0.15, (dy * 1.5) / MAX_TURN);
+    this.anim(d, (k) => (r.yaw = angLerp(y0, y1, smooth(k))));
   }
 
-  // Camina (o corre) hasta un punto; look: mirando a otro lado (retroceder).
-  walk(key, x, z, dur, look = null) {
-    const r = this.people[key].r;
-    const from = r.pos.clone();
-    const to = this.at(x, z);
-    const d = from.distanceTo(to);
-    r.moving = true;
-    r.speed = Math.min(6.5, (d / dur) * 1.1);
-    const y0 = r.yaw;
-    this.anim(
-      dur,
-      (k) => {
-        r.pos.lerpVectors(from, to, smooth(k));
-        r.pos.y = this.g.world.floorAt(r.pos.x, r.pos.z);
-        r.yaw = angLerp(y0, yawTo(look ? r.pos : from, look || to), Math.min(1, k * 4));
-      },
-      () => {
-        r.moving = false;
-        r.speed = 0;
-      },
-    );
+  // Algo que pasa en el tiempo: fn(k) de 0 a 1.
+  anim(dur, fn, done) {
+    this.anims.push({ t: 0, dur, fn, done });
   }
 
   head(key, up = 1.55) {
@@ -278,7 +331,6 @@ export default class EsterosEnding extends CastleCine {
   }
 
   // Un punto a la altura del suelo del claro (x, z) con y relativa al de Gil.
-  // (no se llama cam: this.cam es la toma de CastleCine)
   pt(x, z, up) {
     return new THREE.Vector3(x, this.spots.gil.y + up, z);
   }
@@ -303,16 +355,25 @@ export default class EsterosEnding extends CastleCine {
   script0() {
     const S = this.spots;
     const H = this.H;
-    const mid = S.gil.clone().lerp(S.cirilo, 0.5);
+    // (el medio de los cuatro: la primera toma los ve a todos, desde arriba del pajonal)
+    const mid = S.gil.clone().add(S.anacleto).add(S.cirilo).add(S.benito).multiplyScalar(0.25);
     return [
       [0, () => {
         this.fade(false);
-        this.glide(9, this.pt(7.9, 14.3, 1.9), this.pt(8.6, 14, 1.7), mid.clone().setY(mid.y + 1.2), H.clone().setY(H.y - 0.2));
-        // Cirilo ceba, Benito se sacude el barro
-        this.pose('cirilo', { shRp: -1.1, elR: -1.2, headP: 0.15 }, 3);
+        this.glide(9, this.pt(11.2, 14.6, 2.4), this.pt(11.0, 14.0, 2.25), mid.clone().setY(mid.y + 0.9), mid.clone().lerp(H, 0.35).setY(mid.y + 1.1));
+        // después de la pelea, cada uno a su manera: Gil resopla, el Viejo con
+        // las manos en las rodillas, Cirilo ya ceba, Benito mira para todos lados
+        this.act('gil', 'gilTired', { loop: true, fade: 0.01 });
+        this.act('anacleto', 'winded', { loop: true, fade: 0.01, t: 0.7 });
+        this.act('cirilo', 'cebar', { loop: true, fade: 0.01, t: 0.4 });
+        this.act('benito', 'nervous', { loop: true, fade: 0.01, t: 1.2 });
         return 0.8;
       }],
-      [0, () => this.say('anacleto', 'Se terminó, Antonio. El bicho está muerto.')],
+      [0, () => {
+        // (el Viejo se endereza a medias, con la mano en la espalda)
+        this.later(1.6, () => this.act('anacleto', 'stretch', { loop: true, fade: 0.8 }));
+        return this.say('anacleto', 'Se terminó, Antonio. El bicho está muerto.');
+      }],
       [0.2, () => this.say('cirilo', 'Vamos al fogón. Hay mate, y hay que secarse antes de que amanezca.')],
       [0.2, () => this.say('benito', '¿Y la voz, Antonio? Esa que oías... ¿se fue?')],
       [0.3, () => {
@@ -320,14 +381,14 @@ export default class EsterosEnding extends CastleCine {
         this.quiet();
         this.hlOn = true;
         this.glide(7, this.head('gil', 1.5).add(tmpV.set(-1.6, 0.1, 1.2)), this.head('gil', 1.5).add(tmpV.set(-1.1, 0, 0.7)), H, H);
-        this.pose('gil', { headP: -0.12 }, 2);
+        this.act('gil', 'gilStand', { loop: true, fade: 0.9, look: 0.12 });
         return 1.6;
       }],
       [0, () => this.say('entidad', 'Bien hecho, Antonio. Casi terminamos.')],
       [0.2, () => this.say('entidad', 'Tus compañeros vieron demasiado. Oyeron cosas. Saben dónde está el hueco.')],
       [0.2, () => {
-        this.glide(9, this.pt(11.1, 8, 1.8), this.pt(11, 12.7, 1.7), this.head('cirilo', 1.2));
-        this.pose('cirilo', { shRp: null, elR: null, headP: null }, 3);
+        // (Cirilo, que no oye nada, sigue con su mate)
+        this.glide(9, this.pt(9.45, 11.45, 1.6), this.pt(9.25, 11.15, 1.55), this.head('cirilo', 1.2));
         return this.say('entidad', 'Un pacto se sella con sangre. La de ellos. Tres almas de gaucho, y el poder es tuyo.');
       }],
       // lo que la voz no ve: la luz del hueco se apaga un momento y Gil,
@@ -338,14 +399,13 @@ export default class EsterosEnding extends CastleCine {
         this.g.audio.hush?.();
         const chest = this.head('gil', 1.3);
         this.glide(7, this.pt(11.1, 11.9, 1.5), this.pt(10.9, 11.6, 1.42), chest, this.head('gil', 1.45));
-        this.pose('gil', { headP: 0.35, shLp: -0.6, shLr: 0.42, elL: -2.25, torsoP: 0.1 }, 2.5);
+        this.act('gil', 'gilHeart', { loop: true, fade: 0.8 });
         this.heart(4);
         return 1.6;
       }],
       [0, () => this.think('Te voy a dar lo que pedís. Pero hay algo que no te voy a dar nunca.')],
       [0.3, () => {
-        this.unpose('gil', 2.5);
-        this.pose('gil', { ...this.rest, headP: -0.1 }, 2.5);
+        this.act('gil', 'gilStand', { loop: true, fade: 0.8, look: 0.1 });
         this.hlOn = true;
         this.glide(4, this.head('gil', 1.5).add(tmpV.set(-1.4, 0.1, 1)), this.head('gil', 1.5).add(tmpV.set(-1.2, 0, 0.8)), H, H);
         return this.say('entidad', '¿Antonio? Te estoy esperando.');
@@ -353,7 +413,7 @@ export default class EsterosEnding extends CastleCine {
       [0.2, () => {
         // la decisión: la escena espera a Gil
         this.quiet();
-        this.glide(CHOOSE_SECS + 10, this.pt(11.3, 12.5, 1.7), this.pt(11.1, 9.2, 1.8), this.head('gil', 1.5));
+        this.glide(CHOOSE_SECS + 10, this.pt(10.7, 13.4, 1.75), this.pt(9.6, 13.5, 1.8), this.head('gil', 1.5));
         this.openChoice();
         return 9999;
       }],
@@ -361,22 +421,21 @@ export default class EsterosEnding extends CastleCine {
   }
 
   // ---- los golpes ----
-  // Gil levanta el facón y lo clava: el golpe llega a los 0.5 s. over: de
-  // arriba (si no, de punta, a la altura del pecho).
-  strike(victim, over = true) {
+  // Gil le pega a `victim` con el clip `clip` (stabOver: de arriba; stabThrust:
+  // de punta); el golpe llega a los HIT s.
+  strike(victim, clip) {
     this.knife.visible = true;
-    this.turn('gil', this.people[victim].r.pos, 0.25);
-    this.pose('gil', over ? { shRp: -2.75, shRr: -0.15, elR: -0.7, torsoP: -0.12, headP: 0.05 } : { shRp: -0.75, shRr: 0, elR: -1.9, torsoP: -0.05, torsoY: 0.35 }, 11);
-    this.later(0.36, () => this.pose('gil', over ? { shRp: -1.05, elR: -0.1, torsoP: 0.42, torsoY: -0.15, headP: 0.2 } : { shRp: -1.5, elR: -0.05, torsoP: 0.3, torsoY: -0.3, headP: 0.1 }, 24));
-    this.later(0.5, () => this.hit(victim));
-    this.later(1.05, () => this.pose('gil', { shRp: -0.8, shRr: null, elR: -0.7, torsoP: 0.12, torsoY: 0, headP: 0.12 }, 4));
-    return 1.1;
+    // (se da vuelta rápido pero sin latigazo: el cuerpo entero no gira más de ~15° por cuadro)
+    this.turn('gil', this.people[victim].r.pos, 0.45);
+    this.act('gil', clip, { fade: 0.22 });
+    this.later(HIT, () => this.hit(victim));
+    this.later(1.15, () => this.act('gil', 'gilBloody', { loop: true, fade: 0.5 }));
+    return 1.2;
   }
 
   hit(victim) {
     const g = this.g;
-    const p = this.people[victim];
-    const r = p.r;
+    const r = this.people[victim].r;
     const G = this.people.gil.r;
     const chest = r.pos.clone().setY(r.pos.y + 1.25);
     const dir = tmpW.copy(r.pos).sub(G.pos).setY(0.2).normalize();
@@ -386,106 +445,122 @@ export default class EsterosEnding extends CastleCine {
     this.betrayalSong();
     this.flash = 1;
     this.shake = 0.45;
-    // el golpe lo dobla: la mano al pecho y se le cae el mate
+    // el golpe lo dobla: las manos a la panza y se le cae el mate
     this.dropMate(victim);
-    this.pose(victim, { torsoP: 0.55, headP: 0.4, shLp: -1, shLr: 0.5, elL: -1.9, shRp: -0.8, elR: -1.4, hipY: 0.86 }, 14);
+    this.turn(victim, G.pos, 0.2);
+    this.act(victim, 'hitDouble', { fade: 0.08 });
   }
 
-  // Cae: de rodillas y de cara al barro (queda ahí, con su sangre).
+  // Cae de rodillas y de cara al barro (queda ahí, con su sangre).
   collapse(victim, wait = 0.5) {
     const r = this.people[victim].r;
-    this.later(wait, () => this.pose(victim, { hipY: 0.5, knL: 1.55, knR: 1.5, hipLp: -0.05, hipRp: 0.05, torsoP: 0.35 }, 7));
-    this.later(wait + 0.6, () => this.pose(victim, { rootPitch: 1.45, rootY: r.pos.y + 0.13, hipY: 0.93, knL: 0.15, knR: 0.3, hipLp: 0, hipRp: 0, torsoP: 0.08, headP: -0.25, shLp: -2.5, shLr: 0.2, elL: -0.3, shRp: -0.4, elR: -0.3 }, 4.5));
+    this.later(wait, () => this.act(victim, 'fallFace', { fade: 0.15 }));
+    this.later(wait + 1.5, () => this.act(victim, 'deadFace', { loop: true, fade: 0.2 }));
     this.later(wait + 1.3, () => {
       const f = tmpV.set(-Math.sin(r.yaw), 0, -Math.cos(r.yaw));
       this.g.fx.decal?.(1, { x: r.pos.x + f.x * 1.1, y: r.pos.y + 0.02, z: r.pos.z + f.z * 1.1 }, { x: 0, y: 1, z: 0 }, 1.3);
     });
   }
 
-  // Muerto de una (lo que pasó a oscuras).
-  lie(victim) {
-    const r = this.people[victim].r;
-    const S = this.people[victim].pose;
-    S.want = { rootPitch: 1.45, rootY: r.pos.y + 0.13, hipY: 0.93, knL: 0.15, knR: 0.3, torsoP: 0.08, headP: -0.25, shLp: -2.5, shRp: -0.4, elL: -0.3, elR: -0.3 };
-    S.v = { ...S.want };
-    this.people[victim].a.hand.children[0].visible = false;
-    const f = tmpV.set(-Math.sin(r.yaw), 0, -Math.cos(r.yaw));
-    this.g.fx.decal?.(1, { x: r.pos.x + f.x * 1.1, y: r.pos.y + 0.02, z: r.pos.z + f.z * 1.1 }, { x: 0, y: 1, z: 0 }, 1.4);
-  }
-
   // Sellar el pacto: los mata a traición (el canónico).
   scriptKill() {
     const P = this.people;
     return [
-      // Cirilo le trae un mate; Gil se da vuelta
+      // Gil va hasta Cirilo, que le convida un mate
       [0.2, () => {
-        this.walk('cirilo', 9.05, 10.75, 1.3);
-        this.pose('cirilo', { shRp: -1.3, elR: -0.35 }, 3);
-        P.cirilo.offer = true;
-        this.turn('gil', this.at(9.05, 10.75), 0.9);
-        this.glide(6.5, this.pt(9.2, 13.1, 1.6), this.pt(9.6, 12.7, 1.5), this.pt(9.6, 10.85, 1.35));
-        return 1.4;
+        const [x, z] = this.near('cirilo', 'gil', 0.82);
+        this.walkTo('gil', x, z, 1.7, { then: 'gilStand', thenO: { look: 0 } });
+        this.later(0.9, () => this.act('cirilo', 'offer', { fade: 0.3 }));
+        // (del lado sur, de perfil: Gil cruza de derecha a izquierda)
+        this.glide(6.5, this.pt(9.7, 8.4, 1.6), this.pt(9.4, 8.7, 1.5), this.pt(8.6, 10.7, 1.35), this.pt(8.2, 10.6, 1.3));
+        return 1.8;
       }],
       [0, () => this.say('cirilo', 'Tomá, Antonio. Uno para el camino.')],
-      [0.1, () => {
-        this.pose('gil', { shLp: -1.05, elL: -0.5 }, 4);
-        return this.say('gil', 'Gracias, hermano.');
-      }],
+      [0.1, () => this.say('gil', 'Gracias, hermano.')],
       // de perfil: el facón sale de abajo del poncho
       [0.2, () => {
         this.quiet();
-        this.glide(3.2, this.pt(9.55, 12.6, 1.45), this.pt(9.5, 12.3, 1.4), this.pt(9.55, 10.8, 1.3));
-        this.pose('gil', { shLp: null, elL: null }, 4);
-        return this.strike('cirilo', true);
+        // de perfil (del sur): el facón sube y baja a la vista
+        const c = P.cirilo.r.pos.clone().lerp(P.gil.r.pos, 0.5);
+        this.glide(3.2, this.pt(c.x + 1.2, c.z - 2.0, 1.5), this.pt(c.x + 1.0, c.z - 1.8, 1.45), this.pt(c.x, c.z, 1.3));
+        // (los otros dos todavía no entienden)
+        return this.strike('cirilo', 'stabOver');
       }],
       [0, () => {
-        this.collapse('cirilo', 0.4);
-        return 1.5;
+        this.collapse('cirilo', 0.2);
+        // el Viejo trastabilla del susto; Benito ya está con las manos arriba
+        this.later(0.1, () => {
+          this.turn('anacleto', P.gil.r.pos);
+          this.act('anacleto', 'stagger', { fade: 0.2 });
+        });
+        this.later(1.6, () => this.act('anacleto', 'winded', { loop: true, fade: 0.5 }));
+        return 1.4;
       }],
       // Benito no entiende y retrocede con las manos arriba
       [0, () => {
-        this.glide(3.2, this.pt(10.6, 8.2, 1.55), this.pt(10.5, 8.45, 1.5), this.head('benito', 1.35));
-        this.pose('benito', { shLp: -2.4, shRp: -2.4, elL: -0.5, elR: -0.5, headP: -0.05, torsoP: -0.1 }, 6);
-        this.dropMate('benito');
-        this.walk('benito', 8.5, 7.5, 1.8, P.gil.r.pos);
+        this.turn('benito', P.gil.r.pos, 0.3);
+        this.act('benito', 'retreat', { fade: 0.2 });
+        this.later(1.45, () => this.act('benito', 'cowerUp', { loop: true, fade: 0.3 }));
+        const b = P.benito.r.pos;
+        this.glide(3.6, this.pt(b.x + 2.6, b.z - 0.3, 1.55), this.pt(b.x + 2.4, b.z - 0.1, 1.5), this.head('benito', 1.35));
         return this.say('benito', '¿Antonio...? ¿Qué hacés, Antonio?');
       }],
       // Gil se le tira encima
       [0.05, () => {
         this.quiet();
-        this.glide(2.8, this.pt(11.3, 7.6, 1.25), this.pt(11.1, 7.9, 1.2), this.pt(8.9, 7.9, 1.1));
-        this.walk('gil', 9.2, 8.2, 0.55);
-        this.later(0.5, () => this.strike('benito', false));
-        return 1.6;
+        const [x, z] = this.near('benito', 'gil', 0.85);
+        const b = P.benito.r.pos;
+        this.glide(2.8, this.pt(b.x + 2.9, b.z - 0.9, 1.25), this.pt(b.x + 2.7, b.z - 0.7, 1.2), this.pt(b.x + 0.5, b.z + 0.4, 1.1));
+        // (la punta sale al llegar y la sangre en el cuadro del golpe: antes el
+        // 'gilBloody' del final de la corrida tapaba la estocada y la sangre
+        // salía 0,4 s después de que llegaba, con el facón ya lejos. El clip
+        // arranca a 0,22 s: el golpe, a los 0,5 del clip.
+        // globalThis.__mduNoBenitoFix: como antes)
+        if (globalThis.__mduNoBenitoFix) {
+          this.walkTo('gil', x, z, 0.85, { run: true, then: 'gilBloody' });
+          this.later(0.82, () => this.strike('benito', 'stabThrust'));
+          return 2;
+        }
+        this.walkTo('gil', x, z, 0.85, { run: true, then: 'stabThrust', thenO: { loop: false, fade: 0.1, t: 0.22 } });
+        // (medido en el juego: la punta llega al pecho 0,36 s después de llegar)
+        this.later(0.85 + 0.36, () => this.hit('benito'));
+        this.later(0.85 + 0.9, () => this.act('gil', 'gilBloody', { loop: true, fade: 0.5 }));
+        return 2;
       }],
       [0, () => {
-        this.collapse('benito', 0.3);
+        this.collapse('benito', 0.2);
         return 1.6;
       }],
       // Anacleto cae de rodillas y le ruega
       [0, () => {
-        this.face('anacleto', P.gil.r.pos);
-        this.pose('anacleto', { hipY: 0.52, knL: 1.55, knR: 1.55, shLp: -1.35, shRp: -1.35, elL: -0.25, elR: -0.25, headP: -0.35 }, 5);
-        this.dropMate('anacleto');
-        this.glide(5, this.pt(8.35, 11.25, 1.2), this.pt(8.3, 11.45, 1.15), this.head('anacleto', 1.0), this.head('anacleto', 0.95));
-        return 0.6;
+        this.turn('anacleto', P.gil.r.pos, 0.6);
+        this.act('anacleto', 'kneelBeg', { fade: 0.3 });
+        this.later(1.0, () => this.act('anacleto', 'kneelBegHold', { loop: true, fade: 0.25 }));
+        this.glide(5, this.pt(8.35, 11.25, 1.2), this.pt(8.3, 11.45, 1.15), this.head('anacleto', 1.0), this.head('anacleto', 0.9));
+        return 0.9;
       }],
       [0, () => this.say('anacleto', '¡Antonio! ¡No! Nosotros te seguimos... desde la guerra...')],
       // Gil camina hasta él; levanta el facón... y a oscuras
       [0.1, () => {
         this.quiet();
-        this.follow(2.6, this.pt(9.3, 13.6, 1.9), this.pt(9.1, 13.5, 2), () => this.head('gil', 1.3));
-        this.walk('gil', 8.35, 11.55, 1.8);
-        this.later(1.9, () => this.pose('gil', { shRp: -2.8, elR: -0.7, torsoP: -0.12 }, 9));
-        return 2.3;
+        // (por arriba de Anacleto, que no tape el cuadro)
+        this.follow(2.8, this.pt(9.7, 14.3, 2.3), this.pt(9.5, 14.2, 2.4), () => this.head('gil', 1.3));
+        const [x, z] = this.near('anacleto', 'gil', 0.9);
+        this.walkTo('gil', x, z, 2, { then: 'raiseKnife', thenO: { fade: 0.4 } });
+        this.later(2.0, () => this.turn('gil', P.anacleto.r.pos, 0.45));
+        return 2.6;
       }],
       [0, () => {
         this.fade(true);
         this.later(0.7, () => {
           this.g.audio.knife?.(true);
           this.flash = 1;
-          this.lie('anacleto');
-          this.pose('gil', { shRp: -0.8, elR: -0.7, torsoP: 0.15 }, 5);
+          // (en lo negro, pero de a poco: sin saltos)
+          this.act('anacleto', 'deadFace', { loop: true, fade: 0.6 });
+          this.act('gil', 'gilBloody', { loop: true, fade: 0.6 });
+          const r = P.anacleto.r;
+          const f = tmpV.set(-Math.sin(r.yaw), 0, -Math.cos(r.yaw));
+          this.g.fx.decal?.(1, { x: r.pos.x + f.x * 1.1, y: r.pos.y + 0.02, z: r.pos.z + f.z * 1.1 }, { x: 0, y: 1, z: 0 }, 1.4);
           this.bloody();
         });
         return 1.9;
@@ -493,9 +568,10 @@ export default class EsterosEnding extends CastleCine {
       // Gil solo, ensangrentado, entre los tres
       [0, () => {
         this.fade(false);
-        this.face('gil', this.H);
+        this.turn('gil', this.H, 1.4);
         const g0 = this.head('gil', 1.2);
-        this.glide(10, this.pt(11, 9, 2.4), this.pt(11.2, 9.6, 2.9), this.pt(8.7, 10.4, 0.5), g0);
+        // (del lado del árbol: de más al sur se metía en cuadro el farol colorado del claro)
+        this.glide(10, this.pt(11.35, 9.1, 2.2), this.pt(11.45, 9.4, 2.5), this.pt(8.7, 10.4, 0.5), g0);
         return 1.6;
       }],
       [0, () => this.say('entidad', 'Ahora sí. Sos mío, Antonio.')],
@@ -506,20 +582,25 @@ export default class EsterosEnding extends CastleCine {
         this.hlOn = false;
         const g0 = this.head('gil', 1.25);
         this.glide(7, this.pt(10.2, 11, 1.5), this.pt(10, 11.1, 1.45), g0, this.head('gil', 1.35));
-        this.pose('gil', { headP: 0.35, shLp: -0.6, shLr: 0.42, elL: -2.25, torsoP: 0.1 }, 2.5);
+        // la hoja, contra el pecho; la cinta: limpia el facón en el poncho
+        if (this.hoja) this.act('gil', 'gilHeart', { loop: true, fade: 0.7 });
+        else {
+          this.act('gil', 'wipeKnife', { fade: 0.5 });
+          this.later(2.2, () => this.act('gil', 'gilBloody', { loop: true, fade: 0.4 }));
+        }
         this.heart(3);
         return 1.2;
       }],
       [0, () => {
-        this.card(this.hoja ? 'Contra el pecho, adentro del poncho, Gil aprieta la hoja que le arrancó al códice. La voz no lo sabe.' : 'Gil limpia el facón en el poncho. En el cabo, atada, una cinta colorada. La voz no la ve.', 5.5);
+        this.card(this.hoja ? 'Contra el pecho, la hoja del códice. La voz no lo sabe.' : 'En el cabo del facón, una cinta colorada. La voz no la ve.', 5.5);
         return this.think(this.hoja ? 'Esta hoja no te la doy.' : 'Esta cinta no te la doy.') + 3.6;
       }],
       [0, () => {
         this.quiet();
-        this.unpose('gil', 2);
+        this.act('gil', 'gilStand', { loop: true, fade: 0.8, look: 0.1 });
         this.hlOn = true;
         const g0 = this.head('gil', 1.2);
-        this.glide(9, this.pt(9.9, 13.3, 1.6), this.pt(7.4, 15.8, 6.8), g0, g0.clone().setY(g0.y + 0.6));
+        this.glide(9, this.pt(9.9, 13.3, 1.6), this.pt(10.9, 14.6, 2.5), g0, g0.clone().setY(g0.y + 0.4));
         return this.say('entidad', 'Hay muchas almas de gaucho para cosechar. Empezá por las de tus amigos. Guardalas bien... que yo las voy a pedir.');
       }],
       [0.6, () => {
@@ -538,14 +619,15 @@ export default class EsterosEnding extends CastleCine {
   // Negarse: los cuatro juntos echan a la voz.
   scriptSpare() {
     const S = this.spots;
+    const P = this.people;
     const gy = S.gil.y;
     return [
       // Gil le apunta al hueco con el facón
       [0.2, () => {
         this.knife.visible = true;
-        this.turn('gil', this.H, 0.4);
-        this.glide(5, this.pt(11.2, 11.5, 1.65), this.pt(11.15, 11.3, 1.6), this.head('gil', 1.5));
-        this.pose('gil', { shRp: -1.5, shRr: 0.05, elR: -0.08, headP: -0.05 }, 4);
+        this.turn('gil', this.H, 0.6);
+        this.act('gil', 'pointKnife', { loop: true, fade: 0.5 });
+        this.glide(5, this.pt(10.5, 12.6, 1.65), this.pt(10.4, 12.4, 1.6), this.head('gil', 1.5));
         return 0.7;
       }],
       [0, () => this.say('gil', 'No. Ellos no.')],
@@ -554,25 +636,45 @@ export default class EsterosEnding extends CastleCine {
         this.hlBoost = 0.4;
         return this.say('entidad', '¿No? Antonio... no sabés lo que estás rechazando.');
       }],
-      // los compañeros se le ponen al lado, mirando el árbol
+      // los compañeros se le ponen al lado, cada uno a su modo: el Viejo
+      // despacio, Cirilo guarda el mate y va tranquilo, Benito duda y después corre
       [0.2, () => {
         this.hlBoost = 0;
-        for (const [k, x, z, d] of [['anacleto', 9.5, 12.2, 1.6], ['cirilo', 9.5, 9.7, 1.3], ['benito', 9.5, 8.6, 1.5]]) {
-          this.walk(k, x, z, d);
-          this.later(d + 0.05, () => this.turn(k, this.H, 0.4));
-        }
+        this.walkTo('anacleto', 9.5, 12.2, 2.6, { then: 'stretch' });
+        // (el Canchero se toma lo que queda de un trago y revolea el mate)
+        this.act('cirilo', 'chug', { fade: 0.3 });
+        this.later(1.45, () => this.tossMate('cirilo'));
+        this.later(2.2, () => this.walkTo('cirilo', 9.5, 9.7, 1.4, { then: 'cool' }));
+        this.later(0.2, () => this.turn('benito', this.spots.gil, 0.25));
+        this.later(1.1, () => this.walkTo('benito', 9.5, 8.6, 1.1, { run: true, then: 'cower' }));
+        for (const [k, d] of [['anacleto', 2.7], ['cirilo', 3.7], ['benito', 2.3]]) this.later(d, () => this.turn(k, this.H));
         const mid = S.gil.clone().setY(gy + 1.2);
-        this.glide(9, this.pt(11.3, 8.4, 1.5), this.pt(11.5, 13.2, 1.6), mid, mid);
-        return 2.2;
+        // (de costado, del lado del árbol: los cuatro en fila frente al hueco)
+        this.glide(9, this.pt(12.2, 8.6, 1.8), this.pt(12.0, 8.9, 1.75), this.pt(9.6, 10.6, 1.2), this.pt(9.7, 10.6, 1.2));
+        return 3.7;
       }],
-      [0, () => this.say('anacleto', 'No sé con quién hablás, Antonio. Pero si es contra vos, es contra nosotros.')],
-      [0.2, () => this.say('benito', '¡Que se vaya a cantarle a otro árbol!')],
+      [0, () => {
+        this.act('anacleto', 'shakeFist', { loop: true, fade: 0.5 });
+        return this.say('anacleto', 'No sé con quién hablás, Antonio. Pero si es contra vos, es contra nosotros.');
+      }],
+      [0.2, () => {
+        // (el Miedoso grita valiente... y se santigua por las dudas)
+        this.later(1.4, () => this.act('benito', 'santiguar', { fade: 0.3 }));
+        this.later(3.4, () => this.act('benito', 'pray', { loop: true, fade: 0.3 }));
+        return this.say('benito', '¡Que se vaya a cantarle a otro árbol!');
+      }],
       [0.3, () => {
-        for (const k of ['anacleto', 'cirilo', 'benito']) this.pose(k, { shRp: -2.6, elR: -0.15, shLp: -0.3, headP: -0.15 }, 5);
-        this.pose('gil', { shRp: -2.7, elR: -0.1 }, 5);
+        this.act('gil', 'knifeUp', { loop: true, fade: 0.35 });
         this.hlBoost = 1;
         this.shake = 1.2;
         this.g.audio.thunder?.(this.H);
+        // el trueno: Benito se agacha, el Viejo trastabilla, Cirilo ni se mueve
+        this.later(0.1, () => this.act('benito', 'duck', { fade: 0.22 }));
+        this.later(1.7, () => this.act('benito', 'cower', { loop: true, fade: 0.4 }));
+        this.later(0.25, () => this.act('anacleto', 'stagger', { fade: 0.22 }));
+        this.later(1.8, () => this.act('anacleto', 'winded', { loop: true, fade: 0.4 }));
+        this.later(0.6, () => this.act('cirilo', 'dust', { fade: 0.3 }));
+        this.later(2.2, () => this.act('cirilo', 'cool', { loop: true, fade: 0.3 }));
         this.glide(6, this.pt(7.3, 10.6, 2), this.pt(7.2, 10.9, 2.4), this.H);
         return this.say('entidad', '¡Esto no termina acá, Antonio! ¡Nada termina nunca!');
       }],
@@ -587,18 +689,35 @@ export default class EsterosEnding extends CastleCine {
         return 2.4;
       }],
       [0, () => {
-        for (const k of ['gil', 'anacleto', 'cirilo', 'benito']) this.unpose(k, 3);
+        this.act('gil', 'gilStand', { loop: true, fade: 0.6 });
         this.knife.visible = false;
-        const mid = S.gil.clone().setY(gy + 1.3);
-        this.glide(6, this.pt(11.2, 12.6, 1.6), this.pt(11, 12.9, 1.7), mid, mid);
+        this.act('anacleto', 'stretch', { loop: true, fade: 0.6 });
+        // (del lado del árbol, sin nadie adelante: los cuatro)
+        const mid = new THREE.Vector3(9.6, gy + 1.2, 10.6);
+        this.glide(6, this.pt(11.4, 10.0, 1.65), this.pt(11.25, 10.3, 1.6), mid, mid);
         return this.say('cirilo', 'Se fue. ¿Se fue? El árbol está... callado.');
       }],
       [0.3, () => this.say('gil', 'Vamos al fogón, muchachos. Esta noche no me hace falta nadie más.')],
       // se van los cuatro juntos, al norte, y el árbol queda a oscuras
       [0.2, () => {
         this.quiet();
-        for (const [k, x, z] of [['gil', 10.2, 6.3], ['anacleto', 9.4, 6.9], ['cirilo', 11, 6.6], ['benito', 10.4, 7.4]]) this.walk(k, x, z, 5.5);
-        this.follow(8, this.pt(9.8, 12.6, 1.7), this.pt(8.2, 14.2, 4.2), () => this.head('gil', 1).lerp(this.head('benito', 1), 0.5));
+        // (cada uno por su carril, sin cruzarse: el que va adelante sigue
+        // adelante y a los costados; antes Gil pasaba por adentro de Cirilo y
+        // de Benito, a 11 cm. Simulado y medido en el juego: nunca a menos de
+        // ~0,9 m. globalThis.__mduNoFogonLanes: como antes)
+        if (globalThis.__mduNoFogonLanes) {
+          this.walkTo('gil', 10.2, 6.3, 5.5);
+          this.later(0.3, () => this.walkTo('cirilo', 11, 6.6, 5.4, { then: 'cool' }));
+          this.later(0.9, () => this.walkTo('anacleto', 9.4, 6.9, 5.6, { then: 'stretch' }));
+          this.later(1.4, () => this.walkTo('benito', 10.4, 7.4, 3.6, { then: 'nervous' }));
+        } else {
+          this.walkTo('gil', 11.0, 7.4, 4.6);
+          this.later(0.3, () => this.walkTo('cirilo', 10.3, 6.5, 4.2, { then: 'cool' }));
+          // (el Viejo, despacio, atrás; el Miedoso, que iba adelante, casi corriendo)
+          this.later(0.9, () => this.walkTo('anacleto', 9.4, 7.6, 5.4, { then: 'stretch' }));
+          this.later(0.6, () => this.walkTo('benito', 9.3, 6.0, 3.2, { then: 'nervous' }));
+        }
+        this.follow(8, this.pt(10.6, 13.4, 2.4), this.pt(11.0, 14.5, 2.6), () => this.head('gil', 1).lerp(this.head('benito', 1), 0.5));
         return 5;
       }],
       [0, () => {
@@ -617,6 +736,7 @@ export default class EsterosEnding extends CastleCine {
     const a = this.people.gil.a;
     a.M.poncho.color.set(0x3a0404).multiplyScalar(1.7);
     a.M.skin.color.set(0x9a3a2a);
+    if (a.M.gaucho) a.M.gaucho.color?.multiplyScalar?.(0.9);
     this.bladeMat.color.set(0x7a1010);
     this.bladeMat.metalness = 0.6;
   }
@@ -712,7 +832,7 @@ export default class EsterosEnding extends CastleCine {
         this.next = this.t;
         this.quiet();
         this.cardEl.style.opacity = '0';
-        this.unpose('gil', 8);
+        this.act('gil', 'gilStand', { loop: true, fade: 0.4, look: 0.1 });
         this.hlOn = true;
       }
       return;
@@ -756,8 +876,9 @@ export default class EsterosEnding extends CastleCine {
         a.done?.();
       }
     }
+    for (const p of Object.values(this.people)) this.moveTick(p, dt);
     this.npc.update(dt);
-    for (const m of MATES) this.holdMate(this.people[m.key]);
+    this.poseAll(dt);
     // el hueco: una luz fría que late cuando la voz habla
     const want = this.hlOn ? 2.2 + Math.sin(t * 2.4) * 0.6 + (this.hlBoost || 0) * 8 : 0;
     this.hl.intensity = lerp(this.hl.intensity, want, Math.min(1, dt * 3));
@@ -773,26 +894,85 @@ export default class EsterosEnding extends CastleCine {
     }
   }
 
-  // El mate parado en la mano. La mano sigue al antebrazo, que casi nunca
-  // está vertical, y el mate quedaba acostado o boca abajo: acá se lo pone
-  // derecho arriba del puño, con la bombilla para el lado del que lo tiene
-  // (o para el otro, si lo está convidando).
+  // Cada uno con su clip (después de Avatars, que arma la pose de piezas): el
+  // cuerpo, las piezas desde los huesos, el facón y el mate de Cirilo en la mano.
+  poseAll(dt) {
+    const t = this.t;
+    for (const p of Object.values(this.people)) {
+      const S = p.cc;
+      const a = p.a;
+      if (!S || !a.gs?.on) continue;
+      const c = this.clipOf(S.name);
+      if (!c) continue;
+      // (si los clips de siempre bajaron recién: desde la pose de piezas que tenía)
+      if (!S.snap) {
+        S.snap = cineSnap(a);
+        S.at = t;
+        S.fade = Math.max(S.fade, 0.3);
+      }
+      S.lt += dt * S.rate;
+      const o = { loop: S.loop, look: S.look };
+      if (S.snap && t - S.at < S.fade) {
+        o.snap = S.snap;
+        o.sw = smooth(Math.min(1, (t - S.at) / S.fade));
+      }
+      const r = p.r;
+      if (!poseCineClip(a, c, S.loop ? S.lt : Math.min(S.lt, c.dur), r.pos.x, r.pos.y, r.pos.z, r.yaw + Math.PI, o)) continue;
+      // las piezas (y lo que cuelga de la mano: el facón, el mate) al cuerpo nuevo
+      a.mats[6].decompose(tmpV, tmpQ, tmpS);
+      a.hand.matrix.compose(tmpV, tmpQ, ONE);
+      a.hand.matrixWorldNeedsUpdate = true;
+      if (a.gun) a.gun.visible = false;
+      if (p.key === 'cirilo') this.holdMate(p);
+    }
+  }
+
+  // El mate de Cirilo parado en su mano (la palma arriba, el antebrazo casi
+  // horizontal en los clips): arriba del puño, derecho, con la bombilla para
+  // su lado (o para el otro, si lo convida).
   holdMate(p) {
-    const hand = p.a.hand;
-    const mate = hand.children[0];
+    const a = p.a;
+    const mate = a.hand.children[0];
     if (!mate?.visible) return;
-    const at = tmpV.set(0, -0.2, 0).applyMatrix4(hand.matrix);
-    at.y += 0.1;
-    tmpQ.setFromAxisAngle(UP, p.r.yaw + (p.offer ? Math.PI / 2 : Math.PI * 1.5));
-    tmpM.compose(at, tmpQ, ONE).premultiply(tmpI.copy(hand.matrix).invert());
+    const B = a.gs.bones;
+    B.RightHand.getWorldPosition(tmpV);
+    B.RightForeArm.getWorldPosition(tmpW);
+    tmpW.subVectors(tmpV, tmpW).normalize();
+    tmpV.addScaledVector(tmpW, 0.07);
+    tmpV.y += 0.04;
+    tmpQ.setFromAxisAngle(UP, p.r.yaw + (p.cc?.name === 'offer' ? Math.PI / 2 : Math.PI * 1.5));
+    tmpM.compose(tmpV, tmpQ, ONE).premultiply(tmpI.copy(a.group.matrixWorld).multiply(a.hand.matrix).invert());
     tmpM.decompose(mate.position, mate.quaternion, mate.scale);
   }
 
-  // Suelta el mate: cae al barro y queda ahí (el que levanta las manos, el
-  // que ruega, el que recibe el golpe).
+  // Revolea el mate por arriba del hombro: sale de la mano, da vueltas en el
+  // aire y cae atrás, en el pasto.
+  tossMate(key) {
+    const p = this.people[key];
+    const m = p.a.hand.children[0];
+    if (!m?.visible) return;
+    m.updateWorldMatrix(true, false);
+    const c = m.clone();
+    m.visible = false;
+    m.matrixWorld.decompose(c.position, c.quaternion, c.scale);
+    this.root.add(c);
+    const from = c.position.clone();
+    const back = tmpV.set(Math.sin(p.r.yaw), 0, Math.cos(p.r.yaw)).multiplyScalar(3.2);
+    const to = from.clone().add(back).add(tmpW.set(-Math.cos(p.r.yaw), 0, Math.sin(p.r.yaw)).multiplyScalar(0.8));
+    to.y = this.g.world.floorAt(to.x, to.z) + 0.05;
+    const q0 = c.quaternion.clone();
+    const spin = new THREE.Vector3(Math.cos(p.r.yaw), 0, -Math.sin(p.r.yaw));
+    this.anim(1.0, (k) => {
+      c.position.lerpVectors(from, to, k);
+      c.position.y = lerp(from.y, to.y, k) + 4 * 1.3 * k * (1 - k);
+      c.quaternion.copy(q0).premultiply(tmpQ.setFromAxisAngle(spin, k * Math.PI * 3.2));
+    });
+  }
+
+  // Suelta el mate: cae al barro y queda ahí.
   dropMate(key) {
     const m = this.people[key].a.hand.children[0];
-    if (!m.visible) return;
+    if (!m?.visible) return;
     m.updateWorldMatrix(true, false);
     const c = m.clone();
     m.visible = false;
@@ -810,6 +990,7 @@ export default class EsterosEnding extends CastleCine {
 
   cleanup() {
     const g = this.g;
+    if (this.expo0 != null) g.renderer.toneMappingExposure = this.expo0;
     window.removeEventListener('keydown', this.onPickKey);
     document.removeEventListener('mousemove', this.onPickMove);
     window.removeEventListener('wheel', this.onPickWheel);

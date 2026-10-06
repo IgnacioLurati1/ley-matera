@@ -643,7 +643,7 @@ export const WEAPONS = {
   // arranca el alma a los muertos que tenés adelante (weapons/Farol.js).
   farol: {
     name: 'Farol de las Ánimas',
-    desc: 'Mantené el clic: les arranca el alma a los muertos que tenés adelante.',
+    desc: 'Mantené el clic: les arranca el alma a los muertos que tenés adelante. Clic derecho: gaucho life para vos y los de al lado.',
     kind: 'farol',
     auto: true,
     rpm: 600,
@@ -661,7 +661,8 @@ export const WEAPONS = {
     bossMult: 0.3,
     // cono (coseno del medio ángulo), cuántos a la vez, segundos hasta vaciar a
     // uno común, qué parte de la vida del jefe por segundo, y la explosión final
-    drain: { cos: 0.8, targets: 10, time: 0.8, boss: 0.03, burst: 9 },
+    // (vaciar a uno común: 0,45 s; era 0,8 y se sentía flojo)
+    drain: { cos: 0.8, targets: 10, time: 0.45, boss: 0.03, burst: 9 },
   },
   // El penal: el trabuco de bombillas (sale de la caja solo ahí) y su versión con
   // el kit de ácido (se arma en la enfermería y se carga de almas en el encierro).
@@ -1051,14 +1052,17 @@ export const WEAPONS = {
   //  · wave (mejorado): la medialuna celeste de cada tajo
   //  · carga (mejorado): bajas para llenarla, largo, medio ancho del pasillo,
   //    velocidad del galope, cuánto se mantiene el derecho y a los jefes
+  //  · mag/reserve: los tiros del derecho (el cargador se llena solo de la
+  //    reserva cuando vuelve vacío; la Carga no gasta). Mata de un tajo hasta
+  //    la ronda oneHit con un golpe de verdad, no infinito (el usuario, 2026-10-05)
   sable: {
     name: 'Sable Corvo',
     desc: 'Izquierdo: tajos. Derecho: tiralo, vuelve solo.',
     kind: 'sable',
     auto: true,
     rpm: 135,
-    mag: 0,
-    reserve: 0,
+    mag: 6,
+    reserve: 30,
     reload: 1,
     damage: 0,
     headMult: 1,
@@ -1068,17 +1072,122 @@ export const WEAPONS = {
     special: true,
     wonder: true,
     noAds: true,
-    slash: { range: 3.6, cos: 0.25, targets: 5, oneHit: 26, boss: 0.03, bossMin: 1800 },
+    slash: { range: 3.6, cos: 0.25, targets: 5, oneHit: 40, boss: 0.03, bossMin: 1800 },
     throw: { reach: 13, side: 3.6, time: 1.35, radius: 1.25, cd: 3, boss: 0.06, bossMin: 3000 },
     pap: {
       name: 'Sable de San Lorenzo',
       desc: 'Cada tajo larga una medialuna. Con la carga llena, mantené el derecho.',
       rpm: 150,
-      slash: { range: 3.9, cos: 0.18, targets: 6, oneHit: 36, boss: 0.04, bossMin: 2600 },
+      mag: 8,
+      reserve: 48,
+      slash: { range: 3.9, cos: 0.18, targets: 6, oneHit: 45, boss: 0.04, bossMin: 2600 },
       throw: { reach: 16, side: 4.4, time: 1.45, radius: 1.6, cd: 2.6, boss: 0.08, bossMin: 4500 },
       wave: { range: 12, speed: 30, half: 2.3, boss: 0.012 },
       carga: { kills: 25, len: 38, half: 4.2, speed: 17, hold: 0.45, boss: 0.3, bossMin: 12000 },
     },
+  },
+  // El Desgarrador Cósmico (la maravilla de Eclipse Matero): la guadaña violeta
+  // y negra que desgarra el espacio-tiempo. No sale de la caja ni entra en el
+  // Pack-a-Pava (noPap): la da el mapa (weapons.cosmic.give()) y la mejora es
+  // la misión del temple (weapons.cosmic.upgrade()). weapons/Desgarrador.js
+  // v3 (pedido del usuario 2026-10-06): la mejorada de antes es la común (con
+  // la Furia); la mejorada nueva es poder divino (la ruptura, el pozo, la falla).
+  //  · slash / finisher: los tres tajos del combo y el remate (alcance, coseno
+  //    del medio ángulo, cuántos corta, hasta qué ronda mata de un golpe; a los
+  //    jefes, la parte de su vida y lo mínimo: nunca de uno). wave: la onda del
+  //    remate (radio, parte de un tajo, jefes, empujón)
+  //  · rift: la grieta de cada tajo (segundos; cada cuánto pega y cada cuánto
+  //    al mismo; frac: parte de un tajo; jefes)
+  //  · throw: la guadaña espectral (lejos, de costado, segundos de vuelo, radio
+  //    del corte, espera; frac y jefes como arriba). Gasta una carga. pull: de
+  //    ida arrastra hacia ella (radio, m/s); burst: revienta al volver (como wave)
+  //  · dash: la embestida (metros, segundos, espera, medio ancho del pasillo).
+  //    crack: la raja que deja en el piso (segundos, parte de un tajo a quien la
+  //    pisa); burst: el estallido del final (como wave)
+  //  · spin: el giro de la R (segundos, radio del empujón, empujón, frac)
+  //  · furia: bajas para llenarla, segundos, más rápida (rpm), más daño, más
+  //    velocidad, vida por baja, el rayo (alcance, ancho, tick; a los jefes, por
+  //    segundo y el tope por tick; ws: lo gordo del rayo) y la onda que sale de
+  //    cada tajo (m/s, hasta dónde, parte de un tajo, jefes)
+  //  · exec (la ejecutora del Cazador del Caos): segundos si no viene otro,
+  //    espera de la embestida, Furia por baja, la nube rosa y la onda rosa
+  //  · la mejorada (pap), lo nuevo: rift.swallow (la grieta se los traga);
+  //    finisher.rupture (la ruptura: los traga en kill m, tumba a los de radius
+  //    m, la burbuja que frena el tiempo y el rasgón de la pantalla); throw.trio
+  //    (tres guadañas) y throw.well (el pozo de gravedad en la punta de la del
+  //    medio: radio, segundos, m/s, el radio donde se los traga); dash.crack.fault
+  //    (la falla en el piso: 6 s, corta todo lo que la cruza); furia.rain (la
+  //    lluvia de guadañas: cada cuánto, cuántas, radio) y furia.dust (los
+  //    ejecutados se vuelven polvo de estrellas que cura)
+  desgarrador: {
+    name: 'Desgarrador Cósmico',
+    desc: 'Izquierdo: tajos. Derecho: guadaña. V: embestida. R: giro. Furia llena: H.',
+    kind: 'cosmic',
+    auto: true,
+    rpm: 165,
+    mag: 8,
+    reserve: 56,
+    reload: 1.1,
+    damage: 0,
+    headMult: 1,
+    range: 4,
+    sound: 'silent',
+    recoil: 0.04,
+    special: true,
+    wonder: true,
+    noAds: true,
+    noPap: true,
+    slash: { range: 4.5, cos: 0.15, targets: 8, oneHit: 55, boss: 0.05, bossMin: 3400 },
+    finisher: { range: 5.2, cos: -0.45, targets: 14, oneHit: 55, boss: 0.08, bossMin: 5000, wave: { radius: 6, frac: 0.8, boss: 0.025, bossMin: 1600, push: 10 } },
+    rift: { life: 1.8, tick: 0.2, again: 0.4, frac: 0.85, boss: 0.009, bossMin: 650 },
+    throw: { reach: 18, side: 4.8, time: 1.5, radius: 1.9, cd: 0.75, frac: 1, boss: 0.09, bossMin: 5000, pull: { radius: 4.2, speed: 7.5 }, burst: { radius: 4, frac: 1.1, boss: 0.035, bossMin: 2200, push: 9 } },
+    dash: { len: 8, time: 0.2, cd: 1.8, half: 1.6, frac: 1.25, boss: 0.06, bossMin: 4000, crack: { life: 2.6, frac: 0.6 }, burst: { radius: 4, frac: 1.2, boss: 0.035, bossMin: 2200, push: 10 } },
+    spin: { time: 1, radius: 3.2, push: 9, dmg: 0.45 },
+    furia: { kills: 30, time: 20, rate: 1.35, dmg: 1.5, move: 1.25, heal: 15, beam: { range: 32, width: 0.7, tick: 0.1, boss: 8000, cap: 1200, ws: 0.85 }, wave: { speed: 22, range: 12, frac: 1, boss: 0.012, bossMin: 700 } },
+    exec: { time: 20, dashCd: 0, furia: 2, cloud: { radius: 3.4, frac: 1.3 }, wave: { speed: 26, range: 14, frac: 50, boss: 0.02, bossMin: 1500 } },
+    pap: {
+      name: 'Desgarrador del Eclipse',
+      desc: 'Rompe el espacio: se los traga. Furia llena: H.',
+      rpm: 180,
+      mag: 10,
+      reserve: 90,
+      slash: { range: 5, cos: 0.08, targets: 12, oneHit: 80, boss: 0.065, bossMin: 4500 },
+      finisher: { range: 6, cos: -0.6, targets: 20, oneHit: 80, boss: 0.1, bossMin: 7000, wave: { radius: 7, frac: 1, boss: 0.03, bossMin: 2400, push: 12 }, rupture: { at: 2.2, kill: 6.5, radius: 10, push: 13, reel: 1.1, boss: 0.035, bossMin: 3000, bubble: { radius: 8, time: 2.2, slow: 0.16 } } },
+      rift: { life: 3.2, tick: 0.18, again: 0.35, frac: 1.3, boss: 0.012, bossMin: 900, swallow: true },
+      throw: { reach: 20, side: 5.2, time: 1.6, radius: 2.1, cd: 0.7, frac: 1.3, boss: 0.1, bossMin: 6000, pull: { radius: 4.6, speed: 8 }, burst: { radius: 4.4, frac: 1.3, boss: 0.04, bossMin: 2600, push: 10 }, trio: { lag: 0.08 }, well: { at: 0.6, radius: 8.5, time: 1.5, pull: 11, core: 3.4, boss: 0.05, bossMin: 4000 } },
+      dash: { len: 9.5, time: 0.2, cd: 1.4, half: 1.9, frac: 1.6, boss: 0.07, bossMin: 5000, crack: { life: 6, frac: 2, w: 0.36, fault: true }, burst: { radius: 4.6, frac: 1.4, boss: 0.04, bossMin: 2600, push: 11 } },
+      spin: { time: 0.95, radius: 4.2, push: 11, dmg: 0.7 },
+      furia: { kills: 30, time: 22, rate: 1.45, dmg: 2, move: 1.3, heal: 20, beam: { range: 40, width: 1.3, tick: 0.08, boss: 12000, cap: 1800, ws: 1.6 }, wave: { speed: 26, range: 16, frac: 1.5, boss: 0.016, bossMin: 1000 }, rain: { every: 1.1, n: 4, radius: 16, frac: 3, boss: 0.025, bossMin: 2500 }, dust: true },
+    },
+  },  // El Cazador del Caos (el potenciador de Eclipse Matero: entities/Powerups
+  // PERSONAL.caos; antes daba el farol del penal): una bruma violeta que gira
+  // en la mano (weapons/Cazador.js; con el Desgarrador en la mano, en cambio,
+  // la guadaña se vuelve la ejecutora). Sus modelos solo se arman en Eclipse.
+  //  · mist: el izquierdo tira la bruma adelante (cono: largo, coseno del medio
+  //    ángulo, segundos que dura, segundos adentro hasta sacarle el caos a uno
+  //    común, espera, jefes: parte de la vida por segundo)
+  //  · suck: el derecho le chupa el caos a los de alrededor (radio, cuántos,
+  //    segundos hasta que llegan a la mano, espera, vida por cada uno, jefes)
+  cazador: {
+    name: 'Cazador del Caos',
+    desc: 'Izquierdo: la bruma. Derecho: les chupa el caos.',
+    kind: 'cazador',
+    auto: true,
+    rpm: 600,
+    mag: 9999,
+    reserve: 0,
+    reload: 1,
+    damage: 0,
+    headMult: 1,
+    range: 7,
+    sound: 'silent',
+    recoil: 0,
+    moveMult: 1,
+    special: true,
+    temp: true,
+    bossMult: 0.3,
+    mist: { range: 7.5, cos: 0.78, time: 1.5, kill: 0.3, cd: 1.1, boss: 0.05 },
+    suck: { radius: 6, targets: 14, time: 0.8, cd: 2.2, heal: 8, boss: 0.05, bossMin: 2000 },
   },
 };
 

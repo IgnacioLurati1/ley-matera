@@ -5,6 +5,7 @@ import * as esteros from './maps/esteros';
 import * as torre from './maps/torre';
 import * as castillo from './maps/castillo';
 import * as monumento from './maps/monumento';
+import * as eclipse from './maps/eclipse';
 import { shapeRuns } from '../world/esterosGround';
 
 // Mapa en juego. Cada mapa es un módulo de config/maps/ con la misma forma;
@@ -12,7 +13,11 @@ import { shapeRuns } from '../world/esterosGround';
 // mapa actual (las exportaciones con `let` son enlaces vivos). Se cambia con
 // useMap() antes de armar el mundo (Game.buildScene).
 
-export const MAPS = { molino, granja, penal, esteros, torre, castillo, monumento };
+// "Eclipse Matero", el mapa final, está en obra: existe solo con
+// globalThis.__mduEclipse = true (para probarlo); sin eso no se lista ni se
+// puede elegir, y nada de lo que cuenta mapas lo ve.
+const ECLIPSE = globalThis.__mduEclipse === true;
+export const MAPS = { molino, granja, penal, esteros, torre, castillo, monumento, ...(ECLIPSE ? { eclipse } : {}) };
 // Para el menú: nombre corto y una línea.
 export const MAP_LIST = [
   { id: 'molino', name: 'El Molino', sub: 'Un molino yerbatero abandonado en Misiones' },
@@ -21,7 +26,13 @@ export const MAP_LIST = [
   { id: 'esteros', name: 'Mate no Numa', sub: 'Los Esteros del Iberá, bajo la luna llena' },
   { id: 'torre', name: 'Revelaciones Materas', sub: 'Una torre de quince pisos en el ojo del remolino' },
   { id: 'castillo', name: 'Der Mateendrache', sub: 'Un castillo en la cordillera nevada, donde duerme el dragón' },
-  // (el mapa bonus, el Monumento, todavía no se publica: queda fuera de la lista)
+  // el mapa bonus
+  { id: 'monumento', name: 'Monumento al Mate', sub: 'El Monumento a la Bandera, de noche, a orillas del Paraná', bonus: true },
+  // el mapa final (en obra: ver ECLIPSE arriba)
+  // (`final`: el final canónico va aparte de la ronda. Su easter egg se anota y
+  // tiene su logro, pero no cuenta para el super easter egg: el que ya es
+  // Caballero de la Luz con los seis no pierde nada. Decisión del usuario.)
+  ...(ECLIPSE ? [{ id: 'eclipse', name: 'Eclipse Matero', sub: 'Todos los mundos de la ronda, rotos bajo un mismo eclipse', final: true }] : []),
 ];
 
 // Modos de juego de cada mapa (por ahora solo la torre tiene otro): el de

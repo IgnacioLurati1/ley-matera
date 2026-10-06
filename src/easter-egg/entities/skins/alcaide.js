@@ -39,8 +39,13 @@ export default {
   loops: ['quieto', 'caminar', 'carga', 'llama', 'dolor'],
   // la cadena sale de la izquierda (el tiro, espejado: entities/bossMoves.js chainThrow)
   alias: { whip: 'LeftHand' },
-  // la cachiporra (bossRig 'baton', pieza 17) en la mano derecha
-  hand: { part: 17, fore: 'RightForeArm', bone: 'RightHand', grip: 0.3 },
+  // la cachiporra (bossRig 'baton', pieza 17) en la mano derecha. grip: el
+  // mango (y 0,12 de la pieza: la cachiporra corrida -0,2 y el mango a +0,32)
+  // en el puño; con 0,3 quedaba toda adelante del puño, sin tocar la mano
+  // (el usuario, 2026-10-05)
+  // (upright: false: con el brazo colgando, colgando para abajo; parada se
+  // metía entera adentro del antebrazo y no se veía)
+  hand: { part: 17, fore: 'RightForeArm', bone: 'RightHand', grip: 0.12, upright: false },
 
   ready(S) {
     attach(S, { side: 'Left', len: 1.3 });

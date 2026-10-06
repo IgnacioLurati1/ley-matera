@@ -1413,4 +1413,60 @@ export const PAINT_PAP = {
       },
       { scale: 1.2 },
     ),
+  // Eclipse Matero: nebulosa negra y violeta con eclipses (el disco negro y un
+  // anillo fino de oro, la corona que se apaga en violeta) y grietas finas de
+  // luz rosada. (Los círculos van el doble de altos en el canvas: en el mate
+  // la v se estira, como los soles del Monumento.)
+  eclipse: () =>
+    pixels(
+      (u, v, x, y) => {
+        const n = fbm(u, v, 6, 3, 5, 1877);
+        const wisp = fbm(u + n * 0.15, v, 4, 2, 4, 1878);
+        let c = mix([6, 3, 14], [44, 16, 92], n * n);
+        c = mix(c, [112, 52, 230], smooth(0.58, 0.86, wisp) * 0.7);
+        // estrellas sueltas
+        if (hash(x >> 1, y >> 1, 1879) > 0.9965) c = [236, 224, 255];
+        // los eclipses: cuatro alrededor, a dos alturas
+        const gu = u * 4;
+        const col = Math.floor(gu);
+        const gv = v * 2 + (col % 2) * 0.5;
+        const cu = gu - col - 0.5;
+        const cv = gv - Math.floor(gv) - 0.5;
+        const r = Math.hypot(cu, cv * 0.5);
+        let h = 0.3 + n * 0.25;
+        let rough = 0.35;
+        let metal = 0.05;
+        if (r < 0.12) {
+          // el disco negro (la luna del Chiquitijuein)
+          c = shade([10, 6, 16], 0.8 + n * 0.4);
+          h = 0.55;
+          rough = 0.2;
+        } else if (r < 0.136) {
+          c = [255, 200, 92];
+          h = 0.85;
+          rough = 0.22;
+          metal = 1;
+        } else if (r < 0.25) {
+          // la corona: oro que se apaga en violeta
+          const k = (r - 0.136) / 0.114;
+          const ray = 0.75 + 0.25 * Math.sin(Math.atan2(cv, cu) * 14 + n * 6);
+          c = mix(c, mix([246, 176, 70], [130, 60, 240], Math.min(1, k * 1.4)), (1 - k) ** 2 * ray);
+        }
+        // las grietas: hilos de luz rosada en una red de voronoi, solo en parte
+        if (r > 0.14) {
+          const [d1, d2] = voronoi(u, v, 10, 5, 1880, 0.95);
+          const e = d2 - d1;
+          const on = smooth(0.48, 0.58, fbm(u, v, 3, 2, 3, 1881));
+          if (on > 0) {
+            const core = 1 - smooth(0.006, 0.02, e);
+            const halo = 1 - smooth(0.02, 0.07, e);
+            c = mix(c, [150, 70, 255], halo * on * 0.55);
+            c = mix(c, [255, 206, 250], core * on);
+            h -= core * on * 0.25;
+          }
+        }
+        return [...c, h, rough, metal];
+      },
+      { scale: 1.2, detail: 0.08 },
+    ),
 };

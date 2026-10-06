@@ -425,6 +425,9 @@ export default class Player {
 
     const hs = Math.hypot(this.vel.x, this.vel.z);
     this.moving = hs > 0.6;
+    // cuánto se mece la cabeza: entra y sale suave (al frenar, el vaivén se
+    // cortaba de golpe y la cámara daba un saltito de hasta 3 cm; 2026-10-05)
+    this.bobK = (this.bobK ?? 0) + ((this.moving && this.onGround ? 1 : 0) - (this.bobK ?? 0)) * Math.min(1, dt * 8);
     if (this.moving && this.onGround) {
       this.bobPhase += hs * dt * 1.9;
       this.stepDist += hs * dt;
@@ -506,7 +509,7 @@ export default class Player {
 
   updateCamera(cam) {
     const g = this.g;
-    const bob = this.moving && this.onGround ? Math.abs(Math.sin(this.bobPhase)) * 0.035 * (this.sprinting ? 1.5 : 1) : 0;
+    const bob = Math.abs(Math.sin(this.bobPhase)) * 0.035 * (this.sprinting ? 1.5 : 1) * (this.bobK ?? 0);
     cam.position.set(this.pos.x, this.pos.y + this.eye - bob - this.landKick * 0.08, this.pos.z);
     const sh = g.fx.shake * g.settings.shake;
     const t = g.time;
@@ -514,7 +517,7 @@ export default class Player {
     cam.rotation.set(
       this.pitch - (g.weapons?.viewDip || 0) + Math.sin(t * 37) * sh * 0.03 + F.cp,
       this.yaw + Math.sin(t * 29) * sh * 0.03 + F.cy,
-      (this.moving ? Math.cos(this.bobPhase) * 0.004 : 0) + Math.sin(t * 23) * sh * 0.02 + (this.downed ? 0.3 : 0) + (this.swim >= 2 ? Math.sin(this.bobPhase * 0.5 + t * 0.8) * 0.025 : 0) + F.cr,
+      Math.cos(this.bobPhase) * 0.004 * (this.bobK ?? 0) + Math.sin(t * 23) * sh * 0.02 + (this.downed ? 0.3 : 0) + (this.swim >= 2 ? Math.sin(this.bobPhase * 0.5 + t * 0.8) * 0.025 : 0) + F.cr,
       'YXZ',
     );
   }

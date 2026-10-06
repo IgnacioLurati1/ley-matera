@@ -344,9 +344,16 @@ export default class Carga {
     ch.t += dt;
     let front = -99;
     let alive = 0;
+    // (con escalones, cada jinete va por su piso: a altura fija se
+    // enterraban subiendo las gradas; Sable.cargaReach ya sigue el piso)
+    const ground = g.world.levels && !globalThis.__mduNoCargaSlope;
     for (const r of ch.riders) {
       r.along += r.speed * dt;
       r.ph += dt * (3 + r.speed * 1.45);
+      if (ground) {
+        const fy = g.world.floorAt(ch.o.x + ch.fwd.x * r.along + ch.right.x * r.lat, ch.o.z + ch.fwd.z * r.along + ch.right.z * r.lat, r.y + 1.6);
+        if (Number.isFinite(fy) && Math.abs(fy - r.y) < 2.5) r.y += (fy - r.y) * Math.min(1, dt * 14);
+      }
       // aparece de a poco detrás, se apaga al llegar
       const fin = ch.reach - r.along;
       const fadeIn = Math.min(1, ch.t / 0.35);
@@ -409,7 +416,7 @@ export default class Carga {
       const pitch = Math.sin(ph * 2) * 0.06;
       const y = Math.abs(Math.sin(ph)) * 0.12 + 0.15 * (1 - r.f);
       tmpV.copy(ch.o).addScaledVector(ch.fwd, r.along).addScaledVector(ch.right, r.lat);
-      tmpV.y = ch.o.y + y;
+      tmpV.y = (globalThis.__mduNoCargaSlope ? ch.o.y : r.y) + y;
       tmpE.set(pitch, ch.yaw, Math.sin(ph) * 0.03, 'YXZ');
       tmpQ.setFromEuler(tmpE);
       tmpM.compose(tmpV, tmpQ, tmpS);
@@ -454,7 +461,8 @@ export default class Carga {
 
   // ---------------- lo que se escucha ----------------
   // El clarín del toque de carga (bronce: diente de sierra filtrado con
-  // vibrato), el relincho de los fantasmas, "¡A la carga!" murmurado y el viento.
+  // vibrato), el relincho de los fantasmas y el viento. (El "¡A la carga!"
+  // murmurado se sacó, el usuario 2026-10-05; __mduNoCargaSilence: vuelve.)
   sndStart(pos, ch) {
     const g = this.g;
     const a = g.audio;
@@ -480,7 +488,7 @@ export default class Carga {
     g.later(0.25, () => a.neigh(pos || g.player.pos.clone().addScaledVector(ch.fwd, -5), 1.12));
     g.later(0.75, () => a.neigh(pos || g.player.pos.clone().addScaledVector(ch.fwd, 3), 1.25));
     // (las voces son solo murmullos; con las voces apagadas, solo el clarín)
-    if (a.voiceMode !== 'off') g.later(1.35, () => a.murmur('¡A la carga!', 'sargento', a.now));
+    if (globalThis.__mduNoCargaSilence && a.voiceMode !== 'off') g.later(1.35, () => a.murmur('¡A la carga!', 'sargento', a.now));
   }
 
   // Un golpe de cascos de muchos (k: cuántos quedan).

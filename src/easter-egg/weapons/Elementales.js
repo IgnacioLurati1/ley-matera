@@ -351,6 +351,34 @@ export default class Elementales {
   tornadoMesh(at) {
     const grp = new THREE.Group();
     grp.position.copy(at);
+    this.windMaterial();
+    for (let k = 0; k < 5; k++) {
+      const c = new THREE.Mesh(this.geo.cone, this.windMat);
+      const s = 0.8 + k * 0.55;
+      c.scale.set(s, 1.6, s);
+      c.rotation.x = Math.PI;
+      c.position.y = 0.8 + k * 1.3;
+      c.userData.k = k;
+      grp.add(c);
+    }
+    this.g.scene.add(grp);
+    return grp;
+  }
+
+  // Para la carga del mapa (Weapons.warmFx): el remolino de la Zonda y la llama
+  // de la erupción del Pillán armaban material y textura recién al usarse.
+  warm(grp) {
+    grp.add(new THREE.Mesh(this.geo.cone, this.windMaterial()));
+    grp.add(new THREE.Mesh(new THREE.PlaneGeometry(1, 1), flameMaterial()));
+    grp.add(new THREE.Mesh(this.geo.ring, this.mats.fire));
+    try {
+      this.g.renderer?.initTexture(this.windMat.map);
+    } catch {
+      /* se sube al verla, como antes */
+    }
+  }
+
+  windMaterial() {
     if (!this.windMat) {
       const c = document.createElement('canvas');
       c.width = 64;
@@ -369,17 +397,7 @@ export default class Elementales {
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       this.windMat = new THREE.MeshBasicMaterial({ color: 0xcfeede, map: t, alphaMap: t, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     }
-    for (let k = 0; k < 5; k++) {
-      const c = new THREE.Mesh(this.geo.cone, this.windMat);
-      const s = 0.8 + k * 0.55;
-      c.scale.set(s, 1.6, s);
-      c.rotation.x = Math.PI;
-      c.position.y = 0.8 + k * 1.3;
-      c.userData.k = k;
-      grp.add(c);
-    }
-    this.g.scene.add(grp);
-    return grp;
+    return this.windMat;
   }
 
   // ---------------- Illapa ----------------

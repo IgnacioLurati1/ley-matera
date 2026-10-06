@@ -3,6 +3,9 @@
 // Dos canales: uno confiable y ordenado para los avisos importantes (compras,
 // puertas, rondas) y otro rápido que puede perder paquetes para las posiciones.
 
+// Sin puente: solo STUN (cada compu averigua su dirección pública). Si el sitio
+// da servidores con puente TURN (Net.ice), se usan esos: cuando la red de
+// alguien no deja conectar directo, los datos pasan por el puente.
 const ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
 
 // Espera a que termine de juntar los caminos de red para mandar todo junto
@@ -21,8 +24,9 @@ function gathered(pc) {
   });
 }
 
-export function createPeer() {
-  const pc = new RTCPeerConnection({ iceServers: ICE });
+export function createPeer(iceServers) {
+  // (__mduRelayOnly: las pruebas fuerzan el puente para ver que anda)
+  const pc = new RTCPeerConnection({ iceServers: iceServers || ICE, ...(globalThis.__mduRelayOnly ? { iceTransportPolicy: 'relay' } : {}) });
   const peer = {
     pc,
     reliable: null,

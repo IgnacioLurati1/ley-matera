@@ -1,6 +1,9 @@
 import * as THREE from 'three';
-import CastleCine, { smooth, lerp, uprightMate } from './castleCine';
+import CastleCine, { smooth, lerp, uprightMate, knightMate, knightMouth } from './castleCine';
+import { ELEMENTS, MATE_OF } from '../entities/castle/common';
 import Avatars from '../net/Avatars';
+import { PERSONA_T, personaOf } from './cineCrew';
+import CastleClips, { personaLetter } from './castleClips';
 import { buildChiqui, chiquiGiggle, chiquiGlitch, chiquiEmber } from '../world/Chiqui';
 import { EE } from '../config/map';
 
@@ -187,7 +190,8 @@ export default class CastleOrigin extends CastleCine {
         });
         this.later(0.2, () => this.say('fierro', FIERRO[1]));
         this.knights.forEach((K, i) => {
-          this.later(0.1 + i * 0.15, () => (K.raise = true));
+          // (cada uno a su tiempo: el valiente primero, el viejo se toma su rato)
+          this.later(0.1 + PERSONA_T[personaOf(i)].delay * 1.5, () => (K.raise = true));
           this.later(0.7 + i * 0.8, () => this.ignite(i));
         });
         this.later(3.9, () => this.formMate());
@@ -215,10 +219,12 @@ export default class CastleOrigin extends CastleCine {
           pos.set(G.x + lerp(-3.2, -2.2, u), G.y + lerp(2.1, 2.6, u), G.z + lerp(6.2, 5, smooth(u)));
           look.set(G.x, G.y + lerp(0.9, 2.4, smooth(u)), G.z - lerp(0, 2, u));
         });
-        for (const K of this.knights) {
-          K.raise = false;
-          K.kneel = true;
-        }
+        this.knights.forEach((K, i) =>
+          this.later(PERSONA_T[personaOf(i)].delay, () => {
+            K.raise = false;
+            K.kneel = true;
+          }),
+        );
         this.later(2.2, () => this.sendLights());
         this.choir(0.4, [45, 52, 57], { dur: 7, gain: 0.04, attack: 2, release: 3 });
         return this.say('fierro', L[3]);
@@ -309,10 +315,13 @@ export default class CastleOrigin extends CastleCine {
       // la fila en la alfombra y su lugar en la ronda (esquinas alrededor)
       const pos = new THREE.Vector3(TH.x + [-2.4, -0.8, 0.8, 2.4][i], 0, TH.z + [5.4, 5.8, 5.8, 5.4][i]);
       pos.y = g.world.floorAt(pos.x, pos.z);
-      const a = [2.36, 0.79, -0.79, -2.36][i];
+      // (cada uno a la esquina que no cruza el camino de otro: con la de su
+      // índice, el del rayo y el del hielo se atravesaban a los 29 s)
+      const a = [2.36, 0.79, -0.79, -2.36][[0, 3, 1, 2][i]];
       const ring = new THREE.Vector3(G.x + Math.cos(a) * 2.3, 0, G.z + Math.sin(a) * 2.3 + 0.3);
       ring.y = g.world.floorAt(ring.x, ring.z);
-      const r = { id, name: '', noTag: true, pos, yaw: 0, pitch: -0.1, speed: 0, moving: false };
+      // (ya mirando al trono, como cuando aparecen: si no, giraban de golpe al llegar)
+      const r = { id, name: '', noTag: true, pos, yaw: Math.atan2(-(TH.x - pos.x), -(TH.z - pos.z)), pitch: -0.1, speed: 0, moving: false };
       this.people.add(r);
       const av = this.people.list.get(id);
       for (const m of Object.values(av.M)) {
@@ -326,6 +335,8 @@ export default class CastleOrigin extends CastleCine {
       }
       av.M.poncho.color.set(c);
       if (av.tag) av.tag.visible = false;
+      // en la mano, el mate de la luz de su elemento (no el de siempre)
+      knightMate(this.people, av, MATE_OF[ELEMENTS[i]]);
       const K = { r, M: av.M, av, c, ring, k: 0, on: false, raise: false, kneel: false, lift: 0, bow: 0, walk: null };
       // la pose: el mate en alto o arrodillado
       r.poseFn = (P) => {
@@ -581,7 +592,42 @@ export default class CastleOrigin extends CastleCine {
     el.classList.add('is-on');
     this.el.classList.remove('is-fierro');
     const d = this.g.audio.say(text, K.voice, { cine: true });
+    // (la boca del que habla se mueve lo que dura: tick)
+    const Kn = this.knights[i];
+    if (Kn) Kn.talk = d || text.length * 0.065;
     return (d || text.length * 0.065) + 0.5;
+  }
+
+  // Los cuerpos animados en Blender (ui/castleClips.js), cada uno con su
+  // carácter: hablando, con el mate en alto o arrodillados jurando. Caminando,
+  // el paso de siempre (clips.json 'walk') al ritmo de lo que avanzan: con el
+  // de piezas patinaban. Ya apagados vuelven a la pose de piezas.
+  knightClips(dt) {
+    const C = (this.clips ||= new CastleClips());
+    this.knights.forEach((K, i) => {
+      const L = personaLetter(i);
+      const talking = K.mouth && K.mouth.t < K.mouth.dur;
+      const W = K.walk;
+      // (al llegar giran en el lugar hacia el del medio: dando pasitos, no pivotando sobre los pies)
+      let turn = 0;
+      if (K.on && !W && !K.kneel && !K.raise && !talking && K.r.cc?.name === 'walk') {
+        const tgt = this.beaten ? this.G : this.TH;
+        turn = Math.atan2(-(tgt.x - K.r.pos.x), -(tgt.z - K.r.pos.z)) - K.r.yaw;
+        turn = Math.abs(turn - Math.round(turn / (Math.PI * 2)) * Math.PI * 2);
+      }
+      const want = !K.on ? null : W || turn > 0.12 ? 'walk' : K.kneel ? 'kneelOath' : K.raise ? `raise${L}` : talking ? `talk${L}` : null;
+      if (want) C.act(K.r, [K.av], want, { fade: want === 'kneelOath' ? 0.9 : want === 'walk' ? 0.3 : 0.55, t: want === 'walk' ? 0 : i * 0.37, rate: want === 'walk' ? 0 : 1, ...(want === 'walk' ? { loop: true } : {}) });
+      // (del paso a quieto, despacio: con 0,7 s los pies se corrían de golpe)
+      else C.release(K.r, K.r.cc?.name === 'walk' ? 1.3 : 0.7, [K.av]);
+      if (want === 'walk' && !W && K.r.cc?.c?.speed) C.rate(K.r, Math.min(0.8, 0.3 + turn));
+      else if (want === 'walk' && K.r.cc?.c?.speed) {
+        // (lo que avanza este cuadro: el camino va con arranque y frenada suaves)
+        const u = Math.min(1, W.t + dt / W.secs);
+        const v = (W.from.distanceTo(W.to) * 6 * u * (1 - u)) / W.secs;
+        C.rate(K.r, Math.min(2.2, v / K.r.cc.c.speed));
+      }
+    });
+    C.update(dt);
   }
 
   // ---------------- cada cuadro ----------------
@@ -591,12 +637,20 @@ export default class CastleOrigin extends CastleCine {
     const gn = this.giant;
     gn.update(dt, g.time);
     this.people.update(dt);
+    this.knightClips(dt);
     for (const K of this.knights) uprightMate(K.av, smooth(K.lift), K.r.yaw);
     const G = this.G;
     // los caballeros: aparecen, caminan, levantan el mate, se arrodillan
     for (const K of this.knights) {
       if (K.on) K.k = Math.min(1, K.k + dt / 1.2);
       for (const m of Object.values(K.M)) m.opacity = K.k * (0.5 + Math.sin(t * 3 + K.c) * 0.07);
+      // la boca (cuando el cuerpo de verdad ya está) y lo que dice
+      if (!K.mouth && K.k > 0) K.mouth = knightMouth(K.av, this.root, { color: 0x140604 });
+      if (K.mouth && K.talk) {
+        K.mouth.talk(K.talk);
+        K.talk = 0;
+      }
+      K.mouth?.update(dt, K.k * 0.8);
       const W = K.walk;
       if (W) {
         W.t = Math.min(1, W.t + dt / W.secs);
@@ -613,7 +667,10 @@ export default class CastleOrigin extends CastleCine {
         const want = Wk ? Math.atan2(-(Wk.to.x - Wk.from.x), -(Wk.to.z - Wk.from.z)) : Math.atan2(-(tgt.x - K.r.pos.x), -(tgt.z - K.r.pos.z));
         let d = want - K.r.yaw;
         d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2;
-        K.r.yaw += d * Math.min(1, dt * 6);
+        // (a lo sumo ~10° por cuadro: daban media vuelta en tres cuadros al
+        // salir a caminar; cada uno con su ritmo, ui/cineCrew PERSONA_T)
+        const turn = PERSONA_T[personaOf(this.knights.indexOf(K))].turn;
+        K.r.yaw += Math.max(-dt * 5.5, Math.min(dt * 5.5, d * Math.min(1, dt * (2 + turn * 1.6))));
       }
       K.lift += ((K.raise ? 1 : 0) - K.lift) * Math.min(1, dt * 3);
       K.bow += ((K.kneel ? 1 : 0) - K.bow) * Math.min(1, dt * 2.5);
@@ -774,6 +831,7 @@ export default class CastleOrigin extends CastleCine {
 
   cleanup() {
     const g = this.g;
+    for (const K of this.knights || []) K.mouth?.dispose();
     this.people?.root.removeFromParent();
     if (g.net?.avatars) g.net.avatars.root.visible = true;
     g.hud.show(true);

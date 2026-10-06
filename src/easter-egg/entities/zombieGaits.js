@@ -11,6 +11,8 @@
 //   es roll negativo del lado 0 y positivo del lado 1 (arm/leg lo resuelven).
 // - P.yawOff gira el cuerpo entero respecto de hacia dónde avanza (el cangrejo).
 
+import { zombieBlendOn, blendGait, blendIdle, blendAttack } from './zombieBlend';
+
 const WALK = ['shamble', 'onearm', 'hunch', 'drag', 'lurch'];
 const RUN = ['lope', 'crab', 'flail', 'stagger', 'charge'];
 const SPRINT = ['feral', 'crab', 'ape', 'flail'];
@@ -328,6 +330,22 @@ export function gaitPose(z, dt, speed, t) {
     z.swum = true;
     return;
   }
+  // (los clips hechos en Blender: entities/zombieBlend.js; sin ellos, las fórmulas)
+  if (zombieBlendOn()) {
+    const sc = z.scale || 1;
+    // el que va mucho más rápido que su andar (prendido fuego) corre con su corrida
+    const kind = type === 'walk' && speed > 2 * sc ? (speed > 3.4 * sc ? 'sprint' : 'run') : type;
+    let st = kind === 'walk' ? G.walk : kind === 'sprint' ? G.sprint : G.run;
+    if (st === 'crab' && z.state === 'burnrun') st = kind === 'sprint' ? 'feral' : 'lope';
+    if (blendGait(z, dt, speed, t, st, kind)) {
+      wade(z, P);
+      if (sk > 0.02) {
+        mixWater(z, P, sk, (S) => crawl(z, S, z.phase, t));
+        z.swum = true;
+      } else if (z.swum) dry(z, P);
+      return;
+    }
+  }
   if (type === 'walk') {
     let k = WALK_K[G.walk];
     // el de los tumbos no lleva un ritmo parejo; el que arrastra, apura al traer la pierna
@@ -450,6 +468,7 @@ export function idlePose(z, t) {
   const P = z.P;
   const s = sin(t * 1.5 + z.slot);
   const b = sin(t * 0.8 + z.slot * 1.7);
+  if (zombieBlendOn() && blendIdle(z, t)) return afterIdle(z, P, t);
   base(P, z, G, t);
   P.torsoR = b * 0.06 * G.sway;
   P.headR = z.headTilt + sin(t * 0.6 + z.slot) * 0.12;
@@ -490,6 +509,10 @@ export function idlePose(z, t) {
     }
   }
   ground(P);
+  afterIdle(z, P, t);
+}
+
+function afterIdle(z, P, t) {
   wade(z, P);
   const sk = z.swimK || 0;
   if (sk > 0.02) {
@@ -508,6 +531,7 @@ export function attackPose(z, t) {
   const side = G.side > 0 ? 0 : 1;
   const other = 1 - side;
   const sg = side === 0 ? 1 : -1;
+  if (zombieBlendOn() && blendAttack(z, t)) return afterAttack(z, P, t);
   base(P, z, G, t);
   P.headR = z.headTilt * 0.5;
   leg(P, 0, -0.18, 0.04, 0.2);
@@ -573,6 +597,10 @@ export function attackPose(z, t) {
     }
   }
   ground(P);
+  afterAttack(z, P, t);
+}
+
+function afterAttack(z, P, t) {
   wade(z, P);
   // en lo hondo pega manoteando desde el agua, pataleando para mantenerse
   const sk = z.swimK || 0;

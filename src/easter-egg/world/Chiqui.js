@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { assetUrl } from '../../lib/assets';
-import { skinLook } from '../entities/bossSkin';
+import { skinLook, cullList, cullAt } from '../entities/bossSkin';
+import { chiquiBlendOn, loadChiquiBlend, chiquiTaps } from './chiquiBlend';
 
 // El Chiquitijuein: un duende como los del norte (no llega al metro), casi
 // todo sombrero. Poncho oscuro con guarda y flecos, piernitas flacas, brazos
@@ -300,8 +301,23 @@ export function loadChiquiSkin() {
           else if (o.isSkinnedMesh) skinLook(o.material);
         });
         SK.clips = Object.fromEntries(gl.animations.map((c) => [c.name, c]));
-        SK.gltf = gl;
-        ok(gl);
+        // (sin el lector: guardaba el archivo entero en memoria entre mapas)
+        gl.parser = null;
+        // los clips de Blender (world/chiquiBlend.js) en lugar de los de Meshy con el mismo nombre;
+        // SK.gltf recién cuando están (el agarre del bastón sale del primer cuadro de 'idle')
+        const done = () => {
+          SK.gltf = gl;
+          ok(gl);
+        };
+        if (!chiquiBlendOn()) return done();
+        loadChiquiBlend(gl).then((B) => {
+          if (B && SK.meta) {
+            Object.assign(SK.clips, B.clips);
+            for (const [k, m] of Object.entries(B.meta)) SK.meta.clips[k] = { ...(SK.meta.clips[k] || {}), ...m };
+            SK.blend = B;
+          }
+          done();
+        });
       },
       undefined,
       () => ok(null),
@@ -321,6 +337,12 @@ export function chiquiHat() {
   if (!SK.hatT) {
     const m = SK.hat.clone();
     m.visible = true;
+    // (de los dos lados: la malla de Meshy tiene caras dadas vuelta en el ala y
+    // la copa abierta atrás, y de arriba se veían agujeros. __mduNoHatFix: como antes)
+    if (globalThis.__mduNoHatFix !== true) {
+      m.material = m.material.clone();
+      m.material.side = THREE.DoubleSide;
+    }
     m.position.set(0, 0, 0);
     m.scale.setScalar(1);
     // el modelo lo tiene echado para atrás: lo que sube el ala de adelante
@@ -398,6 +420,9 @@ function attachSkin(R) {
     run: false,
     last: null,
     grip: null,
+    // el recorte: una esfera alrededor de la cadera (bossSkin cullList; la
+    // pone driveSkin, hasta entonces sin recorte)
+    cull: cullList(model),
   };
   R.skin = S;
   // el bastón en la mano: parado al lado del pie en el primer cuadro de estar
@@ -409,6 +434,8 @@ function attachSkin(R) {
   const hp = tmpV.setFromMatrixPosition(handM);
   const staffM = new THREE.Matrix4().compose(tmpW.set(hp.x, 0, hp.z + 0.02), tmpQ.setFromEuler(tmpE.set(0.04, 0, 0.05)), tmpS.set(1, 1, 1));
   S.grip = handM.invert().multiply(staffM);
+  // (a qué alto del caño va la mano: cane)
+  S.gripLen = hp.y;
   followStaff(R);
   R.root.updateMatrixWorld(true);
   placeEyes(R);
@@ -540,6 +567,9 @@ function driveSkin(R, dt) {
     } else {
       name = R.idle && C[R.idle] ? R.idle : 'idle';
       if (name === 'taunt' || (name === 'idle' && R.vary)) [name, t] = idleMix(R, dt);
+      // (R.still: quieto del todo, en ese cuadro del de parado; el coloso
+      // mientras le rompen las gemas: si se hamacaba no se le podía apuntar)
+      if (R.still != null && name === 'idle') t = R.still;
     }
   }
   // (el mixer solo escribe un hueso cuando el clip le cambia el valor: con el
@@ -550,6 +580,12 @@ function driveSkin(R, dt) {
     S.neck.quaternion.copy(S.neckBase);
     S.head.quaternion.copy(S.headBase);
     S.turned = false;
+  }
+  // (lo mismo con el brazo que agarra el bastón al caminar: cane)
+  if (S.armIK) {
+    S.bones.RightArm.quaternion.copy(S.armBase[0]);
+    S.bones.RightForeArm.quaternion.copy(S.armBase[1]);
+    S.armIK = false;
   }
   poseSkin(R, dt, name, t, rate);
   // la cabeza: el giro que le dieron a la de piezas (rotation, lookAt), un
@@ -572,9 +608,10 @@ function driveSkin(R, dt) {
     const want = tmpQ3.multiply(hw);
     S.head.quaternion.copy(S.neck.getWorldQuaternion(tmpQ7).invert().multiply(want));
   }
-  followStaff(R);
+  followStaff(R, dt);
   R.root.updateMatrixWorld(true);
   placeEyes(R);
+  cullAt(S.cull, (S.bones.Hips || S.head).getWorldPosition(tmpV));
 }
 
 // Parado sin hacer nada (idle 'taunt': el trono, el coloso; o vary): no se
@@ -661,12 +698,156 @@ function poseSkin(R, dt, name = R.idle || 'idle', t = null, rate = 1) {
 }
 
 // El bastón: sigue a la mano (si todavía es del bicho: el final lo tira al piso).
-function followStaff(R) {
+function followStaff(R, dt = 0) {
   const S = R.skin;
   if (R.staff.parent !== R.root || !S.grip) return;
   R.root.updateMatrixWorld(true);
   tmpM.copy(R.root.matrixWorld).invert().multiply(S.hand.matrixWorld).multiply(S.grip);
   tmpM.decompose(R.staff.position, R.staff.quaternion, tmpS);
+  cane(R, dt);
+}
+
+// Caminando con la bombilla de bastón (R.cane, lo pide la escena): la punta se
+// clava en el piso al lado del pie y queda ahí mientras el cuerpo pasa; se
+// levanta, va adelante y se vuelve a clavar, cada dos pasos. R.onTap suena en
+// el cuadro en que toca el piso (antes el "tic" sonaba con el bastón en el
+// aire, que iba y venía con el brazo del clip). El brazo va hasta el caño
+// (hombro, codo, mano: armTo).
+const CANE_T = 2 / 1.75;
+// la parte del ciclo en el aire; lo alto que se levanta la punta, lo que se
+// adelanta y lo que se abre del hombro (en altos del hombro); lo más que se
+// inclina el caño (rad)
+const CANE_SWING = 0.4;
+const CANE_LIFT = 0.12;
+const CANE_AHEAD = 0.22;
+const CANE_OUT = 0.12;
+const CANE_TILT = 0.32;
+const caneTip = new THREE.Vector3();
+const caneSh = new THREE.Vector3();
+const caneFw = new THREE.Vector3();
+const caneSide = new THREE.Vector3();
+const caneDir = new THREE.Vector3();
+const caneG = new THREE.Vector3();
+const caneP = new THREE.Vector3();
+const caneQ = new THREE.Quaternion();
+const caneUp = new THREE.Vector3(0, 1, 0);
+function cane(R, dt) {
+  const S = R.skin;
+  // (con el walk de Blender el bastón se clava solo en el clip: el "tic" sale de sus marcas)
+  if (SK.blend?.meta?.walk?.taps) {
+    chiquiTaps(R, SK.meta.clips);
+    S.caneK = 0;
+    S.caneU = null;
+    return;
+  }
+  S.caneK = Math.max(0, Math.min(1, (S.caneK || 0) + (R.cane ? dt : -dt) / 0.3));
+  const arm = S.bones.RightArm;
+  const fore = S.bones.RightForeArm;
+  if (!S.caneK || !arm || !fore) {
+    S.caneU = null;
+    return;
+  }
+  const root = R.root;
+  arm.getWorldPosition(caneSh);
+  root.getWorldPosition(caneP);
+  const sc = tmpS.setFromMatrixScale(root.matrixWorld).x || 1;
+  const floor = caneP.y;
+  caneFw.set(0, 0, 1).transformDirection(root.matrixWorld).setY(0).normalize();
+  // (el lado del bastón: la mano derecha, a -x del bicho)
+  caneSide.set(-1, 0, 0).transformDirection(root.matrixWorld).setY(0).normalize();
+  const h = Math.max(0.05, caneSh.y - floor);
+  // dónde se clava: adelante del hombro y un poco afuera, en el piso
+  const ahead = (out) => out.copy(caneSh).addScaledVector(caneFw, h * CANE_AHEAD).addScaledVector(caneSide, h * CANE_OUT).setY(floor);
+  if (S.caneU == null) {
+    // arranca en el aire, desde donde estaba la punta en la mano
+    S.caneU = 1 - CANE_SWING;
+    S.caneFrom = R.staff.position.clone().applyMatrix4(root.matrixWorld);
+    S.caneTip = S.caneFrom.clone();
+  }
+  if (R.cane) S.caneU += dt / CANE_T;
+  if (S.caneU >= 1) {
+    S.caneU -= 1;
+    ahead(S.caneTip);
+    R.onTap?.();
+  }
+  if (S.caneU > 1 - CANE_SWING) {
+    // en el aire: de la última clavada a la próxima, con un arco
+    const s = (S.caneU - (1 - CANE_SWING)) / CANE_SWING;
+    const k = s * s * (3 - 2 * s);
+    ahead(caneTip);
+    caneTip.lerpVectors(S.caneFrom, caneTip, k);
+    caneTip.y += Math.sin(Math.PI * s) * h * CANE_LIFT;
+  } else {
+    caneTip.copy(S.caneTip);
+    S.caneFrom.copy(S.caneTip);
+  }
+  // el caño: de la punta hacia el hombro, no más inclinado que CANE_TILT
+  caneDir.copy(caneSh).sub(caneTip);
+  const hz = Math.hypot(caneDir.x, caneDir.z);
+  const tilt = Math.min(CANE_TILT, Math.atan2(hz, Math.max(1e-3, caneDir.y)));
+  if (hz > 1e-4) caneDir.set((caneDir.x / hz) * Math.sin(tilt), Math.cos(tilt), (caneDir.z / hz) * Math.sin(tilt));
+  else caneDir.set(0, 1, 0);
+  // la mano, agarrada donde estaba en el caño
+  caneG.copy(caneTip).addScaledVector(caneDir, (S.gripLen || 0.4) * sc);
+  armTo(S, arm, fore, caneG, S.caneK);
+  caneQ.setFromUnitVectors(caneUp, caneDir);
+  root.getWorldQuaternion(tmpQ).invert();
+  caneQ.premultiply(tmpQ);
+  caneTip.applyMatrix4(tmpM.copy(root.matrixWorld).invert());
+  R.staff.position.lerp(caneTip, S.caneK);
+  R.staff.quaternion.slerp(caneQ, S.caneK);
+}
+
+// El brazo (hombro y codo) para que la mano llegue a T (en el mundo), en la
+// medida k; el codo, del lado donde ya estaba doblado. Se guarda cómo estaba:
+// driveSkin lo vuelve a poner antes del clip (el mixer no reescribe un hueso
+// que el clip no cambia).
+const ikA = new THREE.Vector3();
+const ikB = new THREE.Vector3();
+const ikC = new THREE.Vector3();
+const ikU = new THREE.Vector3();
+const ikW = new THREE.Vector3();
+const ikE = new THREE.Vector3();
+const ikQ = new THREE.Quaternion();
+const ikP = new THREE.Quaternion();
+function armTo(S, up, lo, T, k) {
+  S.armBase ||= [new THREE.Quaternion(), new THREE.Quaternion()];
+  S.armBase[0].copy(up.quaternion);
+  S.armBase[1].copy(lo.quaternion);
+  S.armIK = true;
+  up.getWorldPosition(ikA);
+  lo.getWorldPosition(ikB);
+  S.hand.getWorldPosition(ikC);
+  const l1 = ikA.distanceTo(ikB);
+  const l2 = ikB.distanceTo(ikC);
+  ikU.copy(T).sub(ikA);
+  const d = Math.min(l1 + l2 - 1e-4, Math.max(Math.abs(l1 - l2) + 1e-4, ikU.length()));
+  ikU.normalize();
+  ikW.copy(ikB).sub(ikA);
+  ikW.addScaledVector(ikU, -ikW.dot(ikU));
+  if (ikW.lengthSq() < 1e-8) ikW.set(0, -1, 0).addScaledVector(ikU, ikU.y);
+  ikW.normalize();
+  const cosA = (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d);
+  const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+  ikE.copy(ikA).addScaledVector(ikU, cosA * l1).addScaledVector(ikW, sinA * l1);
+  // el brazo: del codo de antes al de ahora (en el mundo)
+  ikQ.setFromUnitVectors(ikW.copy(ikB).sub(ikA).normalize(), ikU.copy(ikE).sub(ikA).normalize());
+  rotWorld(up, ikQ, k);
+  // el antebrazo: de la mano de antes a T
+  lo.getWorldPosition(ikB);
+  S.hand.getWorldPosition(ikC);
+  ikQ.setFromUnitVectors(ikW.copy(ikC).sub(ikB).normalize(), ikU.copy(T).sub(ikB).normalize());
+  rotWorld(lo, ikQ, k);
+}
+// Gira un hueso en el mundo (q), en la medida k.
+const ikR = new THREE.Quaternion();
+function rotWorld(b, q, k) {
+  if (k < 1) q.slerp(ikP.identity(), 1 - k);
+  b.parent.getWorldQuaternion(ikR).invert();
+  b.getWorldQuaternion(ikP);
+  ikP.premultiply(q);
+  b.quaternion.copy(ikR.multiply(ikP));
+  b.updateMatrixWorld(true);
 }
 
 // Los brillos de los ojos (y el resplandor) van donde están los ojos del modelo.

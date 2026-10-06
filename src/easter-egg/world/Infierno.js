@@ -29,6 +29,9 @@ const RITUAL1 = 0.7;
 const RITUAL2 = 0.35;
 // de los seis braseros, los cuatro que le dan fuerza en el primer ritual
 const GOURDS = [0, 2, 3, 5];
+// golpes que cuenta un cono del Tereré o del Tronador, y un cuchillazo (un tiro = 1)
+const CONE_HITS = 6;
+const KNIFE_HITS = 2;
 const WISPS = 4;
 const WAVE_SPEED = 8.5;
 const WAVE_DMG = 30;
@@ -194,7 +197,8 @@ export default class Infierno extends Arena {
       const a = (k / 3) * Math.PI * 2;
       l.position.set(x + Math.cos(a) * 5, y + 5, z + Math.sin(a) * 5);
       g.scene.add(l);
-      return l;
+      // (no cuenta como luz mientras está apagada: World.adoptLight)
+      return g.world.adoptLight(l);
     });
     // el escudo y los círculos de los rayos (como en la Salamanca)
     this.wardMesh = new THREE.Mesh(
@@ -208,6 +212,8 @@ export default class Infierno extends Arena {
     this.buildFight();
     this.decor(rock, gold);
     this.root.updateMatrixWorld(true);
+    // hasta la pelea, (escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+    this.root.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
   }
 
   // El trono de Francisco: un mate de oro gigante sobre dos escalones de roca,
@@ -613,20 +619,29 @@ export default class Infierno extends Arena {
 
   onShot(o, d, maxT) {
     if (!this.fighting()) return;
+    const n = this.shotHits();
     if (this.stage === 'r1') {
       for (const gi of GOURDS) {
         const G = this.gourds[gi];
         if (G.broken) continue;
         const t = rayHitSphere(o, d, G.pos, 0.95);
-        if (t !== null && t <= maxT + 0.4) this.hitTarget('g', gi, 1, tmpW.copy(o).addScaledVector(d, t));
+        if (t !== null && t <= maxT + 0.4) this.hitTarget('g', gi, n, tmpW.copy(o).addScaledVector(d, t));
       }
     } else if (this.stage === 'r2') {
       this.wisps.forEach((w, i) => {
         if (w.free) return;
         const t = rayHitSphere(o, d, w.grp.position, 0.6);
-        if (t !== null && t <= maxT + 0.4) this.hitTarget('w', i, 1, tmpW.copy(o).addScaledVector(d, t));
+        if (t !== null && t <= maxT + 0.4) this.hitTarget('w', i, n, tmpW.copy(o).addScaledVector(d, t));
       });
     }
+  }
+
+  // Cuánto cuenta un tiro: uno, y los mates que pegan muy fuerte (el Mark III,
+  // la maravilla de la torre) hasta seis. Antes eran 24 tiros del Mark III por
+  // calabaza: parecían indestructibles.
+  shotHits() {
+    const dmg = this.g.weapons?.stats?.damage || 0;
+    return Math.max(1, Math.min(6, Math.round(dmg / 400)));
   }
 
   onExplosion(pos, radius) {
@@ -641,6 +656,53 @@ export default class Infierno extends Arena {
         if (!w.free && w.grp.position.distanceTo(pos) < radius + 0.5) this.hitTarget('w', i, 3, null);
       });
     }
+  }
+
+  // El Tereré y el Tronador (TowerEgg.onCone): lo que agarra el cono, un golpe
+  // fuerte. Antes no rompían nada, y con la maravilla en la mano las
+  // calabazas parecían indestructibles.
+  onCone(o, d, range, angle) {
+    if (!this.fighting()) return;
+    const tanA = Math.tan(angle);
+    const hits = (p, r) => {
+      tmpW.subVectors(p, o);
+      const along = tmpW.dot(d);
+      if (along <= 0 || along > range + r) return false;
+      const side = Math.sqrt(Math.max(0, tmpW.lengthSq() - along * along));
+      if (side > r + 0.6 + along * tanA) return false;
+      // (sin pared en el medio; la caja de la propia calabaza no cuenta: de
+      // costado o en diagonal, su cara está hasta 1,13 m del centro)
+      const len = tmpW.length();
+      return this.g.world.raycast(o, tmpW.divideScalar(len), len) >= len - 1.3;
+    };
+    if (this.stage === 'r1') {
+      for (const gi of GOURDS) {
+        const G = this.gourds[gi];
+        if (!G.broken && hits(G.pos, 0.95)) this.hitTarget('g', gi, CONE_HITS, G.fire);
+      }
+    } else if (this.stage === 'r2') {
+      this.wisps.forEach((w, i) => {
+        if (!w.free && hits(w.grp.position, 0.6)) this.hitTarget('w', i, CONE_HITS, w.grp.position);
+      });
+    }
+  }
+
+  // Un cuchillazo sin muerto a tiro (TowerEgg.onKnife): a la calabaza que
+  // tenga enfrente.
+  onKnife(fwd) {
+    if (!this.fighting() || this.stage !== 'r1') return false;
+    const p = this.g.player.pos;
+    for (const gi of GOURDS) {
+      const G = this.gourds[gi];
+      if (G.broken) continue;
+      tmpW.set(G.pos.x - p.x, 0, G.pos.z - p.z);
+      const dist = tmpW.length();
+      if (dist > 2.4 || tmpW.dot(fwd) < dist * 0.5) continue;
+      this.g.audio.knife?.(true);
+      this.hitTarget('g', gi, KNIFE_HITS, G.fire);
+      return true;
+    }
+    return false;
   }
 
   hitTarget(k, i, n, point) {

@@ -1,5 +1,14 @@
 import * as THREE from 'three';
 import { buildTextures } from './core/textures';
+import { paintInWorkers } from './core/texturePool';
+import { setPapMap } from './weapons/camos';
+import { eclipseBake } from './fx/eclipseMusic';
+import { sizeCull } from './core/sizeCull';
+import { drawCost } from './core/drawCost';
+import { devKeys } from './core/devKeys';
+import { retireScene } from './core/sceneFlush';
+// las matrices de lo que no se movió no se recalculan (mismo resultado que three)
+import './core/matrixCache';
 import GameAudio from './core/audio';
 import Input from './core/input';
 import World from './world/World';
@@ -9,7 +18,7 @@ import Interactables from './world/Interactables';
 import Effects from './fx/Effects';
 import PostFX from './fx/PostFX';
 import { LEVELS } from './fx/Epic';
-import { tiersOf } from './config/quality';
+import { tiersOf, MAP_GFX } from './config/quality';
 import Zombies from './entities/Zombies';
 import Player from './entities/Player';
 import { submerged } from './entities/swim';
@@ -52,8 +61,12 @@ import CastleEnding from './ui/CastleEnding';
 import CastleEgg from './entities/CastleEgg';
 import EsterosEgg from './entities/EsterosEgg';
 import MonumentoEgg from './entities/MonumentoEgg';
+import EclipseEgg from './entities/EclipseEgg';
+import { ECLIPSE_KEY } from './core/eclipseFlag';
+import HitchLog from './core/hitchLog';
 import GranGuerra from './world/GranGuerra';
 import CastleWeather from './world/CastleWeather';
+import EclipseWeather from './world/eclipseAtmos';
 import Intro from './ui/Intro';
 import Session from './net/Session';
 import Avatars from './net/Avatars';
@@ -70,6 +83,7 @@ import Arrival, { prewarmMaps, compile as rewarmShaders, warmWorld } from './ui/
 import TitleIntro from './ui/TitleIntro';
 import { askSupremo } from './ui/SupremoAsk';
 import DeathTour from './ui/DeathTour';
+import { deathPose } from './ui/deathPose';
 import { setBinds, remapTable } from './core/controls';
 import { START_POINTS, ZOMBIE_DAMAGE } from './config/rules';
 import { START_ZONE, ZONES, FEATURES, FIRES, TITLE_CAM, TEXT, MAPS, useMap, modeOf } from './config/map';
@@ -203,6 +217,9 @@ export default class Game {
 
   async init() {
     const root = this.root;
+    // las texturas se pintan en otros hilos mientras carga lo demás (core/texturePool.js)
+    const S = this.settings;
+    const painted = paintInWorkers(this.mapId, { relief: !(S.qualityMode === 'manual' && (S.quality === 'low' || S.quality === 'perf')) });
     this.menus = new Menus(root, this);
     const step = (k, text) =>
       new Promise((r) => {
@@ -228,12 +245,16 @@ export default class Game {
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
     r.shadowMap.autoUpdate = false;
+    // lo que three repite en cada dibujo sin que cambie nada (core/drawCost)
+    drawCost(r);
     this.gpu = this.detectGpu();
-    if (this.settings.qualityMode === 'auto') this.settings.quality = this.autoQuality();
+    if (this.settings.qualityMode === 'auto') this.settings.quality = this.autoTier();
     this.perf = { t: 0, n: 0, warm: false };
+    // los tirones (core/hitchLog.js; Alt+H los muestra)
+    this.hitch = new HitchLog(this);
 
     await step(0.08, 'Pintando paredes y calcáreos…');
-    this.textures = buildTextures();
+    this.textures = buildTextures(await painted);
     await step(0.22, 'Encendiendo el barbacuá…');
     this.audio = new GameAudio();
     // la música de las escenas (entradas, jefes, cinemáticas, muerte)
@@ -241,6 +262,8 @@ export default class Game {
     this.audio.setVolumes(this.settings);
     this.audio.setMix(this.settings);
     this.audio.voiceMode = this.settings.voiceMode;
+    // (en línea, las frases de las cinemáticas duran lo mismo en todas las compus: audio.say)
+    this.audio.online = () => !!this.net;
     // las voces del navegador pueden llegar después: se actualizan las opciones
     this.audio.onVoices = () => this.menus?.syncOptions();
     await step(0.26, 'Despertando gargantas…');
@@ -295,6 +318,11 @@ export default class Game {
     this.loop = this.loop.bind(this);
     this.raf = requestAnimationFrame(this.loop);
     this.titleIntro.play();
+    // el HUD dibujado una vez, casi transparente (ui/Hud prewarm): si no,
+    // trababa ~50 ms al terminar la entrada
+    setTimeout(() => {
+      if (this.state === 'title') this.hud.prewarm();
+    }, 1500);
     // la pulpería se arma y se compila de antemano (cuando el título ya está
     // quieto), así entrar no traba
     setTimeout(() => {
@@ -303,12 +331,19 @@ export default class Game {
       else pre();
     }, 6500);
     // los atajos de prueba (Alt+…: puntos, modo dios, saltar al final, el
-    // premio del super easter egg…) solo en desarrollo: en el sitio publicado no
-    const dev = !!import.meta.env.DEV;
+    // premio del super easter egg…) solo en desarrollo y en la versión de
+    // escritorio (core/devKeys): en el sitio publicado no
+    const dev = devKeys();
     this.onKey = (e) => {
       // (en la cinemática de entrada, Esc la saltea: lo maneja ui/Intro)
       // (y en una escena del easter egg con su Saltar, Esc es de la escena)
       if (e.code === 'Escape' && this.state === 'playing' && !this.input.locked && !this.intro?.active && !this.ee?.scene?.cine?.skip) this.pause();
+      // Alt+H, en cualquier lado (también en el sitio publicado): los últimos
+      // tirones y qué los causó (core/hitchLog.js)
+      if (e.altKey && e.code === 'KeyH') {
+        this.hitch?.toggle();
+        e.preventDefault();
+      }
       // Alt+I en el menú del título: ir directo a cada escena con música (prueba)
       if (dev && e.altKey && e.code === 'KeyI' && this.state === 'title' && !this.net && this.menus.toggleMusic()) e.preventDefault();
       // Alt+O, en el título o jugando solo: prueba del premio del super easter
@@ -372,6 +407,26 @@ export default class Game {
       if (dev && e.altKey && e.code === 'KeyM' && this.state === 'playing' && !this.net && FEATURES.castle) {
         e.preventDefault();
         this.ee.debugMate?.(e.shiftKey);
+      }
+      // Alt+M, solo jugando solo en Eclipse Matero: el Desgarrador Cósmico en la
+      // mano (con Shift, el del Eclipse, con la Furia)
+      if (dev && e.altKey && e.code === 'KeyM' && this.state === 'playing' && !this.net && FEATURES.eclipse) {
+        e.preventDefault();
+        this.weapons.cosmic?.give(e.shiftKey ? 1 : 0);
+        this.hud.subtitle(e.shiftKey ? 'Modo prueba: el Desgarrador del Eclipse.' : 'Modo prueba: el Desgarrador Cósmico.', 3);
+      }
+      // Alt+E en el título, solo en el servidor de desarrollo: prende o apaga
+      // Eclipse Matero, el mapa en obra, y recarga (core/eclipseFlag.js)
+      if (import.meta.env.DEV && e.altKey && e.code === 'KeyE' && this.state === 'title' && !this.net) {
+        e.preventDefault();
+        try {
+          const on = localStorage.getItem(ECLIPSE_KEY) === '1';
+          if (on) localStorage.removeItem(ECLIPSE_KEY);
+          else localStorage.setItem(ECLIPSE_KEY, '1');
+          location.reload();
+        } catch {
+          // (sin localStorage no hay marca)
+        }
       }
       // Alt+M, solo jugando solo en la torre: el Rayo Matero Mark III en la mano
       if (dev && e.altKey && e.code === 'KeyM' && this.state === 'playing' && !this.net && FEATURES.tower) {
@@ -486,7 +541,21 @@ export default class Game {
     if (/RTX\s*(40[7-9]0|50[7-9]0)|RX\s*(7[89]\d0|9\d{3})/i.test(name)) return 'epic';
     // gama alta: Ultra
     if (/RTX\s*(30[6-9]0|40[6-9]0|50[6-9]0)|RX\s*(6[7-9]\d0|7[7-9]\d0)|Arc.*B[57]\d0/i.test(name)) return 'ultra';
+    // gama media (GTX 9/1050-1070/16, RTX 2050/2060/3050, MX, RX 400/500/5000/6400-6600):
+    // Media, y Baja si es de notebook (con Alta a una 1650 y una 2060 les iba mal)
+    if (/GTX\s*(9\d0|10[5-7]0|16\d0)|RTX\s*(20[56]0|3050)|\bMX\s*\d|RX\s*(4\d0|5\d0|5[3-7]00|6[45]00|66[05]0)/i.test(name)) return /Laptop|Max-Q|Mobile/i.test(name) ? 'low' : 'medium';
     return 'high';
+  }
+
+  // La automática con lo que ya aprendió en esta compu: si en una partida
+  // anterior tuvo que bajar (watchPerf), arranca desde ahí y no desde arriba
+  // (antes cada partida volvía a Alta y repetía los tirones de bajar).
+  autoTier() {
+    const q = this.autoQuality();
+    const c = this.settings.autoCap;
+    if (!c || c.gpu !== (this.gpu?.name || '')) return q;
+    const i = QUALITY_ORDER.indexOf(c.q);
+    return i >= 0 && i < QUALITY_ORDER.indexOf(q) ? c.q : q;
   }
 
   // Mide los FPS en partida; en automática, si anda lento baja la calidad un
@@ -514,8 +583,15 @@ export default class Game {
       return;
     }
     const i = QUALITY_ORDER.indexOf(this.settings.quality);
-    if (fps >= MIN_FPS || i <= 0) return;
-    this.settings.quality = QUALITY_ORDER[i - 1];
+    // (con tope de FPS lo que se espera es el tope: con 30 nunca llegaba a 40
+    // y la iba bajando hasta Rendimiento)
+    const cap = this.fpsCap();
+    const want = cap > 0 ? Math.min(MIN_FPS, cap * 0.8) : MIN_FPS;
+    if (fps >= want || i <= 0) return;
+    // muy lento: dos escalones de una (cada cambio recompila y traba)
+    this.settings.quality = QUALITY_ORDER[Math.max(0, i - (fps < want * 0.6 ? 2 : 1))];
+    // y se acuerda para esta placa (Game.autoTier)
+    this.settings.autoCap = { gpu: this.gpu?.name || '', q: this.settings.quality };
     store.set(SETTINGS_KEY, this.settings);
     this.applyQuality();
     this.resize();
@@ -579,7 +655,7 @@ export default class Game {
     this.vida = FEATURES.vida ? new GauchoLife(this) : null;
     // el cuervo es el jefe de la granja (el Capataz, el del molino)
     this.crow = FEATURES.boss === 'crow' || FEATURES.boss === 'mixed' ? new Crow(this) : null;
-    this.ee = FEATURES.egg === 'hoz' ? new FarmEgg(this) : FEATURES.egg === 'gauchos' ? new PenalEgg(this) : FEATURES.egg === 'revelaciones' ? new TowerEgg(this) : FEATURES.egg === 'reto' ? new TowerChallenge(this) : FEATURES.egg === 'mateendrache' ? new CastleEgg(this) : FEATURES.egg === 'pacto' ? new EsterosEgg(this) : FEATURES.egg === 'bandera' ? new MonumentoEgg(this) : new EasterEgg(this);
+    this.ee = FEATURES.egg === 'hoz' ? new FarmEgg(this) : FEATURES.egg === 'gauchos' ? new PenalEgg(this) : FEATURES.egg === 'revelaciones' ? new TowerEgg(this) : FEATURES.egg === 'reto' ? new TowerChallenge(this) : FEATURES.egg === 'mateendrache' ? new CastleEgg(this) : FEATURES.egg === 'pacto' ? new EsterosEgg(this) : FEATURES.egg === 'bandera' ? new MonumentoEgg(this) : FEATURES.egg === 'primermate' ? new EclipseEgg(this) : new EasterEgg(this);
     // La Tapera: el matorral de atrás de la atahona y sus Yasy (después del
     // easter egg: la Yerba Madre es su sexta planta)
     this.matorral = FEATURES.egg === 'hoz' ? new Matorral(this) : null;
@@ -589,7 +665,8 @@ export default class Game {
     // la cinemática de entrada (arma sus muñecos ya, para que se compilen en la carga)
     this.intro?.dispose();
     this.intro = new Intro(this);
-    this.weather = FEATURES.castle ? new CastleWeather(this) : new Weather(this);
+    // (Eclipse Matero: la atmósfera de cada isla y nada sobre el vacío; world/eclipseAtmos.js)
+    this.weather = FEATURES.castle ? new CastleWeather(this) : FEATURES.eclipse && globalThis.__mduNoEclipseWeather !== true ? new EclipseWeather(this) : new Weather(this);
     this.decor = FEATURES.decor ? new Decor(this) : null;
     this.arena = FEATURES.farm ? new Prado(this) : FEATURES.penal ? new Cerro(this) : FEATURES.tower ? new Infierno(this) : FEATURES.castle ? new GranGuerra(this) : new Arena(this);
     this.critters = new Critters(this);
@@ -607,6 +684,44 @@ export default class Game {
     if (this.post) this.resize();
     // los compañeros pasan al mundo nuevo
     this.net?.avatars.rebuild();
+    // el camuflaje del Pack-a-Pava de este mapa se pinta con el mapa (~70 ms
+    // que caían en el primer cuadro de la partida, en Weapons.reset)
+    setPapMap(this.mapId, this.textures);
+    // Eclipse: la música de las rondas se hornea ya (fx/eclipseMusic.js)
+    if (this.mapId === 'eclipse' && this.audio) eclipseBake(this.audio);
+    // las piezas diminutas de lejos no se dibujan (core/sizeCull.js), solo
+    // jugando con la cámara en los ojos del jugador: en las cinemáticas, que
+    // panean el mapa de lejos, se dibuja todo
+    // y lo de adentro de cada zona que no se ve: los cuartos hasta el techo,
+    // las zonas abiertas (el patio del penal) y sin techo hasta 4 m (la torre
+    // va por world/Tower, sin zonas acá)
+    const rooms = [];
+    for (const [key, Z] of Object.entries(ZONES)) {
+      // (las zonas de un solo rectángulo van con `rect`: el molino entero
+      // quedaba sin cuartos y desde el cementerio se dibujaba todo lo de
+      // adentro de los galpones; globalThis.__mduNoRectRooms: como antes)
+      const RS = Z.rects || (Z.rect && globalThis.__mduNoRectRooms !== true ? [Z.rect] : null);
+      if (!RS) continue;
+      const open = !!Z.outdoor || !Z.roof;
+      const boxes = [];
+      for (const r of RS) {
+        const y0 = r[4] ?? Z.y ?? 0;
+        const y1 = open ? y0 + 4 : (r[5] ?? Z.roof);
+        if (y1 - y0 > 1) boxes.push([r[0], y0, r[1], r[2] + 1, y1, r[3] + 1]);
+      }
+      // (indoor: con techo; ver core/sizeCull, la niebla)
+      if (boxes.length) rooms.push({ key, boxes, indoor: !open });
+    }
+    sizeCull(
+      this.renderer,
+      this.scene,
+      () => {
+        const p = this.player;
+        const c = this.camera.position;
+        return this.state === 'playing' && !this.intro?.active && !this.cine && !!p && Math.abs(c.x - p.pos.x) < 0.5 && Math.abs(c.z - p.pos.z) < 0.5 && Math.abs(c.y - p.pos.y - p.eye) < 1.5;
+      },
+      { camera: this.camera, rooms: this.world.tower ? [] : rooms },
+    );
   }
 
   // Saca lo que quedó de la animación de fin de partida.
@@ -616,11 +731,35 @@ export default class Game {
     this.endCam = null;
     this.endBody?.dispose();
     this.endBody = null;
+    this.endPose = null;
     this.endEl?.remove();
     this.endEl = null;
   }
 
   disposeScene() {
+    // (sus materiales y texturas se liberan cuando el mapa nuevo ya compiló: core/sceneFlush)
+    retireScene(this);
+    // las sombras de las luces del mapa que se va (la luna: 4096² con su
+    // profundidad, ~128 MB de placa de Alta para arriba) quedaban vivas en cada
+    // cambio de mapa; las de fx/Epic (epicShadowLight) pasan al mapa nuevo.
+    // (globalThis.__mduNoShadowFree: como antes)
+    // Y lo que three sube por objeto y no por geometría: las matrices y colores
+    // de cada InstancedMesh (pasto, follaje, zombies...) y la textura de huesos
+    // de cada esqueleto; geometry.dispose no los suelta y quedaban en la placa
+    // en cada partida nueva o cambio de mapa (~157 buffers y ~5 texturas por
+    // vez). Si se vuelven a usar, three los sube de nuevo.
+    // (globalThis.__mduNoMeshFree: como antes)
+    const shadows = globalThis.__mduNoShadowFree !== true;
+    const meshes = globalThis.__mduNoMeshFree !== true;
+    if (shadows || meshes)
+      this.scene.traverse((o) => {
+        if (shadows && o.isLight && o.shadow?.map && o.name !== 'epicShadowLight') {
+          o.shadow.dispose();
+          o.shadow.map = null;
+        }
+        if (meshes && o.isInstancedMesh) o.dispose();
+        if (meshes && o.isSkinnedMesh) o.skeleton?.dispose();
+      });
     this.weather?.dispose();
     this.critters?.dispose();
     this.secrets?.dispose();
@@ -652,7 +791,7 @@ export default class Game {
 
   // Invitado: el anfitrión arrancó la partida. Se carga el mapa y se espera
   // a los demás; la partida empieza cuando el anfitrión dice (Arrival.go).
-  arriveAsGuest(map = null, mode) {
+  arriveAsGuest(map = null, mode, restart = false) {
     if (this.state === 'arriving') return;
     this.audio.resume();
     const was = this.mapKey;
@@ -667,7 +806,7 @@ export default class Game {
       c.onDone = null;
       c.finish();
     }
-    this.arrival.startGuest(this.state !== 'title' || other || this.arrival.switching);
+    this.arrival.startGuest(this.state !== 'title' || other || this.arrival.switching, restart);
   }
 
   // Engancha una sala ya conectada: de acá en más se sincroniza la partida.
@@ -722,6 +861,9 @@ export default class Game {
     this.weather?.stopAudio();
     this.buildScene();
     this.state = 'title';
+    // (el mate en la mano no va en el menú: saliendo a mitad de una recarga
+    // quedaba el termo en el medio del título; el usuario 2026-10-05)
+    if (this.weapons?.vmRoot) this.weapons.vmRoot.visible = false;
     this.paused = false;
     this.hostPaused = false;
     this.menuOpen = false;
@@ -899,11 +1041,7 @@ export default class Game {
     this.emp?.newRun();
     // en línea cada uno arranca al lado del otro, no encimados
     const id = this.net?.id || 0;
-    if (id > 0) {
-      const a = id * 2.1;
-      this.player.pos.x += Math.cos(a) * 0.9;
-      this.player.pos.z += Math.sin(a) * 0.9;
-    }
+    if (id > 0) this.spawnBeside(id);
     // (el Challenge de la torre arranca con más plata)
     this.points = this.ee?.startPoints ?? START_POINTS;
     // la caja arranca en un lugar al azar cerca del comienzo (la del invitado la manda el anfitrión)
@@ -923,12 +1061,59 @@ export default class Game {
     this.hud.subtitle('Aguantá lo que puedas.', 4);
   }
 
+  // En línea, el jugador `id` (1, 2, 3) arranca a un costado del comienzo
+  // (1 a la derecha, 2 a la izquierda, 3 más a la derecha), mirando para el
+  // mismo lado: antes iba a 0,9 m en una dirección fija, que en varios mapas
+  // caía justo adelante del anfitrión y al terminar la entrada su cuerpo le
+  // tapaba la pantalla. Donde haya lugar (sin pared en el medio y el mismo
+  // piso); si no, un paso atrás; si nada entra, como antes.
+  // (globalThis.__mduNoSpawnSide: como antes)
+  spawnBeside(id) {
+    const p = this.player;
+    const W = this.world;
+    const old = () => {
+      const a = id * 2.1;
+      p.pos.x += Math.cos(a) * 0.9;
+      p.pos.z += Math.sin(a) * 0.9;
+    };
+    if (globalThis.__mduNoSpawnSide === true || !W?.circleFree) return old();
+    const ax = p.pos.x;
+    const az = p.pos.z;
+    // (recién puesto, el jugador está en y = 0: el piso de verdad puede estar
+    // más arriba, el patio del penal, la cumbre del castillo)
+    const y = Math.max(p.pos.y || 0, W.floorAt(ax, az, p.pos.y || 0));
+    // derecha y adelante de la mirada del comienzo (la cámara mira a -z con yaw 0)
+    const rx = Math.cos(p.yaw);
+    const rz = -Math.sin(p.yaw);
+    const fx = -Math.sin(p.yaw);
+    const fz = -Math.cos(p.yaw);
+    const side = id % 2 ? 1 : -1;
+    const lane = Math.ceil(id / 2) * 1.3;
+    const r = 0.38;
+    const f0 = W.floorAt(ax, az, y);
+    // (los de repuesto, distintos para cada uno: dos no caen en el mismo lugar)
+    const cands = [[side * lane, 0], [side * lane, -0.9], [-side * lane, -0.9], [side * 0.6, -lane], [0, -lane - 0.4], [side * lane, 1], [-side * lane, 1], [-side * lane, 0]];
+    for (const [s, f] of cands) {
+      const x = ax + rx * s + fx * f;
+      const z = az + rz * s + fz * f;
+      if (!W.inside(Math.floor(x), Math.floor(z)) || !W.circleFree(x, z, r, y + 0.05, y + 1.7)) continue;
+      if (W.sweepFree && !W.sweepFree(ax, az, x, z, r * 0.8, y + 0.3, y + 1.7)) continue;
+      if (Math.abs(W.floorAt(x, z, y) - f0) > 0.3) continue;
+      p.pos.x = x;
+      p.pos.z = z;
+      return;
+    }
+    old();
+  }
+
   restart() {
     // en línea solo el anfitrión arma otra, y la arma para todos
     if (this.net?.guest) return;
-    this.buildScene();
-    this.newRun();
-    this.net?.restartAll();
+    // con la pantalla de carga, como al arrancar (compila y calienta el mapa
+    // nuevo; antes arrancaba al toque y trababa un buen rato) y sin la entrada
+    this.net?.clearScores();
+    this.audio.resume();
+    this.arrival.start(true, { restart: true });
   }
 
   pause() {
@@ -1038,6 +1223,10 @@ export default class Game {
     this.paused = true;
     this.hostPaused = false;
     this.menuOpen = false;
+    // muerto con el alma afuera (el gaucho life del penal): vuelve al cuerpo
+    // antes de caer; si no, quedaban dos cuerpos (el del gaucho life y el del
+    // final) y la pantalla azul del alma (globalThis.__mduNoVidaEnd: como antes)
+    if (this.vida?.active && globalThis.__mduNoVidaEnd !== true) this.vida.leave(true);
     this.player.alive = false;
     this.stats.round = data?.n ?? this.rounds.round;
     if (this.stats.round > this.best) {
@@ -1068,10 +1257,13 @@ export default class Game {
     this.post.flash(0.3);
     this.startEnd();
     // después del alma, el paneo por el mapa (ui/DeathTour.js) y recién ahí el menú
-    this.later(END_SECS, () => {
+    const tour = () => {
       if (this.state !== 'over' || !this.endCam || this.tour) return;
       this.tour = new DeathTour(this, showMenu);
-    });
+    };
+    // (en línea, con el reloj de verdad del alma: updateEnd; solo, como antes)
+    if (this.endCam?.w) this.endCam.tour = tour;
+    else this.later(END_SECS, tour);
   }
 
   netRole() {
@@ -1097,9 +1289,14 @@ export default class Game {
     const indoor = !this.arena?.active && zone && !ZONES[zone].outdoor;
     // y: el piso donde cayó (en los mapas con pisos no es el suelo)
     const y = p.pos.y || 0;
-    this.endCam = { t: 0, x: p.pos.x, y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch, eye: p.eye, top: indoor ? 3.15 : 8.5, wide: indoor ? 0.9 : 3.4 };
+    // (w: en línea el alma va con el reloj de verdad, como las escenas: el paseo
+    // del final arranca a la vez en todas las compus; updateEnd)
+    this.endCam = { t: 0, x: p.pos.x, y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch, eye: p.eye, top: indoor ? 3.15 : 8.5, wide: indoor ? 0.9 : 3.4, w: this.net && globalThis.__mduNoCineSync !== true ? performance.now() : 0 };
     this.endBody = new Avatars(this, this.net);
-    this.endBody.add({ id: this.net?.id || 0, name: '', noTag: true, corpse: true, shield: !!p.shield, pos: new THREE.Vector3(p.pos.x, y, p.pos.z), yaw: p.yaw, pitch: 0, speed: 0 });
+    const body = { id: this.net?.id || 0, name: '', noTag: true, corpse: true, shield: !!p.shield, pos: new THREE.Vector3(p.pos.x, y, p.pos.z), yaw: p.yaw, pitch: 0, speed: 0 };
+    this.endBody.add(body);
+    // tirado a su manera, según su carácter en la cuadrilla (ui/deathPose.js)
+    this.endPose = deathPose(this, this.endBody, body.id, body);
     this.hud.show(false);
     const n = Math.max(0, this.stats.round);
     const many = this.net?.remote.size > 0;
@@ -1116,8 +1313,19 @@ export default class Game {
   updateEnd(dt) {
     const e = this.endCam;
     const cam = this.camera;
-    e.t += dt;
+    if (e.w) {
+      const now = performance.now();
+      const w = (now - e.w) / 1000;
+      e.w = now;
+      e.t += w >= 0.002 && w < 30 ? w : dt;
+      if (e.tour && e.t >= END_SECS) {
+        const f = e.tour;
+        e.tour = null;
+        f();
+      }
+    } else e.t += dt;
     this.endBody?.update(dt);
+    this.endPose?.(dt);
     if (this.tour) {
       this.tour.update(dt);
       return;
@@ -1200,7 +1408,7 @@ export default class Game {
     // (el estero ya pasó su final adentro del juego: EsterosEgg / ui/EsterosEnding;
     // el Challenge de la torre, el Cielo de los Mates: entities/challengeHeaven.js)
     this.ee?.onWin?.();
-    if (FEATURES.esteros || FEATURES.egg === 'reto') {
+    if (FEATURES.esteros || FEATURES.egg === 'reto' || FEATURES.egg === 'primermate') {
       over();
       return;
     }
@@ -1260,7 +1468,11 @@ export default class Game {
     const dur = this.audio.say(text, speaker);
     // si alguien estaba hablando, la voz espera su turno (y el subtítulo con ella)
     const wait = this.audio.sayWait || 0;
-    const label = { fierro: 'Martín Fierro', francisco: 'Francisco', abuelo: 'Abuelo', capataz: 'El Capataz', capatazJoven: 'Anselmo, el capataz (1911)', radio: FEATURES.penal ? 'Radio Nacional' : 'Radio Misiones', taza: 'La taza', anunciador: 'La Voz', entidad: 'La Voz de Arriba', espantapajaros: 'El Espantapájaros', alcaide: 'El Alcaide', gil: 'El Gauchito Gil', anacleto: 'Anacleto', cirilo: 'Cirilo', benito: 'Benito', nicanor: 'Nicanor', sargento: 'El Sargento' }[speaker] || speaker;
+    // cuándo habla cada uno (el cuerpo del que habla gesticula: ui/fierroNpc talkingNow);
+    // las que esperan su turno se suman a la que está diciendo
+    const T = (this.talkT ||= {});
+    T[speaker] = [...(T[speaker] || []).filter((x) => x[1] > this.time), [this.time + wait, this.time + wait + dur]];
+    const label = { fierro: 'Martín Fierro', francisco: 'Francisco', abuelo: 'Abuelo', capataz: 'El Capataz', capatazJoven: 'Anselmo, el capataz (1911)', radio: FEATURES.penal ? 'Radio Nacional' : 'Radio Misiones', taza: 'La taza', anunciador: 'La Voz', entidad: 'La Voz de Arriba', espantapajaros: 'El Espantapájaros', alcaide: 'El Alcaide', gil: 'El Gauchito Gil', anacleto: 'Anacleto', cirilo: 'Cirilo', benito: 'Benito', nicanor: 'Nicanor', sargento: 'El Sargento', belgrano: 'Manuel Belgrano' }[speaker] || speaker;
     if (wait > 0.1) this.later(wait, () => this.hud.speak(label, text, dur + 1.4, kind));
     else this.hud.speak(label, text, dur + 1.4, kind);
     return wait + dur;
@@ -1304,7 +1516,7 @@ export default class Game {
       // "auto" elige según la placa; "custom" (Personalizada) usa settings.gfx;
       // cualquier otra queda fija
       this.settings.qualityMode = v === 'auto' ? 'auto' : v === 'custom' ? 'custom' : 'manual';
-      if (v === 'auto') v = this.autoQuality();
+      if (v === 'auto') v = this.autoTier();
       if (v === 'custom') {
         // arranca igual a lo que había (después se toca cada cosa)
         if (!this.settings.gfx) this.settings.gfx = gfxFrom(this.settings.quality);
@@ -1354,7 +1566,14 @@ export default class Game {
   // luciérnagas, fire el fuego del dragón, grass el pasto al armar el mapa).
   tier(sys) {
     const c = this.settings.qualityMode === 'custom' ? this.settings.gfx : null;
-    return (c && c[sys]) || this.settings.quality;
+    return (c && c[sys]) || this.mapGfx()?.[sys] || this.settings.quality;
+  }
+
+  // Lo de este mapa sobre la calidad elegida (config/quality.js MAP_GFX); la
+  // Personalizada va tal cual la armó el jugador.
+  mapGfx() {
+    if (this.settings.qualityMode === 'custom' || globalThis.__mduNoMapGfx === true) return null;
+    return MAP_GFX[this.mapId]?.[this.settings.quality] || null;
   }
 
   // La calidad en uso: la del escalón o, en Personalizada, con lo que eligió
@@ -1377,7 +1596,7 @@ export default class Game {
       this.world.moon.shadow.map = null;
     }
     this.renderer.shadowMap.needsUpdate = true;
-    this.post?.setQuality(this.settings.quality, this.settings.qualityMode === 'custom' ? this.settings.gfx : null);
+    this.post?.setQuality(this.settings.quality, this.settings.qualityMode === 'custom' ? this.settings.gfx : null, this.mapGfx());
     // en plena partida (a mano o la automática que la baja): lo visible se
     // recompila solo, pero lo escondido no (el mate que muestra el Pack-a-Pava o
     // la caja, los actores de las cinemáticas). Se vuelve a compilar todo de
@@ -1417,12 +1636,17 @@ export default class Game {
   }
 
   // ---------------- bucle ----------------
+  // (el jugador ya no tiene tope de FPS, el usuario 2026-10-03: vsync siempre)
+  fpsCap() {
+    return navigator.webdriver ? +this.settings.fpsCap || 0 : 0;
+  }
+
   loop(now) {
     this.raf = requestAnimationFrame(this.loop);
-    // el tope de FPS de las opciones: sin tope, con un monitor de 144-180 Hz la
-    // placa va siempre al 100%. Se saltean los cuadros que llegan antes de
+    // tope de FPS: solo en las pruebas automáticas (fpsCap), para no cargar la
+    // PC; jugando manda el vsync. Se saltean los cuadros que llegan antes de
     // tiempo (a paso fijo, así el promedio da el tope aunque no divida al monitor).
-    const cap = +this.settings.fpsCap;
+    const cap = this.fpsCap();
     if (cap > 0) {
       if (now < (this.capNext || 0) - 1) return;
       this.capNext = Math.max((this.capNext || 0) + 1000 / cap, now);
@@ -1433,6 +1657,7 @@ export default class Game {
     // con varios sonando a la vez
     const raw = Math.min(200, Math.max(0, now - this.last));
     this.frameMs = (this.frameMs ?? 16) * 0.96 + raw * 0.04;
+    this.hitch?.begin(now - this.last);
     // (en las opciones se puede dejar siempre completo o siempre liviano)
     const perf = this.settings.audioPerf;
     if (this.audio) this.audio.budget = perf === 'full' ? 1 : perf === 'light' ? 0.4 : this.frameMs < 24 ? 1 : this.frameMs < 36 ? 0.65 : 0.4;
@@ -1457,6 +1682,7 @@ export default class Game {
     // las cinemáticas de la granja y el penal pasan adentro del mundo
     else if (this.state === 'won' && this.cine?.update) this.cine.update(dt);
     if (!stage) this.render(dt);
+    this.hitch?.end();
     this.input.endFrame();
   }
 

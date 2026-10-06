@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { makeNoise } from '../core/noise';
 import { toTexture } from '../core/textures';
 
@@ -360,6 +361,162 @@ const bonete = () =>
   ]);
 const faja = () => new THREE.CylinderGeometry(0.235, 0.232, 0.09, 16, 1, true).scale(1, 1, 0.66).translate(0, -0.23, 0);
 
+// Eclipse Matero: los desgarrados. Los muertos de todos los mundos mezclados
+// (peón del molino, chacarero, preso, peregrino, conquistador y realista),
+// cada uno con lo que más lo dice de su mapa, en versiones más livianas (cada
+// prenda la paga cada fila de muertos aunque no la lleve: entities/
+// zombieBatch.js), y todos rajados por una grieta de luz violeta.
+const strawLite = () =>
+  merge([
+    new THREE.CylinderGeometry(0.215, 0.215, 0.012, 16).translate(0, -0.005, 0),
+    new THREE.CylinderGeometry(0.098, 0.112, 0.085, 12).translate(0, 0.04, 0),
+    new THREE.CylinderGeometry(0.115, 0.115, 0.022, 12).translate(0, 0.012, 0),
+  ]);
+const overallLite = () =>
+  merge([
+    new THREE.BoxGeometry(0.22, 0.25, 0.02).translate(0, -0.03, 0.13),
+    ...[-1, 1].flatMap((s) => [
+      new THREE.BoxGeometry(0.035, 0.2, 0.012).translate(s * 0.075, 0.18, 0.133),
+      new THREE.BoxGeometry(0.035, 0.014, 0.27).translate(s * 0.08, 0.285, 0),
+      new THREE.BoxGeometry(0.035, 0.52, 0.012).translate(s * 0.075, 0.02, -0.132),
+    ]),
+  ]);
+// la casaca a rayas del preso: un saco sobre el torso (la tela del torso es una
+// sola por mapa) y el número encima
+const tunic = () => new RoundedBoxGeometry(0.46, 0.57, 0.29, 1, 0.075);
+const numOut = () => new THREE.BoxGeometry(0.1, 0.065, 0.008).translate(-0.095, 0.13, 0.15);
+const hoodLite = () => {
+  const shell = new THREE.SphereGeometry(0.158, 10, 6, Math.PI / 2 + 0.95, Math.PI * 2 - 1.9, 0, 2.15);
+  shell.scale(1, 1.08, 1.1).translate(0, 0.012, -0.012);
+  const tip = new THREE.ConeGeometry(0.07, 0.14, 6).rotateX(-Math.PI / 2 - 0.5).translate(0, 0.07, -0.19);
+  return merge([twoSided(shell, 0.95), tip]);
+};
+// (de una sola cara: el torso tapa la boca de arriba)
+const robeLite = () => lathe([[0.305, -0.6], [0.285, -0.42], [0.25, -0.2], [0.22, 0.0], [0.205, 0.11]], 12).scale(1, 1, 0.78);
+const morionLite = () => {
+  const brim = new THREE.CylinderGeometry(0.2, 0.2, 0.012, 16);
+  brim.scale(0.82, 1, 1.22);
+  const p = brim.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + (p.getZ(i) / 0.244) ** 2 * 0.07);
+  brim.computeVertexNormals();
+  const dome = new THREE.SphereGeometry(0.125, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 1.2, 1.12);
+  const crest = new THREE.CylinderGeometry(0.1, 0.1, 0.014, 10, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).translate(0, 0.09, 0);
+  return merge([brim.translate(0, -0.01, 0), dome.translate(0, -0.01, 0), crest]);
+};
+const shakoLite = () =>
+  merge([
+    new THREE.CylinderGeometry(0.118, 0.106, 0.2, 10).translate(0, 0.075, 0),
+    new THREE.CylinderGeometry(0.122, 0.122, 0.018, 10).translate(0, 0.18, 0),
+    new THREE.CylinderGeometry(0.108, 0.108, 0.008, 10, 1, false, -Math.PI / 2, Math.PI).scale(1, 1, 0.7).rotateX(0.18).translate(0, -0.02, 0.08),
+    new THREE.BoxGeometry(0.07, 0.07, 0.01).rotateZ(Math.PI / 4).translate(0, 0.08, 0.113),
+    new THREE.SphereGeometry(0.032, 6, 4).scale(1, 1.4, 1).translate(0, 0.22, 0.085),
+  ]);
+
+// La grieta: una cinta quebrada pegada a la superficie de una pieza (caja
+// redondeada: medias medidas y radio), adelante (side 1) o atrás (-1). off:
+// cuánto sobresale (la de afuera pasa por encima del saco, el peto o el
+// jardinero); depth: paredes hacia adentro (de costado se ve el tajo).
+const sdBox = (B, x, y, z) => {
+  const qx = Math.abs(x) - (B[0] - B[3]);
+  const qy = Math.abs(y) - (B[1] - B[3]);
+  const qz = Math.abs(z) - (B[2] - B[3]);
+  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qy, qz), 0) - B[3];
+};
+function onBox(B, x, y, side, off) {
+  let lo = 0;
+  let hi = B[2] + 0.05;
+  for (let i = 0; i < 22; i++) {
+    const m = (lo + hi) / 2;
+    if (sdBox(B, x, y, m * side) > 0) hi = m;
+    else lo = m;
+  }
+  const z = side * lo;
+  const e = 1e-4;
+  const n = new THREE.Vector3(sdBox(B, x + e, y, z) - sdBox(B, x - e, y, z), sdBox(B, x, y + e, z) - sdBox(B, x, y - e, z), sdBox(B, x, y, z + e) - sdBox(B, x, y, z - e)).normalize();
+  return { p: new THREE.Vector3(x, y, z).addScaledVector(n, off), n };
+}
+function crack(B, path, { side = 1, off = 0.004, depth = 0, w0 = 0.006, w1 = 0.03 } = {}) {
+  const pos = [];
+  const tri = (a, b, c, out) => {
+    // (de cara para afuera)
+    const nn = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
+    if (nn.dot(out) < 0) [b, c] = [c, b];
+    pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  };
+  const N = path.length;
+  const L = [];
+  const R = [];
+  for (let i = 0; i < N; i++) {
+    const a = path[Math.max(0, i - 1)];
+    const b = path[Math.min(N - 1, i + 1)];
+    let tx = b[0] - a[0];
+    let ty = b[1] - a[1];
+    const tl = Math.hypot(tx, ty) || 1;
+    tx /= tl;
+    ty /= tl;
+    // más ancha en el medio, con un temblor por punto
+    const w = (w0 + (w1 - w0) * Math.sin((Math.PI * i) / (N - 1)) * (i % 2 ? 0.75 : 1)) / 2;
+    const [x, y] = path[i];
+    const cl = (v, h) => Math.max(-h + 0.004, Math.min(h - 0.004, v));
+    L.push(onBox(B, cl(x - ty * w, B[0]), cl(y + tx * w, B[1]), side, off));
+    R.push(onBox(B, cl(x + ty * w, B[0]), cl(y - tx * w, B[1]), side, off));
+  }
+  for (let i = 0; i < N - 1; i++) {
+    const out = L[i].n.clone().add(R[i + 1].n);
+    tri(L[i].p, R[i].p, R[i + 1].p, out);
+    tri(L[i].p, R[i + 1].p, L[i + 1].p, out);
+    if (!depth) continue;
+    for (const [E, F] of [[L, R], [R, L]]) {
+      const a = E[i].p;
+      const b = E[i + 1].p;
+      const ai = a.clone().addScaledVector(E[i].n, -depth);
+      const bi = b.clone().addScaledVector(E[i + 1].n, -depth);
+      const side2 = new THREE.Vector3().subVectors(a, F[i].p);
+      tri(a, b, bi, side2);
+      tri(a, bi, ai, side2);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 2), 2));
+  g.computeVertexNormals();
+  return g;
+}
+// el torso y la cabeza de Zombies.geometries() (medias medidas y radio)
+const TORSO = [0.21, 0.28, 0.125, 0.07];
+const HEAD = [0.11, 0.135, 0.1225, 0.075];
+const RIFT_FRONT = [[-0.15, 0.265], [-0.105, 0.2], [-0.125, 0.15], [-0.05, 0.075], [-0.07, 0.02], [0.02, -0.05], [0.005, -0.1], [0.1, -0.17], [0.085, -0.21], [0.16, -0.265]];
+const RIFT_BRANCH = [[-0.05, 0.075], [0.03, 0.11], [0.07, 0.1], [0.125, 0.15]];
+const RIFT_BACK = [[0.15, 0.265], [0.09, 0.19], [0.115, 0.13], [0.03, 0.06], [0.06, -0.01], [-0.04, -0.09], [-0.02, -0.14], [-0.12, -0.21], [-0.155, -0.262]];
+// del cuero cabelludo a la mandíbula, por afuera del ojo derecho
+const RIFT_FACE = [[0.0, 0.132], [0.03, 0.115], [0.022, 0.095], [0.06, 0.078], [0.075, 0.06], [0.092, 0.035], [0.083, 0.005], [0.095, -0.03], [0.075, -0.07], [0.082, -0.1]];
+const riftBody = (o) =>
+  merge([
+    crack(TORSO, RIFT_FRONT, o),
+    crack(TORSO, RIFT_BRANCH, { ...o, w0: 0.004, w1: 0.012 }),
+    crack(TORSO, RIFT_BACK, { ...o, side: -1 }),
+  ]);
+const riftIn = () => riftBody({ off: 0.004 });
+const riftOut = () => riftBody({ off: 0.032, depth: 0.045 });
+const riftFace = () => crack(HEAD, RIFT_FACE, { off: 0.004, w0: 0.004, w1: 0.016 });
+
+// La piel de cada mundo, apagada hacia el gris violeta del eclipse.
+const ASH = new THREE.Color(0x8c7fa0);
+const ashen = (list, k = 0.32) => list.map((h) => new THREE.Color(h).lerp(ASH, k).getHex());
+const ECL_SKIN = {
+  molino: ashen([0x6d7a5e, 0x7a7f68, 0x5e6456, 0x858a76, 0x6a5f52]),
+  granja: ashen([0x7a6c52, 0x6e6450, 0x857458, 0x7c6650]),
+  penal: ashen([0x8a8c7a, 0x7c8070, 0x9a9484, 0x70766a]),
+  torre: ashen([0x9aa0a0, 0x8a9498, 0xa8a8a0, 0x7a8488], 0.2),
+  castillo: ashen([0x8a9aa4, 0x9aa4a8, 0x7a8a94, 0xa0a8a8], 0.2),
+  monumento: ashen([0x8e9a96, 0x86928e, 0x9aa29c, 0x7e8a86]),
+};
+// el color de la grieta: violeta casi siempre, a veces la luz rosada del desgarro
+const RIFT_COLORS = [0x5a1aff, 0x6a24ff, 0x4a10ff, 0x5a1aff, 0xd070ff];
+// (cuánto brilla: zombieBatch la suma sin luz; en la malla suelta, el emisivo).
+// Con más, el tono de la imagen la lavaba a lila y blanco (probado en el juego)
+const RIFT_GLOW = 1.3;
+
 const HAIR = [0x1a1410, 0x3a2a1a, 0x6a6a64, 0x2a2a2a];
 const steel = (mk, T) => mk(T.grime, { metalness: 0.45, roughness: 0.45 });
 
@@ -569,6 +726,131 @@ const LOOKS = {
       const hat = soldier && r() < 0.8;
       const bon = !soldier && r() < 0.7;
       return { colors, hat, flags: { bonete: bon, hair: !hat && !bon && r() < 0.75, belts: soldier && r() < 0.85, faja: !soldier && r() < 0.8, scarf: !soldier && r() < 0.45, algae: r() < 0.4, algaeH: r() < 0.25 } };
+    },
+  },
+  // Eclipse Matero: los desgarrados (ver strawLite y crack, arriba). Los
+  // sombreros van sobre la pieza del sombrero (13) y se elige uno por muerto.
+  eclipse: {
+    // violeta: con más rojo o más brillo, el tono de la imagen lo vira a
+    // magenta (0x7a2cff × 2 se veía rosa; probado en el juego)
+    eyes: 0x4a109f,
+    eyeGlow: 2,
+    geo: { straw: strawLite, overall: overallLite, cap: prisonCap, tunic, num: numOut, hood: hoodLite, robe: robeLite, helm: morionLite, cuirass, shako: shakoLite, belts: crossBelt, rift: riftIn, riftO: riftOut, riftH: riftFace },
+    mats: {
+      steel,
+      stripes: (mk) => mk(stripesTex()),
+      wool: (mk) => mk(woolTex(), { roughness: 0.95 }),
+      // la luz de la grieta (en la malla suelta, con __mduNoZBatch: un violeta fijo)
+      rift: (mk, T) => {
+        const m = mk(T.grime, { roughness: 0.6, emissive: 0x5a1aff, emissiveIntensity: 1.3 });
+        m.userData.zGlow = RIFT_GLOW;
+        return m;
+      },
+    },
+    drop: ['hat'],
+    base: ['hair', 'boina', 'susp'],
+    parts: [
+      { key: 'straw', parts: [13], color: 'hat', mat: 'plain', need: 'straw' },
+      { key: 'overall', parts: [1], color: 'pants', mat: 'pants', need: 'overall' },
+      { key: 'cap', parts: [13], color: 'hat', mat: 'stripes', need: 'cap' },
+      { key: 'tunic', parts: [1], color: 'uni', mat: 'stripes', need: 'tunic' },
+      { key: 'num', parts: [1], color: 'patch', mat: 'plain', need: 'num' },
+      { key: 'hood', parts: [2], color: 'shirt', mat: 'wool', need: 'hood' },
+      { key: 'robe', parts: [0], color: 'shirt', mat: 'wool', need: 'robe' },
+      { key: 'helm', parts: [13], color: 'metal', mat: 'steel', need: 'helm' },
+      { key: 'cuirass', parts: [1], color: 'metal', mat: 'steel', need: 'cuirass' },
+      { key: 'shako', parts: [13], color: 'hat', mat: 'leather', need: 'shako' },
+      { key: 'belts', parts: [1], color: 'belt', mat: 'leather', need: 'belts' },
+      { key: 'rift', parts: [1], color: 'rift', mat: 'rift', need: 'rift' },
+      { key: 'riftO', parts: [1], color: 'rift', mat: 'rift', need: 'riftO' },
+      { key: 'riftH', parts: [2], color: 'rift', mat: 'rift', need: 'riftH' },
+    ],
+    dress(r) {
+      // de qué mundo viene (uno de seis, parejo)
+      const w = Math.floor(r() * 6);
+      const hair = pick(r, HAIR);
+      const rift = pick(r, RIFT_COLORS);
+      const boots = pick(r, [0x1c1612, 0x2a1e14, 0x3a2a1a, 0x241a12]);
+      const f = { world: ['molino', 'granja', 'penal', 'torre', 'castillo', 'monumento'][w] };
+      let colors;
+      if (w === 0) {
+        // el peón del molino: boina, pelo o nada; tiradores
+        colors = {
+          skin: pick(r, ECL_SKIN.molino),
+          shirt: pick(r, [0x4a4f3a, 0x5a2c24, 0x2f3b4a, 0x6a6454, 0x3d4a34, 0x7a6a48, 0x8a8478]),
+          pants: pick(r, [0x3a3328, 0x5a5040, 0x26282c, 0x4a3a2a, 0x6a5a44]),
+          hat: pick(r, [0x1a1a1a, 0x2a2440, 0x3a1a18, 0x40382a]),
+        };
+        f.boina = r() < 0.55;
+        f.hair = !f.boina && r() < 0.8;
+        f.susp = r() < 0.55;
+      } else if (w === 1) {
+        // el chacarero de La Tapera: sombrero de paja y jardinero
+        colors = {
+          skin: pick(r, ECL_SKIN.granja),
+          shirt: pick(r, [0xd8d0c0, 0xb8a88a, 0x8a9aa8, 0xc8b89a, 0xa87a6a]),
+          pants: pick(r, [0x3a4a6a, 0x2e3e5a, 0x4a5a78, 0x5a5040]),
+          hat: pick(r, [0xc8a860, 0xb89850, 0xd4b870, 0xa88a48]),
+        };
+        f.straw = r() < 0.7;
+        f.hair = !f.straw && r() < 0.8;
+        f.overall = r() < 0.65;
+      } else if (w === 2) {
+        // el preso del penal: la casaca a rayas, la gorra y el número
+        const uni = pick(r, [0xffffff, 0xe8e0d0, 0xd6ccba]);
+        colors = {
+          skin: pick(r, ECL_SKIN.penal),
+          shirt: pick(r, [0x3a3a40, 0x4a463e, 0x8a7448]),
+          pants: pick(r, [0xc8c0b0, 0xb0a898, 0x8a8478]),
+          hat: uni,
+          uni,
+          patch: pick(r, [0xe8e4d8, 0xd8d0c0]),
+        };
+        f.tunic = true;
+        f.cap = r() < 0.6;
+        f.hair = !f.cap && r() < 0.8;
+        f.num = r() < 0.7;
+      } else if (w === 3) {
+        // el peregrino de la torre: hábito, capucha
+        const habit = pick(r, [0x4a3a2a, 0x3a3834, 0x5a4a38, 0x6a6458, 0x3a2e28]);
+        colors = { skin: pick(r, ECL_SKIN.torre), shirt: habit, pants: pick(r, [habit, 0x2a2622, 0x3a3834]) };
+        f.hood = r() < 0.75;
+        f.hair = !f.hood && r() < 0.7;
+        f.robe = r() < 0.85;
+      } else if (w === 4) {
+        // el conquistador del castillo: morrión y peto
+        colors = {
+          skin: pick(r, ECL_SKIN.castillo),
+          shirt: pick(r, [0x7a2a24, 0x8a6a2a, 0x5a2a3a, 0x6a5a3a]),
+          pants: pick(r, [0x3a3228, 0x4a4238, 0x2a2a2e]),
+          metal: pick(r, [0x8c8c88, 0x7a7870, 0x6a6862]),
+        };
+        f.helm = r() < 0.8;
+        f.cuirass = r() < 0.85;
+        f.hair = !f.helm && r() < 0.8;
+      } else {
+        // el realista del Monumento: chacó y correaje blanco
+        colors = {
+          skin: pick(r, ECL_SKIN.monumento),
+          shirt: pick(r, [0x23304a, 0x2a3a5a, 0xd8d2c2, 0x6a1e1a]),
+          pants: pick(r, [0xd8d0c0, 0xc8c0ac, 0x2a2e3a]),
+          hat: pick(r, [0x14141a, 0x1e1e26, 0x2a2622]),
+          belt: pick(r, [0xe8e2d2, 0xdcd4c2]),
+        };
+        f.shako = r() < 0.8;
+        f.belts = r() < 0.85;
+        f.hair = !f.shako && r() < 0.75;
+      }
+      colors.hair = hair;
+      colors.boots = boots;
+      colors.rift = rift;
+      // la grieta del cuerpo: por encima de la casaca, el peto o el jardinero
+      const outer = f.tunic || f.cuirass || f.overall;
+      const torn = r() < 0.9;
+      f.rift = torn && !outer;
+      f.riftO = torn && !!outer;
+      f.riftH = r() < (torn ? 0.4 : 1);
+      return { colors, hat: !!(f.straw || f.cap || f.helm || f.shako), flags: f };
     },
   },
 };

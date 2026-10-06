@@ -27,13 +27,15 @@ const NAMES = {
   dragon: '¡Mate Dragón!',
   facon: '¡Facón Relámpago!',
   clarin: '¡Toque de Clarín!',
+  // Eclipse Matero: la bruma violeta que succiona el caos (entities/EclipseEgg.js)
+  caos: '¡Cazador del Caos!',
   // los del Challenge de la torre (FEATURES.pups)
   infinito: '¡Balas infinitas!',
   botas: '¡Botas de potro!',
 };
 // El potenciador propio de cada mapa. Entra en la bolsa solo si ya tiene
 // nombre (NAMES): así uno a medio hacer no sale vacío.
-const SPECIAL = { granja: 'muerte', molino: 'piedra', penal: 'almas', torre: 'admin', castillo: 'dragon', esteros: 'facon', monumento: 'clarin' };
+const SPECIAL = { granja: 'muerte', molino: 'piedra', penal: 'almas', torre: 'admin', castillo: 'dragon', esteros: 'facon', monumento: 'clarin', eclipse: 'caos' };
 // Los personales: un arma que dura unos segundos, solo para el que lo agarra
 // ([id del arma, segundos]). Su tiempo se ve en el HUD con la misma clave.
 const PERSONAL = {
@@ -43,6 +45,9 @@ const PERSONAL = {
   piedra: ['piedra', 20],
   dragon: ['dragon', 25],
   facon: ['facon', 25],
+  // (sin la guadaña en la mano: su arma propia, la bruma violeta, weapons/Cazador.js;
+  // con ella, la ejecutora, ver applyEffect. globalThis.__mduNoCazador: el farol, como antes)
+  caos: [globalThis.__mduNoCazador === true ? 'farol' : 'cazador', 20],
 };
 
 export default class Powerups {
@@ -76,7 +81,8 @@ export default class Powerups {
     const type = this.bag.pop();
     // (el Challenge: en lugar del Admin Mate puede salir el especial de cualquier mapa, él incluido)
     if (FEATURES.anySpecial && type === SPECIAL[MAP_ID]) {
-      const all = Object.values(SPECIAL).filter((k) => NAMES[k] && PERSONAL[k]);
+      // (el Cazador del Caos solo en Eclipse: su arma se arma ahí nomás)
+      const all = Object.values(SPECIAL).filter((k) => NAMES[k] && PERSONAL[k] && (k !== 'caos' || MAP_ID === 'eclipse'));
       return all[Math.floor(Math.random() * all.length)];
     }
     return type;
@@ -138,6 +144,43 @@ export default class Powerups {
     // (age: el que entra tarde lo recibe con los segundos que ya lleva en el piso)
     this.items.push({ id: m.id, type: m.type, mesh, t: Number.isFinite(m.age) ? m.age : 0, pos: new THREE.Vector3(m.x, m.y || 0, m.z) });
     g.audio.powerupSpawn(mesh.position);
+  }
+
+  // Los mates de los potenciadores personales que pueden salir en este mapa
+  // (Weapons.warmFx arma su modelo al cargar: el Farol de las Ánimas trababa al agarrarlo).
+  personalWeapons() {
+    const ks = FEATURES.anySpecial ? Object.values(SPECIAL).filter((k) => k !== 'caos' || MAP_ID === 'eclipse') : [SPECIAL[MAP_ID]];
+    return ks.filter((k) => k && NAMES[k] && PERSONAL[k]).map((k) => PERSONAL[k][0]);
+  }
+
+  // Uno de cada potenciador (con su brillo), para compilar sus materiales al
+  // cargar el mapa (ui/Arrival compile): el Farol de las Ánimas trababa el
+  // juego la primera vez que aparecía.
+  warmGroup() {
+    const grp = new THREE.Group();
+    for (const type of Object.keys(NAMES)) {
+      // (el de otro mapa no se arma: el Cazador del Caos solo en Eclipse)
+      if (type === 'caos' && MAP_ID !== 'eclipse') continue;
+      try {
+        grp.add(this.model(type));
+      } catch {
+        /* uno a medio hacer: se compila cuando salga */
+      }
+    }
+    grp.add(new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0x40ff60, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.7 })));
+    return grp;
+  }
+
+  // Lo que armó warmGroup para calentar (ui/Arrival), ya fuera de la escena:
+  // sus texturas propias (el x2 y el $10) quedaban en la placa en cada carga
+  // (dos por partida). Los materiales no: liberarlos recompilaría al salir el
+  // primero. (globalThis.__mduNoPupFree: como antes)
+  releaseWarm(grp) {
+    if (!grp || globalThis.__mduNoPupFree === true) return;
+    grp.traverse((o) => {
+      const t = o.material?.map;
+      if (t?.userData?.pup) t.dispose();
+    });
   }
 
   model(type) {
@@ -247,6 +290,14 @@ export default class Powerups {
         for (let i = 0; i < 4; i++) add(new THREE.TorusGeometry(0.022, 0.006, 5, 12), iron, 0, 0.26 + i * 0.035, 0, 0, i % 2 ? Math.PI / 2 : 0, 0);
         add(new THREE.SphereGeometry(0.1, 14, 10), new THREE.MeshPhysicalMaterial({ color: 0x9affb8, roughness: 0.02, transparent: true, opacity: 0.2, depthWrite: false }), 0, -0.02);
         add(new THREE.SphereGeometry(0.06, 14, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(0x9affb0).multiplyScalar(2.2), toneMapped: false }), 0, -0.02);
+        break;
+      }
+      // el Cazador del Caos (Eclipse Matero): una bruma violeta con un ojo adentro
+      case 'caos': {
+        add(new THREE.SphereGeometry(0.2, 16, 12), new THREE.MeshPhysicalMaterial({ color: 0x8a40ff, roughness: 0.1, transparent: true, opacity: 0.35, depthWrite: false, emissive: 0x4a10a0, emissiveIntensity: 0.6 }), 0, 0.02);
+        add(new THREE.SphereGeometry(0.11, 14, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xd070ff).multiplyScalar(1.6), toneMapped: false }), 0, 0.02);
+        add(new THREE.SphereGeometry(0.045, 10, 8), new THREE.MeshBasicMaterial({ color: 0x120018 }), 0, 0.02, 0.1);
+        add(new THREE.TorusGeometry(0.27, 0.012, 6, 28), new THREE.MeshBasicMaterial({ color: 0xc080ff, transparent: true, opacity: 0.7, toneMapped: false }), 0, 0.02, 0, Math.PI / 2.4, 0, 0.5);
         break;
       }
       // la Piedra de Molino (una piedra de moler chiquita) y el Mate Dragón (weapons/Especiales.js)
@@ -388,7 +439,10 @@ export default class Powerups {
         // uno nuevo reemplaza al que tenía en la mano
         this.endPersonal();
         this.active[type] = own[1];
-        g.weapons.giveTemp(own[0], own[1]);
+        // el Cazador del Caos con el Desgarrador en la mano: la guadaña misma
+        // se vuelve la ejecutora violeta y rosa (weapons/Desgarrador.exec)
+        if (type === 'caos' && g.weapons.slot?.id === 'desgarrador' && g.weapons.cosmic?.exec) g.weapons.cosmic.exec(own[1], { link: 'caos' });
+        else g.weapons.giveTemp(own[0], own[1]);
       }
       return;
     }
@@ -424,6 +478,8 @@ export default class Powerups {
         this.active.clarin = 6;
         g.audio.bugle(g.camera.position.clone());
         g.post?.flash?.(0.35);
+        // cada muerto que se cuadra larga un destello celeste y blanco
+        for (const z of g.zombies.pool) if (z.active && !z.dead && !z.boss) g.fx.sparkle(z.pos.clone().setY((z.baseY ?? z.pos.y) + 1.9), [0.55, 0.8, 1], 6, 0.35);
         break;
       case 'infinito':
         this.active.infinito = POWERUP.duration;

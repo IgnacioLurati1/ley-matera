@@ -63,6 +63,10 @@ export default class Menus {
     this.play = new PlayMenu(this);
     // la armería: los camuflajes de los mates (weapons/camos.js)
     this.armory = new Armory(this);
+    // el libro "La Ronda Eterna" (ui/BookReader.js): se abre con el botón; lo
+    // pesado (letras, texto, texturas) se precarga ya, mientras carga el juego
+    this.acts.libro = () => import('./BookReader').then((m) => m.openBook(this));
+    setTimeout(() => import('./BookReader').then((m) => m.preloadBook?.()).catch(() => {}), 0);
   }
 
   // Alt+I en el menú del título (Game.onKey): las escenas con música, para ir
@@ -117,6 +121,7 @@ export default class Menus {
          <button class="mdu-btn" data-act="pulperia" hidden>Pulpería</button>
          <button class="mdu-btn" data-act="controls">Controles</button>
          <button class="mdu-btn" data-act="options">Opciones</button>
+         <button class="mdu-btn" data-act="libro">La Ronda Eterna</button>
          <a class="mdu-btn" href="/assets/sotano/guia-easter-eggs.pdf" download="Mate der Untoten - Guia de los easter eggs.pdf" style="text-decoration:none">Guía de los easter eggs (PDF)</a>
        </div>
        <p class="mdu-small" data-best></p>
@@ -235,7 +240,6 @@ export default class Menus {
            <p class="mdu-small mdu-custom__note">MSAA y pasto sin titileo solo se usan en Mate no Numa (en los demás mapas, SMAA).</p>
            <p class="mdu-small mdu-custom__note" data-custom-note></p>
          </div>
-         <label class="mdu-field">Límite de FPS <select data-set="fpsCap"><option value="0">Sin límite</option><option value="60">60</option><option value="90">90</option><option value="120">120</option><option value="144">144</option></select></label>
          <label class="mdu-field">Mostrar FPS <input type="checkbox" data-set="showFps"></label>
          <label class="mdu-field">Menos destellos <input type="checkbox" data-set="calmFx"></label>
          <p class="mdu-small" data-gpu2></p>
@@ -250,6 +254,7 @@ export default class Menus {
          <button class="mdu-btn" data-act="resume">Continuar</button>
          <button class="mdu-btn" data-act="options">Opciones</button>
          <button class="mdu-btn" data-act="controls">Controles</button>
+         <button class="mdu-btn" data-act="libro">La Ronda Eterna</button>
          <a class="mdu-btn" href="/assets/sotano/guia-easter-eggs.pdf" download="Mate der Untoten - Guia de los easter eggs.pdf" style="text-decoration:none">Guía de los easter eggs (PDF)</a>
          <button class="mdu-btn" data-act="restart">Fast restart</button>
          <button class="mdu-btn" data-act="toTitle">Volver al menú del juego</button>
@@ -487,6 +492,9 @@ export default class Menus {
     }
     for (const [k, s] of Object.entries(this.screens)) s.classList.toggle('is-on', k === name);
     this.current = name;
+    // el grano CSS solo con un menú: jugando ya está el del PostFX, y animado
+    // encima del canvas le hacía repintar toda la pantalla al navegador
+    this.grain.hidden = !name;
     for (const f of this.showHooks) f(name);
     if (name === 'title') this.syncEggs();
     this.root.scrollTop = 0;

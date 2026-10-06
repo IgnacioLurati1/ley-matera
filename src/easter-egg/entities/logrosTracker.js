@@ -1,7 +1,7 @@
 import * as L from '../core/logros';
 import * as P from '../core/progress';
 import { PERK_SPOTS, DOORS } from '../config/map';
-import { eggsDone, eggsTotal } from '../core/eggs';
+import { eggsDone, eggsTotal, eggsAll } from '../core/eggs';
 
 // Los logros durante la partida (la lista y el guardado, en core/logros.js).
 // No toca los archivos de la partida: se cuelga de lo que ya avisa (los
@@ -72,7 +72,8 @@ export default class LogrosTracker {
   // Lo de antes de que hubiera logros: los easter eggs hechos, los récords de
   // cada mapa y el nivel (sin aviso).
   retro() {
-    for (const id of eggsDone()) L.unlock(`ee_${id}`);
+    // (los bonus también, si su easter egg tiene logro: el Monumento)
+    for (const id of globalThis.__mduNoEggLogro ? eggsDone() : eggsAll()) if (L.def(`ee_${id}`)) L.unlock(`ee_${id}`);
     if (eggsDone().length === eggsTotal()) L.unlock('super');
     for (const m of L.MAPS) {
       let best = 0;

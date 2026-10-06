@@ -16,6 +16,7 @@ import Supernova from './Supernova';
 import Supremo from './Supremo';
 import HozBeam from './hozBeam';
 import Sable from './Sable';
+import Desgarrador from './Desgarrador';
 import { memeFx } from './memeMate';
 import { buildPerkMateFor, PERK_MATE_IDS } from './perkMates';
 import Mk3Fx from './mk3Fx';
@@ -425,6 +426,8 @@ export default class Weapons {
     this.hozBeamPose = [0, 0, 0, 0, 0, 0, 0];
     // el Sable Corvo del Monumento al Mate (weapons/Sable.js)
     this.sable = new Sable(this);
+    // el Desgarrador Cósmico de Eclipse Matero (weapons/Desgarrador.js)
+    this.cosmic = new Desgarrador(this);
     this.projectiles = [];
     this.projGeo = new THREE.SphereGeometry(1, 10, 8);
     this.pose = { pos: HIP.clone(), rot: new THREE.Euler() };
@@ -452,6 +455,9 @@ export default class Weapons {
     this.warm = warm;
     for (const [id, w] of Object.entries(WEAPONS)) {
       if (w.kind === 'tactical') continue;
+      // (el Desgarrador, solo en la carga de Eclipse Matero: weapons/Desgarrador.js)
+      // (y el Cazador del Caos, el potenciador de Eclipse: weapons/Cazador.js)
+      if ((w.kind === 'cosmic' || w.kind === 'cazador') && !Desgarrador.atLoad()) continue;
       const keys = [];
       for (let up = 0; up <= maxTier(id); up++) keys.push(...(w.akimbo ? [`${id}|${up}`, `${id}|${up}|L`] : [`${id}|${up}`]));
       for (const key of keys) {
@@ -544,6 +550,8 @@ export default class Weapons {
     if (!s) return null;
     const st = weaponStats(s.id, s.up);
     // (con el bastón de oro del Yasy: tajo más ancho y medialuna más fuerte)
+    // (el Desgarrador con la Furia Cósmica: más rápido y se corre más)
+    if (st.kind === 'cosmic' && this.cosmic) return this.cosmic.boost(st);
     return s.id === 'hoz' && this.g.player?.baston ? hozBaston(st) : st;
   }
 
@@ -652,8 +660,8 @@ export default class Weapons {
   maxAmmo() {
     for (const s of this.slots) {
       s.reserve = weaponStats(s.id, s.up).reserve;
-      // la hoz (que no se recarga) queda con el cargador lleno
-      if (WEAPONS[s.id].kind === 'melee') s.mag = weaponStats(s.id, s.up).mag;
+      // la hoz (que no se recarga) queda con el cargador lleno (y el Sable Corvo, sus tiros)
+      if (WEAPONS[s.id].kind === 'melee' || (WEAPONS[s.id].kind === 'sable' && !globalThis.__mduNoSableAmmo)) s.mag = weaponStats(s.id, s.up).mag;
     }
     this.grenades = GRENADE.max;
     // la pava silbadora también se llena (aunque ya las hayas tirado todas)
@@ -670,6 +678,44 @@ export default class Weapons {
   }
 
   // Facón de Plata comprado en la pared: se desenvaina para mostrarlo.
+  // Lo que los mates especiales arman recién al usarse, para compilarlo al
+  // cargar el mapa (ui/Arrival compile).
+  warmFx() {
+    const grp = new THREE.Group();
+    this.liq?.warm?.(grp);
+    this.facon?.warm?.(grp);
+    // (el sable mejorado, la Zonda y el Pillán mejorados y las bombillas
+    // clavadas de la Gut: se compilaban al primer tiro, 20-270 ms. Las
+    // bombillas, una copia instanciada de verdad: la carga la dibuja delante de
+    // la cámara, también en el G-buffer. globalThis.__mduNoWarmArmas: como antes)
+    if (globalThis.__mduNoWarmArmas !== true) {
+      this.sable?.fx?.warm?.(grp);
+      // (las grietas, la guadaña espectral y el rayo del Desgarrador)
+      this.cosmic?.fx?.warm?.(grp);
+      this.elem?.warm?.(grp);
+      const sm = this.ensureStuck();
+      const one = new THREE.InstancedMesh(sm.geometry, sm.material, 1);
+      one.setMatrixAt(0, new THREE.Matrix4());
+      one.frustumCulled = false;
+      grp.add(one);
+    }
+    // (el espíritu que se chupa el Farol de las Ánimas)
+    grp.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), this.pot?.spiritWarmMat?.() || new THREE.MeshBasicMaterial()));
+    // (y el modelo de los mates de los potenciadores del mapa: se arma ahora y
+    // queda guardado; las copias van a dibujarse con la escena, ui/Arrival)
+    for (const id of this.g.powerups?.personalWeapons?.() || []) {
+      try {
+        const m = this.modelOf(id, 0, null);
+        m.root.traverse((o) => {
+          if (o.isMesh && o.material) grp.add(new THREE.Mesh(o.geometry, o.material));
+        });
+      } catch {
+        /* uno que no se arma acá se arma al agarrarlo, como antes */
+      }
+    }
+    return grp;
+  }
+
   giveBowie() {
     this.bowie = true;
     this.startKnife();
@@ -784,8 +830,8 @@ export default class Weapons {
     const s = this.slot;
     const st = this.stats;
     // la hoz sin mejorar no lleva munición; la Máquina de Muerte no se acaba
-    // (el Sable Corvo tampoco)
-    const melee = (st?.kind === 'melee' || st?.kind === 'sable') && !st.alt;
+    // (el Sable Corvo tampoco, salvo los tiros del derecho: Sable.usesAmmo)
+    const melee = (st?.kind === 'melee' || st?.kind === 'sable') && !st.alt && !(st?.kind === 'sable' && this.sable?.usesAmmo(st));
     this.g.hud?.setWeapon(st ? { name: st.upgraded ? st.name : WEAPONS[s.id].name, mag: melee || s.temp ? '∞' : s.mag, reserve: melee || s.temp || st.infinite ? '∞' : s.reserve, upgraded: s.up, desc: st.upgraded && st.desc ? st.desc : WEAPONS[s.id].desc } : null);
     // el cuchillo de Anacleto (el penal) ocupa el lugar de la pava y se muestra aparte
     const knife = this.tactical?.id === 'cuchillo';
@@ -919,6 +965,7 @@ export default class Weapons {
     this.supremo.update(dt);
     this.hozBeam.update(dt);
     this.sable.update(dt);
+    if (globalThis.__mduNoDesgarrador !== true) this.cosmic.update(dt);
     this.shieldHand.update(dt);
     this.updateStuck(dt);
     this.updatePools(dt);
@@ -939,6 +986,8 @@ export default class Weapons {
     } else if (input.hit('KeyE') && this.state === 'idle' && !p.sprinting && !this.ads) {
       this.state = 'inspect';
       this.stateT = 0;
+      // (el saludo militar con el Sable Corvo: los compañeros lo ven, net/gauchoSkin sableArm)
+      if (this.slot?.id === 'sable' && globalThis.__mduNoSableAvatar !== true) this.g.net?.act?.('salute', 3.4);
       return;
     }
     // con la Máquina de Muerte no se recarga: se tira. Cambiar de arma la
@@ -955,6 +1004,8 @@ export default class Weapons {
       if (this.esp.input(input, st, p)) return;
       if (this.facon.input(input, st, p)) return;
       if (this.pot.input(input, st, p)) return;
+      // (el Cazador del Caos de Eclipse: la bruma y la succión, weapons/Cazador.js)
+      if (this.cosmic.cazador?.input(input, st, p)) return;
       if (input.mouse.left && this.fireCd <= 0 && (this.state === 'idle' || this.state === 'reload')) {
         this.state = 'idle';
         this.fire(st);
@@ -972,6 +1023,9 @@ export default class Weapons {
       this.switchTo(next);
       return;
     }
+    // el Desgarrador Cósmico (weapons/Desgarrador.js): la V es la embestida, la
+    // R el giro y la H la Furia (con la guadaña en la mano)
+    if (st.kind === 'cosmic' && this.cosmic.keys(input, st, p)) return;
     // tumbado: ni cuchillo, ni granada, ni pava (solo el mate en la mano)
     const down = p.downed;
     if (input.hit('KeyV') && !down && !['knife', 'throw', 'drink'].includes(this.state)) {
@@ -987,13 +1041,19 @@ export default class Weapons {
       return;
     }
     const s = this.slot;
-    if (input.hit('KeyR') && this.state === 'idle' && s.mag < st.mag && s.reserve > 0) {
+    // (el Sable Corvo no se recarga: su cargador se llena solo, weapons/Sable.js)
+    if (input.hit('KeyR') && this.state === 'idle' && s.mag < st.mag && s.reserve > 0 && st.kind !== 'sable') {
       this.startReload(st);
       return;
     }
     // el Sable Corvo (weapons/Sable.js): tajos, el tiro y la Carga de San Lorenzo
     if (st.kind === 'sable') {
       this.sable.input(input, st, p);
+      return;
+    }
+    // el Desgarrador Cósmico: tajos, la guadaña espectral y el rayo de la Furia
+    if (st.kind === 'cosmic') {
+      this.cosmic.input(input, st, p);
       return;
     }
     // la hoz: izquierdo corta (manteniendo, sigue cortando); la de la Muerte
@@ -1054,7 +1114,10 @@ export default class Weapons {
     this.state = 'reload';
     this.stateT = 0;
     this.reloadTime = st.reload * g.player.reloadMult;
-    g.net?.act?.('reload', this.reloadTime);
+    // (la de a uno, la Lata: lo que dura toda la carga, para que los compañeros
+    // la vean cebar ese rato y no medio segundo; anim-online, __mduNoAvatarBlend: como antes)
+    const shells = st.shellReload && globalThis.__mduNoAvatarBlend !== true ? Math.max(1, Math.min(st.mag - (this.slot?.mag || 0), this.slot?.reserve || 0)) : 1;
+    g.net?.act?.('reload', this.reloadTime * shells);
     this.tintTermo(st);
     // Electric Cherry (Chisporé): la descarga al empezar a recargar, más fuerte
     // cuanto más vacío venía el cargador (acá y, por Session 'cherry', para los demás)
@@ -1737,6 +1800,16 @@ export default class Weapons {
     return out;
   }
 
+  // Deadshot Daiquiri (el Nadarias): los tiros que pegan por zona, +25% a la
+  // cabeza (y al cuello) y +15% al cuerpo; no se suman (el usuario, 2026-10-05;
+  // __mduNoDeadshot: no hace nada, como antes)
+  zoneMult(zone, z = null) {
+    if (globalThis.__mduNoDeadshot || !this.g.player?.perks?.has('deadshot')) return 1;
+    // (a los jefes, como mucho +15%: el usuario, 2026-10-05; __mduNoDeadshotJefe: como antes)
+    if (z && (z.boss || z.pombero || z.crow) && globalThis.__mduNoDeadshotJefe !== true) return 1.15;
+    return zone === 'head' || zone === 'neck' ? 1.25 : 1.15;
+  }
+
   hitscan(st, origin, fwd, muzzle, spread, pellet) {
     const g = this.g;
     const dir = this.randomDir(fwd, spread, new THREE.Vector3());
@@ -1760,7 +1833,7 @@ export default class Weapons {
       // Bombilla Gut: cada bombilla se lleva una parte fija de la vida del muerto,
       // así sigue matando de un tiro en cualquier ronda (a los jefes no)
       const base = st.gutFrac && !h.z.boss ? Math.max(st.damage, (h.z.maxHp || 0) * st.gutFrac) : st.damage;
-      g.zombies.damage(h.z, base * mult * falloff * dmgMult, { type: st.gutFrac ? 'gut' : 'bullet', zone: h.zone, arm: h.arm, point, dir, burn: st.burn, elem: st.elem, pup: st.bossMult });
+      g.zombies.damage(h.z, base * mult * falloff * dmgMult * this.zoneMult(h.zone, h.z), { type: st.gutFrac ? 'gut' : 'bullet', zone: h.zone, arm: h.arm, point, dir, burn: st.burn, elem: st.elem, pup: st.bossMult });
       if (st.gutFrac && pen <= 1) this.stickBombilla(point, dir, h.z);
       if (st.explosive) this.explode(point, st.explosive.radius, st.explosive.damage, { color: [0.6, 1, 0.4], elem: st.elem });
       if (!hitAny) {
@@ -1794,7 +1867,7 @@ export default class Weapons {
   }
 
   // Bombillas de la Gut clavadas en paredes y muertos: quedan un rato y se van.
-  stickBombilla(point, dir, z, normal) {
+  ensureStuck() {
     if (!this.stuckMesh) {
       const geo = new THREE.CylinderGeometry(0.006, 0.006, 0.26, 5).rotateX(Math.PI / 2).translate(0, 0, -0.06);
       const filter = new THREE.CylinderGeometry(0.014, 0.014, 0.03, 6).rotateX(Math.PI / 2).translate(0, 0, 0.07);
@@ -1804,8 +1877,13 @@ export default class Weapons {
       this.stuckMesh.frustumCulled = false;
       this.stuckMesh.count = 0;
       this.stuck = [];
-      this.g.scene.add(this.stuckMesh);
     }
+    if (this.stuckMesh.parent !== this.g.scene) this.g.scene.add(this.stuckMesh);
+    return this.stuckMesh;
+  }
+
+  stickBombilla(point, dir, z, normal) {
+    this.ensureStuck().visible = true;
     const s = this.stuck.length < STUCK_MAX ? { m: new THREE.Matrix4() } : this.stuck.shift();
     s.t = 0;
     s.z = z;
@@ -1901,7 +1979,7 @@ export default class Weapons {
   // Charco de ácido: queda en el piso unos segundos, frena y carcome a los que lo
   // pisan. Se dibuja con un shader: verde tóxico con remolinos, borde irregular
   // que respira, espuma clara en la orilla y burbujas que revientan.
-  acidPool(pos, B) {
+  acidPool(pos, B, ghost = false) {
     const g = this.g;
     const y = g.world.floorAt(pos.x, pos.z, pos.y) + 0.03;
     const r = B.radius * 0.75;
@@ -1920,7 +1998,7 @@ export default class Weapons {
     const near = now - (this.poolSndT ?? -1) < 0.3;
     if (!near) this.poolSndT = now;
     const snd = near ? null : g.audio.guns?.play('acido-charco', { pos: mesh.position, rate: 0.9 + Math.random() * 0.06 });
-    (this.pools ||= []).push({ pos: new THREE.Vector3(pos.x, y, pos.z), r, B, t: 0, life: 4.5, tick: 0, mesh, snd });
+    (this.pools ||= []).push({ pos: new THREE.Vector3(pos.x, y, pos.z), r, B, t: 0, life: 4.5, tick: 0, mesh, snd, ghost });
     while (this.pools.length > 8) {
       const old = this.pools.shift();
       old.mesh.removeFromParent();
@@ -1954,7 +2032,8 @@ export default class Weapons {
         g.fx.alpha.spawn(P.pos.x + Math.cos(a) * rr, P.pos.y + 0.05, P.pos.z + Math.sin(a) * rr, (Math.random() - 0.5) * 0.2, 0.35 + Math.random() * 0.3, (Math.random() - 0.5) * 0.2, { color: [0.32, 0.55, 0.18], size: 0.15, size1: 0.7, life: 1.4, alpha: 0.16, drag: 0.6 });
       }
       P.tick -= dt;
-      if (P.tick <= 0 && P.t < P.life - 0.4) {
+      // (el charco de otro jugador no lastima: lo reporta su compu)
+      if (P.tick <= 0 && P.t < P.life - 0.4 && !P.ghost) {
         P.tick = 0.35;
         for (const { z } of g.zombies.inRadius(P.pos, P.r)) {
           if (Math.abs((z.baseY || 0) - P.pos.y) > 1.5) continue;
@@ -2188,9 +2267,39 @@ export default class Weapons {
     }
     const target = this.aimPoint(origin, fwd, st.range);
     const vel = target.sub(muzzle).normalize().multiplyScalar(B.speed);
-    const mesh = new THREE.Group();
+    this.shotBolt(st, muzzle, vel, 2);
+  }
+
+  // La bombilla o el frasco que sale: vuela acá y, en línea, los demás ven
+  // una copia (ghostBolt) que se pega, llama a los muertos y revienta, sin
+  // daño (el daño lo reporta el que tiró). Antes no se compartía: el
+  // compañero no veía los tiros y su "mono" no llamaba a los muertos del anfitrión.
+  shotBolt(st, pos, vel, gravity, ghost = false) {
+    this.spawnProjectile({ kind: 'bolt', pos: pos.clone(), vel, gravity, B: st.bolt, st, mesh: this.boltMesh(st), life: 6, ghost });
+    if (!ghost) this.g.net?.share('gutb', { w: st.id, u: st.tier || (st.upgraded ? 1 : 0), x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2), vx: +vel.x.toFixed(2), vy: +vel.y.toFixed(2), vz: +vel.z.toFixed(2), gr: gravity });
+  }
+
+  ghostBolt(m) {
+    if (!WEAPONS[m.w]) return;
+    const st = weaponStats(m.w, m.u || 0);
+    if (!st.bolt) return;
+    this.shotBolt(st, new THREE.Vector3(m.x, m.y, m.z), new THREE.Vector3(m.vx, m.vy, m.vz), m.gr ?? 2, true);
+  }
+
+  boltMesh(st) {
     const M = getMats(this.T);
     const G = this.boltGeos();
+    const mesh = new THREE.Group();
+    if (st.bolt.acid) {
+      // un frasco de ácido
+      const jar = new THREE.Mesh(G.jar, M.glass);
+      jar.rotation.x = Math.PI / 2;
+      mesh.add(jar);
+      const goo = new THREE.Mesh(G.goo, M.glowGreen);
+      goo.rotation.x = Math.PI / 2;
+      mesh.add(goo);
+      return mesh;
+    }
     const tube = new THREE.Mesh(G.tube, M.silver);
     tube.rotation.x = Math.PI / 2;
     mesh.add(tube);
@@ -2199,7 +2308,7 @@ export default class Weapons {
       glow.position.z = 0.12;
       mesh.add(glow);
     }
-    this.spawnProjectile({ kind: 'bolt', pos: muzzle.clone(), vel, gravity: 2, B, st, mesh, life: 6 });
+    return mesh;
   }
 
   // Un frasco de ácido: vuela en arco, se pega a lo que toca y revienta en verde.
@@ -2207,16 +2316,7 @@ export default class Weapons {
     const B = st.bolt;
     const target = this.aimPoint(origin, dir, st.range);
     const vel = target.sub(muzzle).normalize().multiplyScalar(B.speed);
-    const M = getMats(this.T);
-    const G = this.boltGeos();
-    const mesh = new THREE.Group();
-    const jar = new THREE.Mesh(G.jar, M.glass);
-    jar.rotation.x = Math.PI / 2;
-    mesh.add(jar);
-    const goo = new THREE.Mesh(G.goo, M.glowGreen);
-    goo.rotation.x = Math.PI / 2;
-    mesh.add(goo);
-    this.spawnProjectile({ kind: 'bolt', pos: muzzle.clone(), vel, gravity: 6, B, st, mesh, life: 6 });
+    this.shotBolt(st, muzzle, vel, 6);
   }
 
   // Las piezas de la bombilla y del frasco que vuelan (una sola vez: se comparten).
@@ -2316,6 +2416,9 @@ export default class Weapons {
       // el soplido del Tronador apaga el barbacuá (easter egg del molino)
       g.ee?.onBlast?.(origin, fwd, st.range, C.angle);
     }
+    // los dos conos rompen lo del easter egg que se rompe a tiros (las
+    // calabazas y las ánimas del Infierno de la torre)
+    g.ee?.onCone?.(origin, fwd, st.range, C.angle, type);
     const tanA = Math.tan(C.angle);
     // (el del hielo, con más margen: la horda de al lado también queda dura)
     const margin = type === 'freeze' ? 1.25 : 0.9;
@@ -2374,6 +2477,7 @@ export default class Weapons {
     this.supremo?.clear();
     this.hozBeam?.clear();
     this.sable?.clear();
+    this.cosmic?.clear();
     for (const p of this.projectiles || []) {
       p.mesh?.removeFromParent();
       p.bubbles?.stop(0.1);
@@ -2573,7 +2677,7 @@ export default class Weapons {
     const st = p.st;
     if (zhit) {
       const type = st.id === 'oro' ? 'yerba' : 'explosive';
-      g.zombies.damage(zhit.z, P.damage * (zhit.zone === 'head' ? st.headMult || 1 : 1), { type: P.radius > 0 ? type : 'bullet', zone: zhit.zone, point, dir, elem: st.elem });
+      g.zombies.damage(zhit.z, P.damage * (zhit.zone === 'head' ? st.headMult || 1 : 1) * this.zoneMult(zhit.zone, zhit.z), { type: P.radius > 0 ? type : 'bullet', zone: zhit.zone, point, dir, elem: st.elem });
       g.hud.hitmarker(zhit.zone === 'head');
     }
     if (P.radius > 0) {
@@ -2590,6 +2694,17 @@ export default class Weapons {
     this.removeLure(p);
     p.mesh?.removeFromParent();
     p.bubbles?.stop(0.06);
+    if (p.ghost) {
+      // la de otro jugador: se ve y se oye nomás (el daño lo reportó él)
+      if (p.B.acid) {
+        this.acidSplash(p.pos, p.B.radius);
+        this.acidPool(p.pos, p.B, true);
+      } else {
+        this.g.fx.explosion(p.pos, p.B.radius, p.st.upgraded ? [0.5, 1, 0.4] : [1, 0.55, 0.2]);
+        this.g.audio.explosion(p.pos, 1);
+      }
+      return;
+    }
     if (p.B.acid) {
       // el ácido: un reventón verde que salpica y carcome (al Alcaide le derrite el cinturón)
       this.explode(p.pos, p.B.radius, p.B.damage, { selfDamage: 20, type: 'acid', fx: false });
@@ -2967,6 +3082,19 @@ export default class Weapons {
       if (o[6] >= 0) lower = o[6];
       if (o[7]) snap = true;
     }
+    // el Desgarrador Cósmico (weapons/Desgarrador.js): los tajos, la guadaña que
+    // sale, la embestida, el giro de la recarga, el rayo y mostrarla (igual que el sable)
+    if (this.model?.cosmic) {
+      const o = this.cosmic.pose(dt);
+      target.x += o[0];
+      target.y += o[1];
+      target.z += o[2];
+      rx += o[3];
+      ry += o[4];
+      rz += o[5];
+      if (o[6] >= 0) lower = o[6];
+      if (o[7]) snap = true;
+    }
     if (this.state === 'throw') {
       lower = 0.7;
       const k = Math.min(1, t / 0.6);
@@ -2996,9 +3124,16 @@ export default class Weapons {
     } else if (this.state === 'drink' && this.eatAnim) {
       // comiendo una empanada (entities/Empanadas): la mano la anima ella y devuelve cuánto baja la mirada
       lower = 1;
-      this.viewDip = this.eatAnim(t) || 0;
+      // (suavizado: la mirada pegaba tirones con cada mordisco y al empezar;
+      // el usuario 2026-10-05, "un mini saltito de la cámara")
+      const want = this.eatAnim(t) || 0;
+      this.viewDip = (this.viewDip || 0) + (want - (this.viewDip || 0)) * Math.min(1, dt * 10);
       this.drinkFrame.rotation.x = this.viewDip;
-    } else this.viewDip = Math.max(0, (this.viewDip || 0) - dt * 2);
+    } else {
+      // (vuelve suave, sin el corte del final: antes bajaba de golpe a 2 rad/s)
+      this.viewDip = (this.viewDip || 0) * Math.max(0, 1 - dt * 7);
+      if (this.viewDip < 1e-4) this.viewDip = 0;
+    }
     // inspeccionar: lo trae al centro, inclina la boca para ver la yerba y lo
     // va girando despacio para mostrar la calabaza y la virola
     const insp = this.state === 'inspect' ? smooth(clamp01(t / 0.4)) : 0;
@@ -3034,7 +3169,7 @@ export default class Weapons {
       rz += ik * (0.25 + Math.sin(c * 0.5 + 1) * 0.1 - peek * 0.2);
       // el golpecito con la palma que hace girar el atado
       rz -= ik * bump(u, 1.45, 0.12) * 0.08;
-    } else if (ik > 0.001 && !this.model?.sable) {
+    } else if (ik > 0.001 && !this.model?.sable && !this.model?.cosmic) {
       const c = Math.max(0, t - 0.4);
       target.lerp(INSPECT, ik);
       rx += ik * (0.62 + Math.sin(c * 1.05) * 0.16);

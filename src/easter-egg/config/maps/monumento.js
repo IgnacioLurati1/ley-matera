@@ -18,7 +18,8 @@
 // La arquitectura la arma world/Monumento.js; Levels.js pone las alturas,
 // los choques y por dónde se pasa.
 
-export const MAP_W = 124;
+// (hasta 160: del 128 al 158, sobre el río y muy arriba, va el patio de la 2043)
+export const MAP_W = 160;
 export const MAP_H = 60;
 export const WALL_H = 3.6;
 
@@ -26,6 +27,9 @@ export const WALL_H = 3.6;
 // 0; la Cripta, la explanada de la Proa y el Parque a -2,6; la Costanera a
 // -4,4 y el río a -5,2. El Mirador, a 44.
 export const LEVEL = { pasaje: 3.6, propileo: 4.2, patioTop: 2.2, patio: 0, atrio: 0.8, cripta: -2.6, explanada: -2.6, parque: -2.6, costanera: -4.4, rio: -5.2, mirador: 44 };
+// El Paraná se nada (entities/swim.js, como el estero): uno se tira desde la
+// punta del muelle y vuelve a subir por la escalerilla (o trepando el borde).
+export const WATER_Y = LEVEL.rio;
 
 export const ZONES = {
   A: {
@@ -71,9 +75,10 @@ export const ZONES = {
     sub: 'Aquí se izó por primera vez la Bandera',
     y: -2.6,
     roof: 1.0,
-    // las dos escaleras que bajan del atrio, la nave, y las alas que dan
-    // la vuelta al pie de la Torre hasta la Proa
-    rects: [[67, 21, 71, 23], [67, 37, 71, 39], [67, 24, 71, 36], [72, 21, 80, 25], [72, 35, 80, 39]],
+    // las dos escaleras que bajan del atrio, la nave, las alas que dan la
+    // vuelta al pie de la Torre hasta la Proa y la cabina del ascensor (atrás
+    // de su puerta, en la pared del este de la nave: se entra caminando)
+    rects: [[67, 21, 71, 23], [67, 37, 71, 39], [67, 24, 71, 36], [72, 21, 80, 25], [72, 35, 80, 39], [72, 29, 72, 31]],
     floor: 'calcareo',
     wall: 'cryptStone',
     ext: 'travertino',
@@ -110,14 +115,19 @@ export const ZONES = {
     name: 'La Costanera',
     sub: 'El Paraná, negro y ancho',
     y: -4.4,
-    // la costanera, las dos escaleras de la barranca y el muelle
-    rects: [[108, 4, 112, 56], [105, 18, 107, 20], [105, 40, 107, 42], [113, 28, 115, 32]],
+    // la costanera, las dos escaleras de la barranca y el muelle (entero,
+    // hasta el farol de la punta: antes a la mitad había una pared invisible)
+    rects: [[108, 4, 112, 56], [105, 18, 107, 20], [105, 40, 107, 42], [113, 28, 124, 32]],
     floor: 'concrete',
     outdoor: true,
     edge: 'rail',
     rail: 'costanera',
   },
   I: { name: 'El Mirador', sub: 'Setenta metros arriba de Rosario', y: 44, rects: [[75, 27, 78, 34]], floor: 'concrete', outdoor: true, edge: 'rail', rail: 'mirador' },
+  // el easter egg secundario: el patio de la 2043 del Colegio San José, de día
+  // (lejos de todo, a 150 m sobre el río; lo arma world/monumentoPatio.js y se
+  // llega por el portal de la Sala de las Banderas: entities/monumento/Patio2043.js)
+  P: { name: 'El patio de la 2043', sub: 'Colegio San José · Rosario', y: 150, rects: [[128, 16, 157, 41]], floor: 'concrete', outdoor: true },
 };
 
 export const RAMPS = [
@@ -129,9 +139,11 @@ export const RAMPS = [
   // las escaleras de costado que bajan a la Proa
   { rect: [63, 17, 72, 19], dir: '+x', y0: 0, y1: -2.6, steps: true, own: 'costado' },
   { rect: [63, 41, 72, 43], dir: '+x', y0: 0, y1: -2.6, steps: true, own: 'costado' },
-  // las escaleras de la Cripta (bajan del atrio)
-  { rect: [67, 21, 71, 23], dir: '+x', y0: 0.8, y1: -2.6, steps: true, ceil: 'slope', head: 3.0, own: 'cripta' },
-  { rect: [67, 37, 71, 39], dir: '+x', y0: 0.8, y1: -2.6, steps: true, ceil: 'slope', head: 3.0, own: 'cripta' },
+  // las escaleras de la Cripta (bajan del atrio); el techo en pendiente va 3,6
+  // arriba de los escalones, así al pie queda a ras del techo de la Cripta (1,0)
+  // y no baja como una losa negra cruzada delante de la nave
+  { rect: [67, 21, 71, 23], dir: '+x', y0: 0.8, y1: -2.6, steps: true, ceil: 'slope', head: 3.6, own: 'cripta' },
+  { rect: [67, 37, 71, 39], dir: '+x', y0: 0.8, y1: -2.6, steps: true, ceil: 'slope', head: 3.6, own: 'cripta' },
   // los tres escalones del Pasaje al Propileo
   { rect: [18, 27, 19, 32], dir: '+x', y0: 3.6, y1: 4.2, steps: true, own: 'pasaje' },
   // la escalera del pilono norte del Propileo, que baja a la Sala de las Banderas
@@ -151,7 +163,10 @@ export const PLAYER_START = { x: 50.5, z: 30.5, yaw: -Math.PI / 2 };
 // 'door' (los portones de bronce), 'reja'.
 export const DOORS = [
   // del Patio: arriba al Propileo, abajo a la Proa (por los dos costados) y a la Cripta
-  { id: 1, zones: ['A', 'B'], cells: [[33, 21], [33, 22], [33, 23], [33, 24], [33, 25], [33, 26], [33, 27], [33, 28], [33, 29], [33, 30], [33, 31], [33, 32], [33, 33], [33, 34], [33, 35], [33, 36], [33, 37], [33, 38], [33, 39]], cost: 1000, kind: 'valla' },
+  // (sin las puntas z 21 y 39: ahí la primera columna queda a 55 cm del pilono
+  // y la celda era de la valla, que la grilla de los muertos no mira: se
+  // trababan queriendo pasar por ese hueco)
+  { id: 1, zones: ['A', 'B'], cells: [[33, 22], [33, 23], [33, 24], [33, 25], [33, 26], [33, 27], [33, 28], [33, 29], [33, 30], [33, 31], [33, 32], [33, 33], [33, 34], [33, 35], [33, 36], [33, 37], [33, 38]], cost: 1000, kind: 'valla' },
   { id: 2, zones: ['A', 'C'], cells: [[62, 17], [62, 18], [62, 19]], cost: 750, kind: 'valla' },
   { id: 3, zones: ['A', 'C'], cells: [[62, 41], [62, 42], [62, 43]], cost: 750, kind: 'valla' },
   { id: 4, zones: ['A', 'D'], cells: [[66, 21], [66, 22], [66, 23]], cost: 1000, kind: 'door' },
@@ -173,12 +188,15 @@ export const DOORS = [
 // y Santa Fe, salen de la Catedral y de la plaza, de las rejillas de la Sala,
 // de las bajadas de la avenida y del río.
 export const WINDOWS = [
-  { cell: [44, 16], out: [0, -1], zone: 'A' },
-  { cell: [52, 16], out: [0, -1], zone: 'A' },
-  { cell: [58, 16], out: [0, -1], zone: 'A' },
-  { cell: [44, 44], out: [0, 1], zone: 'A' },
-  { cell: [52, 44], out: [0, 1], zone: 'A' },
-  { cell: [58, 44], out: [0, 1], zone: 'A' },
+  // (las del Patio, entre los mástiles de la baranda, que van cada 1,75 m
+  // desde 41,5: en 44, 52 y 58 las tablas se cruzaban con los mástiles; la
+  // baranda tiene el hueco ahí, world/Monumento.js)
+  { cell: [42, 16], out: [0, -1], zone: 'A' },
+  { cell: [49, 16], out: [0, -1], zone: 'A' },
+  { cell: [56, 16], out: [0, -1], zone: 'A' },
+  { cell: [42, 44], out: [0, 1], zone: 'A' },
+  { cell: [49, 44], out: [0, 1], zone: 'A' },
+  { cell: [56, 44], out: [0, 1], zone: 'A' },
   { cell: [0, 28], out: [-1, 0], zone: 'E' },
   { cell: [0, 31], out: [-1, 0], zone: 'E' },
   { cell: [12, 40], out: [0, 1], zone: 'E' },
@@ -195,11 +213,13 @@ export const WINDOWS = [
   { cell: [113, 38], out: [1, 0], zone: 'H' },
   { cell: [113, 50], out: [1, 0], zone: 'H' },
   // el Mirador: los muertos trepan por la Torre y entran por las ventanas
-  // (entre los parantes; la del este del medio es la de la tirolesa)
+  // (entre los parantes; la del este del medio es la de la tirolesa). Ojo:
+  // la grilla es una sola para todas las alturas: nada en z 35-39 ni z 21-25
+  // (abajo están las alas de la Cripta)
   { cell: [75, 26], out: [0, -1], zone: 'I' },
-  { cell: [78, 35], out: [0, 1], zone: 'I' },
+  { cell: [78, 26], out: [0, -1], zone: 'I' },
   { cell: [79, 34], out: [1, 0], zone: 'I' },
-  { cell: [74, 27], out: [-1, 0], zone: 'I' },
+  { cell: [74, 34], out: [-1, 0], zone: 'I' },
 ];
 
 export const RISERS = [
@@ -238,7 +258,8 @@ export const WALL_BUYS = [
   // (en el basamento de la Torre, a los costados del nicho, mirando al Patio)
   { weapon: 'madera', cell: [66, 26], face: [-1, 0] },
   { weapon: 'plastico', cell: [66, 35], face: [-1, 0] },
-  { weapon: 'vidrio', cell: [29, 20], face: [0, 1] },
+  // (corrido: si no, el pizarrón se metía detrás de la primera columna del Propileo)
+  { weapon: 'vidrio', cell: [29, 20], face: [0, 1], slide: -0.45 },
   { weapon: 'lata', cell: [9, 14], face: [0, 1] },
   { weapon: 'algarrobo', cell: [66, 34], face: [1, 0] },
   { weapon: 'bowie', cell: [70, 20], face: [0, -1] },
@@ -246,8 +267,10 @@ export const WALL_BUYS = [
 
 // Todas las máquinas del juego (el mapa bonus las tiene a todas).
 export const PERK_SPOTS = [
-  { perk: 'revive', cell: [46, 16], face: [0, 1] },
-  { perk: 'stamin', cell: [46, 44], face: [0, -1] },
+  // (al pie de las gradas, en el fondo plano contra la baranda: en las gradas
+  // la máquina pisaba dos escalones y quedaba torcida)
+  { perk: 'revive', cell: [60, 16], face: [0, 1] },
+  { perk: 'stamin', cell: [60, 44], face: [0, -1] },
   { perk: 'doubletap', cell: [23, 20], face: [0, 1] },
   { perk: 'deadshot', cell: [23, 40], face: [0, -1] },
   { perk: 'speed', cell: [14, 26], face: [0, 1] },
@@ -256,7 +279,9 @@ export const PERK_SPOTS = [
   { perk: 'jugg', cell: [66, 26], face: [1, 0] },
   { perk: 'cherry', cell: [76, 20], face: [0, 1] },
   { perk: 'wish', cell: [76, 40], face: [0, -1] },
-  { perk: 'dragon', cell: [79, 20], face: [0, -1] },
+  // (contra el murete de la explanada, de espaldas a la calle Córdoba: contra el
+  // basamento de la Torre el zócalo de piedra se le metía en la espalda)
+  { perk: 'dragon', cell: [72, 13], face: [1, 0] },
   { perk: 'maiz', cell: [97, 22], face: [1, 0] },
   { perk: 'aqua', cell: [113, 44], face: [-1, 0] },
 ];
@@ -283,43 +308,52 @@ export const BOX_START = [0, 1];
 // Las luces que alumbran de verdad (las demás son de dibujo: los focos de la
 // Torre y del Propileo pintan la piedra, world/Monumento.js). Sin luz: los
 // faroles de la ciudad sí, el monumento apagado.
+// Cada luz va donde está su farol (el halo de fx/Ambience se dibuja en `pos`:
+// antes muchas quedaban metros al costado de su farol, brillando en el aire).
 export const LIGHTS = [
-  // los faroles de las barandas del Patio
-  { zone: 'A', pos: [44, 3.3, 16.6], color: 0xffd9a0, intensity: 16, noPower: 0.25, kind: 'lamp' },
-  { zone: 'A', pos: [54, 2.4, 16.6], color: 0xffd9a0, intensity: 16, noPower: 0.25, kind: 'lamp' },
-  { zone: 'A', pos: [44, 3.3, 43.4], color: 0xffd9a0, intensity: 16, noPower: 0.25, kind: 'lamp' },
-  { zone: 'A', pos: [54, 2.4, 43.4], color: 0xffd9a0, intensity: 16, noPower: 0.25, kind: 'lamp' },
+  // los faroles de las barandas del Patio (la cruz de cuatro globos arriba del mástil)
+  { zone: 'A', pos: [45, 7.1, 16.69], color: 0xffd9a0, intensity: 22, noPower: 0.25, kind: 'lamp' },
+  { zone: 'A', pos: [55.5, 5.95, 16.69], color: 0xffd9a0, intensity: 22, noPower: 0.25, kind: 'lamp' },
+  { zone: 'A', pos: [45, 7.1, 44.31], color: 0xffd9a0, intensity: 22, noPower: 0.25, kind: 'lamp' },
+  { zone: 'A', pos: [55.5, 5.95, 44.31], color: 0xffd9a0, intensity: 22, noPower: 0.25, kind: 'lamp' },
+  // el reflector del piso del atrio que alumbra a la Madre Patria en su nicho (con la luz)
+  { zone: 'A', pos: [64.35, 1.12, 30.5], color: 0xffe6c0, intensity: 16, noPower: 0, kind: 'lamp' },
   // la Llama Votiva (siempre prendida) y las farolas de bronce del Propileo
   { zone: 'B', pos: [27.5, 6.4, 30.5], color: 0xff8a3a, intensity: 30, noPower: 1, kind: 'fire' },
-  { zone: 'B', pos: [22.6, 7, 24], color: 0xffc888, intensity: 10, noPower: 0.2, kind: 'lamp' },
-  { zone: 'B', pos: [22.6, 7, 37], color: 0xffc888, intensity: 10, noPower: 0.2, kind: 'lamp' },
-  // la Cripta: la lámpara votiva de Belgrano y la nave
-  { zone: 'D', pos: [68.6, -0.6, 30.5], color: 0xffb070, intensity: 14, noPower: 1, kind: 'candle' },
-  { zone: 'D', pos: [76, -0.2, 23], color: 0xffd0a0, intensity: 10, noPower: 0.3, kind: 'lamp' },
-  { zone: 'D', pos: [76, -0.2, 37], color: 0xffd0a0, intensity: 10, noPower: 0.3, kind: 'lamp' },
-  // el Pasaje: los faroles de la ciudad
-  { zone: 'E', pos: [6, 7.6, 33], color: 0xffd6a0, intensity: 18, noPower: 1, kind: 'lamp' },
-  { zone: 'E', pos: [15, 7.6, 26.3], color: 0xffd6a0, intensity: 18, noPower: 1, kind: 'lamp' },
-  // la Sala de las Banderas
-  { zone: 'F', pos: [9, 2.6, 18], color: 0xfff0d0, intensity: 12, noPower: 0.3, kind: 'lamp' },
-  { zone: 'F', pos: [16, 2.6, 18], color: 0xfff0d0, intensity: 12, noPower: 0.3, kind: 'lamp' },
-  // las columnas de alumbrado de la avenida y el parque
-  { zone: 'C', pos: [84, 3.6, 14], color: 0xffcf8a, intensity: 22, noPower: 1, kind: 'lamp' },
-  { zone: 'C', pos: [84, 3.6, 46], color: 0xffcf8a, intensity: 22, noPower: 1, kind: 'lamp' },
-  { zone: 'C', pos: [94, 3.6, 30], color: 0xffcf8a, intensity: 22, noPower: 1, kind: 'lamp' },
-  { zone: 'G', pos: [101, 2.4, 16], color: 0xffcf8a, intensity: 16, noPower: 1, kind: 'lamp' },
-  { zone: 'G', pos: [101, 2.4, 44], color: 0xffcf8a, intensity: 16, noPower: 1, kind: 'lamp' },
-  // la costanera
-  { zone: 'H', pos: [111.5, 0.6, 14], color: 0xffe0b0, intensity: 18, noPower: 1, kind: 'lamp' },
-  { zone: 'H', pos: [111.5, 0.6, 46], color: 0xffe0b0, intensity: 18, noPower: 1, kind: 'lamp' },
-  { zone: 'H', pos: [114.5, -2.6, 30], color: 0xffe0b0, intensity: 12, noPower: 1, kind: 'lamp' },
+  { zone: 'B', pos: [22.33, 6.5, 23.345], color: 0xffc888, intensity: 10, noPower: 0.2, kind: 'lamp' },
+  { zone: 'B', pos: [22.33, 6.5, 37.655], color: 0xffc888, intensity: 10, noPower: 0.2, kind: 'lamp' },
+  // la Cripta: la lámpara votiva de Belgrano (en su pie de bronce) y los faroles colgados de las alas
+  { zone: 'D', pos: [68.75, -0.95, 30.5], color: 0xffb070, intensity: 14, noPower: 1, kind: 'candle' },
+  { zone: 'D', pos: [76, -0.25, 23], color: 0xffd0a0, intensity: 10, noPower: 0.3, kind: 'lamp' },
+  { zone: 'D', pos: [76, -0.25, 37], color: 0xffd0a0, intensity: 10, noPower: 0.3, kind: 'lamp' },
+  // el Pasaje: los faroles de la ciudad (en los bordes de la vereda: antes uno
+  // estaba parado en el agua del estanque y el otro, medio afuera del espejo)
+  { zone: 'E', pos: [6, 7.8, 32.75], color: 0xffd6a0, intensity: 18, noPower: 1, kind: 'lamp' },
+  { zone: 'E', pos: [16.6, 7.8, 27.3], color: 0xffd6a0, intensity: 18, noPower: 1, kind: 'lamp' },
+  // la Sala de las Banderas (las dos arañas del techo)
+  { zone: 'F', pos: [9, 2.45, 18], color: 0xfff0d0, intensity: 12, noPower: 0.3, kind: 'lamp' },
+  { zone: 'F', pos: [16, 2.45, 18], color: 0xfff0d0, intensity: 12, noPower: 0.3, kind: 'lamp' },
+  // las columnas de alumbrado de la avenida (la luminaria en la punta del pescante) y las farolas del parque
+  { zone: 'C', pos: [85.55, 4.62, 14], color: 0xffcf8a, intensity: 22, noPower: 1, kind: 'lamp' },
+  { zone: 'C', pos: [85.55, 4.62, 46], color: 0xffcf8a, intensity: 22, noPower: 1, kind: 'lamp' },
+  { zone: 'C', pos: [92.45, 4.62, 30], color: 0xffcf8a, intensity: 22, noPower: 1, kind: 'lamp' },
+  { zone: 'G', pos: [99.55, 1.85, 16], color: 0xffcf8a, intensity: 16, noPower: 1, kind: 'lamp' },
+  { zone: 'G', pos: [99.55, 1.85, 44], color: 0xffcf8a, intensity: 16, noPower: 1, kind: 'lamp' },
+  // la costanera (los faroles de la baranda y el de la punta del muelle)
+  { zone: 'H', pos: [112.6, 0.6, 14], color: 0xffe0b0, intensity: 18, noPower: 1, kind: 'lamp' },
+  { zone: 'H', pos: [112.6, 0.6, 46], color: 0xffe0b0, intensity: 18, noPower: 1, kind: 'lamp' },
+  { zone: 'H', pos: [124.2, -1.9, 30.5], color: 0xffe0b0, intensity: 12, noPower: 1, kind: 'lamp' },
 ];
 
 // (la Llama Votiva suena cuando se prende: world/papLlama.js)
 export const FIRES = [];
 
-// la cámara del título: desde la Costanera, la Torre con la luna atrás
-export const TITLE_CAM = { at: [104, 1.5, 38], amp: [2.5, 0.6], look: [76, 12, 30], lookAmp: 4 };
+// la cámara del título: desde arriba de la escalinata del Propileo, el Patio
+// Cívico con las farolas y las banderas, la Torre iluminada (los reflectores
+// van prendidos en el título, world/Monumento.js) y la luna al costado. La
+// Torre corrida a la derecha, que el menú no la tape. (Antes, desde el
+// Parque: los árboles tapaban todo, y la postal salía con un árbol negro.)
+export const TITLE_CAM = { at: [35.5, 8.5, 30.5], amp: [1.0, 2.2], look: [76, 21, 22], lookAmp: 2 };
 
 // El easter egg "La Primera Bandera" (entities/MonumentoEgg.js): dónde está cada cosa.
 export const EE = {
@@ -334,12 +368,14 @@ export const EE = {
   bateria: [102.3, 8.5],
   independencia: [160, 24],
   // el ascensor (abajo, en la Cripta; arriba, en el Mirador) y la tirolesa
-  ascensor: { abajo: [71.4, 30.5], arriba: [75.6, 30.5] },
+  ascensor: { abajo: [72.5, 30.5], arriba: [75.5, 30.5] },
   // (la tirolesa sale por la ventana del este del medio: z 28,85 a 30,65)
   tirolesa: { desde: [78.6, 29.75], hasta: [101.2, 13.5] },
-  // la Llama Votiva y los cuatro pebeteros de la escalinata
+  // la Llama Votiva y los cuatro pebeteros: al pie de la escalinata, en el
+  // descanso (en la escalinata el pie quedaba entre dos escalones, mitad en el
+  // aire) y al final de las gradas, en el medio de un escalón
   llama: [27.5, 30.5],
-  pebeteros: [[36, 19.6], [36, 41.4], [58.6, 17.6], [58.6, 43.4]],
+  pebeteros: [[38.6, 19.6], [38.6, 41.4], [58.75, 17.6], [58.75, 43.4]],
   // la caña de pescar del muelle
   cana: [114.4, 28.6],
   // los cuadernos Rivadavia de los primeros probadores (el patio de la 2043)
@@ -357,13 +393,16 @@ const PARTS = [
 ];
 const BENCH = { pos: [61.2, 30.5], rot: Math.PI / 2 };
 const JARS = [
-  { cell: [16, 22], face: [0, -1], zone: 'F' },
+  // (en la Sala, entre la caja y las vitrinas: en 16 quedaba metido en la vitrina del Uruguay)
+  { cell: [14, 22], face: [0, -1], zone: 'F' },
   { cell: [81, 23], face: [-1, 0], zone: 'D' },
   { cell: [70, 40], face: [0, 1], zone: 'C' },
 ];
 const TRAPS = [
   // la Llamarada Votiva: la llama del Propileo larga un anillo de fuego
-  { id: 'llamarada', name: 'la Llamarada Votiva', kind: 'fire', power: false, own: true, lever: { cell: [21, 20], face: [0, 1] }, rect: [24.6, 27.6, 30.4, 33.4], posts: [] },
+  // (la palanca en la cara del pilono sur que da a la nave, de frente a la Llama
+  // y entre las urnas; en [21, 20] quedaba escondida detrás de la primera columna)
+  { id: 'llamarada', name: 'la Llamarada Votiva', kind: 'fire', power: false, own: true, lever: { cell: [27, 40], face: [0, -1] }, rect: [24.6, 27.6, 30.4, 33.4], posts: [] },
   // el espejo electrificado del Pasaje Juramento
   { id: 'espejo', name: 'el Espejo Electrificado', kind: 'shock', power: true, lever: { cell: [4, 32], face: [1, 0] }, rect: [5, 33, 20, 40], posts: [[5.3, 33.3], [19.7, 33.3]] },
 ];
@@ -408,6 +447,8 @@ export const SKY = {
 
 // Los hornos de barro de las empanadas (entities/Empanadas): pared y hacia dónde mira.
 export const HORNO_SPOTS = [
-  { cell: [103, 5], face: [0, 1] },
+  // (en la punta norte del Parque, del otro lado de la ventana de los muertos:
+  // en 103 quedaba detrás del cañón de la Batería Libertad)
+  { cell: [98, 5], face: [0, 1], slide: 0.3 },
   { cell: [73, 34], face: [0, 1] },
 ];

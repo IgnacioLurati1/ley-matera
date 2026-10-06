@@ -13,6 +13,8 @@ import { lomaY, lomaTop } from '../world/esterosProps';
 import { EXTRA_PUSH } from '../fx/grassPush';
 import { prefetchTrack } from '../core/music';
 import { speechPlan, voiceLength } from '../core/voice';
+import { cineClip, poseCineClip, gauchoClip, cineSnap, headProp, FACE_EYES } from '../net/gauchoSkin';
+import { assetUrl } from '../../lib/assets';
 
 // "Mate no Numa": la llegada del Luisón (EsterosEgg.startLuison). Gil deja la
 // luz de los ahogados en el hueco del Algarrobo de los Colgados y arranca la
@@ -71,6 +73,15 @@ const LEAP = AT.end - AT.leap - 0.1;
 const CLIMB_NM = 3.2;
 const CLIMB_T = 4.7;
 const CLIMB_FROM = 8.5;
+// (2026-10-05, el usuario: "tarda mucho en hacer el rugido": quedaba ~2,5 s
+// parado mirando antes del aullido.) Sube más despacio, sin mover el aullido
+// (la canción): arranca igual, llega arriba a los 5,5 s (antes a los ~4,4), en
+// CLIMB_HOLD se para derecho y queda ~1,2 s quieto antes de aullar. Se asoma
+// casi con el grito, cuando se le prenden los ojos.
+// globalThis.__mduNoLuCima = true: como antes.
+const CLIMB_T2 = 6.0;
+const CLIMB_HOLD = 0.5;
+const climbT = () => (globalThis.__mduNoLuCima === true ? CLIMB_T : CLIMB_T2);
 // los lobos del monte (audio.wolves): [cuándo, cuál, paneo]
 const WOLVES = [
   [22.2, 0, -0.55],
@@ -89,6 +100,174 @@ const CREW = [
   { key: 'benito', id: 903, name: 'Benito', color: 0x7a5a2a, weapon: 'camionero', off: -12, lp: 1.1 },
 ];
 const WHO = { entidad: 'La voz' };
+// el respiro, cada uno a su manera (ui/cineCrew PERSONA): el Viejo doblado,
+// el Canchero derecho, el Miedoso jadeando
+const TIRED = { anacleto: { torsoP: 0.4, headP: 0.32, knL: 0.28, knR: 0.24 }, cirilo: { torsoP: 0.05, headP: 0.04 }, benito: { torsoP: 0.24, headP: 0.14 } };
+const TIRED2 = { anacleto: { torsoP: 0.3, headP: 0.2 }, cirilo: { torsoP: -0.03, headP: 0 }, benito: { torsoP: 0.12, headP: 0.04 } };
+const BREATH = { gil: 0.9, anacleto: 1.5, cirilo: 0.35, benito: 1.2 };
+// el aullido: [quién, cuándo, cuánto tarda en darse vuelta]
+const HEAR = [['benito', 0.1, 0.95], ['gil', 0.34, 1.3], ['cirilo', 0.6, 1.45], ['anacleto', 0.8, 1.55]];
+// a sus puestos: cuándo arranca cada uno (el Miedoso primero; el Viejo, último)
+const GO = { gil: 0.45, benito: 0.22, cirilo: 0.5, anacleto: 0.68 };
+
+// ---- los cuerpos, animados a mano en Blender ----
+// (C:/Users/ignac/Tools/mdu-blender/luison_clips.py → modelos/gaucho/cine-luison.json;
+// el caminar, el de siempre de net/gauchoSkin.) Misma escena, mismos momentos;
+// cada uno con su carácter (ui/cineCrew PERSONA) y su arma en el puño derecho:
+// Gil el Valiente (el facón), Anacleto el Viejo (la Lata), Cirilo el Canchero
+// (el Liquidificador; se sacude el polvo, sin anteojos: van solo en el penal y la torre) y Benito el
+// Miedoso (el Camionero). Cada cambio arranca de la pose que tiene (cineSnap).
+// globalThis.__mduBlend = false (o sin los clips): la de antes, con las piezas.
+const LU_CLIPS_URL = '/assets/sotano/modelos/gaucho/cine-luison.json';
+let LCLIPS = null;
+let lLoading = null;
+export function prefetchLuisonClips() {
+  if (globalThis.__mduBlend === false) return Promise.resolve(null);
+  lLoading ||= fetch(assetUrl(LU_CLIPS_URL))
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+    .then((J) => {
+      const C = {};
+      for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+      LCLIPS = C;
+      return C;
+    })
+    .catch(() => null);
+  return lLoading;
+}
+// la paz (con la canción), alerta, apuntar (al nivel, alto, el culatazo) y el respiro
+const B_PEACE = { gil: 'luGilPeace', anacleto: 'luOldPeace', cirilo: 'luCoolPeace', benito: 'luScaredPeace' };
+const B_ALERT = { gil: 'luGilAlert', anacleto: 'luOldAlert', cirilo: 'luCoolAlert', benito: 'luScaredAlert' };
+const B_AIM = { gil: 'luGilGuard', anacleto: 'luOldAim', cirilo: 'luCoolAim', benito: 'luScaredAim' };
+const B_HI = { gil: 'luGilGuardUp', anacleto: 'luOldAimHi', cirilo: 'luCoolAimHi', benito: 'luScaredAimHi' };
+const B_KICK = { anacleto: 'luOldKick', cirilo: 'luCoolKick', benito: 'luScaredKick' };
+const B_TIRED = { gil: 'luGilTired', anacleto: 'luOldWinded', cirilo: 'luCoolStand', benito: 'luScaredPant' };
+// lo oyen: el Valiente se planta, el Miedoso pega un salto, el Canchero sin apuro, el Viejo despacio
+const B_HEAR = { gil: 'luGilHear', anacleto: 'luOldHear', cirilo: 'luCoolHear', benito: 'luScaredJump' };
+const B_SLASH = { fore: 'luSlashFore', back: 'luSlashBack', over: 'luSlashOver' };
+// (desde qué segundo de los clips de oírlo ya levantan el arma: apuntan)
+const B_AIMT = { luOldHear: 0.8, luCoolHear: 1.1, luScaredJump: 0.5 };
+const B_LOCO = new Set(['walk', 'back', 'run', 'luStepTurn']);
+// (antes de girar dando pasitos: lo que tarda la mezcla al clip de los pasitos)
+const B_SETTLE = 0.3;
+// (qué tan rápido gira la cabeza para el lado del aullido, como antes)
+const B_HEARK = { benito: 15, anacleto: 6, gil: 9, cirilo: 9 };
+// los anteojos: salen del poncho y a la cara (luison_clips.py SHADES_ON_C)
+const SHADES_OUT = 0.55;
+const SHADES_ON = 1.15;
+// el arma en el puño (como net/Avatars: un mate de pelea parado, girado con el cuerpo)
+const MATE_AT = new THREE.Vector3(0, -0.02, 0.01);
+const GUN_OFF = new THREE.Vector3(0, 0.02, -0.02);
+const ONE = new THREE.Vector3(1, 1, 1);
+const tmpS = new THREE.Vector3();
+const tmpM = new THREE.Matrix4();
+const tmpM2 = new THREE.Matrix4();
+const tmpU = new THREE.Vector3();
+
+// Sube (o baja) el pie h metros moviendo el muslo y la canilla (dos huesos, la
+// rodilla en el plano que tenía); el pie queda con el mismo giro en el mundo.
+const ikA = new THREE.Vector3();
+const ikK = new THREE.Vector3();
+const ikF = new THREE.Vector3();
+const ikT = new THREE.Vector3();
+const ikD = new THREE.Vector3();
+const ikP = new THREE.Vector3();
+const ikV = new THREE.Vector3();
+const ikQ1 = new THREE.Quaternion();
+const ikQ2 = new THREE.Quaternion();
+const ikWU = new THREE.Quaternion();
+const ikWL = new THREE.Quaternion();
+const ikWF = new THREE.Quaternion();
+const ikWP = new THREE.Quaternion();
+function legRaise(up, leg, foot, h) {
+  up.getWorldPosition(ikA);
+  leg.getWorldPosition(ikK);
+  foot.getWorldPosition(ikF);
+  const l1 = ikA.distanceTo(ikK);
+  const l2 = ikK.distanceTo(ikF);
+  ikT.copy(ikF);
+  ikT.y += h;
+  ikD.subVectors(ikT, ikA);
+  const dist = Math.max(0.05, Math.min(l1 + l2 - 1e-3, ikD.length()));
+  ikD.normalize();
+  // (de qué lado está la rodilla: lo que se sale de la línea cadera-pie)
+  ikP.subVectors(ikK, ikA);
+  ikP.addScaledVector(ikD, -ikP.dot(ikD));
+  if (ikP.lengthSq() < 1e-8) return;
+  ikP.normalize();
+  const ca = Math.max(-1, Math.min(1, (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist)));
+  const sa = Math.sqrt(1 - ca * ca);
+  // la rodilla nueva y el pie nuevo
+  ikV.copy(ikA).addScaledVector(ikD, l1 * ca).addScaledVector(ikP, l1 * sa);
+  up.getWorldQuaternion(ikWU);
+  leg.getWorldQuaternion(ikWL);
+  foot.getWorldQuaternion(ikWF);
+  up.parent.getWorldQuaternion(ikWP);
+  ikQ1.setFromUnitVectors(ikP.subVectors(ikK, ikA).normalize(), ikT.copy(ikV).sub(ikA).normalize());
+  // (la canilla: de donde quedó después de girar el muslo, al pie nuevo)
+  ikP.subVectors(ikF, ikK).normalize().applyQuaternion(ikQ1);
+  ikT.copy(ikF);
+  ikT.y += h;
+  ikQ2.setFromUnitVectors(ikP, ikT.sub(ikV).normalize());
+  ikWU.premultiply(ikQ1);
+  ikWL.premultiply(ikQ1).premultiply(ikQ2);
+  up.quaternion.copy(ikWP.invert()).multiply(ikWU);
+  leg.quaternion.copy(ikWU.invert()).multiply(ikWL);
+  foot.quaternion.copy(ikWL.invert()).multiply(ikWF);
+  up.updateMatrixWorld(true);
+}
+
+// (seatGun)
+const RC = new THREE.Raycaster();
+const RAY_DIRS = [new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, -1)];
+const gP = new THREE.Vector3();
+const gF = new THREE.Vector3();
+const gN = new THREE.Vector3();
+// (2026-10-05, últimos del usuario. globalThis.__mduNoLuFixFinal: como antes)
+// los mates parados (la Lata y el Camionero): la palma derecha para arriba (como
+// net/gauchoSkin palmMate) para que el mate se apoye arriba y no la atraviese
+const PALM_UP = new Set(['camionero', 'lata']);
+const PU_WRIST = 1.1;
+const puE = new THREE.Vector3();
+const puH = new THREE.Vector3();
+const puD = new THREE.Vector3();
+const puN = new THREE.Vector3();
+const puF = new THREE.Vector3();
+const puX = new THREE.Vector3();
+const puZ = new THREE.Vector3();
+const puW = new THREE.Quaternion();
+const puP = new THREE.Quaternion();
+const puQ = new THREE.Quaternion();
+const puM = new THREE.Matrix4();
+const gH = new THREE.Vector3();
+const gA = new THREE.Vector3();
+const gT = new THREE.Vector3();
+const gAx = new THREE.Vector3();
+const gGrip = new THREE.Vector3();
+const gQ = new THREE.Quaternion();
+const gQ2 = new THREE.Quaternion();
+const gQh = new THREE.Quaternion();
+const gQa = new THREE.Quaternion();
+
+// Los anteojos de sol del Canchero (en el espacio de la malla, cm: como FACE).
+function buildShades() {
+  const root = new THREE.Group();
+  const glass = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, metalness: 0.7, roughness: 0.12 });
+  const gold = new THREE.MeshStandardMaterial({ color: 0xc9a040, metalness: 1, roughness: 0.3 });
+  const E = FACE_EYES;
+  for (const sx of [-1, 1]) {
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.1, 0.4, 20).rotateX(Math.PI / 2), glass);
+    lens.scale.y = 0.85;
+    lens.position.set(E.x + sx * (E.half + 0.4), E.y - 1.3, 17.3);
+    root.add(lens);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.55, 13), gold);
+    arm.position.set(E.x + sx * (E.half + 4), E.y - 0.4, 11);
+    root.add(arm);
+  }
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(2 * E.half - 6, 0.5, 0.45), gold);
+  bridge.position.set(E.x, E.y + 0.6, 17.4);
+  root.add(bridge);
+  return root;
+}
 // lo que dice la voz al empezar (EsterosEgg VOZ.luison): se dice de un tirón
 // y el nombre sale aparte, grande
 const VOZ_A = 'Sí... Ahora queda una sola cosa. Algo viene a cobrarse lo tuyo.';
@@ -129,6 +308,12 @@ const angLerp = (a, b, k) => {
   while (d > Math.PI) d -= Math.PI * 2;
   while (d < -Math.PI) d += Math.PI * 2;
   return a + d * k;
+};
+// (como angLerp, pero el cuerpo no gira más de `max` rad/s: sin latigazos)
+const angTurn = (a, b, k, dt, max = 7) => {
+  const d = angLerp(a, b, k) - a;
+  const lim = max * dt;
+  return a + Math.max(-lim, Math.min(lim, Math.atan2(Math.sin(d), Math.cos(d))));
 };
 const angDiff = (a, b) => {
   let d = b - a;
@@ -295,6 +480,9 @@ export default class LuisonArrival extends CastleCine {
     this.dtNow = 0;
     this.prepare();
     prefetchSong();
+    // (los clips de Blender y los de siempre del gaucho: que bajen ya)
+    prefetchLuisonClips();
+    gauchoClip('walk');
   }
 
   // ---------------- el lugar ----------------
@@ -411,7 +599,7 @@ export default class LuisonArrival extends CastleCine {
         }
       });
       (this.gunMats ||= []).push(...own.values());
-      const c = { ...C, r, a, pose: { v: {}, want: {}, speed: 6 }, dir: d, postPos: post, cool: rnd(0, 0.4), busy: 0, kick: 0, pump: 0, breath: 0, burst: 0, burstT: 0, aimY: null, moveK: 0, stride: 0, walking: false };
+      const c = { ...C, r, a, pose: { v: {}, want: {}, speed: 6 }, dir: d, postPos: post, cool: rnd(0, 0.4), busy: 0, kick: 0, pump: 0, breath: 0, burst: 0, burstT: 0, aimY: null, moveK: 0, stride: 0, walking: false, cc: null, idleCC: null, turnNow: 0, turnTo: 0, turnRate: 4, turnT: 0, lowW: 0, slashN: 0 };
       r.poseFn = (Q) => this.applyPose(c, Q);
       this.people[C.key] = c;
       this.crew.push(c);
@@ -588,6 +776,11 @@ export default class LuisonArrival extends CastleCine {
       Q.elL += 0.75 * e;
       Q.shLp += 0.3 * e;
     }
+    if (c.key === 'benito' && c.aimY != null && !this.fighting) {
+      Q.shRp += Math.sin(this.t * 29) * 0.022;
+      Q.shLp += Math.sin(this.t * 23 + 1) * 0.018;
+      Q.headP += Math.sin(this.t * 19) * 0.012;
+    }
     if (c.breath > 0) {
       const b = Math.sin(this.t * 4.6 + c.id) * c.breath;
       Q.torsoP += 0.05 * b;
@@ -669,8 +862,58 @@ export default class LuisonArrival extends CastleCine {
     r.speed = 0;
     c.walking = true;
     c.jog = jog;
+    // (con los clips: el caminar de siempre, para atrás si va mirando a otro lado)
+    if (look && this.blend) {
+      // (con los clips: de frente o de espaldas, lo que menos lo haga girar al
+      // arrancar y al llegar mirando a `face`)
+      const n = path.length - 1;
+      const endFace = face ? yawTo(path[n], face) : yawTo(path[n], look);
+      const cost = (back) => Math.abs(angDiff(r.yaw, back ? yawTo(path[1], path[0]) : yawTo(path[0], path[1]))) + Math.abs(angDiff(back ? yawTo(path[n], path[n - 1]) : yawTo(path[n - 1], path[n]), endFace));
+      c.loco = cost(true) < cost(false) ? 'back' : 'walk';
+    } else if (look) {
+      const lx = look.x - r.pos.x;
+      const lz = look.z - r.pos.z;
+      const px = path[path.length - 1].x - r.pos.x;
+      const pz = path[path.length - 1].z - r.pos.z;
+      c.loco = lx * px + lz * pz < 0 ? 'back' : 'walk';
+    } else c.loco = 'walk';
+    // (con los clips) Si para arrancar se tiene que dar vuelta mucho, primero
+    // se da vuelta dando pasitos (luStepTurn) y después camina: girar
+    // caminando corría los pies de costado. Y el paso va por lo que avanza: el
+    // clip termina justo en un cruce de pies (fase 0 o 0,51 del ciclo), así
+    // al pararse el pie apoyado no patina.
+    let pre = 0;
+    c.walkB = null;
+    if (this.blend) {
+      // (mirando para donde va, o de espaldas si retrocede: el paso del clip va
+      // derecho; mirando a otro lado, los pies se corrían de costado)
+      const want = c.loco === 'back' ? yawTo(path[1], r.pos) : yawTo(r.pos, path[1]);
+      const dy = Math.abs(angDiff(r.yaw, want));
+      if (dy > 0.7) {
+        // (gira recién cuando ya pasó a los pasitos: girando durante la mezcla, los pies se corrían)
+        const tt = Math.min(1.0, Math.max(0.5, dy / 2.8));
+        pre = tt + B_SETTLE;
+        c.turnT = pre;
+        const y0 = r.yaw;
+        this.later(B_SETTLE, () => this.anim(tt, (u) => (r.yaw = angLerp(y0, want, smooth(u)))));
+      } else if (!B_LOCO.has(c.cc?.name)) {
+        // (de parado abierto —en guardia, apuntando— a caminar: primero junta los
+        // pies con dos pasitos; si no, el pie de atrás se arrastraba al arrancar)
+        pre = 0.45;
+        c.turnT = pre;
+      }
+      const lc = this.clipOf(c.loco);
+      if (lc?.speed) {
+        // (un ciclo del clip en vuelta: n cuadros)
+        const nat = total / (lc.speed * (lc.n / lc.fps));
+        let best = 0.51;
+        for (let n = 0; n < 16; n++) for (const ph of [0, 0.51]) if (n + ph >= 0.3 && Math.abs(n + ph - nat) < Math.abs(best - nat)) best = n + ph;
+        c.walkB = { s: best / nat, dist: 0, speed: lc.speed };
+      }
+    }
     const prev = new THREE.Vector3();
-    this.anim(
+    // (la vuelta va antes: llega `pre` más tarde, al mismo paso)
+    const go = () => this.anim(
       dur,
       (k) => {
         let d = smooth(k) * total;
@@ -683,27 +926,47 @@ export default class LuisonArrival extends CastleCine {
         const sx = r.pos.x - prev.x;
         const sz = r.pos.z - prev.z;
         const step = Math.hypot(sx, sz);
-        if (look) {
+        // (con los clips, más despacio: el clip nuevo también gira la cadera)
+        const cap = this.blend ? 4 : 7;
+        if (this.blend) {
+          // (con los clips: de frente al camino, o de espaldas si retrocede)
+          if (step > 1e-4) r.yaw = angTurn(r.yaw, c.loco === 'back' ? yawTo(r.pos, prev) : yawTo(prev, r.pos), Math.min(1, this.dtNow * 6), this.dtNow, cap);
+        } else if (look) {
           // mirando a otro lado (retrocede o va de costado, sin darle la espalda)
-          r.yaw = angLerp(r.yaw, yawTo(r.pos, look), Math.min(1, this.dtNow * 6));
-        } else if (step > 1e-4) r.yaw = angLerp(r.yaw, yawTo(prev, r.pos), Math.min(1, this.dtNow * 6));
+          r.yaw = angTurn(r.yaw, yawTo(r.pos, look), Math.min(1, this.dtNow * 6), this.dtNow, cap);
+        } else if (step > 1e-4) r.yaw = angTurn(r.yaw, yawTo(prev, r.pos), Math.min(1, this.dtNow * 6), this.dtNow, cap);
         // el paso va para adelante o para atrás según hacia dónde mira
         const fx = -Math.sin(r.yaw);
         const fz = -Math.cos(r.yaw);
         const fwd = sx * fx + sz * fz;
         c.stride = (c.stride || 0) + (Math.abs(fwd) > step * 0.3 ? fwd : step * 0.6);
+        if (c.walkB) c.walkB.dist += step;
       },
       () => {
         c.walking = false;
-        if (face) this.turn(key, face, 0.7);
+        c.walkB = null;
+        if (!face) return;
+        // (con los clips: la vuelta más pausada y dando pasitos)
+        const big = Math.abs(angDiff(r.yaw, yawTo(r.pos, face))) > 0.6;
+        const dur = this.blend && big ? 1.05 : 0.7;
+        if (this.blend && big) {
+          // (primero pasa a los pasitos, después gira)
+          c.turnT = dur + B_SETTLE;
+          this.later(B_SETTLE, () => this.turn(key, face, dur));
+        } else this.turn(key, face, dur);
       },
     );
+    if (pre > 0) this.later(pre, go);
+    else go();
   }
 
   // Apunta (yaw y pitch del arma) a un punto, de a poco.
   aim(c, target, rate = 9) {
     const r = c.r;
-    r.yaw = angLerp(r.yaw, yawTo(r.pos, target), Math.min(1, this.dtNow * rate));
+    // (adónde apunta: el caño del arma va para ahí; t_cineqa lo mira en a.aimAt)
+    (c.aimPt ||= new THREE.Vector3()).copy(target);
+    // (con los clips, más despacio: girando en el lugar, los pies no se corren)
+    r.yaw = angTurn(r.yaw, yawTo(r.pos, target), Math.min(1, this.dtNow * rate), this.dtNow, this.blend ? 2.8 : 9);
     const d = Math.hypot(target.x - r.pos.x, target.z - r.pos.z);
     const want = Math.atan2(target.y - (r.pos.y + 1.4), Math.max(0.5, d));
     r.pitch += (want - r.pitch) * Math.min(1, this.dtNow * rate);
@@ -711,6 +974,8 @@ export default class LuisonArrival extends CastleCine {
 
   // De dónde sale el tiro: la mano derecha, adelante del arma.
   muzzle(c, v = new THREE.Vector3()) {
+    // (con los clips: la punta de la bombilla, el caño)
+    if (this.blend && c.gunAx && c.a.muzzle && c.a.gun?.visible) return c.a.muzzle.getWorldPosition(v);
     const r = c.r;
     tmpE.set(Math.max(-1.2, Math.min(1.2, r.pitch)), r.yaw, 0, 'YXZ');
     tmpQ.setFromEuler(tmpE);
@@ -799,10 +1064,13 @@ export default class LuisonArrival extends CastleCine {
     this.egg.luisonSong = true;
     this.wait = 0;
     this.t = 0;
+    // los cuerpos con los clips de Blender (si bajaron; si no, la de antes entera)
+    this.blend = !!LCLIPS && globalThis.__mduBlend !== false;
     this.stagePeace();
     this.stageTension();
     this.stageFight();
     this.stageNightmare();
+    if (this.blend) this.stageBlend();
     this.events.sort((a, b) => a[0] - b[0]);
     this.ev = 0;
     warmScene(g);
@@ -816,6 +1084,9 @@ export default class LuisonArrival extends CastleCine {
     // Gil recién dejó la luz: la mano en el tronco, frente al hueco; los otros
     // tres, del lado seco (el claro del noroeste)
     const spots = { gil: this.at(EE.hueco[0] - 0.5, EE.hueco[1] + 0.05), anacleto: this.rel(-2.9, 0.9), cirilo: this.rel(-3.9, 0.1), benito: this.rel(-3.6, -0.9) };
+    // (con los clips: el Canchero y el Miedoso al revés; si no, a sus puestos el
+    // Canchero cruzaba por el camino del Miedoso y le pasaba por encima)
+    if (this.blend) [spots.cirilo, spots.benito] = [spots.benito, spots.cirilo];
     for (const c of this.crew) {
       c.r.pos.copy(spots[c.key]);
       c.r.pitch = -0.85;
@@ -825,7 +1096,17 @@ export default class LuisonArrival extends CastleCine {
     P.cirilo.r.yaw = yawTo(P.cirilo.r.pos, this.rel(-1, 2));
     P.benito.r.yaw = yawTo(P.benito.r.pos, this.rel(-7, -2.5));
     this.pose('gil', { ...GIL.rest, shLp: -1.25, shLr: 0.15, elL: -0.35, headP: 0.1 }, 20);
-    for (const k of ['anacleto', 'cirilo', 'benito']) this.pose(k, { headP: 0.05 }, 20);
+    // (cada uno a su manera: el Viejo encorvado y todavía con el resuello de la
+    // pelea, el Canchero tirado para atrás, el Miedoso un poco agachado)
+    this.pose('anacleto', { headP: 0.12, torsoP: 0.16 }, 20);
+    this.pose('cirilo', { headP: 0.02, torsoP: -0.07 }, 20);
+    this.pose('benito', { headP: 0.05, torsoP: 0.1, knL: 0.22, knR: 0.18 }, 20);
+    P.anacleto.breath = 0.55;
+    // el Viejo tose (dos golpes de pecho) y el Miedoso ya mira para todos lados
+    for (const [at, v] of [[4.3, 0.36], [4.55, 0.16], [4.75, 0.34], [5.0, 0.16]]) this.on(at, () => this.pose('anacleto', { torsoP: v }, 16));
+    this.on(2.6, () => this.pose('benito', { headY: 0.75 }, 9));
+    this.on(3.6, () => this.pose('benito', { headY: -0.55 }, 9));
+    this.on(4.6, () => this.pose('benito', { headY: 0.2 }, 6));
     this.on(0, () => {
       // entra con blanco: la luz entró al hueco
       this.white(true);
@@ -936,7 +1217,8 @@ export default class LuisonArrival extends CastleCine {
       for (const c of this.crew) {
         const pts = this.pathTo(c.r.pos, c.postPos);
         const out = c.postPos.clone().add(tmpV.set(c.dir.x * 4, 0, c.dir.z * 4));
-        const go = c.key === 'gil' ? 0.45 : rnd(0.25, 0.6);
+        // (con los clips, Gil termina de señalar y después va)
+        const go = GO[c.key] + (this.blend && c.key === 'gil' ? 0.55 : 0);
         this.later(go, () => {
           if (c.key !== 'gil') {
             this.pose(c.key, { headP: null, headY: null }, 3);
@@ -944,7 +1226,7 @@ export default class LuisonArrival extends CastleCine {
           }
           // de espaldas al árbol, mirando el pasto: retroceden hasta el tronco
           const d = Math.hypot(c.postPos.x - c.r.pos.x, c.postPos.z - c.r.pos.z);
-          this.walk(c.key, pts, Math.max(1.0, d / 1.5), out, false, out);
+          this.walk(c.key, pts, Math.max(1.0, d / (c.key === 'benito' ? 1.8 : 1.5)), out, c.key === 'benito', out);
         });
         this.later(go + 2.1, () => {
           if (c.key === 'gil') this.pose('gil', GIL.guard, 3);
@@ -953,7 +1235,9 @@ export default class LuisonArrival extends CastleCine {
       }
       // dando la vuelta, abajo de las ramas, del lado seco
       this.setFov(44);
-      this.orbit(AT.wolves - AT.gather, 4.1, 3.7, 1.9, 2.4, Math.PI - 1.2, Math.PI + 0.7, 1.2);
+      // (con los clips, un poco más alta y más afuera: el Canchero pasa cerca dando el rodeo)
+      if (this.blend) this.orbit(AT.wolves - AT.gather, 4.35, 3.8, 2.55, 2.6, Math.PI - 1.2, Math.PI + 0.7, 1.15);
+      else this.orbit(AT.wolves - AT.gather, 4.1, 3.7, 1.9, 2.4, Math.PI - 1.2, Math.PI + 0.7, 1.2);
     });
     this.on(19.4, () => g.audio.growl(this.phantoms[3].pos.clone().setY(this.T.y + 1.2), 'idle'));
     // los lobos del monte
@@ -1053,6 +1337,36 @@ export default class LuisonArrival extends CastleCine {
     void cam;
   }
 
+  // A la fila sin pasarle por encima al que ya llegó: si el camino derecho
+  // pasa a menos de 0,75 m del lugar de otro en la fila, un rodeo por afuera.
+  aroundSpots(c, to) {
+    const p0 = c.r.pos;
+    const vx = to.x - p0.x;
+    const vz = to.z - p0.z;
+    const L2 = vx * vx + vz * vz || 1;
+    let best = null;
+    for (const o of this.crew) {
+      if (o === c) continue;
+      const S = this.lineAt[o.key];
+      const u = ((S.x - p0.x) * vx + (S.z - p0.z) * vz) / L2;
+      if (u < 0.1 || u > 0.97) continue;
+      const qx = p0.x + vx * u;
+      const qz = p0.z + vz * u;
+      const d = Math.hypot(qx - S.x, qz - S.z);
+      if (d < 0.75 && (!best || d < best.d)) best = { d, qx, qz, S };
+    }
+    if (!best) return [{ x: to.x, z: to.z }];
+    let nx = best.qx - best.S.x;
+    let nz = best.qz - best.S.z;
+    const nl = Math.hypot(nx, nz);
+    if (nl < 1e-3) {
+      nx = -vz;
+      nz = vx;
+    }
+    const k = 0.85 / (Math.hypot(nx, nz) || 1);
+    return [{ x: best.S.x + nx * k, z: best.S.z + nz * k }, { x: to.x, z: to.z }];
+  }
+
   // Un camino alrededor del tronco (sin atravesarlo).
   pathTo(from, to) {
     const T = this.T;
@@ -1061,9 +1375,21 @@ export default class LuisonArrival extends CastleCine {
     const d = angDiff(a0, a1);
     const pts = [];
     if (Math.abs(d) > 1.2) {
-      const r = Math.max(2.3, Math.min(Math.hypot(from.x - T.x, from.z - T.z), 3));
-      const am = a0 + d / 2;
-      pts.push({ x: T.x + Math.cos(am) * r, z: T.z + Math.sin(am) * r });
+      // (con los clips, por adentro: la cámara que da la vuelta al árbol va a
+      // 3,7-4,1 m y el que pasaba a 3 m le tapaba medio cuadro)
+      if (this.blend) {
+        // (en arco a 2,45 m: a 0,75 de los puestos, que están a 1,7; la cuerda
+        // de un punto solo cortaba por adentro y pasaba por el puesto de Gil)
+        const n = Math.max(2, Math.ceil(Math.abs(d) / 0.42));
+        for (let i = 1; i < n; i++) {
+          const a = a0 + (d * i) / n;
+          pts.push({ x: T.x + Math.cos(a) * 2.45, z: T.z + Math.sin(a) * 2.45 });
+        }
+      } else {
+        const r = Math.max(2.3, Math.min(Math.hypot(from.x - T.x, from.z - T.z), 3));
+        const am = a0 + d / 2;
+        pts.push({ x: T.x + Math.cos(am) * r, z: T.z + Math.sin(am) * r });
+      }
     }
     pts.push({ x: to.x, z: to.z });
     return pts;
@@ -1143,6 +1469,10 @@ export default class LuisonArrival extends CastleCine {
       const G = P.gil;
       G.busy = 2;
       this.pose('gil', GIL.raise, 7);
+      if (this.blend) {
+        G.slashN++;
+        this.act('gil', 'luGilRaise', { fade: 0.15 });
+      }
       this.setFov(54);
       const base = G.r.pos.clone();
       const sd = { x: -G.dir.z, z: G.dir.x };
@@ -1211,12 +1541,18 @@ export default class LuisonArrival extends CastleCine {
         c.breath = 1;
         const to = this.lineAt[c.key];
         const away = to.clone().add(tmpV.set(-m.x * 6, 0, -m.z * 6));
-        this.later(rnd(0.05, 0.4), () => {
+        // (con los clips, cada uno a su hora: el Canchero último, si no iba
+        // pegado al lado de Gil todo el camino)
+        const goR = this.blend ? { gil: 0.05, benito: 0.15, anacleto: 0.4, cirilo: 0.75 }[c.key] : rnd(0.05, 0.4);
+        this.later(goR, () => {
           c.r.pitch = -0.85;
+          // (el Viejo doblado y con el resuello más fuerte; el Canchero ni se
+          // despeina; el Miedoso jadea y mira por encima del hombro)
           if (c.key === 'gil') this.pose('gil', { ...GIL.rest, torsoP: 0.22, headP: 0.25 }, 2);
-          else this.pose(c.key, { torsoP: 0.2, headP: 0.2 }, 2);
+          else this.pose(c.key, TIRED[c.key], 2);
+          c.breath = BREATH[c.key];
           const d = Math.hypot(to.x - c.r.pos.x, to.z - c.r.pos.z);
-          this.walk(c.key, [{ x: to.x, z: to.z }], Math.max(1.6, d / 1.35), away);
+          this.walk(c.key, this.blend ? this.aroundSpots(c, to) : [{ x: to.x, z: to.z }], Math.max(1.6, d / 1.35), away);
         });
       }
       // (el cuerpo de los jefes, vestido de Luisón; escondido atrás de la
@@ -1245,10 +1581,13 @@ export default class LuisonArrival extends CastleCine {
         if (f > 0) look.lerp(lf.set(L.pos.x, L.baseY + 1.5, L.pos.z).lerp(tmpW.set(C.x, C.y + 1.2, C.z), 0.2), f * 0.6);
       });
     });
+    this.on(57.5, () => this.pose('benito', { headY: 0.7 }, 7));
     this.on(58.4, () => {
-      for (const c of this.crew) this.pose(c.key, { torsoP: 0.08, headP: 0.02 }, 1.5);
+      for (const c of this.crew) this.pose(c.key, TIRED2[c.key] || { torsoP: 0.08, headP: 0.02 }, 1.5);
       this.pose('gil', { headY: 0.35 }, 1.2);
     });
+    this.on(59.1, () => this.pose('benito', { headY: -0.6 }, 7));
+    this.on(60.1, () => this.pose('benito', { headY: 0 }, 4));
     this.on(59.7, () => {
       this.pose('anacleto', { shLp: -1.9, elL: -2.2, headP: 0.3 }, 3);
       this.later(1.2, () => this.pose('anacleto', { shLp: null, elL: null, headP: 0.02 }, 2.5));
@@ -1257,13 +1596,16 @@ export default class LuisonArrival extends CastleCine {
     // el grito de la canción: asoman las garras por la cresta, y con el grito
     // la cabeza (se le prenden los ojos); trepa y se para arriba, contra la
     // luna, y abre los brazos
+    const climbDur = climbT();
     this.on(AT.nightmare - CLIMB_NM, () => {
       L.state = 'climb';
       L.stateT = 0;
       // (lo que dura: el cuerpo de verdad acomoda los últimos pasos para plantarse arriba)
-      L.climbDur = CLIMB_T;
+      L.climbDur = climbDur;
+      // (lo que tarda en llegar arriba: el resto, se para derecho)
+      L.climbMove = climbDur === CLIMB_T ? CLIMB_T : climbDur - CLIMB_HOLD;
     });
-    this.on(AT.nightmare - CLIMB_NM + CLIMB_T, () => {
+    this.on(AT.nightmare - CLIMB_NM + climbDur, () => {
       L.state = 'pose';
       L.stateT = 0;
     });
@@ -1271,7 +1613,7 @@ export default class LuisonArrival extends CastleCine {
     // arranca a los 0,95 s del resuello) y se dan vuelta, uno por uno (hear)
     const HEARD = AT.howl + 0.95;
     this.on(HEARD, () => {
-      ['benito', 'anacleto', 'cirilo', 'gil'].forEach((k, i) => this.later(0.12 + i * 0.22, () => this.hear(k, k === 'gil' ? 1.5 : 1.2 + i * 0.05)));
+      for (const [k, at, dur] of HEAR) this.later(at, () => this.hear(k, dur));
     });
     // aúlla a la luna
     this.on(AT.howl, () => {
@@ -1301,7 +1643,16 @@ export default class LuisonArrival extends CastleCine {
     let d = angDiff(y0, yawTo(r.pos, this.luTop));
     const side = c.lp >= 0.8 ? 1 : -1;
     if (Math.sign(d) !== side && Math.abs(d) > 2.3) d += side * Math.PI * 2;
-    this.pose(k, { torsoP: -0.1, headP: -0.12, headY: 0.9 * Math.sign(d) }, 9);
+    // (el Miedoso pega un salto para atrás; el Viejo se da vuelta despacio)
+    const jump = k === 'benito' ? 1.8 : 1;
+    this.pose(k, { torsoP: -0.1 * jump, headP: -0.12 * jump, headY: 0.9 * Math.sign(d) }, k === 'benito' ? 15 : k === 'anacleto' ? 6 : 9);
+    if (this.blend) {
+      // la cabeza primero (para el lado del aullido), el cuerpo con su clip
+      // (se sobresalta a su manera) y quedan apuntándole
+      this.headTurn(k, 0.9 * Math.sign(d), B_HEARK[k]);
+      this.act(k, B_HEAR[k], { fade: k === 'benito' ? 0.1 : 0.2, then: [B_HI[k], { loop: true, fade: 0.3 }] });
+      this.later(0.28, () => this.headTurn(k, 0, 2.6 / dur));
+    }
     this.later(0.28, () => {
       this.anim(
         dur,
@@ -1466,7 +1817,8 @@ export default class LuisonArrival extends CastleCine {
         // apuntando al Luisón (o al pajonal, antes de la pelea)
         const L = this.lu;
         if (this.luOn && c.key !== 'gil') this.aim(c, tmpV.set(L.pos.x, L.pos.y + c.aimY, L.pos.z), 2.5);
-        else if (!c.walking && c.key !== 'gil') this.aim(c, tmpV.set(c.postPos.x + c.dir.x * 5, c.r.pos.y + 1.2, c.postPos.z + c.dir.z * 5), 3);
+        // (con los clips, mientras se da vuelta dando pasitos lo gira turn(), no esto)
+        else if (!c.walking && !(c.turnT > 0) && c.key !== 'gil') this.aim(c, tmpV.set(c.postPos.x + c.dir.x * 5, c.r.pos.y + 1.2, c.postPos.z + c.dir.z * 5), 3);
         continue;
       }
       const tg = this.targetOf(c);
@@ -1624,6 +1976,12 @@ export default class LuisonArrival extends CastleCine {
     c.busy = 0.46;
     c.cool = 0.6;
     this.pose('gil', GIL[`${m}0`], 16);
+    // (con los clips: el tajo entero, de la guardia a la guardia)
+    if (this.blend) {
+      const n = ++c.slashN;
+      this.act('gil', B_SLASH[m], { fade: 0.06 });
+      this.later(0.47, () => n === c.slashN && this.act('gil', 'luGilGuard', { loop: true, fade: 0.12 }));
+    }
     this.later(0.13, () => {
       this.pose('gil', GIL[`${m}1`], 22);
       const r = c.r;
@@ -1653,6 +2011,12 @@ export default class LuisonArrival extends CastleCine {
     const W = g.weapons;
     c.busy = 1;
     this.pose('gil', GIL.raise, 9);
+    // (con los clips: el facón al cielo y, pasado el rayo, de vuelta en guardia)
+    if (this.blend) {
+      const n = ++c.slashN;
+      if (c.cc?.name !== 'luGilRaise') this.act('gil', 'luGilRaise', { fade: 0.12 });
+      this.later(all ? 0.9 : 0.75, () => n === c.slashN && this.act('gil', 'luGilGuard', { loop: true, fade: 0.3 }));
+    }
     const go = () => {
       const tip = this.faconTip();
       const list = this.horde.alive.filter((p) => p.state !== 'lurk' && (all || Math.hypot(p.pos.x - c.r.pos.x, p.pos.z - c.r.pos.z) < 7.5));
@@ -1709,6 +2073,482 @@ export default class LuisonArrival extends CastleCine {
       g.fx.alpha.spawn(L.pos.x + Math.cos(a) * 0.9, L.baseY + 0.3, L.pos.z + Math.sin(a) * 0.9, Math.cos(a) * 4.5, 0.3, Math.sin(a) * 4.5, { color: [0.26, 0.3, 0.16], size: 0.4, size1: 1.3, life: 1.4, alpha: 0.45, drag: 2 });
     }
     g.fx.addShake(0.3);
+  }
+
+  // ---------------- los cuerpos con los clips de Blender ----------------
+  // (lo de las piezas, pose()/applyPose, sigue corriendo debajo; con los clips
+  // no se ve: el cuerpo lo pone poseBlend, después de Avatars)
+  // Lo que hace cada uno, en la misma escena y en los mismos momentos.
+  stageBlend() {
+    // la paz: cada uno su clip largo, al compás de la canción (las miradas, la
+    // tos del Viejo, la mano de Gil en el tronco, el "¡shh!" del Miedoso)
+    for (const c of this.crew) this.act(c.key, B_PEACE[c.key], { sync: 0, fade: 0 });
+    // lo que se acerca: alerta, cada uno a su tiempo (al darse vuelta hacia la paja)
+    const delay = { gil: 0.1, benito: 0.2, cirilo: 0.55, anacleto: 0.7 };
+    for (const c of this.crew) this.on(AT.calm + delay[c.key], () => this.idle(c.key, B_ALERT[c.key], { fade: 0.6 }));
+    this.on(14.9, () => this.headTurn('cirilo', 0.6, 4));
+    this.on(AT.gather, () => {
+      this.headTurn('cirilo', 0, 3);
+      this.act('gil', 'luGilPoint', { fade: 0.25 });
+    });
+    // en su puesto: Gil en guardia, los otros apuntando a la paja
+    for (const c of this.crew) this.on(AT.gather + GO[c.key] + (c.key === 'gil' ? 0.55 : 0) + 2.1, () => this.idle(c.key, B_AIM[c.key], { fade: 0.45 }));
+    // los lobos: el Canchero para la oreja, para un lado y para el otro
+    this.on(AT.wolves + 0.4, () => this.headTurn('cirilo', 0.5, 3));
+    this.on(AT.wolves + 1.5, () => this.headTurn('cirilo', -0.35, 2));
+    this.on(AT.rise, () => this.headTurn('cirilo', 0, 2));
+    // el respiro: a la fila con el caminar de siempre y después cada uno a su
+    // manera (el Viejo con las manos en las rodillas, Gil doblado, el Miedoso
+    // jadeando y mirando por encima del hombro; el Canchero, ni se despeina:
+    // se sacude el polvo del poncho)
+    this.on(AT.quiet, () => {
+      // (el Canchero se sacude el polvo del poncho; los anteojos de sol van solo en el penal y la torre)
+      for (const c of this.crew) c.idleCC = c.key === 'cirilo' ? ['luCoolDust', { fade: 0.35, then: ['luCoolStand', { loop: true, fade: 0.3 }] }] : [B_TIRED[c.key], { loop: true }];
+    });
+    this.on(57.5, () => this.headTurn('benito', 0.7, 7));
+    this.on(58.4, () => this.headTurn('gil', 0.35, 1.2));
+    this.on(59.1, () => this.headTurn('benito', -0.6, 7));
+    this.on(60.1, () => this.headTurn('benito', 0, 4));
+    this.on(59.7, () => {
+      this.headTurn('gil', 0, 1.5);
+      // (si todavía viene caminando o dándose vuelta, tose al llegar)
+      const A = this.people.anacleto;
+      const cough = ['luOldCough', { fade: 0.3, then: ['luOldWinded', { loop: true, fade: 0.3 }] }];
+      if (A.walking || A.turnT > 0) A.idleCC = cough;
+      else this.act('anacleto', ...cough);
+    });
+  }
+
+  clipOf(name) {
+    return LCLIPS?.[name] || gauchoClip(name);
+  }
+
+  // Pasa a un clip desde la pose que tiene (cineSnap). o: loop, rate, t (por
+  // dónde arranca), fade (s), sync (el tiempo del clip es el de la escena desde
+  // ese segundo), then: [clip, o] al terminar.
+  act(key, name, o = {}) {
+    if (!this.blend) return;
+    const c = this.people[key];
+    const S = { name, lt: o.t || 0, rate: o.rate ?? 1, loop: !!o.loop, fade: o.fade ?? 0.3, at: this.t, snap: o.fade === 0 ? null : cineSnap(c.a), t0: o.sync ?? null };
+    c.cc = S;
+    if (name === 'luCoolShades') this.startShades();
+    if (o.then) {
+      const d = (this.clipOf(name)?.dur ?? 1) / (S.rate || 1);
+      this.later(Math.max(0.05, d - 0.08), () => c.cc === S && this.act(key, o.then[0], o.then[1] || {}));
+    }
+  }
+
+  // Lo que hace quieto (si está caminando, al llegar).
+  idle(key, name, o = {}) {
+    const c = this.people[key];
+    c.idleCC = [name, { loop: true, ...o }];
+    if (!c.walking && !(c.turnT > 0)) this.act(key, name, { loop: true, ...o });
+  }
+
+  // La cabeza para un lado (rad, + a su izquierda), a `rate` por segundo.
+  headTurn(key, v, rate = 4) {
+    const c = this.people[key];
+    c.turnTo = v;
+    c.turnRate = rate;
+  }
+
+  // Cada cuadro, después de Avatars: el cuerpo de cada uno con su clip (o el
+  // caminar, al ritmo de lo que avanza), la cabeza, el culatazo o la corredera
+  // (una segunda capa mezclada), y el arma en el puño.
+  // Camina o se da vuelta dando pasitos: el caminar de siempre, al ritmo de lo
+  // que avanza; al llegar, lo que hace quieto. (Antes de Avatars: cineSnap
+  // tiene que agarrar la pose que se vio, no la de las piezas.)
+  blendState(dt) {
+    for (const c of this.crew) {
+      const r = c.r;
+      if (!c.a.gs?.on) continue;
+      const pv = (c.pv ||= r.pos.clone());
+      const v = dt > 0 ? Math.hypot(r.pos.x - pv.x, r.pos.z - pv.z) / dt : 0;
+      const wy = dt > 0 ? Math.abs(angDiff(c.pyaw ?? r.yaw, r.yaw)) / dt : 0;
+      pv.copy(r.pos);
+      c.pyaw = r.yaw;
+      if (c.turnT > 0) c.turnT -= dt;
+      if (c.walking || c.turnT > 0) {
+        // (dándose vuelta: pasitos en el lugar; caminando: el paso por lo que avanzó)
+        const name = c.turnT > 0 ? 'luStepTurn' : c.loco || 'walk';
+        if (c.cc?.name !== name) this.act(c.key, name, { loop: true, fade: 0.3 });
+        if (name === 'luStepTurn') c.cc.walkB = null;
+        else if (c.walkB) c.cc.walkB = c.walkB;
+        else {
+          const lc = this.clipOf(name);
+          if (lc?.speed) c.cc.rate = Math.max(0.3, Math.min(2.2, Math.max(v, wy * 0.32) / lc.speed));
+        }
+      } else if (c.cc && B_LOCO.has(c.cc.name) && c.idleCC) this.act(c.key, c.idleCC[0], { fade: 0.35, ...c.idleCC[1] });
+    }
+  }
+
+  poseBlend(dt, t) {
+    const L = this.lu;
+    for (const c of this.crew) {
+      const a = c.a;
+      const r = c.r;
+      if (!a.gs?.on) continue;
+      const S = c.cc;
+      const clip = S && this.clipOf(S.name);
+      if (!clip) continue;
+      if (S.walkB) S.lt = (S.walkB.s * S.walkB.dist) / S.walkB.speed;
+      else if (S.t0 != null) S.lt = (t - S.t0) * S.rate;
+      else S.lt += dt * S.rate;
+      const lt = S.loop ? S.lt : Math.min(S.lt, clip.dur);
+      const o = { loop: S.loop };
+      if (S.snap && t - S.at < S.fade) {
+        o.snap = S.snap;
+        o.sw = smooth(Math.min(1, (t - S.at) / S.fade));
+      }
+      c.turnNow += (c.turnTo - c.turnNow) * Math.min(1, dt * c.turnRate);
+      if (Math.abs(c.turnNow) > 1e-3) o.turn = c.turnNow;
+      // apuntándole al Luisón: más bajo cuando salta al claro
+      if (c.follow && this.luOn) {
+        const dd = Math.hypot(L.pos.x - r.pos.x, L.pos.z - r.pos.z);
+        c.lowW = clamp01((0.42 - Math.atan2(L.baseY + 2.2 - r.pos.y - 1.4, Math.max(0.5, dd))) / 0.32);
+      }
+      // la segunda capa (los de las armas): el culatazo, la corredera de la Lata,
+      // o apuntar más bajo
+      let lay = null;
+      let w = 0;
+      if (B_KICK[c.key]) {
+        const aiming = S.name === B_AIM[c.key] || S.name === B_HI[c.key];
+        const kk = aiming ? Math.sin(Math.min(1, c.kick) * Math.PI * 0.5) : 0;
+        const pp = aiming && c.pump > 0 ? Math.sin(c.pump * Math.PI) : 0;
+        if (kk > 0.01 && kk >= pp) {
+          lay = B_KICK[c.key];
+          w = kk;
+        } else if (pp > 0.01) {
+          lay = 'luOldPump';
+          w = pp;
+        } else if (S.name === B_HI[c.key] && c.lowW > 0.01) {
+          lay = B_AIM[c.key];
+          w = c.lowW;
+        }
+      }
+      const lc = lay && this.clipOf(lay);
+      let ok;
+      if (lc) {
+        o.from = { c: clip, t: lt, loop: S.loop };
+        o.w = w;
+        o.loop = true;
+        ok = poseCineClip(a, lc, S.lt, r.pos.x, r.pos.y + (c.footY || 0), r.pos.z, r.yaw + Math.PI, o);
+      } else ok = poseCineClip(a, clip, lt, r.pos.x, r.pos.y + (c.footY || 0), r.pos.z, r.yaw + Math.PI, o);
+      if (!ok) continue;
+      this.footIK(c, dt);
+      // la mano (el facón de Gil va colgado de ella) y el arma, al cuerpo nuevo
+      a.mats[6].decompose(tmpV, tmpQ, tmpS);
+      a.hand.matrix.compose(tmpV, tmpQ, ONE);
+      a.hand.matrixWorldNeedsUpdate = true;
+      const fixF = globalThis.__mduNoLuFixFinal !== true;
+      // (apuntando: el blanco, para el arma y para t_cineqa; caminando, lista para
+      // adelante y abajo; en los que pasan a apuntar, desde que levantan el arma)
+      const at = B_AIMT[S.name];
+      const aiming = B_KICK[c.key] && (S.name === B_AIM[c.key] || S.name === B_HI[c.key] || (at != null && S.lt >= at));
+      if (B_KICK[c.key] && B_LOCO.has(S.name) && S.name !== 'luStepTurn') {
+        (c.walkAim ||= new THREE.Vector3()).set(r.pos.x - Math.sin(r.yaw) * 5, r.pos.y + 0.3, r.pos.z - Math.cos(r.yaw) * 5);
+        a.aimAt = c.walkAim;
+      } else if (at != null && aiming && this.luOn) {
+        // (oyéndolo: le apuntan a él, todavía en la loma)
+        (c.hearAim ||= new THREE.Vector3()).set(L.pos.x, L.baseY + 2.2, L.pos.z);
+        a.aimAt = c.hearAim;
+      } else a.aimAt = aiming && c.aimPt ? c.aimPt : null;
+      // (si el blanco le queda de costado o atrás —dándose vuelta—, el arma en la palma:
+      // apuntar para atrás le pasaba la bombilla por la cara)
+      if (a.aimAt) {
+        const fx = -Math.sin(r.yaw);
+        const fz = -Math.cos(r.yaw);
+        const tx = a.aimAt.x - r.pos.x;
+        const tz = a.aimAt.z - r.pos.z;
+        if ((fx * tx + fz * tz) / (Math.hypot(tx, tz) || 1) < 0.45) a.aimAt = null;
+      }
+      // (el usuario, 2026-10-04: los mates como mates, parados en la mano, no
+      // acostados apuntando; y al cambiar de blanco el arma se daba vuelta.
+      // globalThis.__mduLuAimMates: apuntando con la bombilla, como antes)
+      if (globalThis.__mduLuAimMates !== true) a.aimAt = null;
+      // (la palma arriba con los mates parados; apuntando, la del clip)
+      if (fixF && PALM_UP.has(c.weapon) && a.gun?.visible) this.palmUp(c, 1 - smooth(clamp01(c.aimW || 0)));
+      this.seatGun(c, dt);
+    }
+    this.updateShades();
+  }
+
+  // Los pies en el piso de verdad: al pie del árbol el piso no es plano (hasta
+  // 14 cm entre un pie y el otro) y el clip lo supone plano a la altura del
+  // centro: un pie se hundía y el otro flotaba. El cuerpo baja hasta el piso
+  // del pie más bajo y el otro pie sube lo que le falta (dos huesos, la rodilla
+  // en su plano); el pie no cambia de giro. Suavizado (sin saltos).
+  footIK(c, dt) {
+    if (globalThis.__mduNoLuFootIK) return;
+    const B = c.a.gs.bones;
+    const r = c.r;
+    const w = this.g.world;
+    // (lo que bajó o subió el cuerpo en este cuadro: con eso se posó el clip)
+    const used = c.footY || 0;
+    let lo = Infinity;
+    const d = (c.footD ||= {});
+    for (const s of ['Left', 'Right']) {
+      B[s + 'Foot'].getWorldPosition(ikA);
+      // (con la altura del pie: al pie del tronco hay más de un piso)
+      d[s] = w.floorAt(ikA.x, ikA.z, ikA.y + 0.5) - r.pos.y;
+      lo = Math.min(lo, d[s]);
+    }
+    c.footY = used + (Math.max(-0.16, Math.min(0.12, lo)) - used) * Math.min(1, dt * 10);
+    for (const s of ['Left', 'Right']) {
+      const h = Math.max(-0.16, Math.min(0.2, d[s] - used));
+      if (Math.abs(h) > 0.004) legRaise(B[s + 'UpLeg'], B[s + 'Leg'], B[s + 'Foot'], h);
+    }
+  }
+
+  // La palma derecha para arriba (k), con el mate parado encima: el antebrazo
+  // gira sobre su eje y la muñeca deja los dedos casi horizontales, para
+  // adelante (net/gauchoSkin palmMate, la misma cuenta).
+  palmUp(c, k) {
+    if (k < 1e-3) return;
+    const B = c.a.gs.bones;
+    const F = B.RightForeArm;
+    const H = B.RightHand;
+    const r = c.r;
+    F.getWorldPosition(puE);
+    H.getWorldPosition(puH);
+    const d = puD.subVectors(puH, puE).normalize();
+    H.getWorldQuaternion(puW);
+    // (la palma de la derecha: -x del hueso)
+    const n0 = puN.set(-1, 0, 0).applyQuaternion(puW);
+    n0.addScaledVector(d, -n0.dot(d));
+    const n1 = puF.set(0, 1, 0).addScaledVector(d, -d.y);
+    if (n0.lengthSq() > 1e-6 && n1.lengthSq() > 0.04) {
+      n0.normalize();
+      n1.normalize();
+      if (n0.dot(n1) < -0.9999) puQ.setFromAxisAngle(d, Math.PI);
+      else puQ.setFromUnitVectors(n0, n1);
+      F.getWorldQuaternion(puW);
+      F.parent.getWorldQuaternion(puP);
+      puQ.multiply(puW);
+      F.quaternion.slerp(puP.invert().multiply(puQ), k);
+      F.updateMatrixWorld(true);
+    }
+    // la mano: los dedos para adelante, casi horizontales, la palma arriba
+    F.getWorldPosition(puE);
+    H.getWorldPosition(puH);
+    d.subVectors(puH, puE).normalize();
+    const f = puF.set(d.x, 0, d.z);
+    const hl = f.length();
+    if (hl < 0.3) f.lerp(puX.set(-Math.sin(r.yaw) * 0.3, 0, -Math.cos(r.yaw) * 0.3), 1 - hl / 0.3);
+    f.normalize();
+    const bend = Math.acos(Math.max(-1, Math.min(1, f.dot(d))));
+    if (bend > PU_WRIST) f.lerp(d, 1 - PU_WRIST / bend).normalize();
+    const n = puN.set(0, 1, 0).addScaledVector(f, -f.y).normalize();
+    puX.copy(n).multiplyScalar(-1);
+    puZ.crossVectors(puX, f);
+    puQ.setFromRotationMatrix(puM.makeBasis(puX, f, puZ));
+    H.getWorldQuaternion(puW);
+    puW.slerp(puQ, k);
+    H.parent.getWorldQuaternion(puP);
+    H.quaternion.copy(puP.invert().multiply(puW));
+    H.updateMatrixWorld(true);
+  }
+
+  // El arma en el puño derecho del cuerpo nuevo (como la pone net/Avatars:
+  // parada, girada con el cuerpo y apenas con la mirada).
+  seatGun(c, dt = 0) {
+    const a = c.a;
+    if (!a.gun?.visible) return;
+    const r = c.r;
+    const B = a.gs.bones;
+    // (la boca y la punta de la bombilla en el arma, una vez: la bombilla es el caño)
+    if (!c.gunAx && a.mouth && a.muzzle) {
+      a.gun.matrix.identity();
+      a.gun.updateMatrixWorld(true);
+      const inv = tmpM.copy(a.gun.matrixWorld).invert();
+      const mo = a.mouth.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv);
+      const mz = a.muzzle.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv);
+      c.gunAx = mz.clone().sub(mo).normalize();
+      // (lo que agarra el puño: el medio de la calabaza)
+      c.gunMid = new THREE.Vector3(mo.x, mo.y * 0.5, mo.z);
+      // lo ancho de la calabaza (las piezas de abajo, centradas): la palma va
+      // contra ella, no el puño adentro
+      c.gunR = 0.06;
+      const bb = new THREE.Box3();
+      a.gun.traverse((o) => {
+        if (!o.isMesh || !o.geometry) return;
+        for (let q = o; q && q !== a.gun; q = q.parent) if (!q.visible) return;
+        if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        bb.copy(o.geometry.boundingBox).applyMatrix4(tmpM2.copy(o.matrixWorld).premultiply(inv));
+        const cx = (bb.min.x + bb.max.x) / 2;
+        const cz = (bb.min.z + bb.max.z) / 2;
+        if (bb.min.y < 0.02 && bb.max.y < mo.y + 0.03 && Math.abs(cx) < 0.02 && Math.abs(cz) < 0.02) c.gunR = Math.max(c.gunR, (bb.max.x - bb.min.x) / 2);
+        // (lo que sale del costado de la calabaza: el asa del Camionero, el mango de la Lata)
+        const off = Math.hypot(cx, cz);
+        if (bb.max.y < mo.y + 0.03 && off > 0.04 && off > (c.asaOff || 0)) {
+          c.asaOff = off;
+          c.asaDir = new THREE.Vector3(cx, 0, cz).normalize();
+        }
+      });
+      // el Liquidificador (la pava) no es un mate: se agarra del asa de cuero, arriba
+      // de la tapa (medida en el arma: weapons/Liquidificador pavaKettle grip), con la
+      // pava colgando abajo del puño; el pico (el caño) ya mira para adelante
+      c.liq = c.weapon === 'liquidificador';
+      c.gunMid0 = c.gunMid.clone();
+      c.gunLiq = new THREE.Vector3(mo.x, mo.y + 0.033, mo.z);
+    }
+    // (globalThis.__mduNoLuGrip: el agarre de antes, el puño en el medio del arma)
+    const old = globalThis.__mduNoLuGrip === true;
+    const liq = c.liq && !old;
+    c.gunMid = liq ? c.gunLiq : c.gunMid0;
+    if (!c.gunAx) return;
+    // cuánto apunta (0: en la palma; 1: el caño al blanco), suave como la mezcla de clips
+    c.aimW = (c.aimW ?? 0) + ((a.aimAt ? 1 : 0) - (c.aimW ?? 0)) * Math.min(1, dt * 7);
+    B.RightHand.getWorldPosition(gP);
+    B.RightForeArm.getWorldPosition(gF);
+    gF.subVectors(gP, gF).normalize();
+    // sosteniendo: parado en la palma (la palma de la derecha mira +x de la malla en reposo)
+    const sk = a.gs.mesh.skeleton;
+    const hi = (c.rhI ??= sk.bones.indexOf(B.RightHand));
+    sk.boneInverses[hi].decompose(tmpU, gQ, tmpS);
+    gN.set(1, 0, 0).applyQuaternion(gQ).applyQuaternion(B.RightHand.getWorldQuaternion(gQ2)).normalize();
+    gH.copy(gP).addScaledVector(gF, 0.07).addScaledVector(gN, liq ? 0.04 : 0.03);
+    // (la bombilla para adelante, lejos de la boca, y el mate un poco inclinado hacia
+    // adelante; la pava derecha, con el pico ya para adelante: sin inclinar, el
+    // fondo ancho no se mete en los dedos)
+    gQh.setFromEuler(tmpE.set(liq ? 0 : 0.35, r.yaw + (liq ? 0 : Math.PI), 0, 'YXZ'));
+    // apuntando: la bombilla para el blanco, la calabaza en el puño
+    if (c.aimW > 0.001) {
+      const tg = a.aimAt || c.aimPt;
+      gGrip.copy(gP).addScaledVector(gF, 0.075);
+      gT.subVectors(tg || gGrip.clone().add(tmpV.set(-Math.sin(r.yaw), 0, -Math.cos(r.yaw))), gGrip).normalize();
+      gQa.setFromEuler(tmpE.set(0, Math.atan2(-gT.x, -gT.z), 0, 'YXZ'));
+      gAx.copy(c.gunAx).applyQuaternion(gQa);
+      gQa.premultiply(gQ.setFromUnitVectors(gAx, gT));
+      // (girada sobre el caño con el asa para abajo: si no, quedaba para el lado de la
+      // otra mano y se la metía adentro)
+      if (c.asaDir && !old && !liq) {
+        gAx.copy(c.asaDir).applyQuaternion(gQa);
+        gGrip.set(0, -1, 0).addScaledVector(gT, gT.y);
+        if (gGrip.lengthSq() > 1e-6) {
+          gGrip.normalize();
+          const ang = Math.atan2(gAx.clone().cross(gGrip).dot(gT), gAx.dot(gGrip));
+          gQa.premultiply(gQ.setFromAxisAngle(gT, ang));
+        }
+        gGrip.copy(gP).addScaledVector(gF, 0.075);
+      }
+      gA.copy(c.gunMid).applyQuaternion(gQa);
+      // (la palma contra la calabaza —el medio, a su radio y 1,5 cm para el lado de la palma—;
+      // la pava, el asa en el puño)
+      if (!old) gGrip.addScaledVector(gN, liq ? 0.012 : c.gunR + 0.015);
+      gA.subVectors(gGrip, gA);
+      const w = smooth(c.aimW);
+      gQh.slerp(gQa, w);
+      gH.lerp(gA, w);
+    }
+    // las manos fuera de la calabaza (la izquierda que acompaña, los dedos de la
+    // derecha): la calabaza es un cilindro (eje y del arma, radio gunR, del piso a la
+    // boca); si una mano (muñeca, palma, puntas) queda adentro, la calabaza se corre
+    // lo justo para afuera, de a una (la más metida) y hasta cuatro veces
+    if (!liq && !old && c.gunR) this.handsOut(c, B, gH, gQh);
+    a.gun.matrix.compose(gH, gQh, ONE);
+    a.gun.matrixWorldNeedsUpdate = true;
+  }
+
+  handsOut(c, B, pos, q) {
+    const a = c.a;
+    // (las mallas del arma que se ven, una vez; los rayos las cruzan por los dos lados)
+    if (!c.gunMs) {
+      c.gunMs = [];
+      a.gun.traverse((o) => {
+        if (!o.isMesh) return;
+        for (let p = o; p && p !== a.gun; p = p.parent) if (!p.visible) return;
+        c.gunMs.push(o);
+      });
+      c.handPts = Array.from({ length: 6 }, () => new THREE.Vector3());
+    }
+    const ms = c.gunMs;
+    let n = 0;
+    for (const hs of ['Right', 'Left']) {
+      B[hs + 'Hand'].getWorldPosition(gT);
+      B[hs + 'ForeArm'].getWorldPosition(gAx);
+      gAx.subVectors(gT, gAx).normalize();
+      for (const k of [0, 0.06, 0.12]) c.handPts[n++].copy(gT).addScaledVector(gAx, k);
+    }
+    const sides = ms.map((o) => o.material.side);
+    for (const o of ms) o.material.side = THREE.DoubleSide;
+    const qi = gQ2.copy(q).invert();
+    // adentro: de los tres rayos, dos o más cruzan una cantidad impar de caras
+    const inside = (P) => {
+      let odd = 0;
+      for (const d of RAY_DIRS) {
+        RC.set(P, d);
+        RC.far = 1;
+        if (RC.intersectObjects(ms, false).length % 2 === 1 && ++odd >= 2) return true;
+      }
+      return false;
+    };
+    // de a 1,2 cm para afuera (del eje de la calabaza hacia el otro lado de la mano), hasta 8 cm
+    for (let it = 0; it < 7; it++) {
+      a.gun.matrix.compose(pos, q, ONE);
+      a.gun.updateMatrixWorld(true);
+      const P = c.handPts.find(inside);
+      if (!P) break;
+      gA.subVectors(P, pos).applyQuaternion(qi);
+      const rr = Math.hypot(gA.x, gA.z);
+      gGrip.set(rr > 1e-3 ? -gA.x / rr : 1, 0, rr > 1e-3 ? -gA.z / rr : 0).multiplyScalar(0.012).applyQuaternion(q);
+      pos.add(gGrip);
+    }
+    ms.forEach((o, k) => (o.material.side = sides[k]));
+  }
+
+
+  // Los anteojos del Canchero: salen del poncho en su mano izquierda y van a la cara.
+  startShades() {
+    const c = this.people.cirilo;
+    if (this.shadesOn || !c?.a.gs?.on) return;
+    if (!this.shades) {
+      this.shades = buildShades();
+      this.shadesHand = new THREE.Group();
+      this.shadesHand.matrixAutoUpdate = false;
+      this.shadesHand.add(this.shades);
+      this.root.add(this.shadesHand);
+    }
+    this.shadesHand.visible = false;
+    this.shadesT = this.t;
+  }
+
+  updateShades() {
+    if (this.shadesT == null || this.shadesOn || !this.shades) return;
+    const c = this.people.cirilo;
+    const a = c.a;
+    if (!a?.gs?.on) return;
+    // (se cortó el gesto antes: vuelven al poncho)
+    if (c.cc?.name !== 'luCoolShades') {
+      this.shadesHand.visible = false;
+      this.shadesT = null;
+      return;
+    }
+    const lt = this.t - this.shadesT;
+    if (lt < SHADES_OUT) return;
+    if (lt < SHADES_ON) {
+      // en la mano, ya derechos como van en la cara (de la patilla del lado de
+      // la mano; al final se deslizan a los ojos: al pasar a la cabeza no saltan)
+      const head = a.gs.bones.Head;
+      const hand = a.gs.bones.LeftHand.getWorldPosition(tmpU);
+      const sk = a.gs.mesh.skeleton;
+      const hi = sk.bones.indexOf(head);
+      tmpM.copy(head.matrixWorld).multiply(sk.boneInverses[hi]).multiply(a.gs.mesh.bindMatrix);
+      this.shadesHand.matrix.copy(tmpM);
+      const E = FACE_EYES;
+      tmpW.set(E.x + (E.half + 4), E.y - 0.4, 9).applyMatrix4(tmpM);
+      tmpV.set(E.x - (E.half + 4), E.y - 0.4, 9).applyMatrix4(tmpM);
+      if (tmpV.distanceToSquared(hand) < tmpW.distanceToSquared(hand)) tmpW.copy(tmpV);
+      const k = 1 - smooth(clamp01((lt - 0.95) / (SHADES_ON - 0.95)));
+      this.shadesHand.matrix.premultiply(tmpM2.makeTranslation((hand.x - tmpW.x) * k, (hand.y - tmpW.y) * k, (hand.z - tmpW.z) * k));
+      this.shadesHand.matrixWorldNeedsUpdate = true;
+      this.shadesHand.visible = true;
+      return;
+    }
+    this.shadesHand.visible = false;
+    this.shadesHand.remove(this.shades);
+    this.shadesWrap = headProp(a, this.shades);
+    this.shadesOn = true;
   }
 
   // ---------------- tomas ----------------
@@ -1784,7 +2624,26 @@ export default class LuisonArrival extends CastleCine {
     const M = g.music;
     const st = M?.is(SONG) ? M.time() : -1;
     this.wait += dt;
-    if (st >= 0) {
+    if (this.wallAt && !this.hold && globalThis.__mduNoCineSync !== true) {
+      // en línea el reloj es el de verdad desde que arrancó (la regla de las
+      // escenas, ui/FarmCinematic) y la canción se acomoda a él: cada compu la
+      // arrancaba cuando la bajaba y, si se atascaba, el reloj la seguía (con 2
+      // jugadores, hasta 3 s y 3,5 m de diferencia en la horda)
+      const now = performance.now();
+      const w = (now - this.wallAt) / 1000;
+      this.wallAt = now;
+      const step = w >= 0.002 && w < 30 ? w : dt;
+      this.t += step;
+      // (lo que se mueve, también: hasta 1 s por cuadro, como castleCine)
+      dt = Math.min(step, 1);
+      if (st >= 0) {
+        this.heard = true;
+        if (this.t < AT.end && Math.abs(st - this.t) > 0.25 && now > (this.seekAt || 0)) {
+          this.seekAt = now + 1000;
+          M.jumpTo(this.t);
+        }
+      }
+    } else if (st >= 0) {
       this.heard = true;
       if (st < this.t + 4) this.t = Math.max(this.t, st);
     } else if (!this.heard ? this.wait > 1.8 : !M?.is(SONG)) this.t += dt;
@@ -1835,7 +2694,10 @@ export default class LuisonArrival extends CastleCine {
     this.fight(dt);
     for (const c of this.crew) c.moveK += ((c.walking ? 1 : 0) - c.moveK) * Math.min(1, dt * (c.walking ? 7 : 4));
     for (const c of this.crew) if (c.follow) c.r.yaw = angLerp(c.r.yaw, yawTo(c.r.pos, this.lu.pos), Math.min(1, dt * 2.5));
+    // (antes de Avatars: los cambios de clip arrancan de la pose que se vio)
+    if (this.blend) this.blendState(dt);
     this.npc.update(dt);
+    if (this.blend) this.poseBlend(dt, t);
     this.horde.update(dt, g.time);
     this.updateLuison(dt, t);
     // lo del facón y el Liquidificador sigue andando (Weapons no corre en una escena)
@@ -1924,9 +2786,11 @@ export default class LuisonArrival extends CastleCine {
       climbPose(P, st, gt);
       // (el cuerpo de verdad sube caminando parejo, con los pies en la loma:
       // arranca y frena de a poco)
-      const u = clamp01(st / CLIMB_T);
+      const u = clamp01(st / (L.climbMove || CLIMB_T));
       const A0 = 0.14;
-      const B0 = 0.2;
+      // (más lento, el frenado en ~0,6 s, un paso: con 0,2 el último paso iba
+      // en cámara lenta; climbT)
+      const B0 = L.climbMove && L.climbMove !== CLIMB_T ? 0.11 : 0.2;
       const vmax = 1 / (1 - A0 / 2 - B0 / 2);
       const f = u < A0 ? (vmax * u * u) / (2 * A0) : u > 1 - B0 ? 1 - (vmax * (1 - u) * (1 - u)) / (2 * B0) : vmax * (u - A0 / 2);
       L.pos.lerpVectors(this.luFrom, this.luTop, f);
@@ -2138,6 +3002,14 @@ export default class LuisonArrival extends CastleCine {
     for (const m of this.muzzles) m.s.material.dispose();
     for (const m of this.faconMats || []) m.dispose();
     for (const m of this.gunMats || []) m.dispose();
+    if (this.shades) {
+      this.shadesWrap?.removeFromParent();
+      this.shadesHand?.removeFromParent();
+      this.shades.traverse((o) => {
+        o.geometry?.dispose();
+        o.material?.dispose();
+      });
+    }
     if (!this.played) return;
     g.weapons.facon?.clear?.();
     if (g.state === 'playing' || g.state === 'paused') g.hud.show(true);

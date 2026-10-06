@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { RAMPS } from '../config/map';
-import { bbox, quad, sweep, stairs, PROFILE, roomShell, place, lathe } from './monumentoKit';
+import { RAMPS, WINDOWS } from '../config/map';
+import { bbox, quad, sweep, stairs, PROFILE, roomShell, place, lathe, cylUV } from './monumentoKit';
 import { carvedText, escudoMedallon, reliefCanvas } from './monumentoTextures';
 import { toTexture } from '../core/textures';
 import { statue } from './monumentoStatues';
@@ -13,7 +13,7 @@ import { statue } from './monumentoStatues';
 // Mirador de 31 a 34,4 con sus ventanas y el remate escalonado hasta 37,2.
 // La Proa sale al este (al río), una cuña de piedra con terrazas al pie.
 
-export const TORRE = { x0: 74, x1: 80, z0: 26, z1: 36, cx: 77, cz: 31, base: 11.4, mir: 44, lint: 47.0, top: 50.2 };
+export const TORRE = { x0: 74, x1: 80, z0: 26, z1: 36, cx: 77, cz: 31, base: 11.4, mir: 44, lint: 47.0, top: 50.2, chamfer: 0.45, remate: 49.2, roof: 49.45 };
 const BASE = { x0: 66, x1: 82, z0: 20, z1: 41, top: 6.2 };
 const UP = { x0: 69.5, x1: 82, z0: 22.5, z1: 38.5, top: 11.4 };
 // la Proa: el contorno de la cuña (en planta) y la altura de su lomo
@@ -61,7 +61,16 @@ function buildBasamento(w, gb, extra) {
   niche(gb, B.x0, 28.4, 32.6, yA + 0.3, 5.6, 0.85);
   // el pedestal y la Madre Patria (bronce, de espaldas a la Torre, mirando al Patio)
   bbox(gb, 'travertino', B.x0 + 0.05, yA, 29.2, B.x0 + 0.85, yA + 0.6, 31.8, { b: 0.03, top: 'travStep' });
-  extra.push(...statue('madre', M.bronze, B.x0 + 0.45, yA + 0.6, 30.5, -Math.PI / 2, 1.3));
+  // (las estatuas de afuera, con su material que se prende con los reflectores: world/monumentoLuces.js)
+  const LB = globalThis.__mduNoTorreLuz === true ? M.bronze : M.bronzeLit;
+  const LM = globalThis.__mduNoTorreLuz === true ? M.marble : M.marbleLit;
+  extra.push(...statue('madre', LB, B.x0 + 0.45, yA + 0.6, 30.5, -Math.PI / 2, 1.3));
+  // el reflector del piso del atrio que la alumbra (se prende con la luz:
+  // config LIGHTS), una caja de bronce con el vidrio mirando al nicho
+  bbox(gb, 'bronzeDark', 64.08, yA, 30.22, 64.42, yA + 0.08, 30.78, { b: 0.01 });
+  extra.push(place(new THREE.BoxGeometry(0.3, 0.24, 0.42).rotateZ(0.5), M.bronzeDark, 64.28, yA + 0.22, 30.5));
+  extra.push(place(new THREE.PlaneGeometry(0.4, 0.2).rotateY(Math.PI / 2).rotateZ(0.5), M.lampGlass, 64.37, yA + 0.31, 30.5));
+  w.addBox([64.05, yA, 30.2, 64.45, yA + 0.4, 30.8], { kind: 'prop', solid: false });
   // norte, sur y este (a la explanada)
   quad(gb, 'travertinoBig', [[B.x0, low, B.z0], [B.x1, low, B.z0], [B.x1, B.top, B.z0], [B.x0, B.top, B.z0]], [0, 0, -1]);
   quad(gb, 'travertinoBig', [[B.x1, low, B.z1], [B.x0, low, B.z1], [B.x0, B.top, B.z1], [B.x1, B.top, B.z1]], [0, 0, 1]);
@@ -89,7 +98,7 @@ function buildBasamento(w, gb, extra) {
   // los dos grupos de bronce de las esquinas del lado del Patio (jinete con lanza)
   for (const z of [21.4, 39.6]) {
     bbox(gb, 'travertino', 66.4, B.top, z - 1.0, 68.6, B.top + 0.7, z + 1.0, { b: 0.04, top: 'travStep' });
-    extra.push(...statue('jinete', M.bronze, 67.5, B.top + 0.7, z, -Math.PI / 2, 1.0));
+    extra.push(...statue('jinete', LB, 67.5, B.top + 0.7, z, -Math.PI / 2, 1.0));
   }
   // ---- el cuerpo alto: las estatuas blancas, el escudo y las frases
   const U = UP;
@@ -101,7 +110,7 @@ function buildBasamento(w, gb, extra) {
   // la Pampa y los Andes: de pie en los hombros del cuerpo alto, mirando al Patio
   for (const [z, kind] of [[23.4, 'pampa'], [37.6, 'andes']]) {
     bbox(gb, 'travertino', U.x0 + 0.1, U.top, z - 0.7, U.x0 + 1.5, U.top + 0.5, z + 0.7, { b: 0.04, top: 'travStep' });
-    extra.push(...statue(kind, M.marble, U.x0 + 0.8, U.top + 0.5, z, -Math.PI / 2, 1.25));
+    extra.push(...statue(kind, LM, U.x0 + 0.8, U.top + 0.5, z, -Math.PI / 2, 1.25));
   }
   const medTex = toTexture(escudoMedallon(512));
   const med = new THREE.MeshStandardMaterial({ map: medTex, roughness: 0.85 });
@@ -182,18 +191,93 @@ function buildFuste(w, gb, extra) {
     bbox(gb, 'travertinoBig', x, y0, T.z1, x + 0.6, y1 - 1.2, T.z1 + fa, { b: 0.02, skip: ['bottom', '-z'] });
   }
   // el sol tallado arriba, en las dos caras anchas (al Patio y al río) y en las angostas, más chico
-  const solTex = toTexture(solRelief(512));
-  const sol = new THREE.MeshStandardMaterial({ map: solTex, roughness: 0.85 });
-  const disc = new THREE.CircleGeometry(1.0, 36);
+  // (como en las fotos de la Torre: una roseta de bronce, el sol con sus
+  // rayos sobre la piedra lisa, que se ve de lejos y se prende con los
+  // reflectores: world/monumentoLuces.js statues; 5 cm afuera, delante del
+  // lavado de luz. globalThis.__mduNoRoseta: el disco tallado de antes)
+  const roseta = globalThis.__mduNoRoseta !== true;
+  const solTex = roseta ? toTexture(rosetaCanvas(512), { repeat: false }) : toTexture(solRelief(512));
+  const sol = roseta
+    ? new THREE.MeshStandardMaterial({ map: solTex, emissiveMap: solTex, emissive: 0xffd2a0, emissiveIntensity: 0, roughness: 0.45, metalness: 0.6, alphaTest: 0.5 })
+    : new THREE.MeshStandardMaterial({ map: solTex, roughness: 0.85 });
+  // (sin sombra: la placa cuadrada recortada tiraba su sombra cuadrada en la pared)
+  if (roseta) (w.mon.litMats ||= []).push(sol), (sol.userData.noShadow = true);
+  const disc = roseta ? new THREE.PlaneGeometry(2, 2) : new THREE.CircleGeometry(1.0, 36);
   const ys = T.mir - 4.2;
-  extra.push(place(disc, sol, T.x0 - 0.012, ys, T.cz, -Math.PI / 2, 1.2));
-  extra.push(place(disc, sol, T.x1 + 0.012, ys, T.cz, Math.PI / 2, 1.2));
-  extra.push(place(disc, sol, T.cx, ys, T.z0 - 0.012, Math.PI, 0.8));
-  extra.push(place(disc, sol, T.cx, ys, T.z1 + 0.012, 0, 0.8));
-  // una faja de cornisa donde empieza el Mirador
+  const d = roseta ? 0.05 : 0.012;
+  // (la roseta, más grande: en las fotos ocupa un cuarto del ancho de la cara)
+  const big = roseta ? 1.6 : 1.2;
+  const small = roseta ? 1.1 : 0.8;
+  extra.push(place(disc, sol, T.x0 - d, ys, T.cz, -Math.PI / 2, big));
+  extra.push(place(disc, sol, T.x1 + d, ys, T.cz, Math.PI / 2, big));
+  extra.push(place(disc, sol, T.cx, ys, T.z0 - d, Math.PI, small));
+  extra.push(place(disc, sol, T.cx, ys, T.z1 + d, 0, small));
+  // una faja de cornisa donde empieza el Mirador (no con el Mirador a ras:
+  // la Torre sube plana hasta el techo, sin nada saliente; monumentoTorre buildMirador)
   const c = [[T.x0, T.z0], [T.x0, T.z1], [T.x1, T.z1], [T.x1, T.z0]];
   const outs = [[-1, 0], [0, 1], [1, 0], [0, -1]];
-  for (let i = 0; i < 4; i++) sweep(gb, 'travertino', c[i], c[(i + 1) % 4], outs[i], PROFILE.listel(1.8), { y: y1 - 0.1, caps: false });
+  if (!miradorRas()) for (let i = 0; i < 4; i++) sweep(gb, 'travertino', c[i], c[(i + 1) % 4], outs[i], PROFILE.listel(1.8), { y: y1 - 0.1, caps: false });
+}
+
+// La roseta de bronce de la Torre: el sol con la cara lisa, un anillo y 24
+// rayos en punta, alternados largos y cortos, sobre fondo transparente
+// (alphaTest); el bronce con su pátina verde en los huecos y el metal limpio
+// en lo alto, la luz de arriba a la izquierda ya pintada.
+function rosetaCanvas(S) {
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const x = c.getContext('2d');
+  const k = S / 512;
+  x.translate(S / 2, S / 2);
+  x.scale(k, k);
+  const grad = (r0, r1, a, b) => {
+    const gr = x.createRadialGradient(-r1 * 0.3, -r1 * 0.3, r0, 0, 0, r1);
+    gr.addColorStop(0, a);
+    gr.addColorStop(1, b);
+    return gr;
+  };
+  // los rayos: cada uno con su lomo (dos mitades, una más clara)
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    const L = i % 2 ? 190 : 248;
+    const wd = i % 2 ? 15 : 20;
+    x.save();
+    x.rotate(a);
+    for (const s of [-1, 1]) {
+      x.beginPath();
+      x.moveTo(78, 0);
+      x.lineTo(84, s * wd);
+      x.lineTo(L, 0);
+      x.closePath();
+      const lit = Math.cos(a + Math.PI * 0.75) * s;
+      x.fillStyle = lit > 0 ? '#c09a5a' : '#6e5636';
+      x.fill();
+    }
+    x.restore();
+  }
+  // el anillo y la cara
+  x.beginPath();
+  x.arc(0, 0, 92, 0, Math.PI * 2);
+  x.fillStyle = grad(10, 92, '#d2ae6c', '#5e4a2e');
+  x.fill();
+  x.beginPath();
+  x.arc(0, 0, 72, 0, Math.PI * 2);
+  x.fillStyle = '#4a5e4c';
+  x.fill();
+  x.beginPath();
+  x.arc(0, 0, 66, 0, Math.PI * 2);
+  x.fillStyle = grad(6, 66, '#e2c07e', '#7a5e38');
+  x.fill();
+  // la pátina verde que chorrea de los rayos
+  x.globalCompositeOperation = 'source-atop';
+  x.fillStyle = 'rgba(88,140,116,0.35)';
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2 + 0.06;
+    x.beginPath();
+    x.arc(Math.cos(a) * 120, Math.sin(a) * 120, 14, 0, Math.PI * 2);
+    x.fill();
+  }
+  return c;
 }
 
 // El sol de la Torre: un disco con rayos alternados (rectos y flamígeros).
@@ -240,14 +324,35 @@ function buildMirador(w, gb, extra) {
   const sill = y0 + 1.05;
   const lint = T.lint;
   // el antepecho (todo alrededor) y el dintel corrido
-  const ring = (ya, yb) => {
-    bbox(gb, 'travertinoBig', T.x0, ya, T.z0, T.x1, yb, T.z0 + 1, { b: 0.02, skip: ['bottom'] });
-    bbox(gb, 'travertinoBig', T.x0, ya, T.z1 - 1, T.x1, yb, T.z1, { b: 0.02, skip: ['bottom'] });
-    bbox(gb, 'travertinoBig', T.x0, ya, T.z0 + 1, T.x0 + 1, yb, T.z1 - 1, { b: 0.02, skip: ['bottom'] });
-    bbox(gb, 'travertinoBig', T.x1 - 1, ya, T.z0 + 1, T.x1, yb, T.z1 - 1, { b: 0.02, skip: ['bottom'] });
+  const ring = (ya, yb, skip) => {
+    bbox(gb, 'travertinoBig', T.x0, ya, T.z0, T.x1, yb, T.z0 + 1, { b: 0.02, skip });
+    bbox(gb, 'travertinoBig', T.x0, ya, T.z1 - 1, T.x1, yb, T.z1, { b: 0.02, skip });
+    bbox(gb, 'travertinoBig', T.x0, ya, T.z0 + 1, T.x0 + 1, yb, T.z1 - 1, { b: 0.02, skip });
+    bbox(gb, 'travertinoBig', T.x1 - 1, ya, T.z0 + 1, T.x1, yb, T.z1 - 1, { b: 0.02, skip });
   };
-  ring(y0 - 0.01, sill);
-  ring(lint, lint + 0.4);
+  // El Mirador a ras de la Torre (pedido del usuario: la cara sube plana hasta
+  // el techo): el antepecho y los parantes de las esquinas siguen las ochavas
+  // del fuste; antes eran de esquinas vivas y, con la faja de cornisa de abajo
+  // y la moldura de arriba, la franja de las ventanas sobresalía.
+  // globalThis.__mduNoMiradorRas: como antes.
+  const ras = miradorRas();
+  if (ras) octoRing(gb, 'travertinoBig', T.x0, T.z0, T.x1, T.z1, T.chamfer, 1, y0 - 0.01, sill);
+  else ring(y0 - 0.01, sill, ['bottom']);
+  // (el antepecho es de esquinas vivas y el fuste de abajo, ochavado: en cada
+  // esquina, desde abajo se veía adentro por el triángulo sin piso)
+  if (!ras && globalThis.__mduNoZfix !== true) {
+    const c = T.chamfer;
+    for (const [X, Z, sx, sz] of [[T.x0, T.z0, 1, 1], [T.x1, T.z0, -1, 1], [T.x1, T.z1, -1, -1], [T.x0, T.z1, 1, -1]]) {
+      quad(gb, 'travertinoBig', [[X, y0 - 0.01, Z], [X + sx * c, y0 - 0.01, Z], [X, y0 - 0.01, Z + sz * c], [X, y0 - 0.01, Z + sz * c]], [0, -1, 0]);
+    }
+  }
+  // El remate como el de verdad (las fotos de la Torre): el fuste sigue liso
+  // arriba de las ventanas, con las esquinas ochavadas como abajo, y termina
+  // plano, con una losa de coronamiento apenas saliente. Antes eran tres
+  // cajas escalonadas como una torta (globalThis.__mduNoRemate: las de antes).
+  const nuevo = globalThis.__mduNoRemate !== true;
+  // (el dintel con su cara de abajo: desde adentro se ve, si no queda hueco y se ve el cielo)
+  if (!nuevo) ring(lint, lint + 0.4, []);
   // los parantes entre las ventanas (las ventanas: 4 en las caras largas, 2 en las cortas)
   const pierW = 0.7;
   const along = (a0, a1, n) => {
@@ -256,42 +361,177 @@ function buildMirador(w, gb, extra) {
     for (let i = 0; i <= n; i++) out.push(a0 + i * step);
     return out;
   };
+  const isCorner = (a, a0, a1) => a <= a0 + 0.01 || a >= a1 - 0.01;
   for (const z of along(T.z0, T.z1, 4)) {
+    if (ras && isCorner(z, T.z0, T.z1)) continue;
     for (const x of [T.x0, T.x1 - 1]) bbox(gb, 'travertinoBig', x, sill, Math.max(T.z0, z - pierW / 2), x + 1, lint, Math.min(T.z1, z + pierW / 2), { b: 0.03 });
   }
+  // (los de las esquinas, sin lo que ya tapa el parante del costado: las dos
+  // caras de afuera quedaban en el mismo plano y titilaban)
+  const fix = globalThis.__mduNoZfix !== true;
   for (const x of along(T.x0, T.x1, 2)) {
-    for (const z of [T.z0, T.z1 - 1]) bbox(gb, 'travertinoBig', Math.max(T.x0, x - pierW / 2), sill, z, Math.min(T.x1, x + pierW / 2), lint, z + 1, { b: 0.03 });
+    const corner = fix && isCorner(x, T.x0, T.x1);
+    if (ras && corner) continue;
+    for (const z of [T.z0, T.z1 - 1]) bbox(gb, 'travertinoBig', Math.max(T.x0, x - pierW / 2), sill, z + (corner && z === T.z0 ? pierW / 2 : 0), Math.min(T.x1, x + pierW / 2), lint, z + 1 - (corner && z !== T.z0 ? pierW / 2 : 0), { b: 0.03 });
   }
-  // el cielorraso del Mirador
-  quad(gb, 'travertino', [[T.x0 + 1, lint + 0.4, T.z0 + 1], [T.x1 - 1, lint + 0.4, T.z0 + 1], [T.x1 - 1, lint + 0.4, T.z1 - 1], [T.x0 + 1, lint + 0.4, T.z1 - 1]], [0, -1, 0]);
-  // el remate escalonado (tres cuerpos que se achican) con la cornisa
-  const steps = [[0.25, 0.9], [0.6, 1.1], [1.4, 0.8]];
+  // con el Mirador a ras, cada esquina es un parante en L (un metro por cada
+  // cara, lo mismo que juntaban los dos de antes) con la ochava afuera
+  if (ras) {
+    for (const [X, Z, sx, sz] of [[T.x0, T.z0, 1, 1], [T.x1, T.z0, -1, 1], [T.x1, T.z1, -1, -1], [T.x0, T.z1, 1, -1]]) {
+      const h = pierW / 2;
+      const c = T.chamfer;
+      prism(gb, 'travertinoBig', [[c, 0], [1, 0], [1, h], [h, h], [h, 1], [0, 1], [0, c]].map(([u, v]) => [X + sx * u, Z + sz * v]), sill, lint);
+    }
+  }
+  // las ventanas de los muertos del Mirador (config WINDOWS): las tablas de
+  // Barriers miden 1,18 m y el vano 2,3; quedaban colgadas en el medio, sin
+  // tocar nada. Dos parantes de madera, del antepecho al dintel, donde se clavan.
+  for (const wi of WINDOWS) {
+    if (wi.zone !== 'I' || globalThis.__mduNoParantes === true) continue;
+    const [ox, oz] = wi.out;
+    const px = wi.cell[0] + 0.5 - ox * (0.42 - 0.053);
+    const pz = wi.cell[1] + 0.5 - oz * (0.42 - 0.053);
+    for (const s of [-1, 1]) {
+      const x = px + Math.abs(oz) * s * 0.54;
+      const z = pz + Math.abs(ox) * s * 0.54;
+      const hx = oz ? 0.04 : 0.03;
+      const hz = oz ? 0.03 : 0.04;
+      bbox(gb, 'muelleDark', x - hx, sill, z - hz, x + hx, lint, z + hz, { b: 0.006 });
+    }
+  }
+  // el cielorraso del Mirador: la cara de abajo del remate (un cielorraso
+  // aparte, en el mismo plano, titilaba con ella)
+  if (!nuevo && globalThis.__mduNoZfix === true) quad(gb, 'travertino', [[T.x0 + 1, lint + 0.4, T.z0 + 1], [T.x1 - 1, lint + 0.4, T.z0 + 1], [T.x1 - 1, lint + 0.4, T.z1 - 1], [T.x0 + 1, lint + 0.4, T.z1 - 1]], [0, -1, 0]);
   let y = lint + 0.4;
-  steps.forEach(([ins, h], i) => {
-    bbox(gb, 'travertinoBig', T.x0 + ins - (i === 0 ? 0.45 : 0), y, T.z0 + ins - (i === 0 ? 0.45 : 0), T.x1 - ins + (i === 0 ? 0.45 : 0), y + h, T.z1 - ins + (i === 0 ? 0.45 : 0), { b: 0.06, corners: i > 0 });
-    y += h;
-  });
+  if (nuevo) {
+    // el cuerpo, del dintel arriba (su cara de abajo es el techo del Mirador)
+    const c = T.chamfer;
+    octo(gb, 'travertinoBig', T.x0, T.z0, T.x1, T.z1, c, lint, T.remate, { bottom: 'travertino', top: false });
+    // la losa de coronamiento: 7 cm afuera, con su vuelo y la terraza arriba
+    octo(gb, 'travStep', T.x0 - 0.07, T.z0 - 0.07, T.x1 + 0.07, T.z1 + 0.07, c + 0.03, T.remate, T.roof, { bottom: 'travertino', top: 'travertinoDark' });
+    // y una moldura fina donde arranca el remate, arriba de las ventanas (no
+    // con el Mirador a ras: sobresalía)
+    if (!ras) octo(gb, 'travStep', T.x0 - 0.035, T.z0 - 0.035, T.x1 + 0.035, T.z1 + 0.035, c + 0.015, lint + 0.38, lint + 0.5, { bottom: 'travertino', top: 'travStep' });
+    y = T.roof;
+  } else {
+    // el remate escalonado (tres cuerpos que se achican) con la cornisa
+    const steps = [[0.25, 0.9], [0.6, 1.1], [1.4, 0.8]];
+    steps.forEach(([ins, h], i) => {
+      bbox(gb, 'travertinoBig', T.x0 + ins - (i === 0 ? 0.45 : 0), y, T.z0 + ins - (i === 0 ? 0.45 : 0), T.x1 - ins + (i === 0 ? 0.45 : 0), y + h, T.z1 - ins + (i === 0 ? 0.45 : 0), { b: 0.06, corners: i > 0 });
+      y += h;
+    });
+  }
   // la baliza roja de arriba (los aviones) y el asta chica
   const beacon = new THREE.MeshStandardMaterial({ color: 0x400000, emissive: 0xff2010, emissiveIntensity: 3 });
   extra.push(place(new THREE.SphereGeometry(0.12, 10, 8), beacon, T.cx, y + 0.9, T.cz));
   extra.push(place(new THREE.CylinderGeometry(0.04, 0.05, 0.9, 6), w.M.iron, T.cx, y + 0.45, T.cz));
   w.mon.beacon = beacon;
-  // la puerta del ascensor del Mirador (del lado oeste, adentro)
-  elevatorDoor(gb, extra, w, T.x0 + 1.001, y0, T.cz, 1);
+  // el ascensor del Mirador: llega por adentro del fuste a una caja de piedra
+  // contra la pared del oeste (antes la puerta quedaba parada sola delante de
+  // la ventana); la cabina va adentro y la puerta da al Mirador (x 76)
+  const H = ELEV.top;
+  const hx0 = ELEV.x0;
+  const hx1 = ELEV.x1;
+  const [hz0, hz1] = [T.cz - 1.1, T.cz + 1.1];
+  const [dz0, dz1] = [T.cz - ELEV.hw - 0.12, T.cz + ELEV.hw + 0.12];
+  // los costados, el fondo (del lado de la ventana) y el frente con el vano de la puerta
+  quad(gb, 'travertinoBig', [[hx0, y0, hz0], [hx1, y0, hz0], [hx1, lint + 0.4, hz0], [hx0, lint + 0.4, hz0]], [0, 0, -1]);
+  quad(gb, 'travertinoBig', [[hx1, y0, hz1], [hx0, y0, hz1], [hx0, lint + 0.4, hz1], [hx1, lint + 0.4, hz1]], [0, 0, 1]);
+  quad(gb, 'travertinoBig', [[hx0, y0, hz1], [hx0, y0, hz0], [hx0, lint + 0.4, hz0], [hx0, lint + 0.4, hz1]], [-1, 0, 0]);
+  quad(gb, 'travertino', [[hx1, y0, hz0], [hx1, y0, dz0], [hx1, lint + 0.4, dz0], [hx1, lint + 0.4, hz0]], [1, 0, 0]);
+  quad(gb, 'travertino', [[hx1, y0, dz1], [hx1, y0, hz1], [hx1, lint + 0.4, hz1], [hx1, lint + 0.4, dz1]], [1, 0, 0]);
+  quad(gb, 'travertino', [[hx1, y0 + H, dz0], [hx1, y0 + H, dz1], [hx1, lint + 0.4, dz1], [hx1, lint + 0.4, dz0]], [1, 0, 0]);
+  // un zócalo oscuro y una moldura arriba de la puerta
+  bbox(gb, 'travertinoDark', hx1, y0, hz0, hx1 + 0.03, y0 + 0.16, dz0, { b: 0.01 });
+  bbox(gb, 'travertinoDark', hx1, y0, dz1, hx1 + 0.03, y0 + 0.16, hz1, { b: 0.01 });
+  bbox(gb, 'travStep', hx1, y0 + H + 0.12, hz0 - 0.04, hx1 + 0.06, y0 + H + 0.22, hz1 + 0.04, { b: 0.01 });
+  // choques: los costados de la caja y el fondo (la cabina, adentro, se camina)
+  w.addBox([hx0, y0, hz0, hx1, lint + 0.4, dz0 + 0.08], { kind: 'wall' });
+  w.addBox([hx0, y0, dz1 - 0.08, hx1, lint + 0.4, hz1], { kind: 'wall' });
+  w.addBox([hx0, y0, hz0, hx1 - ELEV.dep, lint + 0.4, hz1], { kind: 'wall' });
+  elevatorDoor(gb, extra, w, hx1 + 0.001, y0, T.cz, 1);
 }
+
+// El Mirador a ras de la Torre (globalThis.__mduNoMiradorRas: como antes).
+export const miradorRas = () => globalThis.__mduNoMiradorRas !== true && globalThis.__mduNoRemate !== true;
+
+// Un prisma de cualquier planta (los costados, sin tapas): pts [[x, z], ...];
+// `inward`: las caras miran para adentro (el hueco de un anillo).
+function prism(gb, key, pts, y0, y1, inward = false) {
+  let a2 = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, az] = pts[i];
+    const [bx, bz] = pts[(i + 1) % pts.length];
+    a2 += ax * bz - bx * az;
+  }
+  const s = (a2 > 0 ? 1 : -1) * (inward ? -1 : 1);
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, az] = pts[i];
+    const [bx, bz] = pts[(i + 1) % pts.length];
+    quad(gb, key, [[ax, y0, az], [bx, y0, bz], [bx, y1, bz], [ax, y1, az]], [s * (bz - az), 0, -s * (bx - ax)]);
+  }
+}
+
+// Un anillo de planta ochavada (el antepecho del Mirador): afuera la ochava
+// (como el fuste), adentro el rectángulo `t` más chico, y la tapa de arriba.
+function octoRing(gb, key, x0, z0, x1, z1, c, t, y0, y1) {
+  octo(gb, key, x0, z0, x1, z1, c, y0, y1, { top: false, bottom: false });
+  const [i0, k0, i1, k1] = [x0 + t, z0 + t, x1 - t, z1 - t];
+  prism(gb, key, [[i0, k0], [i0, k1], [i1, k1], [i1, k0]], y0, y1, true);
+  const Y = y1;
+  const tops = [
+    [[x0 + c, z0], [x1 - c, z0], [i1, k0], [i0, k0]],
+    [[x1, z0 + c], [x1, z1 - c], [i1, k1], [i1, k0]],
+    [[x1 - c, z1], [x0 + c, z1], [i0, k1], [i1, k1]],
+    [[x0, z1 - c], [x0, z0 + c], [i0, k0], [i0, k1]],
+    [[x1 - c, z0], [x1, z0 + c], [i1, k0], [i1, k0]],
+    [[x1, z1 - c], [x1 - c, z1], [i1, k1], [i1, k1]],
+    [[x0 + c, z1], [x0, z1 - c], [i0, k1], [i0, k1]],
+    [[x0, z0 + c], [x0 + c, z0], [i0, k0], [i0, k0]],
+  ];
+  for (const q of tops) quad(gb, key, q.map(([x, z]) => [x, Y, z]), [0, 1, 0]);
+}
+
+// Un prisma de planta ochavada (un rectángulo con las cuatro esquinas
+// cortadas a 45°, c m): los ocho costados, y la tapa de arriba y la de abajo
+// (top/bottom: el material, o false). Para el remate de la Torre.
+function octo(gb, key, x0, z0, x1, z1, c, y0, y1, { top = key, bottom = key } = {}) {
+  const P = [[x0 + c, z0], [x1 - c, z0], [x1, z0 + c], [x1, z1 - c], [x1 - c, z1], [x0 + c, z1], [x0, z1 - c], [x0, z0 + c]];
+  for (let i = 0; i < 8; i++) {
+    const [ax, az] = P[i];
+    const [bx, bz] = P[(i + 1) % 8];
+    // (la normal hacia afuera: el contorno va en el sentido de las agujas vistas de arriba)
+    quad(gb, key, [[ax, y0, az], [bx, y0, bz], [bx, y1, bz], [ax, y1, az]], [bz - az, 0, -(bx - ax)]);
+  }
+  // las tapas: el rectángulo del medio y los dos trapecios de los costados
+  const caps = [
+    [[x0 + c, z0], [x1 - c, z0], [x1 - c, z1], [x0 + c, z1]],
+    [[x0, z0 + c], [x0 + c, z0], [x0 + c, z1], [x0, z1 - c]],
+    [[x1 - c, z0], [x1, z0 + c], [x1, z1 - c], [x1 - c, z1]],
+  ];
+  for (const q of caps) {
+    if (top) quad(gb, top, q.map(([x, z]) => [x, y1, z]), [0, 1, 0]);
+    if (bottom) quad(gb, bottom, q.map(([x, z]) => [x, y0, z]), [0, -1, 0]);
+  }
+}
+
+// El ascensor: la cabina (entities/monumento/Ascensor.js) mide `dep` de fondo
+// y `hw` de medio ancho; arriba, la caja de piedra del Mirador va de x0 a x1.
+export const ELEV = { dep: 0.95, hw: 0.7, top: 2.4, x0: 74.6, x1: 76 };
 
 // La puerta de bronce del ascensor (de dos hojas, con su marco), sobre una
 // pared que mira hacia +x (s = 1) o -x (s = -1).
 function elevatorDoor(gb, extra, w, x, y, z, s) {
   const M = w.M;
-  const hw = 0.6;
+  const hw = ELEV.hw;
   bbox(gb, 'bronzeDark', x - (s > 0 ? 0 : 0.06), y, z - hw - 0.12, x + (s > 0 ? 0.06 : 0), y + 2.4, z - hw, { b: 0.01 });
   bbox(gb, 'bronzeDark', x - (s > 0 ? 0 : 0.06), y, z + hw, x + (s > 0 ? 0.06 : 0), y + 2.4, z + hw + 0.12, { b: 0.01 });
   bbox(gb, 'bronzeDark', x - (s > 0 ? 0 : 0.06), y + 2.28, z - hw - 0.12, x + (s > 0 ? 0.06 : 0), y + 2.5, z + hw + 0.12, { b: 0.01 });
   const leaves = [];
   for (const side of [-1, 1]) {
     const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.28, hw), M.bronze);
-    leaf.position.set(x + s * 0.02, y + 1.14, z + side * hw * 0.5);
+    // (un poco adentro del vano: al abrir corren por detrás de la pared, no por delante)
+    leaf.position.set(x - s * 0.035, y + 1.14, z + side * hw * 0.5);
     leaf.userData.side = side;
     leaf.userData.dynamic = true;
     leaves.push(leaf);
@@ -309,7 +549,9 @@ function buildProa(w, gb, extra) {
   const rows = [[82, 23, 38], [83, 23, 38], [84, 23, 38], [85, 24, 37], [86, 24, 37], [87, 26, 35], [88, 26, 35], [89, 28, 33], [90, 28, 33]];
   for (const [x, z0, z1] of rows) {
     bbox(gb, 'travertino', x, -2.6, z0, x + 1, -2.0, z1, { b: 0.04, top: 'travStep' });
-    quad(gb, 'grass', [[x + 0.06, -1.999, z1 - 0.06], [x + 0.94, -1.999, z1 - 0.06], [x + 0.94, -1.999, z0 + 0.06], [x + 0.06, -1.999, z0 + 0.06]], [0, 1, 0]);
+    // (el pasto 1 cm arriba de la piedra: a 1 mm, de lejos titilaba)
+    const gy = globalThis.__mduNoZfix === true ? -1.999 : -1.99;
+    quad(gb, 'grass', [[x + 0.06, gy, z1 - 0.06], [x + 0.94, gy, z1 - 0.06], [x + 0.94, gy, z0 + 0.06], [x + 0.06, gy, z0 + 0.06]], [0, 1, 0]);
   }
   // la cuña: de la cara del basamento a la punta, con el lomo que baja
   const yb = -2.0;
@@ -350,25 +592,40 @@ function buildProa(w, gb, extra) {
   extra.push(place(arc, legM, px, 3.2, zc));
   // una cornisa arriba del pedestal y la estatua
   const cap = lathe([[0, 0], [r + 0.08, 0], [r + 0.16, 0.1], [r + 0.16, 0.28], [r + 0.06, 0.34], [0, 0.34]], 40);
+  if (globalThis.__mduNoCylUV !== true) cylUV(cap);
   extra.push(place(cap, M.travertino, px, pyTop, zc));
-  extra.push(...statue('patria', M.bronze, px, pyTop + 0.34, zc, Math.PI / 2, 1.7));
+  const LB = globalThis.__mduNoTorreLuz === true ? M.bronze : M.bronzeLit;
+  const LM = globalThis.__mduNoTorreLuz === true ? M.marble : M.marbleLit;
+  extra.push(...statue('patria', LB, px, pyTop + 0.34, zc, Math.PI / 2, 1.7));
   // los colosos del agua a los costados de la Proa: el Río Paraná y el Océano Atlántico
   for (const [z, kind, ry] of [[24.2, 'parana', 0.5], [36.8, 'atlantico', Math.PI - 0.5]]) {
-    bbox(gb, 'travertino', 84.6, -2.0, z - 0.9, 86.4, -1.4, z + 0.9, { b: 0.04, top: 'travStep' });
-    extra.push(...statue(kind, M.marble, 85.5, -1.4, z, ry, 1.3));
+    // (el pedestal baja hasta la explanada: se sale de las terrazas del pie y
+    // del lado de afuera quedaba volando 60 cm sobre el piso)
+    bbox(gb, 'travertino', 84.6, -2.6, z - 0.9, 86.4, -1.4, z + 0.9, { b: 0.04, top: 'travStep' });
+    extra.push(...statue(kind, LM, 85.5, -1.4, z, ry, 1.3));
   }
 }
 
 // ---------------- la Cripta de Belgrano ----------------
 function buildCripta(w, gb, extra) {
   const M = w.M;
-  // el ascensor: en la nave, contra la pared del este (x 72, z 29,6 a 31,4)
+  // el ascensor: en la nave, contra la pared del este (x 72). Las celdas de
+  // atrás de la puerta (x 72, z 29 a 31) son de la Cripta: ahí está la cabina
+  // y se entra caminando (entities/monumento/Ascensor.js); la pared tiene el vano
   const elev = (x, z, dx) => dx === 1 && x === 71 && z >= 29 && z <= 31;
   roomShell(w, gb, ['D'], { wall: 'cryptStone', ceil: 'cryptCeil', base: 'travertinoDark', skip: (x, z, dx) => elev(x, z, dx) });
-  // la pared del ascensor (con el hueco de la puerta) y la puerta
   const x = 72;
-  quad(gb, 'cryptStone', [[x, -3.0, 32], [x, -3.0, 29], [x, -2.6 + 2.5, 29], [x, -2.6 + 2.5, 32]], [-1, 0, 0]);
-  quad(gb, 'cryptStone', [[x, 1.0, 32], [x, 1.0, 29], [x, -0.1, 29], [x, -0.1, 32]], [-1, 0, 0]);
+  const [ez0, ez1] = [30.5 - ELEV.hw - 0.12, 30.5 + ELEV.hw + 0.12];
+  quad(gb, 'cryptStone', [[x, -3.0, ez0], [x, -3.0, 29], [x, -2.6 + ELEV.top, 29], [x, -2.6 + ELEV.top, ez0]], [-1, 0, 0]);
+  quad(gb, 'cryptStone', [[x, -3.0, 32], [x, -3.0, ez1], [x, -2.6 + ELEV.top, ez1], [x, -2.6 + ELEV.top, 32]], [-1, 0, 0]);
+  quad(gb, 'cryptStone', [[x, 1.0, 32], [x, 1.0, 29], [x, -2.6 + ELEV.top, 29], [x, -2.6 + ELEV.top, 32]], [-1, 0, 0]);
+  // el zócalo de los dos lados del vano
+  bbox(gb, 'travertinoDark', x - 0.03, -2.6, 29, x, -2.44, ez0, { b: 0.01 });
+  bbox(gb, 'travertinoDark', x - 0.03, -2.6, ez1, x, -2.44, 32, { b: 0.01 });
+  // choques: los costados de la cabina (lo de atrás del muro, a los lados del vano)
+  w.addBox([x, -2.6, 29, x + 1, 1.0, 30.5 - ELEV.hw + 0.08], { kind: 'wall' });
+  w.addBox([x, -2.6, 30.5 + ELEV.hw - 0.08, x + 1, 1.0, 32], { kind: 'wall' });
+  w.addBox([x + ELEV.dep, -2.6, 29, x + 1, 1.0, 32], { kind: 'wall' });
   elevatorDoor(gb, extra, w, x - 0.001, -2.6, 30.5, -1);
   // las escaleras de la Cripta
   for (const R of RAMPS.filter((r) => r.own === 'cripta')) stairs(gb, R, { count: 16, base: -3.0, riser: 'cryptStone', tread: 'travStep' });
@@ -384,6 +641,25 @@ function buildCripta(w, gb, extra) {
   bbox(gb, 'bronzeDark', 67.0, 0.3, 30.1, 67.06, 0.44, 30.9, { b: 0.005 });
   // las banderas de las alas (astas de bronce con la bandera colgando)
   w.mon.cryptFlags = [[74.5, 21.2], [78.5, 21.2], [74.5, 39.8], [78.5, 39.8]];
+  // la lámpara votiva de Belgrano: el vaso de vidrio colorado sobre su pie de
+  // bronce (la luz de config LIGHTS va ahí; antes brillaba sola en el aire)
+  extra.push(place(lathe([[0, 0], [0.2, 0], [0.2, 0.04], [0.06, 0.12], [0.035, 0.3], [0.03, 1.3], [0.06, 1.38], [0.12, 1.46], [0.12, 1.5], [0, 1.5]], 12), M.bronze, 68.75, -2.6, 30.5));
+  const votiva = new THREE.MeshStandardMaterial({ color: 0x5a0a06, emissive: 0xff5a20, emissiveIntensity: 1.6, roughness: 0.25, transparent: true, opacity: 0.88 });
+  extra.push(place(new THREE.CylinderGeometry(0.075, 0.055, 0.17, 12), votiva, 68.75, -1.02, 30.5));
+  w.addBox([68.5, -2.6, 30.25, 69.0, -0.9, 30.75], { kind: 'prop', solid: false });
+  // los faroles de bronce colgados del techo de las alas (las luces de las alas)
+  const lanternBase = lathe([[0, 0], [0.05, -0.08], [0.15, 0], [0.16, 0.05], [0, 0.05]], 8);
+  const lanternCap = lathe([[0, 0], [0.2, 0], [0.07, 0.12], [0.03, 0.18], [0, 0.18]], 8);
+  for (const z of [23, 37]) {
+    extra.push(place(new THREE.CylinderGeometry(0.012, 0.012, 0.98, 4), M.bronzeDark, 76, 0.51, z));
+    extra.push(place(lanternCap, M.bronze, 76, -0.16, z));
+    extra.push(place(new THREE.CylinderGeometry(0.14, 0.14, 0.3, 8, 1, true), M.lampGlass, 76, -0.31, z));
+    extra.push(place(lanternBase, M.bronze, 76, -0.51, z));
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+      extra.push(place(new THREE.BoxGeometry(0.02, 0.32, 0.02), M.bronze, 76 + Math.cos(a) * 0.145, -0.31, z + Math.sin(a) * 0.145));
+    }
+  }
 }
 
 export { elevatorDoor };

@@ -3,10 +3,12 @@ import { EE } from '../config/map';
 import Avatars from '../net/Avatars';
 import { buildVoz, updateVoz } from './voz';
 import { warmScene } from './cineWarm';
-import { crewIds } from './cineCrew';
+import { crewIds, personaOf, PERSONA_T } from './cineCrew';
 import { scarecrowProp, scarecrowPose, scarecrowFallEnd } from '../entities/skins/scarecrow';
 import { preloadBossSkin } from '../entities/bossSkin';
 import { prefetchTrack } from '../core/music';
+import { cineClip, poseCineClip, gauchoClip, cineSnap, headProp, FACE_EYES } from '../net/gauchoSkin';
+import { assetUrl } from '../../lib/assets';
 
 // Final de La Tapera, adentro del juego, en el Prado. El Espantapájaros queda
 // de rodillas, levanta la cabeza al cielo y dice lo que nadie entiende todavía:
@@ -58,6 +60,20 @@ const tmpV = new THREE.Vector3();
 const tmpW = new THREE.Vector3();
 const tmpU = new THREE.Vector3();
 const tmpC = new THREE.Color();
+const tmpM = new THREE.Matrix4();
+const tmpM2 = new THREE.Matrix4();
+const hzF = new THREE.Vector3();
+const hzX = new THREE.Vector3();
+const hzY = new THREE.Vector3();
+const hzZ = new THREE.Vector3();
+const hzP = new THREE.Vector3();
+const hzA = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
+// (los anteojos del Canchero: salen del bolsillo a los 0,55 s del clip
+// 'shadesL', van en la mano y a los 1,25 s la mano los dejó en la cara;
+// granja_clips.py SHADES_ON_L)
+const SHADES_OUT = 0.55;
+const SHADES_ON = 1.25;
 const smooth = (u) => u * u * (3 - 2 * u);
 const clamp01 = (u) => Math.max(0, Math.min(1, u));
 const lerp = (a, b, u) => a + (b - a) * u;
@@ -82,6 +98,10 @@ export default class FarmCinematic {
     this.timers = [];
     this.shake = 0;
     this.fogMul = 1;
+    // (en línea el reloj cuenta desde acá: la compu que se traba armando la
+    // escena y compilando no arranca atrasada de las demás; solo, no se come
+    // el fundido del principio; update)
+    this.wallAt = game.net ? performance.now() : 0;
   }
 
   play(onDone) {
@@ -122,6 +142,12 @@ export default class FarmCinematic {
     this.O = new THREE.Vector3(tx + Math.cos(toC) * 1.2, 3.7, tz + Math.sin(toC) * 1.2);
     this.root = new THREE.Group();
     g.scene.add(this.root);
+    // (el Prado a la vista: con la pelea ya está; si se llega sin ella, Alt+I,
+    // no estaba el ombú y el último cuervo se metía en el aire)
+    if (g.arena?.root && !g.arena.root.visible) {
+      g.arena.root.visible = true;
+      this.arenaShown = true;
+    }
     this.fov0 = g.camera.fov;
     g.hud.setBossBar(null);
     g.weapons.vmRoot.visible = false;
@@ -140,6 +166,29 @@ export default class FarmCinematic {
     // la fila, antes le tapaban las primeras tomas)
     this.people.root.visible = false;
     this.buildReapers();
+    this.shades = this.buildShades();
+    this.shadesHand = new THREE.Group();
+    this.shadesHand.matrixAutoUpdate = false;
+    this.shadesHand.add(this.shades);
+    this.shadesHand.visible = false;
+    this.root.add(this.shadesHand);
+    // los segadores con movimientos animados a mano en Blender, cada uno con su
+    // carácter (ui/cineCrew PERSONA; C:/Users/ignac/Tools/mdu-blender
+    // granja_clips.py). globalThis.__mduBlend = false: como antes.
+    this.PC = null;
+    // (las duraciones de las tomas dependen del interruptor, no de si el json
+    // ya llegó: en línea todos tienen el mismo guion en hora)
+    this.blend = globalThis.__mduBlend !== false;
+    if (this.blend) {
+      fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-granja.json'))
+        .then((r) => r.json())
+        .then((J) => {
+          const C = {};
+          for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+          this.PC = C;
+        })
+        .catch(() => {});
+    }
     // el paquete que sube (una copia del que quedó en la piedra)
     const src = g.ee?.altarPack;
     this.pack = src ? src.clone() : new THREE.Group();
@@ -270,7 +319,7 @@ export default class FarmCinematic {
       const s = i - (ids.length - 1) / 2;
       const x = this.A.x + s * 1.3;
       const z = this.PZ + Math.abs(s) * 0.4;
-      const r = { id: ME + id, name: '', noTag: true, pos: new THREE.Vector3(x, g.world.floorAt(x, z), z), yaw: 0, pitch: -0.7, speed: 0, moving: false, crouch: false };
+      const r = { id: ME + id, name: '', noTag: true, pos: new THREE.Vector3(x, g.world.floorAt(x, z), z), yaw: 0, pitch: -0.7, speed: 0, moving: false, crouch: false, persona: personaOf(i) };
       r.yaw = faceTo(r.pos, this.A.x, this.A.z - 2);
       this.people.add(r);
       const a = this.people.list.get(r.id);
@@ -302,7 +351,11 @@ export default class FarmCinematic {
     const g = this.g;
     return [
       [0, () => {
-        this.black(0, 1.6);
+        // (el negro dura un poco más: las primeras décimas la placa termina
+        // de armar lo de la escena y los segadores (warmReapers) y se traba
+        // dos veces ~0,2 s; en negro no se ve)
+        if (globalThis.__mduNoReapWarm) this.black(0, 1.6);
+        else this.later(0.75, () => this.black(0, 1.5));
         this.shotKneel();
         g.audio.caw(tmpV.copy(this.O), 2);
         return 3.6;
@@ -322,6 +375,8 @@ export default class FarmCinematic {
       }],
       [0, () => {
         this.burst();
+        // (los segadores, todavía sin verse, ya en su pose: aparecen quietos en la suya)
+        if (this.blend) this.reapIdle();
         return 2.7;
       }],
       [0, () => {
@@ -333,20 +388,47 @@ export default class FarmCinematic {
       [0, () => {
         this.look = 'pile';
         this.shotReapers();
-        return 3.8;
+        // (con los clips de Blender: cada uno a su manera, y una bandada que
+        // les pasa por arriba: de frente, cómo reacciona cada uno)
+        if (!this.blend) return 3.8;
+        this.later(1.5, () => this.crowPass());
+        return 5.4;
       }],
       [0, () => {
         this.look = 'sky';
         this.skyGlow();
+        if (this.blend) this.shotSkyUp();
         return 2.6;
       }],
       // baja la Voz
       [0, () => {
         this.voiceIn();
         this.shotVoiceDown();
+        if (this.blend) this.reapVoz();
         return 4.8;
       }],
-      [0, () => this.say('entidad', 'Gracias. Hacía cien años que nadie me traía yerba de esta tierra.') + 0.5],
+      [0, () => {
+        const d = this.say('entidad', 'Gracias. Hacía cien años que nadie me traía yerba de esta tierra.') + 0.5;
+        // (mientras habla: el Canchero, de cerca, con la hoz al hombro, le
+        // levanta el antebrazo y le cabecea despacio, aprobando; después los
+        // cuatro. Los anteojos, solo en el penal y la torre: el usuario,
+        // 2026-10-04; globalThis.__mduShadesAll: como antes)
+        const cc = this.reapers.find((r) => r.persona === 'canchero');
+        if (this.blend && cc) {
+          if (globalThis.__mduShadesAll) {
+            this.act(cc, 'shadesL', { fade: 0.4 });
+            this.shadesT = this.now;
+            if (this.PC) {
+              this.shadesR = cc;
+              this.shadesGrip(cc);
+            }
+          } else this.act(cc, 'hozNod', { fade: 0.4 });
+          this.shotShades(cc, 2.3);
+          this.later(2.2, () => this.act(cc, 'hozShoulder', { loop: true, fade: 0.35 }));
+          this.later(2.3, () => this.shotFront(Math.max(1, d - 2.3), true));
+        } else if (this.blend) this.shotFront(d, true);
+        return d;
+      }],
       // la cosecha sube por la luz
       [0, () => {
         this.hideText();
@@ -394,8 +476,13 @@ export default class FarmCinematic {
     ];
   }
 
+  // La hora de lo que arranca ahora (en línea, la del guion: update).
+  get now() {
+    return this.at ?? this.t;
+  }
+
   later(secs, fn) {
-    this.timers.push({ t: this.t + secs, fn });
+    this.timers.push({ t: this.now + secs, fn });
   }
 
   // Habla un personaje: su nombre arriba y el subtítulo que va apareciendo al
@@ -408,6 +495,9 @@ export default class FarmCinematic {
     void this.textEl.offsetWidth;
     this.textEl.classList.add('is-on');
     this.el.classList.toggle('is-espanta', who === 'espantapajaros' && !secret);
+    // (la Voz habla delante de su luz: el subtítulo lila sobre el lila claro no
+    // se leía; con sombra oscura, ui/style.css .mdu-fcine--granja.is-vozluz)
+    this.el.classList.toggle('is-vozluz', who === 'entidad');
     this.el.classList.toggle('is-secreto', secret);
     this.sub = { text, t0: this.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.05)), k: -1 };
     return d;
@@ -553,7 +643,7 @@ export default class FarmCinematic {
   // ---------------- las tomas ----------------
   // tmpV: dónde está la cámara; tmpW: adónde mira.
   shot(dur, fn, fov = this.fov0) {
-    this.cam = { t0: this.t, dur, fn };
+    this.cam = { t0: this.now, dur, fn };
     this.setFov(fov);
   }
 
@@ -639,6 +729,49 @@ export default class FarmCinematic {
     }, 50);
   }
 
+  // De frente a los segadores, a la altura del pecho (up: desde abajo, con el
+  // cielo atrás): cómo reacciona cada uno.
+  shotFront(dur, up = false) {
+    const c = new THREE.Vector3();
+    for (const r of this.reapers) c.add(r.pos);
+    c.divideScalar(this.reapers.length || 1);
+    const at = up ? this.A : this.pile.position;
+    const d = tmpU.set(at.x - c.x, 0, at.z - c.z).normalize().clone();
+    const side = new THREE.Vector3(d.z, 0, -d.x);
+    this.shot(dur, (u) => {
+      const k = (up ? 4.2 : 4.3) - 0.35 * u;
+      tmpV.set(c.x + d.x * k + side.x * (0.6 - 0.35 * u), c.y + (up ? 0.85 : 1.35), c.z + d.z * k + side.z * (0.6 - 0.35 * u));
+      tmpW.set(c.x, c.y + (up ? 1.55 : 1.2), c.z);
+    }, up ? 52 : 50);
+  }
+
+  // Detrás de los segadores mirando para arriba: se abre una luz entre las nubes.
+  shotSkyUp() {
+    const A = this.A;
+    this.shot(2.8, (u) => {
+      const e = smooth(u);
+      tmpV.set(A.x + 1.4, 2.2, this.PZ + 3.2);
+      const P = this.pile.position;
+      tmpW.set(A.x + (P.x - A.x) * 0.37 - 0.6, 1.2 + e * 6, A.z + (P.z - A.z) * 0.37 - e * 1.2);
+    }, 50);
+  }
+
+  // De cerca, la cara del Canchero (se pone los anteojos de sol).
+  shotShades(r, dur) {
+    const a = this.people.list.get(r.id);
+    const h = a?.gs?.on ? a.gs.bones.Head.getWorldPosition(new THREE.Vector3()) : r.pos.clone().setY(r.pos.y + 1.6);
+    const fx = -Math.sin(r.yaw);
+    const fz = -Math.cos(r.yaw);
+    // (sin los anteojos: de medio cuerpo, para que se vea la palma arriba y el
+    // cabeceo; de cerca, la hoz en el hombro le quedaba en la cara)
+    const wide = !globalThis.__mduShadesAll;
+    this.shot(dur, (u) => {
+      const k = (wide ? 2.6 : 1.3) - 0.3 * u;
+      tmpV.set(h.x + fx * k - fz * (wide ? 0.6 : 0.25), h.y + (wide ? -0.08 : 0.02), h.z + fz * k + fx * (wide ? 0.6 : 0.25));
+      tmpW.set(h.x, h.y + (wide ? -0.22 : 0.12), h.z);
+    }, 38);
+  }
+
   // Desde el piso junto a la piedra mirando para arriba; después se abre.
   shotVoiceDown() {
     const A = this.A;
@@ -709,30 +842,45 @@ export default class FarmCinematic {
     const g = this.g;
     if (!this.script) return;
     // el reloj de la escena es el de verdad, no el dt con tope de Game.loop: en
-    // línea, la compu que se traba no se atrasa de los demás ni de la canción
-    // (un salto de más de 1 s es una pausa)
+    // línea, la compu que se traba no se atrasa de los demás ni de la canción.
+    // Solo, un salto de más de 3 s es una pausa; en línea no hay pausa y una
+    // trabada de hasta 30 s cuenta. Llamadas seguidas, sin cuadro en el medio:
+    // una prueba que la adelanta.
     const now = performance.now();
     const w = (now - (this.wallAt || 0)) / 1000;
     this.wallAt = now;
-    this.t += w > dt && w < 1 ? w : dt;
+    this.t += w >= 0.002 && w < (g.net ? 30 : 3) ? w : dt;
     g.time += dt;
     g.weapons.vmRoot.visible = false;
     if (g.ee?.beam) g.ee.beam.visible = false;
     const t = this.t;
-    for (let i = this.timers.length - 1; i >= 0; i--) {
-      if (this.timers[i].t <= t) {
-        const fn = this.timers[i].fn;
-        this.timers.splice(i, 1);
-        fn();
+    if (this.warmT != null && !this.warmDone) this.warmReapers();
+    // (los que vencieron, en orden: después de una trabada vencen varios en el
+    // mismo cuadro y el último tiene que quedar último; al revés, en línea un
+    // segador quedaba con otro clip que en las demás compus)
+    if (this.timers.some((x) => x.t <= t)) {
+      const due = this.timers.filter((x) => x.t <= t).sort((a, b) => a.t - b.t);
+      this.timers = this.timers.filter((x) => x.t > t);
+      for (const x of due) {
+        this.at = g.net ? x.t : null;
+        x.fn();
       }
+      this.at = null;
     }
     // el guion: cada paso arranca cuando termina el anterior (más su espera)
     while (this.script && this.step < this.script.length && t >= this.next + this.script[this.step][0]) {
       const [wait, fn] = this.script[this.step];
       const start = this.next + wait;
       this.step++;
+      // (en línea, lo que arranca en el paso cuenta desde su hora en el guion,
+      // no desde el cuadro en que llegó: la compu que se trabó queda igual a las
+      // demás; later, shot, act. Solo, como siempre)
+      this.at = g.net ? start : null;
       const dur = fn() || 0;
-      this.next = Math.max(start, t) + dur;
+      this.at = null;
+      // (en línea, una trabada no corre el resto del guion: cada compu se traba
+      // distinto y quedaban tomas distintas a la misma hora; ponerse al día)
+      this.next = (g.net ? start : Math.max(start, t)) + dur;
     }
     if (!this.script) return;
     this.updateScarecrow(dt);
@@ -742,6 +890,7 @@ export default class FarmCinematic {
     this.updateVoz(dt);
     for (const p of g.arena?.braziers || []) if (Math.random() < 0.25) g.fx.fire(p, 0.08, 1);
     this.people.update(dt);
+    this.poseReapers(dt);
     // la cámara de la toma, con el temblor encima (nunca abajo del piso)
     const cam = g.camera;
     if (this.cam) {
@@ -772,6 +921,46 @@ export default class FarmCinematic {
     g.weather?.update?.(dt);
     // (la toma de arriba: menos niebla, para que se vea la chacra)
     if (this.fogMul < 1 && g.scene.fog?.density) g.scene.fog.density *= this.fogMul;
+    if (this.warmT == null) this.warmReapers();
+  }
+
+  // Los segadores aparecen recién a los ~20 s, y el primer cuadro en que se
+  // dibujan cuatro gauchos con su hoz se trababa ~280 ms (la placa arma sus
+  // shaders al dibujarlos, aunque three ya los haya compilado, y sube sus
+  // mallas y texturas). Se los dibuja una vez acá, todavía en negro, delante
+  // de la cámara; al cuadro siguiente vuelven a su lugar, escondidos.
+  // globalThis.__mduNoReapWarm = true: como antes.
+  warmReapers() {
+    const P = this.people.root;
+    if (this.warmT != null) {
+      P.position.set(0, 0, 0);
+      P.visible = false;
+      P.updateMatrixWorld(true);
+      this.warmDone = true;
+      return;
+    }
+    // (los primeros cuadros de la escena, todavía en negro: el fundido arranca
+    // con el primer paso del guion; en línea t puede arrancar adelantado)
+    this.nf = (this.nf || 0) + 1;
+    if (globalThis.__mduNoReapWarm || P.visible || this.nf < 2) return;
+    if (this.nf > 6) {
+      this.warmT = -1;
+      this.warmDone = true;
+      return;
+    }
+    // (esperan a tener el cuerpo de verdad: gauchoSkin)
+    if (this.reapers.some((r) => !this.people.list.get(r.id)?.gs?.on) && this.nf < 5) return;
+    const cam = this.g.camera;
+    const c = new THREE.Vector3();
+    for (const r of this.reapers) c.add(r.pos);
+    c.divideScalar(this.reapers.length || 1);
+    // (la fila a 5 m delante de la cámara, la cadera a la altura de la vista)
+    tmpU.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    P.position.copy(cam.position).addScaledVector(tmpU, 5).sub(c);
+    P.position.y = cam.position.y - 1 - c.y;
+    P.visible = true;
+    P.updateMatrixWorld(true);
+    this.warmT = this.t;
   }
 
   // El Espantapájaros: de rodillas, mira al cielo, en cruz mientras arde, se
@@ -887,7 +1076,7 @@ export default class FarmCinematic {
     if (this.burstT != null) {
       const b = t - this.burstT;
       for (const c of this.crows) {
-        if (!c.obj.visible) continue;
+        if (!c.obj.visible || c.pass) continue;
         const k = Math.max(0, b - c.delay * 0.4);
         const a = c.a + c.w * k;
         const r = 0.3 + k * c.out + k * k * 0.3;
@@ -919,7 +1108,9 @@ export default class FarmCinematic {
       const inK = clamp01((lt - 3) / 0.5);
       if (inK > 0) {
         L.rotation.y = toCam + Math.PI * smooth(Math.min(1, inK * 2));
-        L.position.addScaledVector(d, -0.7 * inK).setY(L.position.y + 0.25 * Math.sin(inK * Math.PI));
+        // (salta para arriba, contra la brasa violeta, y se mete: de noche el
+        // cuervo negro sobre la corteza negra no se veía entrar)
+        L.position.addScaledVector(d, -0.7 * smooth(inK)).setY(L.position.y + (O.y - 0.3 - L.position.y) * Math.sin(Math.min(1, inK * 1.4) * Math.PI * 0.5));
         L.scale.setScalar(4 * (1 - inK * 0.5));
         if (inK >= 1) {
           L.visible = false;
@@ -934,11 +1125,298 @@ export default class FarmCinematic {
   updateReapers() {
     const look = this.look;
     const want = look === 'sky' || look === 'voz' ? -0.85 : look === 'pile' ? 0.2 : 0.05;
-    for (const r of this.reapers) {
-      const at = look === 'pile' || look === 'fire' ? this.pile.position : this.A;
-      r.yaw = faceTo(r.pos, at.x, at.z);
-      r.headP += (want - r.headP) * 0.04;
+    const at = look === 'pile' || look === 'fire' ? this.pile.position : this.A;
+    // (con los clips: cada uno se da vuelta a su tiempo y a su ritmo, ui/cineCrew PERSONA_T)
+    const key = `${at.x.toFixed(1)},${at.z.toFixed(1)}`;
+    if (key !== this.lookKey) {
+      this.lookKey = key;
+      this.lookT = this.t;
     }
+    for (const r of this.reapers) {
+      if (!this.PC) {
+        r.yaw = faceTo(r.pos, at.x, at.z);
+        r.headP += (want - r.headP) * 0.04;
+        continue;
+      }
+      const P = PERSONA_T[r.persona] || PERSONA_T.valiente;
+      if (!r.at || this.t - this.lookT >= P.delay) r.at = (r.at || new THREE.Vector3()).copy(at);
+      let d = faceTo(r.pos, r.at.x, r.at.z) - r.yaw;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      r.yaw += r.yawSet ? d * Math.min(1, (this.dt || 0) * P.turn) : d;
+      r.yawSet = true;
+    }
+  }
+
+  // ---------------- los segadores, animados en Blender ----------------
+  // Un segador pasa a un clip mezclándose desde la pose que tiene (cineSnap).
+  // o: loop, rate, t (por dónde arranca), look (rad), fade.
+  act(r, name, o = {}) {
+    if (!this.PC) return;
+    const snap = cineSnap(this.people.list.get(r.id));
+    const now = this.now;
+    r.cc = { name, t0: now - (o.t || 0) / (o.rate || 1), loop: !!o.loop, rate: o.rate || 1, look: o.look || 0, fade: o.fade ?? 0.3, at: now, snap };
+  }
+
+  // Al aparecer, cada uno a su manera: el Valiente en guardia con la hoz, el
+  // Miedoso encogido, el Canchero con la hoz al hombro, el Viejo cansado.
+  reapIdle() {
+    const IDLE = { valiente: 'hozGuard', miedoso: 'hozCower', canchero: 'hozShoulder', viejo: 'winded' };
+    for (const r of this.reapers) this.act(r, IDLE[r.persona] || 'hozGuard', { loop: true, fade: 0.01, t: (r.id % 4) * 0.7 });
+  }
+
+  // La bandada (los cuervos que le salieron del pecho) vuelve y les pasa por
+  // arriba: el Valiente le tira un hozazo, al Miedoso se le cae la hoz y se
+  // agacha, el Viejo trastabilla, y el Canchero, cuando ya pasaron, se sacude
+  // las plumas del poncho.
+  crowPass() {
+    const g = this.g;
+    this.passT = this.now;
+    this.shotFront(3.9, false);
+    const n = Math.min(6, this.crows.length);
+    for (let i = 0; i < n; i++) {
+      const c = this.crows[i];
+      c.pass = true;
+      c.obj.visible = true;
+      c.po = [(i - (n - 1) / 2) * 0.9, 0.25 * Math.sin(i * 2.1), (i % 3) * 0.12];
+    }
+    g.audio.caw(tmpV.copy(this.pile.position).setY(3), 4);
+    for (let i = 0; i < 3; i++) this.later(0.3 + i * 0.3, () => g.audio.wingFlap(tmpV.set(this.A.x, 2.5, this.PZ), 1.2));
+    const R = { valiente: [0.05, 'hozSlash', 1.6, 'hozGuard'], miedoso: [0.18, 'duck', 1.55, 'cower'], viejo: [0.3, 'stagger', 1.5, 'winded'], canchero: [0.95, 'dustL', 2.0, 'hozShoulder'] };
+    for (const r of this.reapers) {
+      const [t0, a, d, b] = R[r.persona] || R.valiente;
+      this.later(0.45 + t0, () => this.act(r, a, { fade: 0.2 }));
+      this.later(0.45 + t0 + d, () => this.act(r, b, { loop: true, fade: 0.4 }));
+      if (r.persona === 'miedoso') this.later(0.45 + t0 + 0.12, () => this.dropHoz(r));
+      if (r.persona === 'canchero') {
+        // (las plumas que se saca de encima)
+        for (let k = 0; k < 6; k++) {
+          this.later(0.45 + t0 + 0.65 + k * 0.12, () => {
+            const p = this.people.list.get(r.id)?.gs?.bones?.Spine?.getWorldPosition(tmpV);
+            if (p) g.fx.alpha?.spawn?.(p.x + Math.sin(k * 2.3) * 0.25, p.y - 0.1, p.z + Math.cos(k * 1.7) * 0.25, Math.sin(k) * 0.3, 0.2, Math.cos(k) * 0.3, { color: [0.05, 0.05, 0.06], size: 0.09, size1: 0.07, life: 1.6, alpha: 0.9 });
+          });
+        }
+      }
+    }
+  }
+
+  // Cuando baja la Voz: el Valiente le levanta la hoz, el Miedoso (ya sin la
+  // suya) se santigua y reza, el Viejo cae de rodillas; el Canchero, después,
+  // se pone los anteojos (en el guion, con la frase).
+  reapVoz() {
+    for (const r of this.reapers) {
+      const t0 = 0.3 + (PERSONA_T[r.persona]?.delay || 0) * 1.4;
+      if (r.persona === 'valiente') this.later(t0, () => this.act(r, 'fistUp', { loop: true, fade: 0.5 }));
+      else if (r.persona === 'miedoso') {
+        this.later(t0, () => this.act(r, 'santiguar', { fade: 0.4 }));
+        this.later(t0 + 2, () => this.act(r, 'pray', { loop: true, fade: 0.3 }));
+      } else if (r.persona === 'viejo') {
+        this.later(t0, () => this.act(r, 'kneelDown', { fade: 0.4 }));
+        this.later(t0 + 1, () => this.act(r, 'kneelHold', { loop: true, fade: 0.2 }));
+      }
+    }
+  }
+
+  clipOf(name) {
+    return this.PC?.[name] || gauchoClip(name);
+  }
+
+  poseReapers(dt) {
+    this.dt = dt;
+    this.updatePass();
+    this.updateDrop();
+    if (!this.PC) return;
+    const t = this.t;
+    for (const r of this.reapers) {
+      const S = r.cc;
+      const a = this.people.list.get(r.id);
+      if (!S || !a) continue;
+      const c = this.clipOf(S.name);
+      if (!c) continue;
+      const lt = (t - S.t0) * S.rate;
+      const o = { loop: S.loop, look: S.look };
+      if (S.snap && t - S.at < S.fade) {
+        o.snap = S.snap;
+        o.sw = smooth(clamp01((t - S.at) / S.fade));
+      }
+      if (!poseCineClip(a, c, S.loop ? lt : Math.min(lt, c.dur), r.pos.x, r.pos.y, r.pos.z, (r.yaw || 0) + Math.PI, o)) continue;
+      // (el mate de piezas no va: tienen la hoz; y la hoz, en la mano de verdad)
+      a.hand.visible = false;
+      this.seatHoz(r, a);
+    }
+    this.updateShades();
+  }
+
+  // La hoz en la mano derecha del modelo, agarrada como un martillo: el mango
+  // de costado al antebrazo, para arriba (si el antebrazo está vertical, para
+  // adelante); la hoja curva para afuera.
+  seatHoz(r, a) {
+    if (!a.gun || !a.gs?.on) return;
+    const B = a.gs.bones;
+    B.RightHand.getWorldPosition(hzP);
+    B.RightForeArm.getWorldPosition(hzF);
+    hzF.subVectors(hzP, hzF).normalize();
+    hzP.addScaledVector(hzF, 0.075);
+    // (el mango: para arriba, de costado al antebrazo; con el antebrazo
+    // vertical, para adelante. Antes se cambiaba de golpe de uno al otro al
+    // pasar el umbral y la hoz del que la levanta giraba como teletransportada:
+    // ahora se mezclan de a poco, y además la hoz sigue al cuadro anterior
+    // sin pegar saltos)
+    hzY.copy(UP).addScaledVector(hzF, -UP.dot(hzF));
+    hzA.set(-Math.sin(r.yaw), 0, -Math.cos(r.yaw));
+    hzA.addScaledVector(hzF, -hzA.dot(hzF)).normalize();
+    // (por cuánto apunta para arriba el antebrazo, no por lo que queda de
+    // "arriba" sin él: con el puño en alto ese resto daba vueltas con cada
+    // sacudida y la hoz giraba 160° de un cuadro a otro)
+    const kUp = smooth(clamp01((0.45 - hzF.y) / 0.35));
+    hzY.normalize().multiplyScalar(kUp).addScaledVector(hzA, 1 - kUp);
+    if (hzY.lengthSq() < 1e-6) hzY.copy(hzA);
+    hzY.normalize();
+    if (r.hzY && globalThis.__mduNoHozSmooth !== true) {
+      hzY.lerp(r.hzY, Math.exp(-(this.dt || 1 / 30) * 14));
+      hzY.addScaledVector(hzF, -hzY.dot(hzF)).normalize();
+    }
+    (r.hzY ||= new THREE.Vector3()).copy(hzY);
+    hzZ.copy(hzF).negate();
+    hzZ.addScaledVector(hzY, -hzZ.dot(hzY)).normalize();
+    hzX.crossVectors(hzY, hzZ);
+    tmpM.makeBasis(hzX, hzY, hzZ).setPosition(hzP);
+    a.gun.matrix.copy(tmpM2.copy(a.group.matrixWorld).invert().multiply(tmpM));
+    a.gun.matrixWorldNeedsUpdate = true;
+    a.gun.visible = true;
+  }
+
+  // Al Miedoso se le cae la hoz con el susto: se suelta de la mano, cae
+  // girando y queda tirada en el pasto.
+  dropHoz(r) {
+    const a = this.people.list.get(r.id);
+    const H = a?.gun;
+    if (!H) return;
+    H.updateMatrixWorld(true);
+    const m = H.matrixWorld.clone();
+    this.root.add(H);
+    H.matrix.copy(m);
+    a.gun = null;
+    const p = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    m.decompose(p, q, new THREE.Vector3());
+    this.drop = { H, t0: this.t, p0: p, q0: q, y1: (this.g.world.floorAt(p.x, p.z) || 0) + 0.04, side: new THREE.Vector3(Math.cos(r.yaw), 0, -Math.sin(r.yaw)) };
+    this.g.audio.knifeHit?.(p) ?? this.g.audio.footstep?.('dirt', 0.6);
+  }
+
+  updateDrop() {
+    const D = this.drop;
+    if (!D) return;
+    const u = clamp01((this.t - D.t0) / 0.5);
+    const e = u * u;
+    tmpV.copy(D.p0).addScaledVector(D.side, 0.25 * u);
+    tmpV.y = D.p0.y + (D.y1 - D.p0.y) * e + (u >= 1 ? 0 : 0);
+    // (cae girando y queda acostada: el mango para el costado)
+    const tilt = new THREE.Quaternion().setFromAxisAngle(D.side, (Math.PI / 2) * smooth(u));
+    const spin = new THREE.Quaternion().setFromAxisAngle(UP, 1.2 * u);
+    const q = spin.multiply(tilt).multiply(D.q0);
+    D.H.matrix.compose(tmpV, q, tmpU.set(1, 1, 1));
+    D.H.matrixWorldNeedsUpdate = true;
+    if (u >= 1 && !D.landed) {
+      D.landed = true;
+      this.g.fx.dust?.(tmpV, { x: 0, y: 1, z: 0 }, [0.4, 0.33, 0.25], 4);
+    }
+  }
+
+  // Los cuervos de la pasada: salen de la pila, pasan bajito por arriba de los
+  // segadores (a 2,3 m) y siguen detrás de ellos.
+  updatePass() {
+    if (this.passT == null) return;
+    const lt = this.t - this.passT;
+    const P = this.pile.position;
+    const end = tmpU.set(this.A.x, 0, this.PZ + 9);
+    for (const c of this.crows) {
+      if (!c.pass || !c.obj.visible) continue;
+      const u = clamp01((lt - c.po[2]) / 1.9);
+      const x = P.x + (end.x - P.x) * u + c.po[0];
+      const z = P.z + (end.z - P.z) * u;
+      // (sube de la pila, baja sobre ellos y vuelve a subir)
+      const zr = (z - P.z) / (end.z - P.z);
+      const y = 3.2 - 1.0 * Math.sin(Math.PI * Math.min(1, zr * 1.25)) + c.po[1] + Math.max(0, u - 0.8) * 6;
+      c.obj.position.set(x, y, z);
+      c.obj.rotation.set(-0.15, Math.atan2(end.x - P.x, end.z - P.z), 0);
+      const f = Math.sin(this.t * 26 + c.po[0] * 3) * 0.9;
+      const w = c.obj.children;
+      if (w[1]) w[1].rotation.z = f;
+      if (w[2]) w[2].rotation.z = -f;
+      if (u >= 1) c.obj.visible = false;
+    }
+  }
+
+  // Los anteojos de sol del Canchero (los saca del poncho con la izquierda):
+  // en la mano hasta que llegan a la cara, después colgados de la cabeza.
+  buildShades() {
+    const root = new THREE.Group();
+    const glass = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, metalness: 0.7, roughness: 0.12 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xc9a040, metalness: 1, roughness: 0.3 });
+    const E = FACE_EYES;
+    for (const sx of [-1, 1]) {
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.1, 0.4, 20).rotateX(Math.PI / 2), glass);
+      lens.scale.y = 0.85;
+      lens.position.set(E.x + sx * (E.half + 0.4), E.y - 1.3, 17.3);
+      root.add(lens);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.55, 13), gold);
+      arm.position.set(E.x + sx * (E.half + 4), E.y - 0.4, 11);
+      root.add(arm);
+    }
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(2 * E.half - 6, 0.5, 0.45), gold);
+    bridge.position.set(E.x, E.y + 0.6, 17.4);
+    root.add(bridge);
+    return root;
+  }
+
+  // La cara del gaucho: el espacio de la malla (cm) colgado de la cabeza, el
+  // mismo de headProp (ahí están armados los anteojos).
+  faceM(a, out) {
+    const head = a.gs.bones.Head;
+    const sk = a.gs.mesh.skeleton;
+    const hi = sk.bones.indexOf(head);
+    return out.copy(head.matrixWorld).multiply(sk.boneInverses[hi]).multiply(a.gs.mesh.bindMatrix);
+  }
+
+  // Dónde queda la muñeca izquierda cuando ya se los calzó (el clip en
+  // SHADES_ON), en el espacio de la cara: mientras los lleva, los anteojos van
+  // pegados a la mano a esa distancia y al llegar quedan justo en su lugar,
+  // sin deslizarse. (Se posa un momento en ese cuadro; poseReapers lo vuelve a
+  // posar en este mismo cuadro.)
+  shadesGrip(r) {
+    this.shadesO = null;
+    const a = this.people.list.get(r.id);
+    const c = this.clipOf('shadesL');
+    if (!a?.gs?.on || !c) return;
+    if (!poseCineClip(a, c, SHADES_ON, r.pos.x, r.pos.y, r.pos.z, (r.yaw || 0) + Math.PI)) return;
+    const hand = a.gs.bones.LeftHand.getWorldPosition(new THREE.Vector3());
+    this.shadesO = hand.applyMatrix4(this.faceM(a, tmpM).invert());
+  }
+
+  updateShades() {
+    const r = this.shadesR;
+    if (!r || this.shadesOn) return;
+    const a = this.people.list.get(r.id);
+    if (!a?.gs?.on || !this.shades) return;
+    const lt = this.t - this.shadesT;
+    if (lt < SHADES_OUT) return;
+    if (lt < SHADES_ON) {
+      if (!this.shadesO) return;
+      // en la mano (los tiene del puente), ya derechos como van en la cara: la
+      // pose de puestos corrida lo que la muñeca está lejos de donde los deja
+      const hand = a.gs.bones.LeftHand.getWorldPosition(tmpV);
+      this.faceM(a, tmpM);
+      tmpW.copy(this.shadesO).applyMatrix4(tmpM);
+      this.shadesHand.matrix.copy(tmpM).premultiply(tmpM2.makeTranslation(hand.x - tmpW.x, hand.y - tmpW.y, hand.z - tmpW.z));
+      this.shadesHand.matrixWorldNeedsUpdate = true;
+      this.shadesHand.visible = true;
+      return;
+    }
+    this.shadesHand.visible = false;
+    this.shadesHand.remove(this.shades);
+    headProp(a, this.shades);
+    this.shadesOn = true;
   }
 
   updateVoz(dt) {
@@ -1013,6 +1491,7 @@ export default class FarmCinematic {
     this.script = null;
     window.removeEventListener('keydown', this.onKey);
     const g = this.g;
+    if (this.arenaShown && g.arena?.root) g.arena.root.visible = false;
     // se cortan sus voces (también los murmullos) y vuelven a hablar los demás
     g.audio.hush();
     g.audio.setCine(false);

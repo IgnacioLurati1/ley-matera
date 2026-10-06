@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mesh, boxGeo, cylGeo, mergeByMaterial } from '../../world/props';
+import { leanGroup } from '../../world/staticLean';
 
 // Los modelos del asedio del castillo (entities/castle/Asedio.js): la
 // catapulta del Chiquitijuein, la escalera de asalto, el ariete con cabeza de
@@ -221,6 +222,13 @@ export function buildCatapult(M, bannerMat, glowMat) {
   coals.castShadow = false;
   brazier.add(coals);
   body.add(brazier);
+  // (cada parte que se mueve entera —el bastidor con el palo del estandarte,
+  // el torno, el brazo, el brasero—: una malla por material; world/staticLean
+  // leanGroup. Eran ~23 dibujos por catapulta en cada pasada; quedan 12)
+  const fixed = new THREE.Group();
+  body.add(fixed);
+  for (const o of [...body.children]) if (o === frame || (o.isMesh && o !== flag)) fixed.add(o);
+  for (const grp of [fixed, winch, arm, brazier]) leanGroup(grp);
   return { root, body, arm, slot, winch, flag, brazier, theta: ARM_FIRE };
 }
 
@@ -333,6 +341,8 @@ export function buildCauldron(M, liquidMat, glowMat, dir, spillMat) {
   body.add(liquid);
   pot.add(body);
   root.add(pot);
+  // (el caldero se inclina entero: una malla por material; el mate de adentro aparte)
+  leanGroup(body);
   // el mate que corre por la canaleta cuando se vuelca
   const spill = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 0.36).rotateX(-Math.PI / 2), spillMat);
   spill.position.set(dir * 0.98, 0.74, 0);

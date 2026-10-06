@@ -9,6 +9,9 @@ import { PLAYER } from '../config/rules';
 import DragonFire from '../fx/DragonFire';
 import { buildFragments, floatingRocks, FRAGMENTS } from './eterFragments';
 import { warmScene } from '../ui/cineWarm';
+import { sleepHidden } from './castleLean';
+import CastleClips, { personaLetter } from '../ui/castleClips';
+import { flightShot, flightShotsEnd } from './flightShots';
 
 // La Gran Guerra: la pelea final contra el Chiquitijuein, en el Éter.
 //  · El vuelo: después del juramento, el Mateendrache sale de la cumbre con
@@ -116,7 +119,8 @@ export default class GranGuerra extends Arena {
       const l = new THREE.PointLight(k ? 0xff4a2a : 0x9a7aff, 0, 60, 1.4);
       l.position.set(this.A.x + (k ? 8 : -8), this.A.y + 7, this.A.z + (k ? -6 : 6));
       this.g.scene.add(l);
-      return l;
+      // (no cuenta como luz mientras está apagada: World.adoptLight)
+      return this.g.world.adoptLight(l);
     });
     this.cineLight = null;
     this.wardMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
@@ -182,9 +186,12 @@ export default class GranGuerra extends Arena {
     this.buildOverlay();
     // arranca en blanco y se aclara (el salto de la vista del jugador al lomo
     // del dragón no se ve; antes el fundido iba de 0 a 0 y no tapaba nada)
-    this.ov.now = 1;
-    this.ov.fade.style.opacity = '1';
-    this.fadeTo(0, 1.1);
+    // (más corto y sin llegar al blanco entero: después de la jura con su
+    // cámara la pantalla quedaba casi blanca; globalThis.__mduNoJuraCine, como antes)
+    const w0 = globalThis.__mduNoJuraCine === true ? 1 : 0.8;
+    this.ov.now = w0;
+    this.ov.fade.style.opacity = String(w0);
+    this.fadeTo(0, w0 < 1 ? 0.7 : 1.1);
     g.hud.show(false);
     g.weapons.vmRoot.visible = false;
     if (g.net?.avatars) g.net.avatars.root.visible = false;
@@ -287,6 +294,8 @@ export default class GranGuerra extends Arena {
       }
       if (t >= FLIGHT.end) this.flightEnd();
     }
+    // (las tomas de afuera, apagadas: world/flightShots.js, __mduFlightShots)
+    if (this.flightOn) flightShot(this, t, dt);
     D.update(dt);
     return true;
   }
@@ -412,6 +421,7 @@ export default class GranGuerra extends Arena {
     const g = this.g;
     if (!this.flightOn) return;
     this.flightOn = false;
+    flightShotsEnd(this);
     this.D.flapK = 1;
     this.rideYaw = null;
     this.rideQ = null;
@@ -449,6 +459,8 @@ export default class GranGuerra extends Arena {
     if (E.vanguardia) E.vanguardia.root.visible = false;
     if (E.npc) E.npc.root.visible = false;
     if (E.fierroGlow) E.fierroGlow.visible = false;
+    // (lo escondido del castillo no se recorre durante la guerra)
+    sleepHidden(g.interact?.root, g.barriers?.root, g.critters?.root, g.activities?.root, g.papq?.root, g.luz?.root, g.decor?.root, E.cueva?.root, E.vanguardia?.root, E.npc?.root, ...Object.values(E.quests || {}).map((q) => q.root));
     // los muertos que quedaban, afuera
     if (isHost(g)) {
       for (const z of g.zombies.pool) if (z.active) g.zombies.free(z);
@@ -1247,6 +1259,19 @@ export default class GranGuerra extends Arena {
     this.onElemental('viento', G.pos.clone(), false);
   }
 
+  // ¿El tiro de un mate de la luz reventó sobre la gema? Las gemas van cosidas
+  // al poncho, adentro de la esfera del cuerpo (colSolids): la bola de fuego,
+  // el rayo y las agujas revientan contra la esfera, varios metros adelante de
+  // la gema, y nunca contaba. Delante del coloso cuenta lo de costado y lo
+  // alto, no lo hondo.
+  gemNear(G, pos, r) {
+    const d = (this.gemD ||= new THREE.Vector3()).subVectors(pos, G.pos);
+    const fw = (this.gemF ||= new THREE.Vector3()).set(0, 0, 1).applyQuaternion(this.col.root.quaternion);
+    const depth = d.dot(fw);
+    if (depth > -2 && depth < 12) d.addScaledVector(fw, -depth);
+    return d.length() < r;
+  }
+
   onElemental(el, pos, charged) {
     if (!this.active) return;
     const g = this.g;
@@ -1254,7 +1279,7 @@ export default class GranGuerra extends Arena {
       const i = ELEMENTS.indexOf(el);
       const G = this.gems[i];
       if (G.hp <= 0) return;
-      let near = pos.distanceTo(G.pos) < (charged ? 5 : 3);
+      let near = this.gemNear(G, pos, charged ? 5 : 3);
       // el remolino no llega: sube por el borde de la isla que da al coloso
       if (el === 'viento' && charged && !near) {
         const edgeZ = this.A.z - this.A.r + 5;
@@ -1265,7 +1290,7 @@ export default class GranGuerra extends Arena {
       const A = this.gems[this.gemOn];
       if (i !== this.gemOn) {
         if (near) G.shake = 0.4;
-        if (A && (near || pos.distanceTo(A.pos) < (charged ? 5 : 3)) && (!this.dimSaid || g.time - this.dimSaid > 6)) {
+        if (A && (near || this.gemNear(A, pos, charged ? 5 : 3)) && (!this.dimSaid || g.time - this.dimSaid > 6)) {
           this.dimSaid = g.time;
           g.hud.subtitle(`Esa no: solo se rompe la que brilla, la del ${ELEM_NAME[A.el]} (con ${ELEM_NAME[A.el]}, el mate del ${A.el}).`, 3);
         }
@@ -1771,6 +1796,34 @@ export default class GranGuerra extends Arena {
     return this.knights.list.get(id).r;
   }
 
+  // Los caballeros con los clips de Blender (ui/castleClips, cada uno con su
+  // carácter): con su altar prendido, el mate en alto (el rayo al remolino);
+  // sujetando al duende, tiran de la cadena de luz (kPin). Sin mate en la mano
+  // (el de siempre quedaba torcido con el brazo arriba). Va igual en todas las
+  // compus: sale de la etapa y de los altares, que están sincronizados.
+  // globalThis.__mduBlend = false: la pose de piezas de antes.
+  knightClips(dt) {
+    if (globalThis.__mduBlend === false) return;
+    const C = (this.kClips ||= new CastleClips());
+    this.knightIds.forEach((id, i) => {
+      const a = this.knights.list.get(id);
+      const want = this.stage === 'pin' ? 'kPin' : this.altLit?.[i] ? `raise${personaLetter(i)}` : null;
+      if (want && C.act(a.r, [a], want, { fade: 0.6, t: i * 0.37 })) a.hand.visible = false;
+      else if (!want && a.r.cc) {
+        C.release(a.r, 0.6, [a]);
+        a.hand.visible = true;
+      }
+    });
+    C.update(dt);
+  }
+
+  // De dónde sale lo que tira un caballero: la mano del mate (con los clips) o el pecho.
+  knightFrom(i, out) {
+    const a = this.knights.list.get(this.knightIds[i]);
+    if (a?.r.cc && a.gs?.on) return a.gs.bones.RightHand.getWorldPosition(out);
+    return out.copy(a.r.pos).setY(a.r.pos.y + 1.45);
+  }
+
   gnomeDeath() {
     const g = this.g;
     if (this.phase === 'won') return;
@@ -2142,7 +2195,10 @@ export default class GranGuerra extends Arena {
     this.updateHorn(dt, t);
     this.updateMines(dt);
     this.updateAltars(dt, t);
-    if (this.knights.root.visible) this.knights.update(dt);
+    if (this.knights.root.visible) {
+      this.knights.update(dt);
+      this.knightClips(dt);
+    }
     this.updateColossus(dt, t);
     this.updateMarks(dt);
     this.updateWaves(dt);
@@ -2280,7 +2336,14 @@ export default class GranGuerra extends Arena {
     C.smoke.visible = dis < 1;
     root.position.set(A.x + gl, A.y + COL.dy + riseY - dis * 30, A.z + COL.dz);
     root.scale.setScalar(COL.scale * (1 - dis * 0.6));
-    root.rotation.set(Math.sin(t * 0.4) * 0.03, Math.sin(t * 0.25) * 0.08, Math.sin(t * 0.33) * 0.02);
+    // (rompiéndole las gemas, quieto entre ataque y ataque: parado en un cuadro
+    // del de parado, sin gestos y casi sin hamacarse; si no, la gema que
+    // brilla no paraba de moverse y no se le podía pegar)
+    const still = this.stage === 'gems' && !globalThis.__mduColSway;
+    C.rig.idle = still ? 'idle' : 'taunt';
+    C.rig.still = still ? 0 : null;
+    const sw = still ? 0.25 : 1;
+    root.rotation.set(Math.sin(t * 0.4) * 0.03 * sw, Math.sin(t * 0.25) * 0.08 * sw, Math.sin(t * 0.33) * 0.02 * sw);
     // el manotazo: levanta el brazo y lo baja
     if (C.slamT >= 0) {
       C.slamT += dt;
@@ -2545,8 +2608,7 @@ export default class GranGuerra extends Arena {
     // sujetado: las cadenas de luz de los cuatro caballeros
     if (this.stage === 'pin') {
       this.knightIds.forEach((id, i) => {
-        const r = this.knightRec(id);
-        if (Math.random() < 0.5) g.fx.lightning(r.pos.clone().setY(r.pos.y + 1.4), N.pos.clone().setY(N.pos.y + 0.6), ELEM_COLOR[ELEMENTS[i]], 0.1);
+        if (Math.random() < 0.5) g.fx.lightning(this.knightFrom(i, new THREE.Vector3()), N.pos.clone().setY(N.pos.y + 0.6), ELEM_COLOR[ELEMENTS[i]], 0.1);
       });
     }
   }
@@ -2936,8 +2998,10 @@ export default class GranGuerra extends Arena {
       const dx = A.x - x;
       const dz = A.z - z;
       const d = Math.hypot(dx, dz) || 1;
-      rec.pos.set(x + (dx / d) * 1.9, A.y, z + (dz / d) * 1.9);
-      rec.yaw = Math.atan2(-dx, -dz);
+      // (corrido al costado del rayo que va del altar al remolino: parado en el
+      // medio, el rayo le pasaba por la cara y no se lo veía)
+      rec.pos.set(x + (dx / d) * 1.9 - (dz / d) * 1.2, A.y, z + (dz / d) * 1.9 + (dx / d) * 1.2);
+      rec.yaw = Math.atan2(-(A.x - rec.pos.x), -(A.z - rec.pos.z));
     }
     this.knights.root.visible = true;
     if (quiet) return;
@@ -2974,8 +3038,7 @@ export default class GranGuerra extends Arena {
 
   zapFx(i, p) {
     const g = this.g;
-    const r = this.knightRec(this.knightIds[i]).pos;
-    g.fx.lightning(tmpV.set(r.x, r.y + 1.5, r.z), p, ELEM_COLOR[ELEMENTS[i]], 0.2);
+    g.fx.lightning(this.knightFrom(i, tmpV), p, ELEM_COLOR[ELEMENTS[i]], 0.2);
     g.fx.sparkle(p, ELEM_RGB[ELEMENTS[i]], 6, 0.5);
   }
 

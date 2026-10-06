@@ -476,7 +476,7 @@ export default class Supernova {
     // atraviesa a todos
     for (const h of hits) {
       const point = new THREE.Vector3().copy(origin).addScaledVector(dir, h.t);
-      g.zombies.damage(h.z, st.damage * (h.zone === 'head' ? st.headMult : 1), { type: 'bullet', zone: h.zone, arm: h.arm, point, dir: dir.clone(), elem: st.elem });
+      g.zombies.damage(h.z, st.damage * (h.zone === 'head' ? st.headMult : 1) * (g.weapons.zoneMult?.(h.zone, h.z) ?? 1), { type: 'bullet', zone: h.zone, arm: h.arm, point, dir: dir.clone(), elem: st.elem });
       if (!first) first = h;
       if (h.zone === 'head') head = true;
     }

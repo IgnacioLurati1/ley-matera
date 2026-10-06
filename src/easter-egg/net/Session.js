@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import Avatars from './Avatars';
-import { GRENADE, maxTier, tierOf } from '../config/weapons';
+import { GRENADE, WEAPONS, maxTier, tierOf } from '../config/weapons';
 import { POMBERO_ID } from '../entities/Pombero';
 import { CROW_ID } from '../entities/Crow';
 import { STAKE_ID } from '../entities/bossMoves';
@@ -140,11 +140,16 @@ export default class Session {
 
   // Partida nueva armada por el anfitrión: cada invitado recibe el mundo de nuevo.
   restartAll() {
+    this.clearScores();
+    for (const id of this.net.peers.keys()) this.sendState(id, true);
+  }
+
+  // La tabla de puntos de la partida, de cero (el fast restart: Game.restart).
+  clearScores() {
     this.tally.clear();
     this.score.clear();
     this.earned.clear();
     this.outT = 0;
-    for (const id of this.net.peers.keys()) this.sendState(id, true);
   }
 
   get players() {
@@ -946,6 +951,13 @@ export default class Session {
       }
       const tier = (m.up | 0) + 1;
       if (!m.w || pap.state !== 'idle' || tier > maxTier(m.w)) return reply(false);
+      // lo mismo que le pide a su propio uso (Interactables, kind 'pap'): sin
+      // corriente o con la misión del Pack-a-Pava sin terminar no anda, y solo
+      // los mates que tienen mejora. Antes un invitado mejoraba la Bombilla Gut
+      // con la máquina apagada (el aviso lo veía él, pero el pedido salía igual).
+      if ((g.papq && !g.papq.done) || !g.interact.machineOn(pap)) return reply(false);
+      const W = WEAPONS[m.w];
+      if (!W?.pap || W.altar || W.temp) return reply(false);
       const res = g.interact.startPapFor(m.w, from, tier);
       if (!res) return reply(false);
       // la hoz entra al ritual: vuelve cuando termina (llega con 'hozup')
@@ -1081,8 +1093,11 @@ export default class Session {
 
   // Lo que hace el jugador, para que los demás lo vean en su gaucho (net/gauchoSkin:
   // tomar, cuchillazo, tirar, recargar, levantar a otro; d: cuánto dura)
-  act(a, d = 0) {
-    this.share('act', d ? { id: this.id, a, d: +d.toFixed(2) } : { id: this.id, a });
+  // (k: un detalle, el tajo del combo del Sable Corvo: net/gauchoSkin sableArm)
+  act(a, d = 0, k = null) {
+    const m = d ? { id: this.id, a, d: +d.toFixed(2) } : { id: this.id, a };
+    if (k != null) m.k = k;
+    this.share('act', m);
   }
 
   applyEvent(m) {
@@ -1130,6 +1145,10 @@ export default class Session {
       case 'lob':
         g.weapons?.ghostLob(m);
         break;
+      // la Bombilla Gut o la Ácida de otro jugador (se pega, llama a los muertos y revienta)
+      case 'gutb':
+        g.weapons?.ghostBolt(m);
+        break;
       // la Piedra de Molino o el Mate Dragón de otro jugador (solo se ve)
       case 'esp':
         g.weapons?.esp?.ghost(m);
@@ -1167,6 +1186,11 @@ export default class Session {
       case 'sable':
         g.weapons?.sable?.ghost(m);
         break;
+      // el Desgarrador Cósmico de otro jugador: grietas, guadañas, embestida,
+      // giro, Furia y su rayo (solo se ve; el empujón del giro lo hace el anfitrión)
+      case 'desg':
+        g.weapons?.cosmic?.ghost(m);
+        break;
       case 'bolt':
         g.vida?.bolt(tmpV.fromArray(m.a).clone(), new THREE.Vector3().fromArray(m.b));
         break;
@@ -1189,7 +1213,7 @@ export default class Session {
       // lo que hace un compañero (Session.act; net/gauchoSkin lo muestra)
       case 'act': {
         const r = m.id !== this.id && this.remote.get(m.id);
-        if (r) r.act = { a: String(m.a).slice(0, 12), d: +m.d || 0, t: performance.now() };
+        if (r) r.act = { a: String(m.a).slice(0, 12), d: +m.d || 0, k: Number.isInteger(m.k) ? m.k : null, t: performance.now() };
         break;
       }
       // alguien está levantando a un caído (Interactables.reviveCheck): mientras
@@ -1298,8 +1322,9 @@ export default class Session {
         g.activateZone(m.z);
         break;
       case 'start':
-        // pantalla de carga: se arma el mapa y se espera a los demás
-        if (g.state !== 'playing' && g.state !== 'arriving') g.arriveAsGuest(m.map, m.mode);
+        // pantalla de carga: se arma el mapa y se espera a los demás (rs: el
+        // fast restart del anfitrión, que rearma aunque estén jugando)
+        if (g.state !== 'arriving' && (m.rs || g.state !== 'playing')) g.arriveAsGuest(m.map, m.mode, !!m.rs);
         break;
       case 'arrive':
         g.arrival?.setReady(m.ids);
@@ -1356,5 +1381,5 @@ export default class Session {
   }
 }
 
-export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn', 'whipWind', 'whip', 'chargeWind', 'charge', 'stunned', 'enrage', 'summon', 'stairs', 'fall', 'boat', 'boatHit', 'howl', 'melting', 'aim', 'shoot', 'burrow', 'emerge', 'reel', 'zapped', 'lurk', 'lurkIn', 'ladder', 'ram', 'dance', 'danceWatch', 'lance'];
+export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn', 'whipWind', 'whip', 'chargeWind', 'charge', 'stunned', 'enrage', 'summon', 'stairs', 'fall', 'boat', 'boatHit', 'howl', 'melting', 'aim', 'shoot', 'burrow', 'emerge', 'reel', 'zapped', 'lurk', 'lurkIn', 'ladder', 'ram', 'dance', 'danceWatch', 'lance', 'sliced'];
 export const SPEEDS = ['walk', 'run', 'sprint'];

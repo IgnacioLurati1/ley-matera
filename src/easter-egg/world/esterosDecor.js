@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { MAP_W, MAP_H, DOORS, PERK_SPOTS, WALL_BUYS, BOX_SPOTS, POWER, PAP, RISERS } from '../config/map';
 import { WATER_Y, DECOR, ZONES, PROPS, SKY } from '../config/maps/esteros';
 import { rng } from '../core/noise';
+import { compactGroup } from './props';
 import { coverageMips } from '../core/textures';
 import { leafCrownGeometry, evenFoliage } from './esterosGrass';
+import { windy } from '../fx/grassPush';
 
 // Lo chico que hace que el estero no se vea vacío (todo instanciado):
 //  · en el barro: matas de pasto, flores del bañado, troncos caídos, tocones
@@ -173,7 +175,7 @@ export function buildDecor(w) {
       if (!roofed(px, pz, G.at(px, pz) + h, 0.35 * (0.6 + h))) tufts.push([px, G.at(px, pz), pz, h, a]);
     }
   }
-  const tuftMat = evenFoliage(new THREE.MeshStandardMaterial({ map: coverageMips(tuftTex(), 0.45), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 }));
+  const tuftMat = windy(evenFoliage(new THREE.MeshStandardMaterial({ map: coverageMips(tuftTex(), 0.45), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 })));
   const tuftGeo = crossGeo(0.7, 1);
   fixed.add(
     place(new THREE.InstancedMesh(tuftGeo, tuftMat, tufts.length), tufts, ([x, y, z, h, a]) => {
@@ -195,7 +197,7 @@ export function buildDecor(w) {
       if (!roofed(px, pz, G.at(px, pz) + h, 0.2)) rush.push([px, G.at(px, pz), pz, h, a]);
     }
   }
-  const rushMat = evenFoliage(new THREE.MeshStandardMaterial({ map: M.reed.map, color: 0x9aa070, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 }));
+  const rushMat = windy(evenFoliage(new THREE.MeshStandardMaterial({ map: M.reed.map, color: 0x9aa070, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 })));
   fixed.add(
     place(new THREE.InstancedMesh(crossGeo(0.5, 1), rushMat, rush.length), rush, ([x, y, z, h, a]) => {
       q.setFromAxisAngle(up, a);
@@ -414,6 +416,9 @@ export function buildDecor(w) {
   float.traverse((o) => {
     if (o.isMesh) o.receiveShadow = true;
   });
+  // (lo fijo, una malla por material: world/props compactGroup; lo que flota
+  // sigue a la creciente y va aparte. globalThis.__mduNoMerge2: como antes)
+  if (globalThis.__mduNoMerge2 !== true) compactGroup(fixed);
   w.root.add(fixed, float);
   w.estero.float = float;
 }

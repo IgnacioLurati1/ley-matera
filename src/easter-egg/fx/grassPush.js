@@ -37,7 +37,27 @@ export const EXTRA_PUSH = [];
 // baja un poco (que la hoja no se estire). El corrimiento vuelve a lo local con
 // la inversa de la matriz de la instancia (así siguen bien la sombra, la
 // profundidad y el reflejo).
-const DECL = 'uniform vec4 uGrassPush[8];\nuniform int uGrassN;\n';
+// El viento (2026-10-04, en todos los mapas; globalThis.__mduNoWind al cargar:
+// quieto, como antes): la mata (o la copa) se mece hacia donde sopla, más en la
+// punta, con ráfagas que pasan. x: tiempo, y: fuerza (0: quieto), zw: dirección.
+export const WIND = { value: new THREE.Vector4(0, 0, 0.8, 0.6) };
+export const windOn = () => globalThis.__mduNoWind !== true;
+// El viento en un material, si está prendido (si no, el material como estaba).
+export function windy(mat, wind = null) {
+  return windOn() ? addGrassPush(mat, wind) : mat;
+}
+
+// Cada cuadro (World.update), en todos los mapas.
+export function updateWind(dt) {
+  const W = WIND.value;
+  if (!windOn()) {
+    W.y = 0;
+    return;
+  }
+  W.x += dt;
+  W.y = 0.75 + 0.25 * Math.sin(W.x * 0.21);
+}
+const DECL = 'uniform vec4 uGrassPush[8];\nuniform int uGrassN;\nuniform vec4 uGrassWind;\nuniform vec2 uWindK;\n';
 const CODE = `
 #ifdef USE_INSTANCING
 	mat4 gpM = modelMatrix * instanceMatrix;
@@ -46,6 +66,20 @@ const CODE = `
 #endif
 	vec3 gpBase = gpM[3].xyz;
 	float gpH = max((gpM * vec4(transformed, 1.0)).y - gpBase.y, 0.0);
+	// el viento (uWindK: x cuánto, y 1 = copa: casi pareja; 0 = mata: más en la punta)
+	if (uGrassWind.y > 0.0 && uWindK.x > 0.0 && (gpH > 0.01 || uWindK.y > 0.5)) {
+		vec3 gwW = (gpM * vec4(transformed, 1.0)).xyz;
+		float gwP = uGrassWind.x * 1.7 + gwW.x * 0.37 + gwW.z * 0.23;
+		float gwG = 0.55 + 0.45 * sin(uGrassWind.x * 0.5 + gwW.x * 0.06 + gwW.z * 0.045);
+		float gwS = (0.55 + 0.45 * sin(gwP) + 0.15 * sin(gwP * 2.7 + 1.3)) * gwG * uGrassWind.y * uWindK.x;
+		float gwH = min(gpH, 1.4);
+		float gwA = uWindK.y > 0.5 ? 0.07 * clamp(gpH * 0.5, 0.35, 1.0) : 0.09 * gwH * gwH;
+		vec2 gwO = uGrassWind.zw * gwS * gwA;
+		float gwD = uWindK.y > 0.5 ? 0.0 : -0.25 * dot(gwO, gwO) / max(gwH, 0.2);
+		// (del mundo a lo local sin invertir la matriz: las columnas son ortogonales —giro y escala—)
+		vec3 gwV = vec3(gwO.x, gwD, gwO.y);
+		transformed += vec3(dot(gwV, gpM[0].xyz) / dot(gpM[0].xyz, gpM[0].xyz), dot(gwV, gpM[1].xyz) / dot(gpM[1].xyz, gpM[1].xyz), dot(gwV, gpM[2].xyz) / dot(gpM[2].xyz, gpM[2].xyz));
+	}
 	if (uGrassN > 0 && gpH > 0.01) {
 		vec2 gpO = vec2(0.0);
 		for (int i = 0; i < 8; i++) {
@@ -67,23 +101,31 @@ const CODE = `
 `;
 
 // El parche (también lo usa el G-buffer de Épica, fx/Epic.js, con su propio material).
-export function grassPushShader(sh) {
+const WIND_K = { value: new THREE.Vector2(1, 0) };
+export function grassPushShader(sh, wk = WIND_K) {
   sh.uniforms.uGrassPush = PUSH;
   sh.uniforms.uGrassN = COUNT;
+  sh.uniforms.uGrassWind = WIND;
+  sh.uniforms.uWindK = wk;
   sh.vertexShader = DECL + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>\n${CODE}`);
 }
 
 // Le pone el empuje a un material (antes de que se compile por primera vez).
 const PROTO_KEY = THREE.Material.prototype.customProgramCacheKey;
-export function addGrassPush(mat) {
+// wind: { amp (1 = el pasto alto), crown (la copa entera, casi pareja) }.
+export function addGrassPush(mat, wind = null) {
   if (!mat || mat.userData.grassPush) return mat;
-  mat.userData.grassPush = grassPushShader;
+  const wk = wind ? { value: new THREE.Vector2(wind.amp ?? 1, wind.crown ? 1 : 0) } : WIND_K;
+  const patch = (sh) => grassPushShader(sh, wk);
+  // (el G-buffer de Épica arma uno por clase de viento: fx/Epic.js)
+  patch.windKey = `w${wk.value.x}:${wk.value.y}`;
+  mat.userData.grassPush = patch;
   const prev = mat.onBeforeCompile;
   const key = mat.customProgramCacheKey;
   const base = key === PROTO_KEY ? () => prev.toString() : () => key.call(mat);
   mat.onBeforeCompile = function (sh, r) {
     prev.call(this, sh, r);
-    grassPushShader(sh);
+    patch(sh);
   };
   mat.customProgramCacheKey = () => `${base()}|gpush`;
   return mat;

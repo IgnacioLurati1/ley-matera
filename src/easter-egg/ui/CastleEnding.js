@@ -1,12 +1,14 @@
 import * as THREE from 'three';
-import CastleCine, { smooth, lerp, uprightMate } from './castleCine';
+import CastleCine, { smooth, lerp, uprightMate, knightMate, knightMouth } from './castleCine';
 import Avatars from '../net/Avatars';
 import { useMap } from '../config/map';
-import { crewIds } from './cineCrew';
+import { crewIds, personaOf, PERSONA_T } from './cineCrew';
+import CastleClips, { personaLetter } from './castleClips';
 import { warmScene } from './cineWarm';
 import { buildChiqui, chiquiGiggle, chiquiGlitch, chiquiHat } from '../world/Chiqui';
 import { ELEMENTS, ELEM_COLOR, ELEM_RGB, MATE_OF } from '../entities/castle/common';
 import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
+import { clipY } from '../world/dragonBlend';
 
 // El final de todo (Der Mateendrache, el último mapa). Arranca en la isla del
 // Éter, con el Chiquitijuein recién deshecho. Todo lo que pasa es actuado:
@@ -62,6 +64,17 @@ const clamp01 = (u) => Math.max(0, Math.min(1, u));
 const rnd = () => Math.random() - 0.5;
 // (Avatars: yaw 0 mira hacia -z) el yaw de un punto mirando a otro
 const yawTo = (from, to) => Math.atan2(-(to.x - from.x), -(to.z - from.z));
+// (globalThis.__mduNoLandFix = true: el aterrizaje del dragón como antes, con la
+// raíz llegando al piso volando: el cuerpo, la cola y las alas lo atravesaban)
+const LAND_FIX = () => globalThis.__mduNoLandFix !== true;
+// (globalThis.__mduNoRoarFix = true: vuelve el rugido al tocar el piso, pisado por
+// el de las alas abiertas un segundo y medio después)
+const ROAR_FIX = () => globalThis.__mduNoRoarFix !== true;
+// (globalThis.__mduNoHatFix = true: el sombrero del Chiquitijuein como antes, con un
+// cuarto del ala -la de atrás- hasta 11 cm abajo del piso de la plaza)
+const HAT_FIX = () => globalThis.__mduNoHatFix !== true;
+// las patas del dragón: la de abajo de cada una (el tobillo), en el clip de Blender
+const ANKLES = ['flL2', 'flR2', 'hlL2', 'hlR2'];
 const angLerp = (a, b, k) => {
   let d = b - a;
   while (d > Math.PI) d -= Math.PI * 2;
@@ -367,14 +380,30 @@ export default class CastleEnding extends CastleCine {
       if (arena.shield) arena.shield.visible = false;
       for (const M of arena.mines || []) M.grp?.removeFromParent();
       arena.mines = [];
+      // los ataques que quedaban en el aire (con el juego terminado la arena no
+      // se actualiza: las piedras quedaban flotando arriba de la escena), la
+      // lluvia de fuego, las bolas, las ondas del manotazo y las columnas
+      for (const R of arena.meteors || []) R.rock?.removeFromParent();
+      arena.meteors = [];
+      for (const W of arena.waves || []) W.mesh?.removeFromParent();
+      arena.waves = [];
+      for (const c of arena.rain || []) c.group?.removeFromParent();
+      arena.rain = [];
+      for (const f of arena.fireballs || []) f.mesh?.removeFromParent();
+      arena.fireballs = [];
+      for (const F of arena.fcols || []) {
+        F.t = -1;
+        if (F.m) F.m.visible = false;
+      }
+      for (const F of arena.fakes || []) if (F.root) F.root.visible = false;
+      arena.trick = null;
+      arena.strafe = null;
     }
-    // las quemaduras del dragón y la sangre de la pelea (calcos transparentes)
-    // se dibujaban encima de los que son medio transparentes
-    for (const D of g.fx.decals || []) {
-      D.used = 0;
-      D.next = 0;
-      D.mesh.count = 0;
-    }
+    // las chispas, el humo, los haces, las quemaduras del dragón y la sangre
+    // de la pelea (calcos transparentes: se dibujaban encima de los que son
+    // medio transparentes), y los tiros que quedaban volando
+    g.fx.clearAll?.();
+    g.weapons?.clearProjectiles?.();
     for (const z of g.zombies.pool) if (z.active) g.zombies.free(z);
     if (g.net?.avatars) g.net.avatars.root.visible = false;
   }
@@ -436,6 +465,13 @@ export default class CastleEnding extends CastleCine {
     this.hat.position.set(H.x, H.y + 0.08, H.z);
     this.hat.scale.setScalar(1.3);
     this.root.add(this.hat);
+    // (apoyado: inclinado como está, lo más bajo del ala justo sobre el piso)
+    this.hatY = this.hat.position.y;
+    if (HAT_FIX()) {
+      this.hat.updateMatrixWorld(true);
+      this.hatY += H.y + 0.004 - new THREE.Box3().setFromObject(this.hat, true).min.y;
+      this.hat.position.y = this.hatY;
+    }
     const staff = gn.staff;
     staff.removeFromParent();
     staff.position.set(H.x + 0.75, H.y + 0.03, H.z - 0.25);
@@ -472,6 +508,8 @@ export default class CastleEnding extends CastleCine {
   // la luz (el de fuego, el de viento, el de rayo y el de hielo).
   buildCrew() {
     const g = this.g;
+    // (los cuerpos animados en Blender, cada uno con su carácter: ui/castleClips)
+    this.clips = new CastleClips();
     this.people = new Avatars(g, null);
     this.crew = crewIds(g).map((id, i) => {
       const [x, z] = CREW_AT[i];
@@ -482,7 +520,7 @@ export default class CastleEnding extends CastleCine {
       a.tag.visible = false;
       this.people.setGun(a, MATE_OF[el], 1);
       r.yaw = yawTo(r.pos, this.H);
-      const K = { i, el, r, a, c: ELEM_COLOR[el], rgb: ELEM_RGB[el], pose: { v: {}, want: {}, speed: 5 }, pant: 1, knight: 0, raise: 0, look: this.H.clone(), turn: 3 };
+      const K = { i, el, r, a, c: ELEM_COLOR[el], rgb: ELEM_RGB[el], pose: { v: {}, want: {}, speed: 5 }, pant: 1, knight: 0, raise: 0, look: this.H.clone(), turn: 3, L: personaLetter(i), PT: PERSONA_T[personaOf(i)] };
       K.poncho0 = a.M.poncho.color.clone();
       r.poseFn = (Q) => this.crewPose(K, Q);
       // la luz del mate de la luz y el aura de caballero (después)
@@ -925,7 +963,9 @@ export default class CastleEnding extends CastleCine {
         });
         this.wind(16, 0.4);
         this.choir(0.4, [45, 52, 57], { dur: 12, gain: 0.04, attack: 4, release: 4 });
-        this.glide(7, H.clone().add(tmpW.set(2.5, 0.5, -2.4)), H.clone().add(tmpW.set(1.55, 0.52, -1.45)), H.clone().add(tmpW.set(-0.1, 0.1, 0.1)), H.clone().add(tmpW.set(-0.35, 0.4, 0.7)), 38, 40);
+        // (un poco más abajo: los cuatro cortados a la cintura, las botas; antes
+        // el borde de arriba les cortaba la cara)
+        this.glide(7, H.clone().add(tmpW.set(2.5, 0.5, -2.4)), H.clone().add(tmpW.set(1.55, 0.52, -1.45)), H.clone().add(tmpW.set(-0.1, -0.02, 0.1)), H.clone().add(tmpW.set(-0.35, 0.18, 0.7)), 38, 40);
         return 6.2;
       }],
       // la cámara sube: los cuatro, jadeando, con los mates de la luz bajos
@@ -940,7 +980,8 @@ export default class CastleEnding extends CastleCine {
       [0, () => {
         this.landDragon(6.2);
         const DL = this.DL;
-        this.follow(7.2, P(-4.6, 1.3, 9.6), P(-4.0, 1.5, 8.9), () => {
+        // (de costado, a la derecha: desde atrás de los cuatro, ellos lo tapaban)
+        this.follow(7.2, P(19, 1.4, 7.5), P(17.5, 1.8, 6.5), () => {
           const D = this.D;
           if (!D) return tmpU.set(DL.x, DL.y + 3, DL.z);
           tmpU.copy(D.root.position).setY(D.root.position.y + 1.5);
@@ -954,6 +995,8 @@ export default class CastleEnding extends CastleCine {
         });
         return 7;
       }],
+      // posado: se lo ve entero, con las alas abiertas, y ruge
+      [0, () => this.dragonShot(5)],
       // 3. debajo del ala: dos ojitos colorados. Una risita. Ceniza.
       [0, () => {
         for (const K of this.crew) {
@@ -968,7 +1011,13 @@ export default class CastleEnding extends CastleCine {
           return tmpU.copy(hatLook).lerp(this.eyes.pos || hatLook, k);
         }, 34, 42);
         this.later(0.8, () => this.eyesAt(H.clone().setY(H.y + 0.13), 0.2, 0.13, 1));
-        this.later(1.4, () => chiquiGiggle(this.g.audio, { pos: H, whisper: false, gain: 1.1, ref: 6, pitch: 1.1 }));
+        this.later(1.4, () => {
+          chiquiGiggle(this.g.audio, { pos: H, whisper: false, gain: 1.1, ref: 6, pitch: 1.1 });
+          for (const K of this.crew) {
+            if (K.L === 'M') this.react(K, 'cower', 3.2);
+            else if (K.L === 'V') this.react(K, 'fists', 2.6);
+          }
+        });
         this.later(2.9, () => this.ashHat());
         this.later(3.3, () => this.eyesFlee());
         return 5.4;
@@ -977,7 +1026,9 @@ export default class CastleEnding extends CastleCine {
       [0, () => {
         this.columnDown(3.4);
         // (de lejos y abajo: la columna baja por el cuadro; sigue su punta)
-        this.follow(4.6, P(-4.6, 0.9, 12.6), P(-4, 1, 11.7), () => tmpU.set(F.x, Math.min(F.y + 11, Math.max(F.y + 2.5, F.y + 70 * (1 - this.col.drop) - 8)), F.z), 56, 50);
+        // (mirando más bajo: los cuatro y el dragón esperan en cuadro y la columna
+        // entra de arriba; mirando a 11 m eran dos segundos de cielo vacío)
+        this.follow(4.6, P(-4.6, 0.9, 12.6), P(-4, 1, 11.7), () => tmpU.set(F.x, Math.min(F.y + 5, Math.max(F.y + 2.5, F.y + 70 * (1 - this.col.drop) - 8)), F.z), 54, 50);
         for (const K of this.crew) {
           K.look = F.clone().setY(F.y + 2);
           this.pose(K.pose, { headP: -0.2 }, 2);
@@ -992,6 +1043,8 @@ export default class CastleEnding extends CastleCine {
           K.look = F.clone().setY(F.y + 1.5);
           K.pant = Math.min(K.pant, 0.4);
           this.pose(K.pose, { headP: null }, 2);
+          // (el Viejo lo reconoce y se arrodilla; el Canchero sigue canchero)
+          if (K.L === 'O') this.later(1.2, () => (K.calm = 'kneelOath'));
         }
         return 4.6;
       }],
@@ -1015,7 +1068,9 @@ export default class CastleEnding extends CastleCine {
         // Fierro levanta el brazo al cielo; el ojo late
         const d = this.line(2);
         this.fPose({ shRp: -2.9, shRr: -0.05, elR: -0.1, shLp: -0.3, headP: -0.35 }, 2.5);
-        this.glide(d, this.P(2.1, 0.85, 1.4), this.P(1.7, 0.9, 1.0), F.clone().setY(F.y + 1.7), F.clone().setY(F.y + 3.2), 48, 52);
+        // (sube hasta la mano en alto, no más: mirando a 3,2 m terminaba en
+        // cielo vacío con Fierro chiquito abajo)
+        this.glide(d, this.P(2.1, 0.85, 1.4), this.P(1.7, 0.9, 1.0), F.clone().setY(F.y + 1.7), F.clone().setY(F.y + 2.4), 48, 52);
         this.eyePulse = 1;
         return d;
       }],
@@ -1092,14 +1147,38 @@ export default class CastleEnding extends CastleCine {
     // se posa (así llega mirando a los cuatro); frena, levanta la nariz, bate
     // las alas y baja las patas. (centrípeta: sin rulos entre puntos cercanos)
     const f = new THREE.Vector3(Math.sin(this.dragonYaw), 0, Math.cos(this.dragonYaw));
-    const back = (d, h) => DL.clone().addScaledVector(f, -d).setY(DL.y + h);
-    this.drag.curve = new THREE.CatmullRomCurve3([this.P(-26, 30, -50), this.P(-4, 27, -45), this.P(22, 21, -36), this.P(34, 15, -22), back(17, 8.5), back(7, 3.4), back(2, 0.9), DL.clone()], false, 'centripetal');
+    // (con los clips de Blender, volando la raíz va en el cuerpo y parado va en el
+    // piso; el clip 'aterrizaje' arranca con las patas colgando: llega con el cuerpo
+    // a la altura justa para que las patas toquen (h0) y la raíz baja con el clip.
+    // Antes llegaba con la raíz al piso y el cuerpo salía de adentro del piso.)
+    const h0 = this.landH(0) || 0;
+    this.drag.h0 = h0;
+    this.drag.landT = null;
+    // (y el piso de la isla: las alas y la cola no lo atraviesan; world/dragonBlend floor)
+    D.floorY = h0 ? DL.y : null;
+    const back = (d, h) => DL.clone().addScaledVector(f, -d).setY(DL.y + h + h0);
+    this.drag.curve = new THREE.CatmullRomCurve3([this.P(-26, 30, -50), this.P(-4, 27, -45), this.P(22, 21, -36), this.P(34, 15, -22), back(17, 8.5), back(7, 3.4), back(2, 0.9), back(0, 0)], false, 'centripetal');
     this.drag.t = 0;
     this.drag.dur = secs;
     this.drag.prev = null;
     D.root.position.copy(this.drag.curve.getPointAt(0));
     this.fire?.whoosh?.(DL, secs * 0.8);
     this.storm = Math.min(this.storm, 0.3);
+  }
+
+  // Cuánto arriba del piso va la raíz para que la pata más estirada del clip
+  // 'aterrizaje' (a los t s) llegue justo al piso (su tobillo a la altura que
+  // tiene parado, 'posado'). null: sin los clips o con el switch (como antes).
+  landH(t) {
+    if (!LAND_FIX() || !this.D?.bl?.ready?.()) return null;
+    let h = 0;
+    for (const b of ANKLES) {
+      const s = clipY('posado', b, 0);
+      const a = clipY('aterrizaje', b, t);
+      if (s == null || a == null) return null;
+      h = Math.max(h, s - a);
+    }
+    return h;
   }
 
   touchdown() {
@@ -1117,9 +1196,48 @@ export default class CastleEnding extends CastleCine {
       g.fx.alpha.spawn(DL.x + Math.cos(a) * r, DL.y + 0.2, DL.z + Math.sin(a) * r, Math.cos(a) * (3 + Math.random() * 4), 0.8 + Math.random() * 1.6, Math.sin(a) * (3 + Math.random() * 4), { color: [0.9, 0.9, 0.95], size: 0.5, size1: 1.8, life: 1.4 + Math.random(), alpha: 0.45, drag: 1.2 });
     }
     this.rumble(1.4, 0.9);
+    // cada uno a su manera: el Valiente se planta, el Miedoso se encoge, el
+    // Canchero se sacude la nieve del poncho, el Viejo trastabilla
+    const REACT = { V: ['fists', 2.2], M: ['cower', 2.8], C: ['dust', 2.0], O: ['stagger', 1.6] };
+    for (const K of this.crew || []) this.react(K, ...(REACT[K.L] || REACT.V));
+    // (ruge una vez, con las alas abiertas: dragonShot; este, un segundo y medio
+    // antes, quedaba pisado por aquel)
+    if (ROAR_FIX()) return;
     this.fire?.roar?.(DL);
     this.D?.open?.(0.8);
     this.later(1.4, () => this.D?.open?.(0));
+  }
+
+  // Una reacción de un gaucho (un clip de ui/castleClips), con la demora de su carácter.
+  react(K, name, secs) {
+    const d = K.PT?.delay || 0;
+    this.later(d * 0.5, () => {
+      K.react = name;
+      K.reactUntil = this.t + secs;
+    });
+  }
+
+  // El dragón posado, entero y de cerca (el usuario, 2026-10-03: "la idea es
+  // que se re vea y se vean las alas"): abre las alas del todo, la cámara le
+  // da media vuelta por delante y del lado de afuera (los cuatro quedan
+  // atrás de la cámara, no en el medio) y ruge con la boca abierta.
+  dragonShot(d) {
+    const D = this.D;
+    const DL = this.DL;
+    if (!D) return 0.1;
+    D.spreadWings?.(1);
+    // (lejos: abiertas, las alas miden casi 20 m; de más cerca la cámara se
+    // metía en el ala)
+    const at = DL.clone().setY(DL.y + 4);
+    this.orbit(d, DL, 1.95, 1.35, 16.5, 15.5, 2.2, 6, at, 52, 48);
+    this.later(0.9, () => {
+      this.fire?.roar?.(DL);
+      this.shake = Math.max(this.shake, 0.35);
+      this.rumble(1.6, 0.6);
+    });
+    // (después quedan a medias: se siguen viendo detrás de los cuatro)
+    this.later(d, () => D.spreadWings?.(0.6));
+    return d;
   }
 
   // Los ojitos: aparecen en p, del tamaño size, separados gap.
@@ -1139,7 +1257,7 @@ export default class CastleEnding extends CastleCine {
     const H = this.H;
     this.anim(1.1, (k) => {
       this.hat.scale.set(1.3 * (1 + k * 0.15), 1.3 * (1 - k * 0.92), 1.3 * (1 + k * 0.15));
-      this.hat.position.y = H.y + 0.08 - k * 0.05;
+      this.hat.position.y = this.hatY - k * 0.05;
     }, () => {
       this.hat.visible = false;
     });
@@ -1270,7 +1388,9 @@ export default class CastleEnding extends CastleCine {
     const cam = C.clone().addScaledVector(dir, this.A.r + 5).setY(C.y + 4.5);
     const side = tmpW.set(-dir.z, 0, dir.x).multiplyScalar(1.6);
     const look = fp.clone().setY(fp.y + 5);
-    this.follow(dur + 0.3, cam.clone().sub(side), cam.clone().add(side), () => tmpU.copy(Fr.f.position).setY(Fr.f.position.y + 4).lerp(look, 0.5), 30, 27);
+    // (lo sigue cuando sube al ojo: mirando a medias, la segunda mitad de cada
+    // toma era la punta de piedra de abajo con el mundo fuera de cuadro)
+    this.follow(dur + 0.3, cam.clone().sub(side), cam.clone().add(side), () => tmpU.copy(Fr.f.position).setY(Fr.f.position.y + 4 * (Fr.f.scale.y / Fr.s0)).lerp(look, 0.12), 30, 30);
     this.unravel(Fr);
   }
 
@@ -1288,8 +1408,10 @@ export default class CastleEnding extends CastleCine {
       Cl.u = -Cl.d;
     });
     this.rumble(2.4, 0.8);
-    const at = this.P(-17, 4, 5);
-    this.glide(dur + 0.4, this.P(-4, 0.6, 3), this.P(-4.6, 0.8, 2.4), at, at.clone().setY(at.y + 3), 46, 50);
+    // (de frente a los cuatro, bajo: las columnas del borde de atrás se
+    // levantan por encima de ellos; antes, de al lado del Valiente mirando
+    // afuera, era cielo vacío con una columna en cada punta)
+    this.glide(dur + 0.4, this.P(0.35, 1.15, -1.25), this.P(-0.25, 1.0, -0.85), this.P(0, 2.4, 18), this.P(0, 6.2, 18), 57, 58);
   }
 
   // "Todo.": de arriba, la isla y todo lo que sube al ojo.
@@ -1313,13 +1435,22 @@ export default class CastleEnding extends CastleCine {
     this.later(0.3, () => {
       for (const K of this.crew) {
         this.pose(K.pose, { headP: -0.3 }, 1.2);
-        K.turnTo = K.r.yaw + Math.PI;
+        // (el de rodillas no: girando sobre la cadera se le corrían las rodillas.
+        // 2026-10-04, el usuario: el Viejo se quedaba todo el rato "sentado" y
+        // no se daba vuelta: se para —el último, a su ritmo— y después gira)
+        if (K.calm !== 'kneelOath') K.turnTo = K.r.yaw + Math.PI;
+        else if (globalThis.__mduNoViejoUp !== true) {
+          K.calm = `talk${K.L}`;
+          this.later(0.9, () => (K.turnTo = K.r.yaw + Math.PI));
+        }
       }
     });
     this.choir(0, [45, 52, 57, 61, 64], { dur: 8, gain: 0.055, attack: 1.5, release: 3 });
     this.bell(0.4, 45, { gain: 0.16, dur: 7 });
     this.rumble(2, 0.5);
-    this.glide(Math.max(2, dur), this.P(0.9, 0.45, -0.3), this.P(-0.6, 0.4, -0.7), this.P(0, 3.4, 4.2), this.P(0, 4.6, 4.6), 58, 60);
+    // (arranca con los cuatro enteros en cuadro y sube a los gigantes que se
+    // levantan detrás; antes arrancaba ya mirando arriba: solo las cabezas abajo)
+    this.glide(Math.max(2, dur), this.P(0.8, 0.95, -1.4), this.P(-0.6, 0.45, -0.75), this.P(0, 1.25, 3), this.P(0, 4.6, 4.6), 56, 60);
   }
 
   // "Y él va a ser un recuerdo...": los ojos, enormes en el cielo, se rompen en brasas.
@@ -1347,6 +1478,15 @@ export default class CastleEnding extends CastleCine {
     this.later(burst + 1.8, () => {
       for (const K of this.crew) this.pose(K.pose, { headP: -0.35 }, 1);
     });
+    // (después de las brasas, los cuatro mirando arriba: antes la cámara bajaba
+    // al piso vacío con Fierro cortado en el borde; la vuelta sigue en mergeShot)
+    const rest = d - burst - 1.5;
+    if (rest > 1.2) {
+      this.later(burst + 1.5, () => {
+        const c = this.P(0, 0, 2.7);
+        this.orbit(rest, c, -0.5, -0.98, 5.5, 5.1, 0.95, 1.3, () => tmpU.set(c.x, c.y + 1.5, c.z), 50, 49);
+      });
+    }
   }
 
   // "Ustedes ya fueron caballeros...": cada gigante se mete en su gaucho.
@@ -1436,7 +1576,9 @@ export default class CastleEnding extends CastleCine {
   raiseShot(dur) {
     const S = this.S;
     // de atrás y abajo, subiendo: los cuatro con los mates en alto, Fierro enfrente, el dragón
-    this.orbit(dur, this.P(0, 0, 1.2), 2.6, 1.7, 9, 11, 1, 4, (k) => tmpU.set(this.C.x, lerp(this.C.y + 2.2, S.y - 0.5, k), lerp(this.C.z + 0.5, S.z, k)), 50, 56);
+    // (arranca entre el Valiente y el Miedoso: desde 2,6 el Valiente quedaba
+    // justo en el medio del cuadro, de espaldas, tapando a Fierro y al dragón)
+    this.orbit(dur, this.P(0, 0, 1.2), 2.35, 1.7, 9, 11, 1, 4, (k) => tmpU.set(this.C.x, lerp(this.C.y + 2.2, S.y - 0.5, k), lerp(this.C.z + 0.5, S.z, k)), 50, 56);
     this.crew.forEach((K, i) => {
       this.later(0.4 + i * 0.25, () => {
         K.raising = true;
@@ -1580,8 +1722,10 @@ export default class CastleEnding extends CastleCine {
       K.look = F.clone().setY(F.y + 2);
       this.pose(K.pose, { headP: -0.15 }, 1.5);
     }
-    // de frente y abajo: se lo ve bajar a su mano; después, la grúa cuando lo levanta
-    this.follow(3.9, F.clone().add(tmpW.set(1.9, 1.3, 5.6)), F.clone().add(tmpW.set(1.4, 1.4, 4.6)), () => tmpU.copy(this.sup.position).lerp(tmpW.set(F.x, F.y + 1.4, F.z), 0.6), 48, 44);
+    // de frente y abajo: se lo ve bajar a su mano (la cámara sigue al mate:
+    // mirando a medias con Fierro, arrancaba en cielo vacío); después, la grúa
+    // cuando lo levanta
+    this.follow(3.9, F.clone().add(tmpW.set(1.9, 1.3, 5.6)), F.clone().add(tmpW.set(1.4, 1.4, 4.6)), () => tmpU.copy(this.sup.position).lerp(tmpW.set(F.x, F.y + 1.4, F.z), 0.15), 48, 44);
     this.later(3.9, () => this.glide(3.6, F.clone().add(tmpW.set(1.2, 1, 2.9)), F.clone().add(tmpW.set(2.2, 0.6, 4.4)), F.clone().setY(F.y + 2.1), F.clone().setY(F.y + 2.9), 44, 50));
     return 7.5;
   }
@@ -1624,7 +1768,8 @@ export default class CastleEnding extends CastleCine {
     this.later(9.6, () => (this.whiteGo = 0.001));
     this.later(10.4, () => this.white(true));
     g.fx.addShake?.(0.3);
-    return 13;
+    // (el blanco entero duraba 2,5 s: queda uno)
+    return 12;
   }
 
   dissolveDragon() {
@@ -1715,6 +1860,7 @@ export default class CastleEnding extends CastleCine {
     this.subTick();
     this.crewTick(dt);
     this.people.update(dt);
+    this.clips?.update(dt);
     this.spirit.update(dt);
     this.fAura.yaw = this.fierro.r.yaw;
     this.fAura.dead = this.fierro.r.dead;
@@ -1802,7 +1948,13 @@ export default class CastleEnding extends CastleCine {
           K.turnT = 0;
         }
       }
-      r.yaw = angLerp(r.yaw, want, Math.min(1, dt * 2.2));
+      // (cada uno a su ritmo: ui/cineCrew PERSONA_T)
+      r.yaw = angLerp(r.yaw, want, Math.min(1, dt * (K.PT?.turn || 2.2)));
+      // el clip de Blender que le toca: el mate en alto, una reacción, o
+      // jadeando/escuchando a su manera
+      const L = K.L;
+      const want2 = K.raising ? `raise${L}` : K.react && this.t < K.reactUntil ? K.react : K.calm || `pant${L}`;
+      this.clips.act(r, [K.a], want2, { fade: K.raising ? 0.8 : 0.5, t: K.i * 0.37 });
       // el mate: bajo mientras jadean; arriba al final
       if (K.raising) K.raise = Math.min(1, K.raise + dt / 1.2);
       else K.raise = Math.max(0, K.raise - dt / 1.6);
@@ -2068,6 +2220,8 @@ export default class CastleEnding extends CastleCine {
     if (!D?.root.visible) return;
     const Dg = this.drag;
     const DL = this.DL;
+    // (el reloj del clip 'aterrizaje': el mismo que lleva world/dragonBlend)
+    if (Dg.landT != null) Dg.landT = Dg.landT > 3 ? null : Dg.landT + dt;
     if (Dg.curve && Dg.t >= 0 && Dg.t < 1) {
       Dg.t = Math.min(1, Dg.t + dt / Dg.dur);
       const u = Dg.t;
@@ -2101,12 +2255,19 @@ export default class CastleEnding extends CastleCine {
       if (u > 0.8) Dg.yaw = angLerp(Dg.yaw, this.dragonYaw, Math.min(1, dt * 3));
       // el frenado: la nariz para arriba y las alas batiendo fuerte
       const flare = u > 0.66 ? Math.sin(clamp01((u - 0.66) / 0.32) * Math.PI) : 0;
-      const pitch = THREE.MathUtils.clamp(-Math.atan2(v.y, Math.max(hs, 2)), -0.5, 0.5) * (1 - flare) - 0.34 * flare;
+      // (cerca del piso, derecho: con la nariz arriba, la cola de 9 m bajaba más de 2 m)
+      const hk = Dg.h0 ? clamp01((p.y - DL.y - Dg.h0) / 4) : 1;
+      const pitch = (THREE.MathUtils.clamp(-Math.atan2(v.y, Math.max(hs, 2)), -0.5, 0.5) * (1 - flare) - 0.34 * flare) * hk;
       Dg.pitch += (pitch - Dg.pitch) * Math.min(1, dt * 4);
       Dg.roll += (THREE.MathUtils.clamp(-yawRate * 1.5, -0.5, 0.5) * (1 - flare) - Dg.roll) * Math.min(1, dt * 3);
       D.flapK = 1 + flare * 0.7;
-      if (u > 0.84 && D.pose === 'fly') D.setPose('stand', 1.1);
+      if (u > 0.84 && D.pose === 'fly') {
+        D.setPose('stand', 1.1);
+        if (Dg.h0) Dg.landT = dt;
+      }
       D.root.position.copy(p);
+      // (aterrizando: la raíz baja lo que suben las patas del clip)
+      if (Dg.landT != null) D.root.position.y += (this.landH(Dg.landT) ?? Dg.h0) - Dg.h0;
       D.root.quaternion.setFromEuler(tmpE.set(Dg.pitch, Dg.yaw, Dg.roll, 'YXZ'));
       if (u >= 1) this.touchdown();
     }
@@ -2114,8 +2275,15 @@ export default class CastleEnding extends CastleCine {
     // la reverencia: el cuerpo abajo, la cabeza a la altura de ellos
     Dg.bow += Math.sign(Dg.bowTo - Dg.bow) * Math.min(Math.abs(Dg.bowTo - Dg.bow), dt / 2);
     Dg.rear += Math.sign(Dg.rearTo - Dg.rear) * Math.min(Math.abs(Dg.rearTo - Dg.rear), dt / 1.3);
+    // (los clips de Blender del dragón: la reverencia y el echarse atrás son clips; world/dragonBlend.js)
+    D.bowK = smooth(Dg.bow);
+    D.rearK = smooth(Dg.rear);
     if (Dg.t >= 1) {
-      D.root.position.set(DL.x, DL.y - smooth(Dg.bow) * 0.35 + smooth(Dg.rear) * 0.3, DL.z);
+      // (con los clips de Blender la reverencia y el echarse atrás ya bajan y suben
+      // el cuerpo con las patas en el piso: bajar o subir la raíz encima hundía las
+      // patas 35 cm en la reverencia y las dejaba 30 cm en el aire al echarse atrás)
+      const bodyY = Dg.h0 ? 0 : -smooth(Dg.bow) * 0.35 + smooth(Dg.rear) * 0.3;
+      D.root.position.set(DL.x, DL.y + bodyY + (Dg.landT != null ? this.landH(Dg.landT) || 0 : 0), DL.z);
       // (posado: derecho y de frente, sin saltos)
       if (Dg.yaw != null) {
         const k = Math.min(1, dt * 4);
@@ -2124,10 +2292,16 @@ export default class CastleEnding extends CastleCine {
         Dg.yaw = angLerp(Dg.yaw, this.dragonYaw, k);
         D.root.quaternion.setFromEuler(tmpE.set(Dg.pitch, Dg.yaw, Dg.roll, 'YXZ'));
       }
-      if (Dg.rear > 0.05) D.look(tmpV.copy(this.S).setY(this.S.y + 14));
-      else if (Dg.bow > 0.05) D.look(tmpV.copy(crew).setY(crew.y - 1.6));
-      else if (this.sup.visible) D.look(this.sup.position);
-      else D.look(this.fierro.r.dead ? crew : tmpV.copy(this.F).setY(this.F.y + 1.6));
+      if (Dg.rear > 0.05) tmpV.copy(this.S).setY(this.S.y + 14);
+      else if (Dg.bow > 0.05) tmpV.copy(crew).setY(crew.y - 1.6);
+      else if (this.sup.visible) tmpV.copy(this.sup.position);
+      else if (this.fierro.r.dead) tmpV.copy(crew);
+      else tmpV.copy(this.F).setY(this.F.y + 1.6);
+      // (de a poco: antes saltaba de un blanco al otro y seguía todo lo que se
+      // movía; con el cuello hamacándose, no paraba nunca de girar)
+      if (!Dg.lookAt) Dg.lookAt = tmpV.clone();
+      Dg.lookAt.lerp(tmpV, Math.min(1, dt * 1.4));
+      D.look(Dg.lookAt);
     }
     // fuego al cielo
     if (Dg.fireT > 0 && this.fire) {
@@ -2327,7 +2501,8 @@ export default class CastleEnding extends CastleCine {
     }
     this.buildVoid();
     warmScene(g);
-    return 5;
+    // (5 s de negro total parecía que se había colgado: el suspenso con 3 alcanza)
+    return 3;
   }
 
   // En negro, uno por uno, del color de cada uno: lo que les dejan los cuatro
@@ -2361,13 +2536,21 @@ export default class CastleEnding extends CastleCine {
       this.later(t + 0.3, () => {
         this.wordCard(i, text, d);
         if (bus) au.bell(bus, au.now, i >= 0 ? [57, 60, 64, 69][i] : 45, { gain: i >= 0 ? 0.06 : 0.14, dur: 4 });
-        if (i >= 0) au.say(text, KNIGHT_VOICE[i], { cine: true });
+        if (i >= 0) {
+          const secs = au.say(text, KNIGHT_VOICE[i], { cine: true });
+          // (la boca se mueve lo que dura lo que dice: voidTick)
+          const K = this.void?.knights[i];
+          if (K) K.talk = { at: this.t, secs: secs || text.length * 0.065 };
+        }
       });
       // se apaga el caballero y queda un momento en negro antes del siguiente
       this.later(t + 0.3 + d, () => this.fade(true));
       t += 0.3 + d + WORD_FADE + 0.2;
     }
-    this.later(t - 1, () => {
+    // (el vacío se saca con el negro ya cerrado: antes se sacaba cuando el último
+    // fundido recién arrancaba, y por un momento se veía el cielo de atrás sin los
+    // caballeros. globalThis.__mduNoKnightsCut = true: como antes)
+    this.later(globalThis.__mduNoKnightsCut === true ? t - 1 : t - 0.05, () => {
       this.cardEl.style.color = '';
       this.cam = null;
       this.hideVoid();
@@ -2420,6 +2603,11 @@ export default class CastleEnding extends CastleCine {
     const T = this.T;
     const knights = KNIGHT_GLOW.map((c, i) => {
       const id = 40 + i;
+      // (cuánto brilla: los colores claros, viento y rayo, lavaban la pantalla
+      // al doble que el fuego; un poco menos todos y parejos por el brillo del
+      // color. El usuario, 2026-10-05; globalThis.__mduNoKnightDim: como antes)
+      const cc = new THREE.Color(c);
+      const dim = globalThis.__mduNoKnightDim === true ? 1 : 0.85 * Math.min(1, 0.65 / (0.2126 * cc.r + 0.7152 * cc.g + 0.0722 * cc.b));
       const r = { id, name: '', noTag: true, pos: O.clone(), yaw: 0, pitch: 0.05, speed: 0, moving: false };
       people.add(r);
       shells.add(r);
@@ -2430,23 +2618,26 @@ export default class CastleEnding extends CastleCine {
         m.depthWrite = false;
         if (m.emissive) {
           m.emissive.set(c);
-          m.emissiveIntensity = 0.5;
+          m.emissiveIntensity = 0.5 * dim;
         }
       }
       av.M.poncho.color.set(c);
       if (av.tag) av.tag.visible = false;
+      // en la mano, el mate de la luz de su elemento (no el de siempre)
+      knightMate(people, av, MATE_OF[ELEMENTS[i]]);
       // el borde de luz (el mismo cuerpo, con la luz de ánima)
       const sh = shells.list.get(id);
       sh.tag.visible = false;
       const shK = { value: 0 };
       const shMat = aniMat(T, { color: c, rim: 0xffffff, base: 0.05, rimK: 1.2, edge: 0.01, k: shK, wave: 0 });
+      shells.setGun(sh, MATE_OF[ELEMENTS[i]], 1);
       sh.group.traverse((o) => {
         if (o.isMesh) o.material = shMat;
       });
       // (el borde va sobre el cuerpo nuevo: antes era el de piezas y se veían los
       // dos; liso, brilla más que el de cajas: más bajo)
       animaSkin(sh, aniMat(T, { color: c, rim: 0xffffff, base: 0.03, rimK: 0.45, edge: 0.01, k: shK, wave: 0 }));
-      const K = { r, av, shell: sh, shK, M: av.M, c, k: 0, on: false, lift: 0, el: ELEMENTS[i], rgb: ELEM_RGB[ELEMENTS[i]], boltT: 1 };
+      const K = { r, av, shell: sh, shK, M: av.M, c, k: 0, on: false, lift: 0, el: ELEMENTS[i], rgb: ELEM_RGB[ELEMENTS[i]], boltT: 1, dim };
       r.poseFn = (P) => {
         if (K.lift <= 0) return;
         const u = smooth(K.lift);
@@ -2499,8 +2690,10 @@ export default class CastleEnding extends CastleCine {
       K.k = 0;
       K.lift = 0;
       K.r.pos.set(O.x + (row ? [-2.4, -0.8, 0.8, 2.4][n] : 0), O.y, O.z + (row ? [0.3, 0, 0, 0.3][n] : 0));
-      // (mira a la cámara, un poquito de costado)
-      K.r.yaw = row ? [0.12, 0.04, -0.04, -0.12][n] : 0.1;
+      // (mira a la cámara, un poquito de costado: el muñeco mira a -z con
+      // giro 0 y la cámara está en +z; antes se los veía de espaldas, y de
+      // humo no se notaba: "no tienen boca", el usuario, 2026-10-03)
+      K.r.yaw = Math.PI + (row ? [0.12, 0.04, -0.04, -0.12][n] : 0.1);
       K.pool.position.set(K.r.pos.x - O.x, 0.012 + n * 0.001, K.r.pos.z - O.z);
       K.seal.position.set(K.r.pos.x - O.x, 0.02, K.r.pos.z - O.z);
       K.seal.rotation.y = row ? (n / 4) * Math.PI * 2 : 0;
@@ -2549,6 +2742,16 @@ export default class CastleEnding extends CastleCine {
     this.T.value += dt;
     V.people.update(dt);
     V.shells.update(dt);
+    // los cuerpos animados en Blender (ui/castleClips.js), el cuerpo y su
+    // borde juntos: hablando cada uno con su carácter, después el mate en alto
+    const C = (V.clips ||= new CastleClips());
+    V.knights.forEach((K, n) => {
+      const talking = K.talk || K.k < 0.6 || (K.mouth && K.mouth.t < K.mouth.dur + 0.3);
+      // (al aparecer, ya en su clip: sin mezclar con la pose de antes, de otro lugar)
+      if (K.on) C.act(K.r, [K.av, K.shell], `${V.row || !talking ? 'raise' : 'talk'}${personaLetter(n)}`, { fade: K.k < 0.05 ? 0 : 0.6, t: n * 0.37, restart: K.k < 0.05 && K.r.cc?.at !== C.now });
+      else if (K.k < 0.001) C.release(K.r, 0, [K.av, K.shell]);
+    });
+    C.update(dt);
     for (const K of V.knights) uprightMate(K.av, smooth(K.lift), K.r.yaw);
     this.noFog();
     let any = 0;
@@ -2563,19 +2766,26 @@ export default class CastleEnding extends CastleCine {
       }
       K.av.group.visible = vis;
       K.shell.group.visible = vis;
-      K.shK.value = K.k * (0.9 + Math.sin(t * 1.7 + n) * 0.1);
+      // la boca (se arma cuando el cuerpo de verdad ya está) y lo que dice
+      if (!K.mouth && vis) K.mouth = knightMouth(K.av, this.root, { eyes: true });
+      if (K.mouth && K.talk) {
+        K.mouth.talk(K.talk.secs - (t - K.talk.at));
+        K.talk = null;
+      }
+      K.mouth?.update(dt, K.k * 0.9);
+      K.shK.value = K.k * K.dim * (0.9 + Math.sin(t * 1.7 + n) * 0.1);
       K.glow.visible = vis;
       K.halo.visible = vis;
-      K.pool.material.opacity = K.k * (V.row ? 0.28 : 0.45) * (0.9 + Math.sin(t * 1.9 + n) * 0.1);
+      K.pool.material.opacity = K.k * K.dim * (V.row ? 0.28 : 0.45) * (0.9 + Math.sin(t * 1.9 + n) * 0.1);
       K.seal.material.opacity = K.k * 0.55;
       K.seal.rotation.y += dt * 0.25;
       if (!vis) return;
       // (la mano recién puesta: la del dibujo se actualiza recién al dibujar)
       K.glow.position.setFromMatrixPosition(K.av.mats[6]);
-      K.glow.material.opacity = K.k * (0.35 + K.lift * 0.65) * (0.85 + Math.sin(t * 7 + n) * 0.15);
+      K.glow.material.opacity = K.k * K.dim * (0.35 + K.lift * 0.65) * (0.85 + Math.sin(t * 7 + n) * 0.15);
       K.glow.scale.setScalar(0.5 + K.lift * 0.7);
       K.halo.position.set(K.r.pos.x, K.r.pos.y + 1.2, K.r.pos.z - 0.6);
-      K.halo.material.opacity = K.k * (V.row ? 0.22 : 0.32) * (0.9 + Math.sin(t * 1.3 + n) * 0.1) * (1 + (K.zap || 0));
+      K.halo.material.opacity = K.k * K.dim * (V.row ? 0.22 : 0.32) * (0.9 + Math.sin(t * 1.3 + n) * 0.1) * (1 + (K.zap || 0));
       K.zap = Math.max(0, (K.zap || 0) - dt * 4);
       // chispitas de su color que suben
       if (Math.random() < dt * (V.row ? 5 : 12)) g.fx.sparkle(tmpV.set(K.r.pos.x + rnd() * 1.1, K.r.pos.y + Math.random() * 1.9, K.r.pos.z + rnd() * 0.6), KNIGHT_RGB[n], 1, 0.25);
@@ -2651,6 +2861,9 @@ export default class CastleEnding extends CastleCine {
     for (const [o, m] of this.dSaved || []) o.material = m;
     this.dSaved = null;
     if (this.D && Object.prototype.hasOwnProperty.call(this.D, 'posePoints')) delete this.D.posePoints;
+    if (this.D) this.D.bowK = this.D.rearK = 0;
+    if (this.D) this.D.floorY = null;
+    this.D?.spreadWings?.(0);
     // las luces del Éter como estaban
     for (const S of this.L || []) {
       S.l.color.copy(S.c);
@@ -2672,6 +2885,7 @@ export default class CastleEnding extends CastleCine {
       for (const K of this.void.knights) {
         K.glow.removeFromParent();
         K.halo.removeFromParent();
+        K.mouth?.dispose();
       }
       this.void.root.removeFromParent();
       this.void = null;

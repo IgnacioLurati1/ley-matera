@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ZONES } from '../config/map';
+import SliceWalk from './sliceWalk';
 
 // El agua de los mapas que la tienen (el río del penal, los esteros): una sola
 // superficie a la altura `level` que sigue a la cámara. Lo que tiene:
@@ -23,17 +24,31 @@ import { ZONES } from '../config/map';
 
 // Lo que cambia con la calidad: la grilla de las ondas (texeles y metros que
 // cubre alrededor de la cámara) y el espejo (fracción de la pantalla; 0 = sin
-// espejo, refleja el cielo).
+// espejo, refleja el cielo). El espejo dibuja la escena otra vez: solo en
+// Ultra y Épica (en Alta costaba de más en las placas medianas)
 const TIER = {
   perf: { sim: 128, span: 36, refl: 0 },
   low: { sim: 192, span: 44, refl: 0 },
   medium: { sim: 256, span: 52, refl: 0 },
-  high: { sim: 320, span: 60, refl: 0.35 },
+  high: { sim: 320, span: 60, refl: 0 },
   ultra: { sim: 448, span: 64, refl: 0.5 },
   epic: { sim: 512, span: 64, refl: 0.5 },
 };
 // la simulación avanza a paso fijo (a cualquier cantidad de cuadros)
 const STEP = 1 / 60;
+// el espejo se rehace a lo sumo cada REFL_MS ms (~45 por segundo; con 60 fps,
+// cada cuadro): la textura se mira con la cámara con la que se dibujó, así que
+// al girar el reflejo queda en su lugar; en el muelle del penal a 12 ms era un
+// dibujo entero de la escena cada dos cuadros
+// (globalThis.__mduRefl12: el de antes)
+const REFL_MS = 22;
+// y solo si el agua se ve de verdad: una consulta de oclusión en el dibujo del
+// agua (WebGL2) dice si pasó algún píxel. Tapada por el pajonal, la tierra o
+// las paredes OCC_HIDE resultados seguidos, no se rehace (va el reflejo barato,
+// que tampoco se ve); un resultado con agua a la vista lo vuelve a prender.
+const OCC_HIDE = 6;
+// (sin resultado nuevo en este rato, cuenta como visible)
+const OCC_STALE = 150;
 // ondas nuevas por paso (las más cercanas a la cámara)
 const IMP = 48;
 const BOILS = 6;
@@ -71,6 +86,85 @@ const tmpQ = new THREE.Vector4();
 const tmpS = new THREE.Vector2();
 const tmpCol = new THREE.Color();
 const tmpSph = new THREE.Sphere();
+const tmpQ2 = new THREE.Vector4();
+const tmpM = new THREE.Matrix4();
+const tmpR = { x0: 0, x1: 0, y0: 0, y1: 0 };
+// objetos de la escena que revisa cullList por cuadro (fx/sliceWalk.js)
+const CULL_N = 300;
+// las matas bajas del pasto (cuadros instanciados con material userData.foliage)
+// van en el espejo solo hasta tantos metros del borde del cuadro: más lejos su
+// reflejo queda detrás de la orilla o es una raya en el agua movida, y en el
+// estero eran ~2 millones de triángulos por espejo (globalThis.__mduAllMirror
+// para comparar)
+const MIRROR_FOL = 12;
+
+// El espejo solo para el agua de cerca (la idea del usuario, 2026-10-02): el
+// recorte de la imagen donde cae el agua hasta donde la niebla la tapa (99%, o
+// la distancia de dibujo de Épica), en casilleros de CELL m. Lo de afuera del
+// recorte no se dibuja en el espejo (menos dibujos y menos píxeles) y el agua
+// que cae ahí (la del fondo) refleja el cielo, como el reflejo barato. Sin agua
+// cerca, no hay espejo. (globalThis.__mduNoReflRect: la imagen entera, como antes)
+const CELL = 4;
+// la niebla al 99%: densidad x distancia
+const FOG_END = 2.2;
+// el agua más lejos que esto nunca entra (casi sin niebla)
+const RECT_MAX = 120;
+// margen (en la imagen, de -1 a 1) de los lados recortados: las ondas corren el reflejo
+const RECT_PAD = 0.12;
+const RECT_FULL = { x0: -1, x1: 1, y0: -1, y1: 1 };
+// Y solo donde el agua se ve de verdad (2026-10-04, el usuario: parado en la
+// tranquera de la Laguna del Irupé mirando al campamento, 175→140 fps): el
+// recorte de arriba cuenta toda el agua cercana aunque la tapen el pajonal o la
+// barranca, y el espejo se hacía de punta a punta por una rayita de riacho entre
+// las matas. En el dibujo del mundo, después de lo opaco y antes del agua, un
+// plano al nivel del agua (sin color ni profundidad) se prueba por franjas de la
+// pantalla (STRIP_X columnas y STRIP_Y filas, consultas de oclusión): el recorte
+// se achica a las franjas donde se ve agua (en el espejo la imagen va dada
+// vuelta de costado), y si no se ve en ninguna, no hay espejo. Las consultas
+// vuelven 1-2 cuadros después: si la cámara giró más de 4° o anduvo más de
+// STRIP_MOVE desde que se preguntó, el recorte de siempre.
+// (globalThis.__mduNoWaterStrips: como antes)
+const STRIP_X = 8;
+const STRIP_Y = 6;
+const STRIP_TURN = Math.cos((4 * Math.PI) / 180);
+const STRIP_MOVE = 0.5;
+const STRIP_OLD = 200;
+const tmpA = new THREE.Vector3();
+const tmpB = new THREE.Vector3();
+const tmpR2 = { x0: 0, x1: 0, y0: 0, y1: 0 };
+// la mitad de la lista de three para el espejo partido (Water.reflect part 1/2):
+// por programa (lo que comparte programa va en la misma mitad: las luces y lo
+// del material se suben una vez, no en las dos); sin programa todavía, por objeto
+// (globalThis.__mduReflSplitBy 'obj' | 'mat': para comparar)
+function splitList(L, part, renderer) {
+  const keep = part === 1 ? 0 : 1;
+  const by = globalThis.__mduReflSplitBy;
+  const A = L.opaque;
+  let n = 0;
+  for (let i = 0; i < A.length; i++) {
+    const it = A[i];
+    let k = it.object.id;
+    if (by === 'mat') k = it.material.id;
+    else if (by !== 'obj') {
+      const pr = renderer.properties.get(it.material).currentProgram;
+      k = pr ? pr.id : it.material.id;
+    }
+    // (la pasada de profundidad del pasto, siempre en la primera; lo que se
+    // dibuja sobre ella sin escribir profundidad, siempre en la segunda: si
+    // no, el color iba sin su profundidad y se sombreaba cada capa)
+    const m = it.material;
+    const side = m.colorWrite === false ? 0 : m.depthWrite === false ? 1 : k & 1;
+    if (side === keep) A[n++] = it;
+  }
+  A.length = n;
+  if (part === 1) {
+    L.transmissive.length = 0;
+    L.transparent.length = 0;
+  }
+}
+const SLOW_CELLS = 4;
+const SLOW_MOVE = 0.15;
+const SLOW_TURN = Math.cos((1 * Math.PI) / 180);
 
 // Un disco de anillos cada vez más separados: denso al lado de la cámara (el
 // oleaje se ve bien de cerca) y grueso a lo lejos.
@@ -206,6 +300,8 @@ const FS_HEAD = `
   uniform vec2 uFlowA, uFlowB, uSimO, uDN;
   uniform sampler2D tDet, tSim, tDepth, tRefl;
   uniform samplerCube tSky;
+  uniform vec2 uReflScale;
+  uniform vec4 uReflCut;
   uniform mat4 uReflMat;
   uniform vec4 uBoil[${BOILS}];
   uniform int uBoilN;
@@ -323,7 +419,11 @@ const FS_REFL = `
     if (uPlanar > 0.5) {
       vec4 rp = uReflMat * vec4(wP.x, uLevel, wP.y, 1.0);
       vec2 ruv = rp.xy / max(rp.w, 1e-4) + wG * uDistort / (1.0 + wDist * 0.05);
-      wRefl = texture2D(tRefl, clamp(ruv, vec2(0.002), vec2(0.998))).rgb;
+      wRefl = texture2D(tRefl, clamp(ruv, vec2(0.002), vec2(0.998)) * uReflScale).rgb;
+      // afuera del recorte del espejo (el agua del fondo: waterRect), el cielo
+      vec4 wE = vec4(ruv.x, 1.0 - ruv.x, ruv.y, 1.0 - ruv.y) + (1.0 - uReflCut) * 9.0;
+      float wIn = smoothstep(-0.01, 0.03, min(min(wE.x, wE.y), min(wE.z, wE.w)));
+      if (wIn < 1.0) wRefl = mix(textureCube(tSky, vec3(wR.x, max(wR.y, 0.02), wR.z)).rgb * (1.0 - wDt.g * 0.9), wRefl, wIn);
     } else wRefl = textureCube(tSky, vec3(wR.x, max(wR.y, 0.02), wR.z)).rgb * (1.0 - wDt.g * 0.9);
     radiance = wRefl;
   }`;
@@ -440,6 +540,8 @@ export default class Water {
       uClear: { value: clear },
       tRefl: { value: null },
       uReflMat: { value: new THREE.Matrix4() },
+      uReflScale: { value: new THREE.Vector2(1, 1) },
+      uReflCut: { value: new THREE.Vector4() },
       uPlanar: { value: 0 },
       uDistort: { value: 0.06 },
       tSky: { value: null },
@@ -496,8 +598,171 @@ export default class Water {
       // (ya pasó antes del mundo, prerender: acá queda el cielo del reflejo barato)
       if (this.pre === camera) this.skyNested(renderer, scene, camera);
       else this.frame(renderer, scene, camera);
+      if (camera === this.g.camera) this.occBegin(renderer);
     };
+    mesh.onAfterRender = () => this.occEnd();
     this.mesh = mesh;
+    this.strips = this.makeStrips();
+  }
+
+  // ---------------- dónde se ve el agua (STRIP_X/STRIP_Y) ----------------
+  // El plano de prueba va de hijo del agua (la sigue y en el espejo no está) y se
+  // dibuja con la cámara de los ojos: la primera franja con el dibujo de three
+  // (programa y vértices quedan puestos) y las demás repitiendo ese dibujo con
+  // otra tijera. Después, la tijera del destino como la dejó three.
+  makeStrips() {
+    if (typeof WebGL2RenderingContext === 'undefined') return null;
+    const geo = new THREE.PlaneGeometry(RECT_MAX * 2, RECT_MAX * 2);
+    geo.rotateX(-Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true, side: THREE.DoubleSide, forceSinglePass: true, fog: false });
+    const m = new THREE.Mesh(geo, mat);
+    m.name = 'water:strips';
+    m.position.y = 0.02;
+    m.frustumCulled = false;
+    // (antes que el agua, que escribe profundidad con su oleaje)
+    m.renderOrder = -2;
+    m.castShadow = false;
+    m.receiveShadow = false;
+    m.userData.reflect = false;
+    m.raycast = () => {};
+    const N = STRIP_X + STRIP_Y;
+    const S = { mesh: m, gl: null, q: new Array(N).fill(null), open: false, pending: false, vp: [0, 0, 1, 1], at: new THREE.Vector3(), dir: new THREE.Vector3(), rAt: new THREE.Vector3(), rDir: new THREE.Vector3(), when: 0, valid: false, rect: null, none: 0 };
+    const cut = (gl, i) => {
+      const [x, y, w, h] = S.vp;
+      if (i < STRIP_X) {
+        const a = Math.floor((i * w) / STRIP_X);
+        gl.scissor(x + a, y, Math.floor(((i + 1) * w) / STRIP_X) - a, h);
+      } else {
+        const j = i - STRIP_X;
+        const a = Math.floor((j * h) / STRIP_Y);
+        gl.scissor(x, y + a, w, Math.floor(((j + 1) * h) / STRIP_Y) - a);
+      }
+    };
+    m.onBeforeRender = (renderer, scene, camera, g2) => {
+      const rt = renderer.getRenderTarget();
+      const ask = camera === this.g.camera && !S.pending && rt !== null && !!this.tier?.refl && globalThis.__mduNoWaterStrips !== true;
+      g2.setDrawRange(0, ask ? Infinity : 0);
+      if (!ask) return;
+      const gl = (S.gl ||= renderer.getContext());
+      const v = rt.viewport;
+      S.vp[0] = v.x;
+      S.vp[1] = v.y;
+      S.vp[2] = v.z;
+      S.vp[3] = v.w;
+      S.at.setFromMatrixPosition(camera.matrixWorld);
+      S.dir.set(0, 0, -1).transformDirection(camera.matrixWorld);
+      S.open = true;
+      S.pending = true;
+      gl.enable(gl.SCISSOR_TEST);
+      cut(gl, 0);
+      S.q[0] = gl.createQuery();
+      gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, S.q[0]);
+    };
+    m.onAfterRender = (renderer) => {
+      if (!S.open) return;
+      S.open = false;
+      const gl = S.gl;
+      gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
+      for (let i = 1; i < N; i++) {
+        cut(gl, i);
+        S.q[i] = gl.createQuery();
+        gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, S.q[i]);
+        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
+      }
+      // (la tijera como la tiene three: la del destino)
+      const rt = renderer.getRenderTarget();
+      const s = rt.scissor;
+      gl.scissor(s.x, s.y, s.z, s.w);
+      if (!rt.scissorTest) gl.disable(gl.SCISSOR_TEST);
+    };
+    this.mesh.add(m);
+    return S;
+  }
+
+  // Las respuestas de la última tanda (si ya volvieron todas): en qué columnas y
+  // filas se vio agua, como recorte de -1 a 1 en la imagen de los ojos.
+  stripRead() {
+    const S = this.strips;
+    if (!S || !S.pending || S.open) return;
+    const gl = S.gl;
+    for (const q of S.q) if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) return;
+    let c0 = Infinity;
+    let c1 = -Infinity;
+    let r0 = Infinity;
+    let r1 = -Infinity;
+    for (let i = 0; i < S.q.length; i++) {
+      const vis = gl.getQueryParameter(S.q[i], gl.QUERY_RESULT);
+      gl.deleteQuery(S.q[i]);
+      S.q[i] = null;
+      if (!vis) continue;
+      if (i < STRIP_X) {
+        c0 = Math.min(c0, i);
+        c1 = Math.max(c1, i);
+      } else {
+        r0 = Math.min(r0, i - STRIP_X);
+        r1 = Math.max(r1, i - STRIP_X);
+      }
+    }
+    S.pending = false;
+    S.valid = true;
+    S.when = performance.now();
+    S.rAt.copy(S.at);
+    S.rDir.copy(S.dir);
+    if (c0 > c1 || r0 > r1) {
+      S.rect = null;
+      S.none++;
+    } else {
+      S.none = 0;
+      S.rect = { x0: -1 + (2 * c0) / STRIP_X, x1: -1 + (2 * (c1 + 1)) / STRIP_X, y0: -1 + (2 * r0) / STRIP_Y, y1: -1 + (2 * (r1 + 1)) / STRIP_Y };
+    }
+  }
+
+  // ¿El espejo puede ir a la mitad de seguido (REFL_MS x 2, ~22 por segundo)?
+  // Solo con la cámara quieta desde el espejo anterior (menos de SLOW_MOVE m y
+  // SLOW_TURN) y el agua a la vista en SLOW_CELLS casilleros de franjas o menos
+  // (columnas x filas): parado en la tranquera de la laguna, el charco de la
+  // isleta asoma entre las matas y el espejo entero cada 4 cuadros era lo que
+  // hacía perder el vsync. En movimiento, como siempre.
+  // (globalThis.__mduNoReflSlow: siempre a REFL_MS)
+  stripSlow(camera) {
+    const S = this.strips;
+    if (!S || !S.valid || !S.rect || !S.mAt || globalThis.__mduNoReflSlow === true || globalThis.__mduNoWaterStrips === true) return false;
+    const R = S.rect;
+    const cells = Math.round(((R.x1 - R.x0) * STRIP_X) / 2) * Math.round(((R.y1 - R.y0) * STRIP_Y) / 2);
+    if (cells > SLOW_CELLS || performance.now() - S.when > STRIP_OLD) return false;
+    tmpA.set(0, 0, -1).transformDirection(camera.matrixWorld);
+    tmpB.setFromMatrixPosition(camera.matrixWorld);
+    return tmpA.dot(S.mDir) >= SLOW_TURN && tmpB.distanceToSquared(S.mAt) <= SLOW_MOVE * SLOW_MOVE;
+  }
+
+  // dónde estaba la cámara en el último espejo (stripSlow)
+  stripMark(camera) {
+    const S = this.strips;
+    if (!S) return;
+    (S.mAt ||= new THREE.Vector3()).setFromMatrixPosition(camera.matrixWorld);
+    (S.mDir ||= new THREE.Vector3()).set(0, 0, -1).transformDirection(camera.matrixWorld);
+  }
+
+  // El recorte del espejo (rc) achicado a donde se vio agua; null: no se ve agua.
+  stripCut(rc, camera) {
+    const S = this.strips;
+    if (!S || !S.valid || globalThis.__mduNoWaterStrips === true) return rc;
+    tmpA.set(0, 0, -1).transformDirection(camera.matrixWorld);
+    tmpB.setFromMatrixPosition(camera.matrixWorld);
+    if (tmpA.dot(S.rDir) < STRIP_TURN || tmpB.distanceToSquared(S.rAt) > STRIP_MOVE * STRIP_MOVE || performance.now() - S.when > STRIP_OLD) return rc;
+    if (!S.rect) return S.none >= 3 ? null : rc;
+    // (en el espejo, dada vuelta de costado; con el margen de las ondas)
+    const x0 = Math.max(rc.x0, -S.rect.x1 - RECT_PAD);
+    const x1 = Math.min(rc.x1, -S.rect.x0 + RECT_PAD);
+    const y0 = Math.max(rc.y0, S.rect.y0 - RECT_PAD);
+    const y1 = Math.min(rc.y1, S.rect.y1 + RECT_PAD);
+    if (x0 >= x1 || y0 >= y1) return rc;
+    tmpR2.x0 = x0;
+    tmpR2.x1 = x1;
+    tmpR2.y0 = y0;
+    tmpR2.y1 = y1;
+    return tmpR2;
   }
 
   // ---------------- profundidad ----------------
@@ -959,17 +1224,37 @@ export default class Water {
     }
     // el espejo solo si se ve agua: bajo techo (la creciente adentro de las
     // casas) o mirando al cielo va el reflejo barato
+    // (dónde se vio agua en el dibujo anterior: makeStrips)
+    this.stripRead();
     const zn = this.g.world?.zoneAt(tmpC.x, tmpC.z, tmpC.y);
     const indoor = !!zn && !!ZONES[zn] && !ZONES[zn].outdoor;
-    if (this.tier.refl > 0 && tmpC.y > this.level + 0.05 && !indoor && this.seesWater(camera, tmpC)) {
-      this.cullT = (this.cullT || 0) - dt;
-      if (this.cullT <= 0) {
-        this.cullT = 1;
-        this.cullList(scene, tmpC);
+    if (this.tier.refl > 0 && tmpC.y > this.level + 0.05 && !indoor && this.seesWater(camera, tmpC) && !this.occHidden(renderer)) {
+      // con muchos fps el espejo se rehace un cuadro sí y otro no: es un
+      // dibujo entero de la escena (en Épica ~2,4 ms mirando el penal desde el
+      // muelle) y en el agua movida no se nota; recién vuelto a ver el agua, ya
+      const t = performance.now();
+      // (medio cuadro de margen: el que llegaría tarde va en este)
+      // (con la cámara quieta y el agua a la vista en pocas franjas, la mitad de
+      // seguido: stripSlow)
+      const every = globalThis.__mduRefl12 === true ? 12 : (REFL_MS - dt * 500) * (this.stripSlow(camera) ? 2 : 1);
+      let on = true;
+      // (la segunda mitad del espejo partido; partido solo si el anterior está
+      // y sobran cuadros: con menos de ~90 por segundo, entero como siempre)
+      if (this.job?.on && u.uPlanar.value === 1) this.reflect(renderer, scene, null, 2);
+      else if (u.uPlanar.value === 0 || t - (this.reflAt || 0) >= every) {
+        const rc = this.mirrorCam(camera);
+        if (rc) {
+          this.reflAt = t;
+          this.stripMark(camera);
+          // (de a tajadas por cuadro; la primera vez, entera)
+          this.cullList(scene, tmpC, this.hide ? CULL_N : Infinity);
+          const split = u.uPlanar.value === 1 && dt < REFL_MS / 2000 && globalThis.__mduNoReflSplit !== true;
+          this.reflect(renderer, scene, rc, split ? 1 : 0);
+        } else on = false;
       }
-      this.reflect(renderer, scene, camera);
-      u.uPlanar.value = 1;
+      u.uPlanar.value = on ? 1 : 0;
     } else u.uPlanar.value = 0;
+    if (u.uPlanar.value === 0 && this.job) this.job.on = false;
     renderer.setRenderTarget(cur);
     this.busy = false;
   }
@@ -1000,6 +1285,41 @@ export default class Water {
   }
 
   // ¿Algún rayo de abajo de la pantalla llega al agua antes del fondo de la vista?
+  // La consulta de oclusión del dibujo del agua (una a la vez: hasta que vuelve
+  // la anterior no se larga otra).
+  occBegin(renderer) {
+    const gl = renderer.getContext();
+    if (typeof WebGL2RenderingContext === 'undefined' || !(gl instanceof WebGL2RenderingContext)) return;
+    const O = (this.occ ||= { gl, q: null, open: false, hid: 0, at: 0 });
+    if (O.q) return;
+    O.q = gl.createQuery();
+    O.open = true;
+    gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, O.q);
+  }
+
+  occEnd() {
+    const O = this.occ;
+    if (!O?.open) return;
+    O.open = false;
+    O.gl.endQuery(O.gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
+  }
+
+  // ¿El agua quedó tapada los últimos OCC_HIDE resultados?
+  occHidden() {
+    const O = this.occ;
+    if (!O || globalThis.__mduNoWaterOcc === true) return false;
+    const gl = O.gl;
+    const now = performance.now();
+    if (O.q && !O.open && gl.getQueryParameter(O.q, gl.QUERY_RESULT_AVAILABLE)) {
+      const seen = gl.getQueryParameter(O.q, gl.QUERY_RESULT);
+      gl.deleteQuery(O.q);
+      O.q = null;
+      O.at = now;
+      O.hid = seen ? 0 : O.hid + 1;
+    }
+    return O.hid >= OCC_HIDE && now - O.at < OCC_STALE;
+  }
+
   seesWater(camera, cp) {
     const h = cp.y - this.level;
     for (let i = -1; i <= 1; i++) {
@@ -1060,9 +1380,12 @@ export default class Water {
   setTier(renderer) {
     // (Personalizada: Game.tier('water'))
     const key = this.g.tier?.('water') || this.g.settings?.quality || 'medium';
-    if (key === this.tierKey) return;
-    this.tierKey = key;
-    const T = (this.tier = TIER[key] || TIER.medium);
+    // (y lo del mapa: la resolución del espejo, Game.mapGfx refl)
+    const refl = this.g.mapGfx?.()?.refl;
+    const tk = refl != null ? `${key}:${refl}` : key;
+    if (tk === this.tierKey) return;
+    this.tierKey = tk;
+    const T = (this.tier = refl != null ? { ...(TIER[key] || TIER.medium), refl } : TIER[key] || TIER.medium);
     for (const rt of this.simRT || []) rt.dispose();
     const opt = { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false };
     this.simRT = [new THREE.WebGLRenderTarget(T.sim, T.sim, opt), new THREE.WebGLRenderTarget(T.sim, T.sim, opt)];
@@ -1111,6 +1434,9 @@ export default class Water {
     if (!T.refl) {
       this.reflRT?.dispose();
       this.reflRT = null;
+      this.reflBack?.dispose();
+      this.reflBack = null;
+      if (this.job) this.job.on = false;
     }
   }
 
@@ -1192,28 +1518,54 @@ export default class Water {
       this.u.tSky.value = this.cube.texture;
     }
     const w = this.g.world;
-    for (const o of [w?.sky, w?.moonSprite, w?.moonHalo, w?.sunSprite]) o?.layers.enable(SKY_LAYER);
+    // una escena con solo el cielo, la luna, su halo y el sol: con la del mapa
+    // se recorría todo seis veces (una por cara) para dibujar solo esto. Se
+    // prestan sin cambiarles el padre (las matrices ya están del cuadro)
+    const S = (this.skyScene ||= new THREE.Scene());
+    S.matrixWorldAutoUpdate = false;
+    S.fog = scene.fog;
+    S.background = scene.background;
+    S.children.length = 0;
+    for (const o of [w?.sky, w?.moonSprite, w?.moonHalo, w?.sunSprite]) {
+      if (!o) continue;
+      o.layers.enable(SKY_LAYER);
+      let p = o;
+      while (p.visible && p.parent) p = p.parent;
+      if (p.visible && p === scene) S.children.push(o);
+    }
     this.cubeCam.position.set(cp.x, this.level + 1, cp.z);
     this.cubeCam.updateMatrixWorld();
-    this.cubeCam.update(renderer, scene);
+    this.cubeCam.update(renderer, S);
+    S.children.length = 0;
   }
 
   // Lo que el espejo no dibuja (se revisa cada tanto: aparecen cosas nuevas):
   // lo de adentro de los edificios (se vería apenas por una puerta), lo que
   // quedó abajo del agua y lo chiquito que está lejos. Los instanciados
   // (muertos, juncos, piedras) sí. userData.reflect true/false lo fuerza.
-  cullList(scene, cp) {
-    const L = (this.hide ||= []);
-    L.length = 0;
+  // (de a tajadas por cuadro, fx/sliceWalk.js: la lista nueva se arma en
+  // hideNext y reemplaza a la de uso al terminar una vuelta)
+  cullList(scene, cp, n = CULL_N) {
+    const N = (this.hideNext ||= []);
     const w = this.g.world;
     const lv = this.level;
-    scene.traverse((o) => {
-      if (!o.isMesh || o === this.mesh || o.userData.reflect === true) return;
+    const walk = (this.cullWalk ||= new SliceWalk());
+    const done = walk.step([scene], (o) => {
+      if (o === this.mesh || o.userData.reflect === true) return;
+      // (userData.reflect false: también puntos, como las motas de los haces)
       if (o.userData.reflect === false) {
-        L.push(o);
+        if (o.isMesh || o.isPoints) N.push(o);
         return;
       }
-      if (o.isInstancedMesh) return;
+      if (!o.isMesh) return;
+      if (o.isInstancedMesh) {
+        if (o.material?.userData?.foliage && globalThis.__mduAllMirror !== true) {
+          if (!o.boundingSphere) o.computeBoundingSphere();
+          const s = tmpSph.copy(o.boundingSphere).applyMatrix4(o.matrixWorld);
+          if (s.center.distanceTo(cp) - s.radius > MIRROR_FOL) N.push(o);
+        }
+        return;
+      }
       const geo = o.geometry;
       if (!geo?.attributes?.position) return;
       if (!geo.boundingSphere) geo.computeBoundingSphere();
@@ -1221,17 +1573,22 @@ export default class Water {
       if (s.radius > 6) return;
       const c = s.center;
       if (c.y + s.radius < lv) {
-        L.push(o);
+        N.push(o);
         return;
       }
       const zn = w?.zoneAt(c.x, c.z, c.y);
       // (lo chico solo de cerca: cada pieza suelta es una llamada más de
       // dibujo y en el reflejo movido no se distingue)
       const d2 = c.distanceToSquared(cp);
-      if ((zn && ZONES[zn] && !ZONES[zn].outdoor) || (s.radius < 0.35 && d2 > 100) || (s.radius < 1 && d2 > 144)) L.push(o);
+      if ((zn && ZONES[zn] && !ZONES[zn].outdoor) || (s.radius < 0.35 && d2 > 100) || (s.radius < 1 && d2 > 144)) N.push(o);
       // lo bajo y lejos de la orilla queda tapado por la barranca en el reflejo
-      else if (c.y + s.radius < lv + 5 && !this.nearWater(c.x, c.z, 7 + s.radius)) L.push(o);
-    });
+      else if (c.y + s.radius < lv + 5 && !this.nearWater(c.x, c.z, 7 + s.radius)) N.push(o);
+    }, n);
+    if (!done) return;
+    // la vuelta terminó: la lista nueva pasa a ser la de uso
+    this.hideNext = this.hide || [];
+    this.hideNext.length = 0;
+    this.hide = N;
   }
 
   nearWater(x, z, r) {
@@ -1245,14 +1602,9 @@ export default class Water {
 
   // El espejo: la escena desde la cámara reflejada en el agua, cortada en el
   // nivel del agua (como el Reflector de three).
-  reflect(renderer, scene, camera) {
-    const size = renderer.getDrawingBufferSize(tmpS);
-    const w = Math.max(16, Math.floor(size.x * this.tier.refl));
-    const h = Math.max(16, Math.floor(size.y * this.tier.refl));
-    if (!this.reflRT) {
-      this.reflRT = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
-      this.u.tRefl.value = this.reflRT.texture;
-    } else if (this.reflRT.width !== w || this.reflRT.height !== h) this.reflRT.setSize(w, h);
+  // La cámara del espejo y el recorte de su imagen donde cae el agua de cerca
+  // (waterRect); null: no hay agua cerca a la vista.
+  mirrorCam(camera) {
     const mc = (this.mirror ||= new THREE.PerspectiveCamera());
     const lv = this.level;
     tmpC.setFromMatrixPosition(camera.matrixWorld);
@@ -1267,18 +1619,192 @@ export default class Water {
     mc.layers.mask = camera.layers.mask;
     mc.updateMatrixWorld();
     mc.projectionMatrix.copy(camera.projectionMatrix);
-    this.u.uReflMat.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1).multiply(mc.projectionMatrix).multiply(mc.matrixWorldInverse);
+    const rc = globalThis.__mduNoReflRect === true ? RECT_FULL : this.waterRect(mc, tmpC);
+    return rc && this.stripCut(rc, camera);
+  }
+
+  // Los casilleros de agua [x, z, hondura con el nivel de siempre] (la más
+  // honda de cinco puntos), del mapa y RECT_MAX m alrededor (afuera sigue la
+  // hondura del borde). Una vez; con la creciente se mira el nivel de ahora.
+  waterCells() {
+    if (this.cells) return this.cells;
+    const D = this.D;
+    const raw = (x, z) => {
+      const fx = Math.max(0, Math.min(D.nx - 1.001, (x - D.x0) / D.res));
+      const fz = Math.max(0, Math.min(D.nz - 1.001, (z - D.z0) / D.res));
+      const i = fx | 0;
+      const j = fz | 0;
+      const u = fx - i;
+      const v = fz - j;
+      const k = j * D.nx + i;
+      return (D.dep[k] * (1 - u) + D.dep[k + 1] * u) * (1 - v) + (D.dep[k + D.nx] * (1 - u) + D.dep[k + D.nx + 1] * u) * v;
+    };
+    const x0 = D.x0 - RECT_MAX;
+    const z0 = D.z0 - RECT_MAX;
+    const x1 = D.x0 + D.nx * D.res + RECT_MAX;
+    const z1 = D.z0 + D.nz * D.res + RECT_MAX;
+    const out = [];
+    const h = CELL / 2;
+    for (let z = z0 + h; z < z1; z += CELL) {
+      for (let x = x0 + h; x < x1; x += CELL) {
+        const d = Math.max(raw(x, z), raw(x - h, z - h), raw(x + h, z - h), raw(x - h, z + h), raw(x + h, z + h));
+        // (lo que ni con una creciente de 4 m tendría agua, afuera)
+        if (d > -4) out.push(x, z, d);
+      }
+    }
+    this.cells = new Float32Array(out);
+    return this.cells;
+  }
+
+  // El recorte (de -1 a 1 en la imagen del espejo) donde cae el agua que está
+  // a menos de la niebla al 99% (o de la distancia de dibujo); null si no hay.
+  waterRect(mc, cp) {
+    const fog = this.g.scene?.fog;
+    let R = RECT_MAX;
+    if (fog?.isFogExp2 && fog.density > 0) R = Math.min(R, FOG_END / fog.density);
+    const C = this.waterCells();
+    const V = mc.matrixWorldInverse.elements;
+    const P = mc.projectionMatrix.elements;
+    const lv = this.level;
+    const wet = this.base - lv + 0.02;
+    const R2 = (R + CELL) * (R + CELL);
+    const h = CELL / 2;
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (let i = 0; i < C.length; i += 3) {
+      if (C[i + 2] <= wet) continue;
+      const dx = C[i] - cp.x;
+      const dz = C[i + 1] - cp.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > R2) continue;
+      // las cuatro esquinas del casillero, en la imagen del espejo
+      let a0 = Infinity;
+      let a1 = -Infinity;
+      let b0 = Infinity;
+      let b1 = -Infinity;
+      let cross = false;
+      let behind = 0;
+      for (let k = 0; k < 4; k++) {
+        const px = C[i] + (k & 1 ? h : -h);
+        const pz = C[i + 1] + (k & 2 ? h : -h);
+        const vx = V[0] * px + V[4] * lv + V[8] * pz + V[12];
+        const vy = V[1] * px + V[5] * lv + V[9] * pz + V[13];
+        const dep = -(V[2] * px + V[6] * lv + V[10] * pz + V[14]);
+        if (dep < 0.2) {
+          if (dep < 0) behind++;
+          // (el agua a la altura de los ojos corta la vista: todo, por las dudas)
+          if (vy > -0.3) return RECT_FULL;
+          cross = true;
+          continue;
+        }
+        const ix = (P[0] * vx + P[8] * -dep) / dep;
+        const iy = (P[5] * vy + P[9] * -dep) / dep;
+        if (ix < a0) a0 = ix;
+        if (ix > a1) a1 = ix;
+        if (iy < b0) b0 = iy;
+        if (iy > b1) b1 = iy;
+      }
+      if (behind === 4) continue;
+      // al lado de la cámara (parado en el muelle): de punta a punta de la
+      // imagen, desde abajo (el agua queda más baja que los ojos)
+      if (cross) {
+        a0 = b0 = -1;
+        a1 = 1;
+        if (b1 < -1) b1 = -1;
+      }
+      if (a1 < -1 || a0 > 1 || b1 < -1 || b0 > 1) continue;
+      if (a0 < x0) x0 = a0;
+      if (a1 > x1) x1 = a1;
+      if (b0 < y0) y0 = b0;
+      if (b1 > y1) y1 = b1;
+    }
+    if (x0 > x1) return null;
+    tmpR.x0 = Math.max(-1, x0 - RECT_PAD);
+    tmpR.x1 = Math.min(1, x1 + RECT_PAD);
+    tmpR.y0 = Math.max(-1, y0 - RECT_PAD);
+    tmpR.y1 = Math.min(1, y1 + RECT_PAD);
+    return tmpR;
+  }
+
+  // El espejo: la escena desde la cámara reflejada (mirrorCam), solo en el
+  // recorte rc, cortada en el nivel del agua (como el Reflector de three).
+  // Partido en dos cuadros (part 1 y 2; 0: entero, como siempre): la mitad de
+  // lo opaco en uno y la otra mitad con lo transparente en el siguiente, en la
+  // textura de atrás (reflBack), con la misma cámara; al terminar se cambian
+  // con la de adelante y recién ahí el agua toma la nueva. Era un dibujo entero
+  // de la escena cada ~4 cuadros (~1,5 ms de CPU de golpe en el campamento y el
+  // algarrobo): ese cuadro perdía el vsync. Ahora son dos de la mitad. La imagen
+  // llega un cuadro más tarde (~6 ms) y el espejo se rehace igual de seguido.
+  // (globalThis.__mduNoReflSplit: entero, como antes)
+  reflect(renderer, scene, rc, part = 0) {
+    const J = (this.job ||= { on: false, mat: new THREE.Matrix4(), scale: new THREE.Vector2(), cut: new THREE.Vector4() });
+    if (part === 2) {
+      this.reflectDraw(renderer, scene, this.reflBack, 2);
+      // (se cambian: el agua lee la nueva desde este mismo cuadro)
+      const t = this.reflRT;
+      this.reflRT = this.reflBack;
+      this.reflBack = t;
+      this.u.tRefl.value = this.reflRT.texture;
+      this.u.uReflMat.value.copy(J.mat);
+      this.u.uReflScale.value.copy(J.scale);
+      this.u.uReflCut.value.copy(J.cut);
+      J.on = false;
+      return;
+    }
+    const size = renderer.getDrawingBufferSize(tmpS);
+    const w = Math.max(16, Math.floor(size.x * this.tier.refl));
+    const h = Math.max(16, Math.floor(size.y * this.tier.refl));
+    const mk = () => new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+    if (!this.reflRT) {
+      this.reflRT = mk();
+      this.u.tRefl.value = this.reflRT.texture;
+    } else if (this.reflRT.width !== w || this.reflRT.height !== h) this.reflRT.setSize(w, h);
+    if (part === 1) {
+      if (!this.reflBack) this.reflBack = mk();
+      else if (this.reflBack.width !== w || this.reflBack.height !== h) this.reflBack.setSize(w, h);
+    }
+    const RT = part === 1 ? this.reflBack : this.reflRT;
+    // (los uniforms del agua: en el partido, al terminar)
+    const uMat = part === 1 ? J.mat : this.u.uReflMat.value;
+    const uScale = part === 1 ? J.scale : this.u.uReflScale.value;
+    const uCut = part === 1 ? J.cut : this.u.uReflCut.value;
+    const mc = this.mirror;
+    const lv = this.level;
+    // el recorte: la proyección estirada a él y dibujado en un rincón de la
+    // textura del mismo tamaño en píxeles (el agua lo lee con uReflScale)
+    const sw = (rc.x1 - rc.x0) / 2;
+    const sh = (rc.y1 - rc.y0) / 2;
+    const vw = Math.max(8, Math.min(w, Math.ceil(w * sw)));
+    const vh = Math.max(8, Math.min(h, Math.ceil(h * sh)));
+    RT.viewport.set(0, 0, vw, vh);
+    RT.scissor.set(0, 0, vw, vh);
+    RT.scissorTest = vw < w || vh < h;
+    uScale.set(vw / w, vh / h);
+    uCut.set(+(rc.x0 > -1), +(rc.x1 < 1), +(rc.y0 > -1), +(rc.y1 < 1));
+    if (sw < 1 || sh < 1) mc.projectionMatrix.premultiply(tmpM.set(1 / sw, 0, 0, -(rc.x1 + rc.x0) / 2 / sw, 0, 1 / sh, 0, -(rc.y1 + rc.y0) / 2 / sh, 0, 0, 1, 0, 0, 0, 0, 1));
+    uMat.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1).multiply(mc.projectionMatrix).multiply(mc.matrixWorldInverse);
     // plano de corte oblicuo: nada de lo que está abajo del agua entra al espejo
     tmpP.set(tmpV.set(0, 1, 0), -lv).applyMatrix4(mc.matrixWorldInverse);
     const cp = tmpQ.set(tmpP.normal.x, tmpP.normal.y, tmpP.normal.z, tmpP.constant);
     const e = mc.projectionMatrix.elements;
-    const q = new THREE.Vector4((Math.sign(cp.x) + e[8]) / e[0], (Math.sign(cp.y) + e[9]) / e[5], -1, (1 + e[10]) / e[14]);
+    const q = tmpQ2.set((Math.sign(cp.x) + e[8]) / e[0], (Math.sign(cp.y) + e[9]) / e[5], -1, (1 + e[10]) / e[14]);
     cp.multiplyScalar(2 / cp.dot(q));
     e[2] = cp.x;
     e[6] = cp.y;
     e[10] = cp.z + 1 - 0.003;
     e[14] = cp.w;
     mc.projectionMatrixInverse.copy(mc.projectionMatrix).invert();
+    J.on = part === 1;
+    this.reflectDraw(renderer, scene, RT, part);
+  }
+
+  // El dibujo del espejo en RT; part 1/2: solo su mitad de la lista de three
+  // (lo opaco por el número de cada objeto, par o impar; lo transparente y el
+  // fondo en la segunda, sin borrar lo de la primera).
+  reflectDraw(renderer, scene, RT, part) {
+    const mc = this.mirror;
     this.mesh.visible = false;
     const off = (this.off ||= []);
     off.length = 0;
@@ -1296,10 +1822,25 @@ export default class Water {
     // (las matrices ya se pusieron al día en este cuadro)
     const mwa = scene.matrixWorldAutoUpdate;
     scene.matrixWorldAutoUpdate = false;
-    renderer.setRenderTarget(this.reflRT);
+    renderer.setRenderTarget(RT);
     renderer.state.buffers.depth.setMask(true);
-    renderer.clear();
-    renderer.render(scene, mc);
+    if (part !== 2) renderer.clear();
+    const L = part ? renderer.renderLists.get(scene, 0) : null;
+    const fin = L ? L.finish : null;
+    const ac = renderer.autoClear;
+    const bg = scene.background;
+    if (L) L.finish = () => { fin.call(L); splitList(L, part, renderer); };
+    if (part === 2) {
+      renderer.autoClear = false;
+      scene.background = null;
+    }
+    try {
+      renderer.render(scene, mc);
+    } finally {
+      if (L) L.finish = fin;
+      renderer.autoClear = ac;
+      scene.background = bg;
+    }
     scene.matrixWorldAutoUpdate = mwa;
     renderer.shadowMap.autoUpdate = auto;
     renderer.shadowMap.needsUpdate = need;
@@ -1316,7 +1857,14 @@ export default class Water {
     for (const rt of this.simRT || []) rt.dispose();
     this.simMat?.dispose();
     this.reflRT?.dispose();
+    this.reflBack?.dispose();
     this.cube?.dispose();
     this.qMesh?.geometry.dispose();
+    const S = this.strips;
+    if (S) {
+      S.mesh.geometry.dispose();
+      S.mesh.material.dispose();
+      if (S.gl && !S.open) for (const q of S.q) if (q) S.gl.deleteQuery(q);
+    }
   }
 }

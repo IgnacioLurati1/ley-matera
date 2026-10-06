@@ -146,9 +146,15 @@ export default class Pulperia {
     const btn = menus.screens.title.querySelector('[data-act="pulperia"]');
     btn.hidden = false;
     this.titleBtn = btn;
-    menus.showHooks.push((name) => (name === 'pulperia' ? this.open() : this.close()));
+    menus.showHooks.push((name) => {
+      if (name === 'pulperia') this.open();
+      else this.close();
+      if (name === 'title') this.syncTitle();
+    });
     this.el.addEventListener('click', (e) => this.click(e));
+    // (jugando no: lo sincroniza el showHooks al volver al título)
     P.on('change', () => {
+      if (menus.g.state !== 'title') return;
       this.syncTitle();
       if (menus.current === 'pulperia' && !this.busy) {
         this.sync();
@@ -194,8 +200,10 @@ export default class Pulperia {
     this.iconsQueued = true;
     const ids = EMPANADAS.map((e) => e.id);
     const step = () => {
-      for (let k = 0; k < 3 && ids.length; k++) empanadaIcon(g.renderer, ids.shift(), 96);
-      if (ids.length) setTimeout(step, 60);
+      // (de a una: cada ícono arma su empanada, ~45 ms; de a tres eran
+      // tirones de 140 ms en el título)
+      if (ids.length) empanadaIcon(g.renderer, ids.shift(), 96);
+      if (ids.length) setTimeout(step, 80);
       else if (this.m.current === 'pulperia') this.refreshIcons();
     };
     setTimeout(step, 0);

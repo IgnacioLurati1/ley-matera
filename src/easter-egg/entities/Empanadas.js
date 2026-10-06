@@ -92,7 +92,8 @@ export default class Empanadas {
     // una sola luz para los hornos (la creada en la carga; va al que está prendido más cerca)
     this.light = new THREE.PointLight(0xff8a3a, 0, 3.6, 2);
     this.light.visible = this.hornos.length > 0;
-    this.root.add(this.light);
+    // (no cuenta como luz mientras está apagada: World.adoptLight)
+    this.root.add(this.g.world.adoptLight(this.light));
     this.buildHud();
     this.hookPlayer();
     this.hookPowerups();
@@ -338,6 +339,64 @@ export default class Empanadas {
 
   // La mano sube la empanada y la muerde (keys: las poses; bitesAt: cuándo
   // muerde). Al final, onDone (también si algo la corta: sale igual).
+  // En la carga (ui/Arrival warmWorld): la mano con una empanada en el mate de
+  // la primera persona, un par de cuadros. La primera empanada compilaba su
+  // programa con las luces del mate al morderla: un cuadro de 200 ms
+  // (el usuario, 2026-10-05). Devuelve con qué sacarla.
+  warmVm() {
+    const g = this.g;
+    const W = g.weapons;
+    if (!W?.vmRoot || globalThis.__mduNoEmpWarm === true) return null;
+    if (!W.drinkFrame) {
+      W.drinkFrame = new THREE.Group();
+      W.vmRoot.add(W.drinkFrame);
+    }
+    if (!this.hand) {
+      this.hand = new THREE.Group();
+      this.hand.add(buildEatHand(VM, g.textures));
+      this.holder = new THREE.Group();
+      this.hand.add(this.holder);
+      const hand = this.hand.children[0];
+      this.wrist = hand.userData.wrist;
+      this.arm = new THREE.Group();
+      for (const n of ['sleeve', 'cuff']) {
+        const o = hand.getObjectByName(n);
+        if (o) this.arm.add(o);
+      }
+      this.sleeve = this.arm.getObjectByName('sleeve');
+      this.cuff = this.arm.getObjectByName('cuff');
+    }
+    // las de la canasta de esta partida (las que pueden salir del horno), armadas de antes
+    this.eatCache ||= new Map();
+    let ids = [];
+    try {
+      ids = this.loadout();
+    } catch {
+      ids = ['carne'];
+    }
+    for (const id of ids.slice(0, 10)) {
+      if (this.eatCache.has(id)) continue;
+      const e = buildEmpanada(id);
+      e.prepareBites();
+      this.eatCache.set(id, e);
+    }
+    const m = this.eatCache.get('carne') || this.eatCache.values().next().value;
+    m.mesh.castShadow = false;
+    m.group.position.set(-0.07, -0.004, -0.012);
+    this.holder.add(m.group);
+    this.hand.position.set(0.12, -0.18, -0.45);
+    this.hand.visible = true;
+    W.drinkFrame.add(this.hand, this.arm);
+    const vis = W.vmRoot.visible;
+    W.vmRoot.visible = true;
+    return () => {
+      this.hand.removeFromParent();
+      this.arm.removeFromParent();
+      m.group.removeFromParent();
+      W.vmRoot.visible = vis;
+    };
+  }
+
   munch(id, keys, T, bitesAt, onDone) {
     const g = this.g;
     const W = g.weapons;
@@ -361,9 +420,16 @@ export default class Empanadas {
       this.sleeve = this.arm.getObjectByName('sleeve');
       this.cuff = this.arm.getObjectByName('cuff');
     }
-    this.eatModel?.dispose();
-    this.eatModel = buildEmpanada(id);
-    this.eatModel.prepareBites();
+    // (armadas una vez y guardadas: armar la cáscara y los mordiscos eran ~45 ms
+    // en el cuadro de empezar a comer; warmVm las arma todas en la carga)
+    const cached = this.eatCache?.get(id);
+    if (this.eatModel && !this.eatCache?.has(this.eatModel.id)) this.eatModel.dispose();
+    this.eatModel = cached || buildEmpanada(id);
+    if (!cached) {
+      this.eatModel.prepareBites();
+      (this.eatCache ||= new Map()).set(id, this.eatModel);
+    }
+    this.eatModel.setBite(0);
     this.eatModel.mesh.castShadow = false;
     // (en la mano: la base apoyada en los dedos, la punta mordible hacia +x)
     this.eatModel.group.position.set(-0.07, -0.004, -0.012);

@@ -599,7 +599,7 @@ export default class Supremo {
     for (const h of hits) {
       const z = h.z;
       const point = new THREE.Vector3().copy(origin).addScaledVector(dir, h.t);
-      g.zombies.damage(z, this.hurt(z, st.damage, st.bossFrac, h.zone === 'head'), { type: 'bullet', zone: h.zone, arm: h.arm, point, dir: dir.clone() });
+      g.zombies.damage(z, this.hurt(z, st.damage, st.bossFrac, h.zone === 'head') * (g.weapons.zoneMult?.(h.zone, z) ?? 1), { type: 'bullet', zone: h.zone, arm: h.arm, point, dir: dir.clone() });
       if (h.zone === 'head') head = true;
       last = h;
       if (n++ < 5) pierced.push(point);

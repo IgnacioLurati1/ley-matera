@@ -9,15 +9,17 @@ import PumaRig from './Pumas';
 import YacareRig from './Yacares';
 import PalomaRig from './monumento/Palomas';
 import { buildBossRig } from './bossRig';
-import { updateBossSkin, skinBoneAt } from './bossSkin';
+import { updateBossSkin, skinBoneAt, skinHit } from './bossSkin';
 import ZombieSkins from './zombieSkin';
+import ZombieBatch, { zombieBatchOn } from './zombieBatch';
 import { zombieLook, lookGeometries } from './zombieLooks';
 import { gaitOf, gaitPose, idlePose, attackPose } from './zombieGaits';
+import { blendTear, blendClimb, blendRise, blendDeath, blendCrawl } from './zombieBlend';
 import { soak, zombieWaterSpeed, updateNavCost, hasWater, submerged } from './swim';
 import { luisonGait, luisonIdle, luisonRoar, luisonSlam, luisonDazed, luisonLow, POUNCE, HOWL_AT, LUISON_END, SUMMON_POUND } from './luison';
 import { reachableSpot } from './reach';
 import { SILL_Y } from '../world/HighWindows';
-import { RISERS, FEATURES, MAP_ID, WATER_Y } from '../config/map';
+import { RISERS, FEATURES, MAP_ID, WATER_Y, ZONES } from '../config/map';
 import { ATTIC, SKYLIGHTS, STAIR_BOTTOM, STAIR_TOP, STAIR_TURN, UP_Y, atticNavWorld, inAtticRect, inStair, levelOf, stairY } from '../world/Attic';
 import { walkLine } from '../world/Levels';
 import { SPEEDS, rollSpeed, rollSpeedHold, walkPace, runShare, ZOMBIE_DAMAGE, DOG_DAMAGE, BOSS_DAMAGE, PUP_LUISON, POINTS, bossHealth, bossScale } from '../config/rules';
@@ -30,6 +32,12 @@ import { reelStep, reelPose } from './zombieReel';
 
 const MAX = 40;
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+const blobM = new THREE.Matrix4();
+// la pose a medio ritmo (render): con el cuadro por debajo de HALF_MS
+// (suavizado, Game.frameMs), a más de HALF_FAR m y con más de HALF_MIN vivos
+const HALF_MS = 11;
+const HALF_FAR = 25;
+const HALF_MIN = 4;
 // un perro no dibuja ninguna parte del cuerpo humano
 const ALL_PARTS = (1 << PART_COUNT) - 1;
 
@@ -87,6 +95,48 @@ const sm01 = (x) => {
 };
 
 // Foto nueva de un zombie ajeno: se arranca desde donde se lo está dibujando.
+// El toque de clarín del Monumento (entities/Powerups.js active.clarin): los
+// muertos se cuadran mientras dura, firmes y con la venia (antes quedaban
+// congelados a mitad de paso y no se notaba que había pasado algo).
+function firmes(z, dt) {
+  const P = z.P;
+  const k = Math.min(1, dt * 9);
+  const to = (key, v) => (P[key] = (P[key] || 0) + (v - (P[key] || 0)) * k);
+  to('rootPitch', 0);
+  to('rootRoll', 0);
+  to('torsoP', -0.05);
+  to('torsoY', 0);
+  to('torsoR', 0);
+  to('headP', -0.14);
+  to('headY', 0);
+  to('headR', 0);
+  to('shLp', 0.04);
+  to('shLr', 0.06);
+  to('elL', -0.05);
+  // la venia: el brazo afuera, el codo al costado y adelante, la mano en la
+  // sien (por afuera de la cabeza y del ala del morrión). Antes el brazo se
+  // cruzaba por delante y la mano les atravesaba la cara y el pecho (el
+  // usuario, 2026-10-05; __mduNoVenia: como antes). Lo resolvió una búsqueda
+  // con el esqueleto (S/monu-pasada/surubi/firmes/ik.mjs).
+  if (globalThis.__mduNoVenia) {
+    to('shRp', -1.2);
+    to('shRr', -1.25);
+    to('elR', -2.35);
+  } else {
+    to('shRp', -1.55);
+    to('shRr', 0.73);
+    to('shRy', -0.385);
+    to('elR', -2.23);
+    z.venia = true;
+  }
+  to('hipLp', 0);
+  to('hipRp', 0);
+  to('hipLr', 0.02);
+  to('hipRr', -0.02);
+  to('knL', 0);
+  to('knR', 0);
+}
+
 function netTarget(z, x, y, yaw) {
   const now = performance.now();
   const n = z.net || (z.net = { x, z: y, yaw, t1: now - 50 });
@@ -163,6 +213,7 @@ function geometries() {
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpC = new THREE.Color();
+const tmpC2 = new THREE.Color();
 const dirOut = { x: 0, z: 0 };
 // cuándo baja la mano el zarpazo (en tiempo de ataque: z.attackT, que corre con z.fury)
 const ATTACK_HIT = 0.42;
@@ -235,6 +286,9 @@ export default class Zombies {
       game.scene.add(im);
       return { ...M, im };
     });
+    // todo el cuerpo en una llamada por pasada (entities/zombieBatch.js)
+    this.batch = zombieBatchOn() ? new ZombieBatch(this, this.meshes, MAX) : null;
+    if (this.batch) game.scene.add(this.batch.mesh);
     this.pool = [];
     for (let i = 0; i < MAX; i++) this.pool.push(this.makeZombie(i));
     // los muertos con cuerpo de verdad, en los mapas que ya los tienen (entities/zombieSkin.js)
@@ -718,6 +772,7 @@ export default class Zombies {
       // (en el estero, el que sale de abajo del agua salpica)
       if ((this.g.world.waterDepth?.(z.pos.x, z.pos.z) || 0) > 0.3) this.g.water?.splash?.(z.pos.x, z.pos.z, 0.5, { sound: false });
     }
+    this.deformIf(z);
     return true;
   }
 
@@ -898,6 +953,28 @@ export default class Zombies {
     z.style = gaitOf(r);
     z.Pr = null;
     z.pState = null;
+    z.disforme = 0;
+  }
+
+  // Eclipse Matero: el que sale en La Disformidad (la zona `dim` del config)
+  // viene deforme: más grande, torcido, la cabeza caída, los brazos dispares,
+  // la ropa negra violácea. Se decide con la posición ya puesta y con el id
+  // (anfitrión e invitado igual). globalThis.__mduNoDisforme: como siempre.
+  deformIf(z) {
+    if (!FEATURES.eclipse || globalThis.__mduNoDisforme === true) return;
+    const kz = this.g.world?.zoneAt?.(z.pos.x, z.pos.z, z.pos.y);
+    if (!kz || !ZONES[kz]?.dim) return;
+    const r = rng((z.id & 0xffff) * 2654435 + 77);
+    z.disforme = 1;
+    z.scale = 1.12 + r() * 0.32;
+    z.limp = 0.75 + r() * 0.45;
+    z.headTilt = (r() - 0.5) * 1.7;
+    z.armOff = (r() - 0.5) * 1.3;
+    if (z.colors) {
+      z.colors = { ...z.colors };
+      for (const k of Object.keys(z.colors)) if (typeof z.colors[k] === 'number') z.colors[k] = tmpC.set(z.colors[k]).lerp(tmpC2.set(0x2a1040), 0.65).getHex();
+      this.paint(z);
+    }
   }
 
   paint(z, tint = null) {
@@ -920,6 +997,8 @@ export default class Zombies {
     }
     z.active = false;
     z.dead = false;
+    z.solved = false;
+    z.poseDt = 0;
     z.P.melt = 0;
     this.zskins?.free(z);
     for (const M of this.meshes) {
@@ -1167,6 +1246,7 @@ export default class Zombies {
       zz.pos.set(x, f.y ?? 0, z);
       zz.baseY = f.y ?? 0;
       zz.yaw = yaw;
+      this.deformIf(zz);
       this.remoteMap.set(id, zz);
     }
     netTarget(zz, x, z, yaw);
@@ -1178,13 +1258,16 @@ export default class Zombies {
       zz.state = state;
       zz.stateT = 0;
       zz.attackT = 0;
-      if (state === 'dead' || state === 'melting') {
+      if (state === 'dead' || state === 'melting' || state === 'sliced') {
         zz.dead = true;
         zz.deathFrom = null;
         zz.meltFrom = null;
         zz.meltSq = false;
         zz.corpseT = 0;
       }
+      // partido al medio por el Desgarrador: la mitad de arriba vuela aparte
+      // (weapons/desgarradorFx.js; hacia donde iba el corte, si fue de él)
+      if (state === 'sliced') this.g.weapons?.cosmic?.fx?.slice(zz, null);
     }
     zz.dog = !!f.dog;
     zz.horse = !!f.horse;
@@ -1222,7 +1305,7 @@ export default class Zombies {
       else if (horse) g.audio.neigh(tmpV.set(x, y + 1.8, z.pos.z), 0.6, 'attack');
       else if (z.dog) g.audio.bark(tmpV.set(x, y + 0.7, z.pos.z), 'attack');
       else g.audio.growl(tmpV.set(x, y + 1.5, z.pos.z), 'attack');
-    } else if (state === 'dead') {
+    } else if (state === 'dead' || state === 'sliced') {
       if (voiced) rig.voice(z, 'die');
       else if (horse) g.audio.neigh(tmpV.set(x, y + 1.5, z.pos.z), 1.3);
       else if (z.dog) g.audio.yelp(tmpV.set(x, y + 0.6, z.pos.z));
@@ -1384,6 +1467,9 @@ export default class Zombies {
           z.P.rootY = -1.75 * (1 - Math.min(1, z.stateT / 1.7) * (2 - Math.min(1, z.stateT / 1.7)));
           this.poseRise(z, t);
           break;
+        // (partido al medio: las piernas caen como un muerto; la mitad de
+        // arriba la pone weapons/desgarradorFx sliceMats, en render)
+        case 'sliced':
         case 'dead':
           this.poseDeath(z);
           z.corpseT = (z.corpseT || 0) + dt;
@@ -1514,7 +1600,15 @@ export default class Zombies {
     const slow = !!g.emp?.slowAll();
     for (const z of this.pool) {
       if (!z.active) continue;
-      if (freeze && !z.dead && !z.boss) continue;
+      if (freeze && !z.dead && !z.boss) {
+        if (g.powerups?.active.clarin > 0 && !z.dog && z.state !== 'rise') firmes(z, dt);
+        continue;
+      }
+      // (terminado el toque: el giro del brazo de la venia vuelve; las otras poses no lo tocan)
+      if (z.venia) {
+        z.venia = false;
+        z.P.shRy = 0;
+      }
       if (!z.dead && !slow && z.speedType === 'walk' && (lastAlive || (z.runU != null && z.runU < share))) {
         z.speedType = 'run';
         z.speed = SPEEDS.run * (0.92 + Math.random() * 0.16);
@@ -1842,6 +1936,9 @@ export default class Zombies {
         }
         break;
       }
+      // (partido al medio por el Desgarrador: un muerto más; la mitad de arriba
+      // va aparte, weapons/desgarradorFx sliceMats)
+      case 'sliced':
       case 'dead': {
         this.poseDeath(z);
         z.corpseT += dt;
@@ -1856,7 +1953,7 @@ export default class Zombies {
           g.fx.blood(np, { x: (Math.random() - 0.5) * 0.4, y: 2.2, z: (Math.random() - 0.5) * 0.4 }, 2, 0.8);
         }
         if (z.corpseT > 9) {
-          P.rootY = -Math.min(1.2, (z.corpseT - 9) * 0.8) + (z.crawler ? 0 : 0.12);
+          P.rootY = -Math.min(1.2, (z.corpseT - 9) * 0.8) + (z.crawler ? 0 : z.lieY ?? 0.12);
           z.static = false;
         }
         if (z.corpseT > 10.6) this.free(z);
@@ -2088,6 +2185,12 @@ export default class Zombies {
       mx = dx / (dist || 1);
       mz = dz / (dist || 1);
     }
+    // (g.defense: lo que golpean tiene un frente, el rastrillo del asedio:
+    // llegando, miran para ahí y no al punto, que con los empujones giraba)
+    if (plot?.face != null && dist < 1.1) {
+      mx = Math.sin(plot.face);
+      mz = Math.cos(plot.face);
+    }
 
     // trabado: se corre de costado un rato (ver unstick)
     if (z.sideT > 0) {
@@ -2211,6 +2314,9 @@ export default class Zombies {
   // ---------------- Capataz ----------------
   thinkBoss(z, dt, t, player) {
     const g = this.g;
+    // el Surubí del Monumento piensa solo (entities/monumento/Surubi.js)
+    // (solo el de la pesca del Pack-a-Pava: el jefe de ronda pelea como siempre)
+    if (z.kind === 'surubi' && z.fish && g.surubi?.think) return g.surubi.think(z, dt, t, player);
     // va por el jugador de pie más cercano (en co-op, cada tanto, por el que
     // más le pega: BossMoves.target); al que está tirado (o anda en gaucho
     // life) no lo persigue; si no queda nadie de pie, se aparta y espera
@@ -2378,7 +2484,9 @@ export default class Zombies {
           mx = dirOut.x;
           mz = dirOut.z;
         }
-        this.moveBoss(z, mx, mz, z.speed, dt, t);
+        // (el Luisón, si ya está encima, pega sin dar un paso más: era un cuadro
+        // corrido de 15 cm entre el tirón y el zarpazo; solo con el de Blender, __mduLuisonBlend)
+        if (!(z.kind === 'luison' && distP < 2.9 && z.stateT < 0.05 && globalThis.__mduLuisonBlend === true)) this.moveBoss(z, mx, mz, z.speed, dt, t);
         if (distP < (z.kind === 'luison' ? 2.9 : 2.3) && levelOf(pp.y) === 0 && Math.abs((pp.y || 0) - (z.baseY || 0)) < 1.5 && (player.canBeHit ? player.canBeHit() : !player.downed && !player.dead) && !g.defense?.shielded?.(z, pp)) {
           this.setState(z, 'slam');
           z.attackHit = false;
@@ -3177,6 +3285,8 @@ export default class Zombies {
   }
 
   poseTear(z, t) {
+    // (los clips de Blender, apagados: entities/zombieBlend.js, __mduZombieBlend)
+    if (blendTear(z, t)) return;
     const P = z.P;
     const s = Math.sin(t * 7 + z.slot);
     this.poseIdle(z, t);
@@ -3218,6 +3328,7 @@ export default class Zombies {
   }
 
   poseClimb(z, k) {
+    if (blendClimb(z, k)) return;
     const P = z.P;
     P.hipY = 0.92;
     P.torsoP = 0.7 - k * 0.3;
@@ -3234,6 +3345,7 @@ export default class Zombies {
   }
 
   poseRise(z, t) {
+    if (blendRise(z)) return;
     const P = z.P;
     const s = Math.sin(t * 5 + z.slot);
     P.hipY = 0.92;
@@ -3259,6 +3371,7 @@ export default class Zombies {
         return;
       }
     }
+    if (blendCrawl(z, dt)) return;
     const P = z.P;
     z.phase += dt * 3;
     const s = Math.sin(z.phase);
@@ -3360,6 +3473,7 @@ export default class Zombies {
   poseDeath(z) {
     const P = z.P;
     if (z.static) return;
+    if (blendDeath(z)) return;
     const k = Math.min(1, z.stateT / 0.75);
     const e = k * k;
     const back = z.deathBack ? -1 : 1;
@@ -3487,11 +3601,32 @@ export default class Zombies {
   }
 
   render(dt = 1 / 60) {
-    const blobM = new THREE.Matrix4();
+    // cada prenda se dibuja solo si alguno la usa, y hasta el último lugar que
+    // la usa (cada una es una llamada por pasada: sin muertos, o con prendas
+    // que nadie lleva, se dibujaban igual, vacías)
+    for (const M of this.meshes) M.top = 0;
+    // de lejos y con muchos cuadros por segundo, la pose de cada uno se arma
+    // un cuadro sí y otro no (la mitad cada cuadro): a más de 90 fps no se
+    // nota. Nunca cuando quedan pocos (los últimos, con la silueta a la vista),
+    // ni a los jefes ni a los que caen (globalThis.__mduFullPose: siempre)
+    const g = this.g;
+    let live = 0;
+    for (const z of this.pool) if (z.active && !z.dead) live++;
+    const half = (g.frameMs ?? 16) < HALF_MS && live > HALF_MIN && globalThis.__mduFullPose !== true;
+    const cam = g.camera?.position;
+    this.poseTick = (this.poseTick || 0) ^ 1;
     for (const z of this.pool) {
       if (!z.active) continue;
-      if (!z.static) {
-        const R = this.drawnPose(z, dt);
+      let fresh = true;
+      if (half && !z.static && !z.boss && !z.dead && cam && (z.slot & 1) === this.poseTick && z.solved && z.pos.distanceToSquared(cam) > HALF_FAR * HALF_FAR) {
+        z.poseDt = (z.poseDt || 0) + dt;
+        fresh = false;
+      }
+      if (!z.static && fresh) {
+        const pd = dt + (z.poseDt || 0);
+        z.poseDt = 0;
+        z.solved = true;
+        const R = this.drawnPose(z, pd);
         // el espasmo se suma solo para este cuadro
         const tw = z.dead ? 0 : z.twitch || 0;
         R.headY += tw * 0.8;
@@ -3502,6 +3637,8 @@ export default class Zombies {
         const yw = z.yaw + (R.yawOff || 0);
         const fw = R.rootFwd || 0;
         solvePose(z.mats, z.pos.x + Math.sin(yw) * fw, z.pos.z + Math.cos(yw) * fw, yw, z.scale, R);
+        // partido al medio: la mitad de arriba, aparte (weapons/desgarradorFx.js)
+        if (z.slice) this.g.weapons?.cosmic?.fx?.sliceMats(z);
         R.rootY -= by;
         R.headY -= tw * 0.8;
         R.headR -= tw * 0.5;
@@ -3516,7 +3653,9 @@ export default class Zombies {
         const off = skinned || (M.need && !z.flags?.[M.need]);
         for (let k = 0; k < M.parts.length; k++) {
           const part = M.parts[k];
-          M.im.setMatrixAt(z.slot * M.parts.length + k, off || z.hidden & (1 << part) ? ZERO : z.mats[part]);
+          const no = off || z.hidden & (1 << part);
+          if (fresh) M.im.setMatrixAt(z.slot * M.parts.length + k, no ? ZERO : z.mats[part]);
+          if (!no && z.slot >= M.top) M.top = z.slot + 1;
         }
       }
       if (z.state === 'approach' || z.state === 'tear' || z.state === 'rise' || z.state === 'drop' || z.state === 'dogspawn' || z.state === 'ladder' || z.dead) this.blobs.setMatrixAt(z.slot, ZERO);
@@ -3525,7 +3664,12 @@ export default class Zombies {
         this.blobs.setMatrixAt(z.slot, blobM);
       }
     }
-    for (const M of this.meshes) M.im.instanceMatrix.needsUpdate = true;
+    for (const M of this.meshes) {
+      M.im.count = M.top * M.parts.length;
+      M.im.visible = M.top > 0;
+      M.im.instanceMatrix.needsUpdate = true;
+    }
+    this.batch?.frame();
     this.zskins.endFrame();
     this.dogRig.update(this.pool);
     this.horseRig?.update(this.pool);
@@ -3595,6 +3739,15 @@ export default class Zombies {
         const h = (z.yac && this.yacRig ? YacareRig : z.horse && this.horseRig ? HorseRig : this.dogRig.constructor).raycast(z, o, d, maxT);
         if (h) hits.push({ z, t: h.t, zone: h.zone });
         return;
+      }
+      // (los jefes con cuerpo de verdad que lo piden: el golpe va en el modelo
+      // que se ve, no en las piezas; Francisco volando. entities/bossSkin.js skinHit)
+      if (z.boss) {
+        const sh = skinHit(this, z, o, d, maxT);
+        if (sh !== undefined) {
+          if (sh) hits.push({ z, t: sh.t, zone: sh.zone === 'head' && z.hatHp > 0 ? 'hat' : sh.zone, part: sh.part, arm: sh.arm, leg: sh.leg });
+          return;
+        }
       }
       // (nadando, pos.y es el fondo y el cuerpo flota acostado arriba: la esfera va en el torso dibujado)
       const sw = z.swimK > 0.5 ? z.mats[1].elements : null;
@@ -3699,7 +3852,7 @@ export default class Zombies {
     if (z.boss && this.moves.immune(z)) return false;
     // de invitado, el daño lo aplica el anfitrión: acá solo se ve la sangre
     if (g.net?.guest) {
-      if (info.point && !['freeze', 'chain', 'blast', 'luz'].includes(info.type)) {
+      if (info.point && !z.jinete && !['freeze', 'chain', 'blast', 'luz'].includes(info.type)) {
         g.fx.blood(info.point, info.dir ? tmpV2.copy(info.dir).multiplyScalar(0.6) : { x: 0, y: 0.5, z: 0 }, info.zone === 'head' ? 14 : 8);
       }
       g.net.reportHit(z, amount, info);
@@ -3906,6 +4059,13 @@ export default class Zombies {
       this.paint(z, type === 'melt' ? 0x4e5a34 : 0xc0503a);
       if (type === 'melt') z.corpseT = 8.3;
       g.fx.steam(tmpV.set(z.pos.x, (z.baseY || 0) + 1.2, z.pos.z), 10, 0.6);
+    } else if (type === 'slice' && !z.boss && g.weapons?.cosmic && globalThis.__mduNoSlice !== true) {
+      // partido al medio (la guadaña del Desgarrador Cósmico): las piernas se
+      // desploman y la mitad de arriba sale volando (weapons/desgarradorFx.js)
+      z.state = 'sliced';
+      z.stateT = 0;
+      z.window = -1;
+      g.weapons.cosmic.fx.slice(z, info.dir);
     } else if (decap) {
       // el facón le vuela la cabeza: queda un chorro de sangre del cuello
       z.state = 'dead';

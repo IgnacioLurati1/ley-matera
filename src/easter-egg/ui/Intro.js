@@ -64,7 +64,13 @@ export default class Intro {
     // (el Challenge de la torre tiene la suya: sin personajes ni historia)
     const make = (MODE === 'challenge' && SCRIPTS[`${MAP_ID}Reto`]) || SCRIPTS[MAP_ID];
     // el guion del mapa (arma sus muñecos ya, escondidos)
+    const before = new Set(g.scene.children);
     this.S = make ? make(g, this) : null;
+    // lo que el guion colgó de la escena: al terminar, lo que quedó sin nada a
+    // la vista sale de la escena (three lo recorría igual en cada cuadro de la
+    // partida) y play() lo vuelve a poner
+    this.own = g.scene.children.filter((o) => !before.has(o));
+    this.parked = [];
     if (!this.S) return;
     let t = 0;
     for (const s of this.S.shots) {
@@ -83,14 +89,33 @@ export default class Intro {
     };
   }
 
+  // Lo que el guion necesita antes de arrancar (clips, cuerpos de verdad):
+  // ui/Arrival lo espera en la carga. Sin nada que esperar, ya.
+  ready() {
+    return this.S?.ready ? this.S.ready() : Promise.resolve();
+  }
+
   // ---------------- arranque ----------------
   // Lo llama Arrival cuando arranca la partida. Devuelve si hay cinemática.
-  play() {
+  // at: en línea, cuándo arrancó para todos (performance.now() de esta compu:
+  // la orden del anfitrión más el sorbo, Arrival.go).
+  play({ at = null } = {}) {
     const g = this.g;
     if (!this.S || this.active) return false;
     this.active = true;
     this.t = 0;
+    // en línea el reloj cuenta desde la orden de arranque (la regla de las
+    // escenas, ui/FarmCinematic): la compu que tarda en armar la partida, o que
+    // terminó de cargar tarde, arranca adelantada lo que se atrasó (pasado el
+    // final, entra directo). Antes contaba desde el primer cuadro y ese primer
+    // cuadro sumaba la edad de la página: con 2 jugadores, 10-22 s de desfase.
+    // Solo, como antes. (globalThis.__mduNoIntroSync: como antes también en línea)
     this.wallAt = 0;
+    if (g.net && globalThis.__mduNoIntroSync !== true) {
+      const now = performance.now();
+      this.wallAt = now;
+      if (at != null) this.t = Math.max(0, (now - at) / 1000);
+    }
     this.shotI = -1;
     this.cueI = 0;
     this.out = null;
@@ -102,6 +127,8 @@ export default class Intro {
     this.cardsOn = [];
     this.fog0 = g.weather?.cur.fog ?? null;
     this.fogK = 1;
+    for (const o of this.parked) g.scene.add(o);
+    this.parked.length = 0;
     this.buildDom();
     g.hud.show(false);
     g.weapons.vmRoot.visible = false;
@@ -112,7 +139,8 @@ export default class Intro {
     // la canción de la entrada del mapa (core/music.js); la música de los
     // guiones queda de fondo, bajita (no en el final del castillo, que usa
     // la entrada del molino adentro de su cinemática)
-    if (!g.cine && g.music?.play(`intro-${this.map}`, { while: (G) => G.state === 'playing' || G.state === 'paused' })) this.bus.gain.value = 0.4;
+    // (en línea, si arrancó atrasada, la canción también va por donde va la entrada)
+    if (!g.cine && g.music?.play(`intro-${this.map}`, { at: this.t > 0.5 ? this.t : 0, while: (G) => G.state === 'playing' || G.state === 'paused' })) this.bus.gain.value = 0.4;
     this.S.start?.(this);
     window.addEventListener('keydown', this.onKey);
     return true;
@@ -193,11 +221,14 @@ export default class Intro {
     const S = this.S;
     // el reloj de la intro es el de verdad, no el dt con tope de Game.loop: en
     // una compu que se traba (al arrancar se compila todo) no se atrasa de la
-    // música ni de los otros jugadores (un salto de más de 1 s es una pausa)
+    // música ni de los otros jugadores. Solo, un salto de más de 3 s es una
+    // pausa; en línea no hay pausa y una trabada de hasta 30 s cuenta. Llamadas
+    // seguidas, sin cuadro en el medio: una prueba que la adelanta.
     const now = performance.now();
-    const w = (now - (this.wallAt || 0)) / 1000;
+    // (sin wallAt, el primer cuadro va con el dt: si no, sumaba la edad de la página)
+    const w = this.wallAt ? (now - this.wallAt) / 1000 : 0;
     this.wallAt = now;
-    this.t += w > dt && w < 1 ? w : dt;
+    this.t += w >= 0.002 && w < (g.net ? 30 : 3) ? w : dt;
     const t = Math.min(this.t, this.total);
     // lo que pasa a una hora fija (carteles, sonidos)
     while (this.cueI < this.cues.length && this.cues[this.cueI][0] <= t) this.cues[this.cueI++][1](this);
@@ -339,6 +370,15 @@ export default class Intro {
   applyRemote(m) {
     if (!this.active) return;
     if (m.end) {
+      // el fin natural del anfitrión (n): acá va por el mismo segundo y termina
+      // sola, con la bajada a los ojos (antes se cortaba por negro y el
+      // atrasado se perdía las últimas tomas); muy atrasada, se corta
+      const left = this.total - this.t;
+      if (m.n && left < 3 && globalThis.__mduNoIntroSync !== true) {
+        clearTimeout(this.endBy);
+        this.endBy = setTimeout(() => this.end(false), (left + 1.5) * 1000);
+        return;
+      }
       this.end(false);
       return;
     }
@@ -355,7 +395,8 @@ export default class Intro {
     const g = this.g;
     if (!this.active || this.out) return;
     this.out = true;
-    if (g.net?.host) g.net.event('intro', { end: 1 });
+    clearTimeout(this.endBy);
+    if (g.net?.host) g.net.event('intro', natural ? { end: 1, n: 1 } : { end: 1 });
     // la música se apaga (lo que ya estaba programado sigue, en silencio)
     try {
       this.bus.gain.setTargetAtTime(0, g.audio.now, natural ? 0.8 : 0.25);
@@ -378,6 +419,7 @@ export default class Intro {
     this.active = false;
     window.removeEventListener('keydown', this.onKey);
     this.S.stop?.(this);
+    this.park();
     if (g.weather && this.fog0 != null) g.weather.cur.fog = this.fog0;
     if (g.net?.avatars) g.net.avatars.root.visible = true;
     const el = this.el;
@@ -431,6 +473,25 @@ export default class Intro {
     cam.quaternion.copy(quat);
     cam.fov = fov;
     cam.updateProjectionMatrix();
+    // (ya subido a la placa: hasta que play() lo pida, fuera de la escena; el
+    // reinicio rápido no pasa por play)
+    this.park();
+  }
+
+  // Saca de la escena lo del guion que no tiene nada a la vista.
+  park() {
+    const g = this.g;
+    if (globalThis.__mduNoMerge) return;
+    for (const o of this.own) {
+      if (o.parent !== g.scene) continue;
+      let seen = false;
+      o.traverseVisible((x) => {
+        if (x.isMesh || x.isLight || x.isSprite || x.isPoints || x.isLine) seen = true;
+      });
+      if (seen) continue;
+      o.removeFromParent();
+      this.parked.push(o);
+    }
   }
 
   dispose() {

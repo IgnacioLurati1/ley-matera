@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EE } from '../config/map';
 import { WEAPONS } from '../config/weapons';
 import Avatars from '../net/Avatars';
+import { FierroNpc } from '../ui/fierroNpc';
 import Altares from './castle/Altares';
 import QuestFuego from './castle/QuestFuego';
 import QuestViento from './castle/QuestViento';
@@ -104,6 +105,8 @@ export default class CastleEgg {
     this.song = new SongEgg(game, 'castillo');
     this.exitT = -1;
     this.npc = new Avatars(game, null);
+    // (fuera de cuadro no se animan: net/Avatars offCull)
+    this.npc.offCull = true;
     this.buildFierro();
     // (el cartel de qué hacer ya no se muestra: el usuario lo sacó el
     // 2026-09-26; la guía de cada mapa va aparte, en PDF)
@@ -139,6 +142,9 @@ export default class CastleEgg {
     a.M.poncho.color.set(0x9a2a1a);
     a.hand.visible = true;
     this.fierro = n;
+    // (con los clips de Blender: en cuclillas junto al fuego y, cuando habla, cuenta con la mano)
+    // (el alma, también con el cuerpo de verdad: transparente y con el tinte del fuego)
+    this.fierroNpc = new FierroNpc(g, this.npc, n, { color: 0xff8a3a, intensity: 0.2 });
     this.fierroGlow = glow(g.textures, 0xffa050, 2.8, 0.35);
     this.root.add(this.fierroGlow);
   }
@@ -503,6 +509,10 @@ export default class CastleEgg {
     const g = this.g;
     if (!isHost(g) || this.step >= 9) return;
     this.debugStep(8);
+    // (los pasos de golpe: cuatro altares que explotan y el retumbe de la cueva en el
+    // mismo cuadro sacudían la cámara al máximo; queda un golpe leve.
+    // globalThis.__mduNoJuraCalm = true: como antes)
+    if (globalThis.__mduNoJuraCalm !== true) g.fx.shake = Math.min(g.fx.shake, 0.12);
     const D = this.dragon;
     D.flight = null;
     D.place('cumbre');
@@ -571,7 +581,7 @@ export default class CastleEgg {
       while (d < -Math.PI) d += Math.PI * 2;
       f.yaw += d * Math.min(1, dt * 1.5);
     }
-    this.npc.update(dt);
+    this.fierroNpc.update(dt);
     const a = this.npc.list.get(500);
     if (a) for (const m of Object.values(a.M)) m.opacity = 0.62 + Math.sin(t * 2.1) * 0.08;
     this.fierroGlow.position.copy(f.pos).setY(f.pos.y + 1.1);

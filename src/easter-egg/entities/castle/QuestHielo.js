@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { EE, ZONES, PROPS, FIRES } from '../../config/map';
 import { ELEM_RGB, ELEM_COLOR, glow, ring, myId, isHost, announce, rayHit, players, playerById, isDown, firstHit } from './common';
 import { fireflies } from '../../fx/Fireflies';
+import { compactGroup } from '../../world/props';
+import { lean } from '../../world/castleLean';
 
 // La vuelta del hielo: "El Corazón del Glaciar".
 //  1. El bloque: en la cumbre, delante de la tumba del Caballero del Hielo,
@@ -77,6 +79,8 @@ export default class QuestHielo {
       c.rotation.set(Math.sin(a) * 0.4, a, Math.cos(a) * 0.4);
       grp.add(c);
     }
+    // (los siete trozos: una malla)
+    if (lean()) compactGroup(grp);
     this.root.add(grp);
     this.block = { grp, cube, ice };
     this.blockBox = g.world.addBox([this.blockPos.x - 0.9, this.blockPos.y, this.blockPos.z - 0.8, this.blockPos.x + 0.9, this.blockPos.y + 2, this.blockPos.z + 0.8], { kind: 'prop' });
@@ -123,6 +127,8 @@ export default class QuestHielo {
       r.position.y = 0.05;
       r.material.opacity = 0;
       grp.add(r);
+      // (las dos agujas, una malla: comparten el material que brilla)
+      if (lean()) compactGroup(grp);
       this.root.add(grp);
       w.addBox([x - 0.35, y, z - 0.35, x + 0.35, y + h, z + 0.35], { kind: 'prop' });
       return { grp, mat, glow: s, ring: r, center: new THREE.Vector3(x, y + h * 0.45, z), top: new THREE.Vector3(x, y + h, z), flash: 0, note: [392, 440, 523, 587, 659][i] };

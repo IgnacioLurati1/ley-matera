@@ -33,6 +33,51 @@ export function mergeByMaterial(group, keep = []) {
   return group;
 }
 
+// Lo mismo para un grupo que se mueve entero (una hoja de puerta, el mate
+// colgado sobre la tiza): funde, a cualquier profundidad, las mallas que
+// comparten material en una sola, en el espacio del grupo. Se dejan como
+// estaban las que pueden cambiar solas: con hijos, escondidas, con su propio
+// onBeforeRender, con huesos o morphs, varios materiales o atributos
+// distintos (cada juego de atributos, sombras, capas y orden de dibujo va
+// aparte, así se ve igual).
+const BEFORE = THREE.Object3D.prototype.onBeforeRender;
+const AFTER = THREE.Object3D.prototype.onAfterRender;
+export function compactGroup(obj) {
+  if (!obj?.isObject3D) return obj;
+  obj.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(obj.matrixWorld).invert();
+  const sets = new Map();
+  obj.traverse((o) => {
+    if (o === obj || !o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || Array.isArray(o.material) || o.children.length || !o.visible) return;
+    if (o.onBeforeRender !== BEFORE || o.onAfterRender !== AFTER || o.userData.dynamic || Object.keys(o.geometry.morphAttributes || {}).length) return;
+    for (let p = o.parent; p && p !== obj; p = p.parent) if (!p.visible) return;
+    const attrs = Object.keys(o.geometry.attributes).sort().join(',');
+    const key = `${o.material.uuid}|${attrs}|${o.layers.mask}|${o.renderOrder}|${o.castShadow}|${o.receiveShadow}|${o.frustumCulled}`;
+    if (!sets.has(key)) sets.set(key, []);
+    sets.get(key).push(o);
+  });
+  for (const list of sets.values()) {
+    if (list.length < 2) continue;
+    const geos = list.map((o) => {
+      const g = o.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+      return g.index ? g.toNonIndexed() : g;
+    });
+    const merged = mergeGeometries(geos, false);
+    geos.forEach((x) => x.dispose());
+    if (!merged) continue;
+    const a = list[0];
+    const m = new THREE.Mesh(merged, a.material);
+    m.castShadow = a.castShadow;
+    m.receiveShadow = a.receiveShadow;
+    m.layers.mask = a.layers.mask;
+    m.renderOrder = a.renderOrder;
+    m.frustumCulled = a.frustumCulled;
+    for (const o of list) o.removeFromParent();
+    obj.add(m);
+  }
+  return obj;
+}
+
 const geoCache = new Map();
 function cached(key, make) {
   let g = geoCache.get(key);
@@ -375,6 +420,12 @@ const BUILDERS = {
     wheel.position.set(1.1, 0.95, 0);
     wheel.add(mesh(cached('fly', () => new THREE.TorusGeometry(0.55, 0.08, 8, 20)), M.iron, 0, 0, 0, 0, Math.PI / 2));
     for (let s = 0; s < 4; s++) wheel.add(mesh(boxGeo(0.05, 1.1, 0.05), M.iron, 0, 0, 0, (s * Math.PI) / 4));
+    // el volante no tira sombra: girando, su sombra de rayos se veía cruzar la
+    // máquina hasta el piso (el usuario, 2026-10-03), y cada cuadro iba a la
+    // luna y a los seis lados de cada lámpara con sombra
+    wheel.traverse((o) => {
+      o.castShadow = false;
+    });
     g.add(wheel);
     C(g, 0.08, 0.08, 1.2, M.copper, -0.3, 2.3, 0.4, 0, 0, 0, 8);
     B(g, 0.3, 0.4, 0.1, M.brass, -1.1, 1.2, 0.62);

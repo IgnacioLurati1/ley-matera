@@ -3,6 +3,8 @@ import GeoBuilder from './GeoBuilder';
 import { bbox, quad, mergeMeshes, lathe, place } from './monumentoKit';
 import { statue } from './monumentoStatues';
 import { rng } from '../core/noise';
+import { windy } from '../fx/grassPush';
+import { banderaTexture } from './monumentoTextures';
 
 // La utilería del Monumento: los mástiles-farola de las barandas del Patio con
 // sus banderas, el mástil mayor de la explanada, los bolardos de piedra de la
@@ -27,10 +29,13 @@ const FLAG_VS = `
     gl_Position = projectionMatrix * mv;
   }`;
 
-// La bandera argentina (con el Sol de Mayo), pintada en un canvas.
+// La bandera argentina (con el Sol de Mayo), pintada en un canvas: la de
+// world/monumentoTextures.js, la misma para todas (globalThis.__mduNoSolNuevo:
+// la de antes, más chica).
 let flagTex = null;
 function argentina() {
   if (flagTex) return flagTex;
+  if (globalThis.__mduNoSolNuevo !== true) return (flagTex = banderaTexture());
   const c = document.createElement('canvas');
   c.width = 384;
   c.height = 240;
@@ -118,7 +123,9 @@ export function buildDecor(w) {
   const globe = new THREE.SphereGeometry(0.17, 14, 10);
   const pole = lathe([[0, 0], [0.13, 0], [0.13, 0.14], [0.09, 0.2], [0.07, 0.6], [0.05, 0.66], [0.045, 4.4], [0.06, 4.44], [0.06, 4.5], [0, 4.5]], 10);
   const patioTop = (x) => (x <= 40 ? 2.2 : x <= 60 ? 2.2 - (2.2 * (x - 40)) / 20 : 0) + 1.0;
-  for (const [zc, s] of [[16.69, 1], [43.31, -1]]) {
+  // (en el medio del remate de las dos barandas: la del sur va de z 44 a 44,62;
+  // en 43,31 los mástiles del sur quedaban un metro en el aire sobre las gradas)
+  for (const [zc, s] of [[16.69, 1], [44.31, -1]]) {
     for (let x = 41.5; x <= 59; x += 3.5) {
       const y = patioTop(x);
       extra.push(place(pole, M.bronze, x, y, zc));
@@ -152,7 +159,11 @@ export function buildDecor(w) {
   big.position.set(mx, 21.3, mz);
   big.rotation.y = 0.5;
   dyn.add(big);
-  w.addBox([mx - 1.2, -2.6, mz - 1.2, mx + 1.2, 21, mz + 1.2], { kind: 'prop' });
+  // (el choque sigue la forma: el dado, el pie de bronce y el mástil; antes
+  // una caja de 2,4 m hasta los 21 m frenaba los tiros en el aire)
+  w.addBox([mx - 1.2, -2.6, mz - 1.2, mx + 1.2, -1.9, mz + 1.2], { kind: 'prop' });
+  w.addBox([mx - 0.7, -1.9, mz - 0.7, mx + 0.7, -0.4, mz + 0.7], { kind: 'prop' });
+  w.addBox([mx - 0.2, -0.4, mz - 0.2, mx + 0.2, 21, mz + 0.2], { kind: 'prop' });
   // los bolardos de piedra (esferas) a lo largo de la avenida
   const bol = new THREE.SphereGeometry(0.26, 12, 9);
   for (let z = 10.5; z <= 50; z += 2.2) {
@@ -175,8 +186,9 @@ export function buildDecor(w) {
   // ---- el Parque: tipas, bancos, faroles y la Batería Libertad
   const trunk = new THREE.CylinderGeometry(0.22, 0.38, 1, 7);
   const crownG = new THREE.IcosahedronGeometry(1, 1);
-  const trees = [[99.2, 9], [102.5, 13], [99, 24], [102.6, 27], [99.3, 33], [102.4, 37], [99.1, 45], [102.7, 49], [99.5, 52.5], [102.4, 21.5], [99.4, 38.6]];
-  const leafM = new THREE.MeshStandardMaterial({ color: 0x24361e, roughness: 0.95, flatShading: true });
+  // (lejos del mástil de la barranca, en 101,5 / 30,5: la Bandera izada no se enreda en las copas)
+  const trees = [[99.2, 9], [102.5, 13], [99, 24], [102.6, 25.4], [99.3, 35.0], [102.4, 37.6], [99.1, 45], [102.7, 49], [99.5, 52.5], [102.4, 21.5], [99.4, 39.4]];
+  const leafM = windy(new THREE.MeshStandardMaterial({ color: 0x24361e, roughness: 0.95, flatShading: true }), { crown: true });
   for (const [x, z] of trees) {
     const h = 3.2 + r() * 1.6;
     const t = place(trunk, M.bark, x, -2.6 + h / 2, z);
@@ -204,13 +216,19 @@ export function buildDecor(w) {
     g.rotation.y = ry;
     return g;
   };
-  for (const [x, z, ry] of [[101, 16.5, -Math.PI / 2], [101, 43.5, -Math.PI / 2], [101.4, 31, -Math.PI / 2], [110.5, 12, Math.PI / 2], [110.5, 48, Math.PI / 2], [110.5, 24, Math.PI / 2]]) {
+  for (const [x, z, ry] of [[101, 16.5, -Math.PI / 2], [101, 43.5, -Math.PI / 2], [101.4, 33.6, -Math.PI / 2], [110.5, 12, Math.PI / 2], [110.5, 48, Math.PI / 2], [110.5, 24, Math.PI / 2]]) {
     const y = x > 105 ? -4.4 : -2.6;
     const b = bench(x, z, ry);
     b.position.y = y;
     b.updateMatrixWorld(true);
     b.traverse((o) => o.isMesh && extra.push(o));
     w.addBox([x - 0.4, y, z - 0.9, x + 0.4, y + 0.85, z + 0.9], { kind: 'prop' });
+  }
+  // las farolas del sendero del parque (donde están sus luces de config LIGHTS)
+  for (const z of [16, 44]) {
+    extra.push(place(lathe([[0, 0], [0.13, 0], [0.13, 0.18], [0.08, 0.26], [0.055, 0.5], [0.045, 4.2], [0.07, 4.26], [0, 4.26]], 10), M.iron, 99.55, -2.6, z));
+    extra.push(place(new THREE.SphereGeometry(0.22, 14, 10), M.lampGlass, 99.55, 1.85, z));
+    w.addBox([99.4, -2.6, z - 0.15, 99.7, 1.7, z + 0.15], { kind: 'prop', solid: false });
   }
   // la Batería Libertad: el parapeto de piedra, la placa y los dos cañones viejos
   bbox(gb, 'travertino', 101.4, -2.6, 6.2, 103.9, -1.9, 6.6, { b: 0.04, top: 'travStep' });
@@ -280,15 +298,18 @@ export function buildDecor(w) {
   }
   // el farol de la punta del muelle
   extra.push(place(new THREE.CylinderGeometry(0.05, 0.07, 2.4, 8), M.iron, 124.2, -4.4 + 1.2, 30.5));
+  w.addBox([124.08, -4.4, 30.38, 124.32, -2.0, 30.62], { kind: 'prop' });
   const tip = place(new THREE.SphereGeometry(0.2, 12, 9), M.lampGlass, 124.2, -4.4 + 2.5, 30.5);
   w.mon.lamps.push(tip);
   dyn.add(tip);
   // ---- el Pasaje: los faroles y el agua de los espejos
-  for (const [x, z] of [[6, 33], [15, 26.3]]) {
+  // (sobre la vereda, en sus bordes: donde están sus luces de config LIGHTS)
+  for (const [x, z] of [[6, 32.75], [16.6, 27.3]]) {
     extra.push(place(new THREE.CylinderGeometry(0.07, 0.12, 4.0, 8), M.iron, x, 3.6 + 2.0, z));
     const g = place(new THREE.SphereGeometry(0.26, 14, 10), M.lampGlass, x, 3.6 + 4.2, z);
     w.mon.lamps.push(g);
     dyn.add(g);
+    w.addBox([x - 0.12, 3.6, z - 0.12, x + 0.12, 7.6, z + 0.12], { kind: 'prop', solid: false });
   }
   const waterM = new THREE.MeshStandardMaterial({ color: 0x0a1418, roughness: 0.06, metalness: 0.0, transparent: true, opacity: 0.86 });
   for (const P of w.mon.pools || []) {
@@ -313,13 +334,24 @@ export function buildDecor(w) {
     ['lola', 18.6, 3.35, 35.5, Math.PI + 0.6],
   ];
   for (const [kind, x, y, z, ry] of lola) {
-    bbox(gb, 'travertino', x - 0.6, y - 0.1, z - 0.5, x + 0.6, y + 0.75, z + 0.5, { b: 0.05, top: 'travStep' });
+    // (el pie arranca 5 cm abajo del fondo del estanque: a 10 cm, la cara de
+    // abajo caía justo en el techo de la Sala de las Banderas y titilaba)
+    bbox(gb, 'travertino', x - 0.6, y - (globalThis.__mduNoZfix === true ? 0.1 : 0.05), z - 0.5, x + 0.6, y + 0.75, z + 0.5, { b: 0.05, top: 'travStep' });
     extra.push(...statue(kind, M.marble, x, y + 0.75, z, ry, kind === 'granadero' ? 0.9 : 1.05));
     if (y > 3.2) w.addBox([x - 0.6, y - 0.1, z - 0.5, x + 0.6, y + 2.6, z + 0.5], { kind: 'prop' });
   }
   // ---- la Sala de Honor: las banderas de América en sus vitrinas (marco de
   // bronce, fondo de pana azul, la luz de museo arriba y la placa con el nombre)
   {
+    // las dos arañas de bronce del techo (las luces de la Sala)
+    for (const x of [9, 16]) {
+      extra.push(place(new THREE.CylinderGeometry(0.015, 0.015, 0.4, 5), M.bronzeDark, x, 2.8, 18));
+      extra.push(place(lathe([[0, 0], [0.32, 0.02], [0.36, 0.08], [0.1, 0.16], [0.04, 0.2], [0, 0.2]], 16), M.bronze, x, 2.38, 18));
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        extra.push(place(new THREE.SphereGeometry(0.05, 8, 6), M.lampGlass, x + Math.cos(a) * 0.3, 2.5, 18 + Math.sin(a) * 0.3));
+      }
+    }
     const velvet = new THREE.MeshStandardMaterial({ color: 0x18213a, roughness: 1 });
     const glow = new THREE.MeshStandardMaterial({ color: 0x2a2418, emissive: 0xffdcae, emissiveIntensity: 1.6 });
     const names = AMERICA.map((f) => f[0]);
@@ -378,10 +410,37 @@ export function buildDecor(w) {
   }
   w.root.add(gb.build(M));
   if (extra.length) w.root.add(mergeMeshes(extra));
+  // los globos de las cruces de los mástiles del Patio (cuatro por farola, el
+  // mismo vidrio prendido, sin sombra): una malla por cruz, eran 48 dibujos y
+  // quedan 12. Cada cruz se recorta de lejos como un globo solo (userData.scR,
+  // core/sizeCull), así se ve igual. Los sueltos quedan armados y escondidos
+  // (globalThis.__mduNoGlobos); al armar el mapa se ven todos (sizeCull anota
+  // los dos) y el primer update deja unos u otros.
+  const globos = new THREE.Group();
+  const crossed = [];
+  for (const l of w.mon.lamps) {
+    if (crossed.some((c) => c.includes(l))) continue;
+    const near = w.mon.lamps.filter((o) => o.material === l.material && o.geometry === l.geometry && o.position.distanceTo(l.position) < 0.7);
+    if (near.length < 2) continue;
+    crossed.push(near);
+    const m = mergeMeshes(near, { castShadow: false, receiveShadow: false }).children[0];
+    if (!l.geometry.boundingSphere) l.geometry.computeBoundingSphere();
+    m.userData.scR = l.geometry.boundingSphere.radius * l.scale.x;
+    globos.add(m);
+  }
+  const loose = crossed.flat();
+  w.root.add(globos);
+  let globosOn = null;
   // lo que se mueve: las banderas flamean y la baliza de la Torre titila
   const prev = w.extraUpdate;
   w.extraUpdate = (dt, t) => {
     prev?.(dt, t);
+    const mg = globalThis.__mduNoGlobos !== true;
+    if (mg !== globosOn) {
+      globosOn = mg;
+      globos.visible = mg;
+      for (const l of loose) l.visible = !mg;
+    }
     w.mon.flagT.value = t;
     if (w.mon.beacon) w.mon.beacon.emissiveIntensity = Math.sin(t * 2.4) > 0.6 ? 4 : 0.4;
     if (w.mon.puenteRed) w.mon.puenteRed.opacity = 0.4 + 0.6 * (Math.sin(t * 1.9) > 0.2 ? 1 : 0);

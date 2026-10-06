@@ -932,8 +932,11 @@ export default class Tower {
     // las luces de verdad: cada una con su farol (`a`), cuánto está prendida
     // (`k`, 0 a 1), si se está yendo (`out`) y su fuerza (`base`)
     this.lightPool = [];
+    // (las que sobran en esta calidad nacen apagadas: la misma cuenta al cargar y al jugar)
+    const nOn = Math.min(LIGHTS, w.maxLamps());
     for (let i = 0; i < LIGHTS; i++) {
       const L = new THREE.PointLight(0xffb070, 0, 16, 1.7);
+      L.visible = i < nOn;
       L.userData = { a: null, k: 0, out: false, base: 0 };
       w.scene.add(L);
       this.lightPool.push(L);
@@ -945,7 +948,8 @@ export default class Tower {
     this.cineLights = [0, 1].map(() => {
       const L = new THREE.PointLight(0xffffff, 0, 8, 2);
       w.scene.add(L);
-      return L;
+      // (no cuenta como luz mientras está apagada: World.adoptLight)
+      return w.adoptLight(L);
     });
   }
 
@@ -960,6 +964,16 @@ export default class Tower {
     const w = this.w;
     const cam = w.g.camera;
     const pool = this.lightPool;
+    // cuántas según la calidad (World.maxLamps): las demás, apagadas y fuera de la cuenta
+    const n = Math.min(LIGHTS, w.maxLamps());
+    for (let i = 0; i < pool.length; i++) {
+      const on = i < n;
+      if (pool[i].visible === on) continue;
+      pool[i].visible = on;
+      pool[i].userData.a = null;
+      pool[i].userData.k = 0;
+      this.lightT = 0;
+    }
     this.lightT -= dt;
     if (this.lightT <= 0) {
       this.lightT = 0.25;
@@ -967,13 +981,13 @@ export default class Tower {
       const held = new Set();
       for (const L of pool) if (L.userData.a) held.add(L.userData.a);
       for (const a of this.anchors) a.d = (a.pos.distanceToSquared(cam.position) + Math.abs(a.pos.y - cy - 1.4) * 40) * (held.has(a) ? 0.6 : 1);
-      const want = new Set([...this.anchors].sort((p, q) => p.d - q.d).slice(0, LIGHTS));
+      const want = new Set([...this.anchors].sort((p, q) => p.d - q.d).slice(0, n));
       // las que sobran se van apagando (y vuelven si las quieren de nuevo)
       for (const L of pool) L.userData.out = !!L.userData.a && !want.has(L.userData.a);
       // los faroles que faltan toman una luz libre, que arranca apagada
       for (const a of want) {
         if (held.has(a)) continue;
-        const L = pool.find((x) => !x.userData.a);
+        const L = pool.find((x) => x.visible && !x.userData.a);
         if (!L) break;
         const u = L.userData;
         u.a = a;
@@ -1265,6 +1279,8 @@ export default class Tower {
     group.add(beam);
     this.skyBeam = beam;
     group.visible = false;
+    // (escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+    group.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
     w.root.add(group);
     this.skyGroup = group;
     this.skyTop = base + S.turns * S.pitch;

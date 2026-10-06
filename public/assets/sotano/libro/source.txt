@@ -1,0 +1,4 @@
+EB Garamond (Georg Duffner y Octavio Pardo), subconjunto latino, de Google Fonts:
+https://fonts.google.com/specimen/EB+Garamond
+Licencia: SIL Open Font License 1.1 (https://openfontlicense.org).
+La usa el libro "La Ronda Eterna" del juego (src/easter-egg/ui/BookReader.js).

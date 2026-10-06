@@ -204,6 +204,7 @@
   stroke: var(--red);
   stroke-width: 9;
   stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .mdu-round.is-changing { animation: mdu-roundflash 3.2s ease-out; }
 .mdu-round.is-ending { animation: mdu-roundend 4s ease-in-out; }
@@ -728,6 +729,16 @@
   white-space: nowrap;
 }
 .mdu-hint.is-on { opacity: 1; }
+/* (el largo, en dos renglones: tope el ancho libre entre los perks y la tarjeta
+   del arma, que pone Hud.layout en --hint-w) */
+.mdu-hint.is-wrap {
+  width: max-content;
+  max-width: var(--hint-w, min(720px, 56vw));
+  white-space: normal;
+  text-wrap: balance;
+  text-align: center;
+  line-height: 1.3;
+}
 .mdu-hint::after {
   content: '';
   position: absolute;
@@ -1843,6 +1854,7 @@
 /* el final de La Tapera (ui/FarmCinematic.js): el título en letra de chacra y el Espantapájaros en paja */
 .mdu-fcine--granja .mdu-fcine__title { font-family: 'Rye', 'Special Elite', serif; color: #f3dca0; text-shadow: 0 0 34px rgba(255, 170, 60, 0.6), 0 4px 0 #2a1606; }
 .mdu-fcine.is-espanta .mdu-fcine__text { color: #ffe0a8; text-shadow: 0 0 18px rgba(255, 130, 30, 0.8), 0 2px 0 #000; }
+.mdu-fcine--granja.is-vozluz .mdu-fcine__text { text-shadow: 0 0 3px rgba(18, 6, 34, 0.95), 0 0 10px rgba(30, 10, 60, 0.85), 0 0 22px rgba(30, 10, 60, 0.6), 0 2px 0 #000; }
 
 /* ---------------- el final del castillo (ui/CastleEnding.js): Fierro de oro ---------------- */
 .mdu-fcine--fin.is-fierro .mdu-fcine__text { color: #ffeccc; text-shadow: 0 0 18px rgba(255, 176, 70, 0.85), 0 2px 0 #000; }

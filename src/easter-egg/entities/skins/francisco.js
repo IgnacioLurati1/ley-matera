@@ -157,6 +157,9 @@ export default {
   loops: ['quieto', 'sermon', 'caminar', 'rodillas'],
   // el latigazo sale de la mano que baja en el clip (la derecha)
   alias: { whip: 'RightHand' },
+  // los tiros le pegan al modelo que se ve (volando no está donde las piezas;
+  // entities/bossSkin.js skinHit, __mduNoSkinHit: a las piezas)
+  hitSkin: true,
 
   ready(S) {
     // el cuerpo en reposo (alto de cada vértice) para deshacerse de abajo para arriba
@@ -349,13 +352,15 @@ export default {
     // los ojos: libre (la aureola rota) se apagan de a poco y quedan los de
     // un hombre; se van con la cabeza
     const free = cine && cine.freeT != null ? Math.min(1, (cine.t - cine.freeT) / 1.2) : 0;
-    const ek = cut > EYE_Y ? 0 : 1 - free * 0.85;
+    // (en la cinemática final, sin los dorados: solo los destellos colorados)
+    const ek = cut > EYE_Y || (cine && !cine.redEye) ? 0 : 1 - free * 0.85;
     for (const n of ['eyeA', 'eyeB']) {
       const e = S.bones[n]?.children[0];
       if (!e) continue;
       e.userData.s0 ||= e.scale.clone();
       e.scale.copy(e.userData.s0).multiplyScalar(Math.max(1e-3, ek));
-      e.visible = ek > 0.02;
+      // (el ojo y su brillo: el brillo, un sprite al lado, quedaba prendido)
+      for (const c of S.bones[n].children) c.visible = ek > 0.02;
     }
     // la aureola: la de piezas, sobre la cabeza del modelo
     if (!S.halo || S.halo.parent !== R.parts[2]) {

@@ -398,13 +398,22 @@ export function carvedText(text, { w = 2048, h = 128, size = 72, base = 0xc4b59a
     return shade(b, 0.88 + n * 0.18);
   });
   ctx.drawImage(img, 0, 0);
-  ctx.font = `600 ${size}px "Times New Roman", Georgia, serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   // separación entre letras (letterSpacing no está en todos los navegadores)
   const chars = [...text];
-  const widths = chars.map((ch) => ctx.measureText(ch).width + size * spacing);
-  const total = widths.reduce((a, v) => a + v, 0);
+  const measure = (s) => {
+    ctx.font = `600 ${s}px "Times New Roman", Georgia, serif`;
+    return chars.map((ch) => ctx.measureText(ch).width + s * spacing);
+  };
+  let widths = measure(size);
+  let total = widths.reduce((a, v) => a + v, 0);
+  // (si la frase no entra, la letra se achica: "AL GRAN PUEBLO ARGENTINO
+  // ¡SALUD!" quedaba cortada en las dos puntas del friso)
+  if (total > w * 0.96) {
+    widths = measure(Math.floor((size * w * 0.96) / total));
+    total = widths.reduce((a, v) => a + v, 0);
+  }
   const draw = (dx, dy, color) => {
     ctx.fillStyle = color;
     let x = w / 2 - total / 2;
@@ -582,6 +591,119 @@ export function escudoMedallon(size = 512, opts = {}) {
   }, opts);
 }
 
+// El Sol de Mayo de la bandera: la cara con sus rasgos (cejas, ojos, nariz,
+// cachetes y boca) y los 32 rayos alternados, 16 rectos y 16 flamígeros (el
+// de arriba, recto), dorado con el contorno marrón como el de la bandera
+// oficial. (cx, cy): el centro; R: hasta la punta de los rayos rectos.
+export function solDeMayo(x, cx, cy, R) {
+  const GOLD = '#f6b40e';
+  const BROWN = '#85340a';
+  const f = R * 0.4;
+  const lw = Math.max(0.6, R * 0.022);
+  x.save();
+  x.translate(cx, cy);
+  x.lineJoin = 'round';
+  x.lineCap = 'round';
+  x.fillStyle = GOLD;
+  x.strokeStyle = BROWN;
+  x.lineWidth = lw;
+  const r0 = f * 0.9;
+  for (let i = 0; i < 32; i++) {
+    x.save();
+    x.rotate(-Math.PI / 2 + (i / 32) * Math.PI * 2);
+    x.beginPath();
+    if (i % 2 === 0) {
+      // recto: una punta de lanza
+      const w0 = R * 0.072;
+      x.moveTo(r0, -w0);
+      x.lineTo(R, 0);
+      x.lineTo(r0, w0);
+    } else {
+      // flamígero: una llama que ondula y se afina hasta la punta
+      const L = R * 0.92;
+      const N = 18;
+      const pts = [];
+      for (let k = 0; k <= N; k++) {
+        const t = k / N;
+        pts.push([r0 + (L - r0) * t, Math.sin(t * Math.PI * 3) * R * 0.045 * (0.35 + 0.65 * t), R * 0.058 * (1 - t) + R * 0.004]);
+      }
+      x.moveTo(pts[0][0], pts[0][1] - pts[0][2]);
+      for (const [r, c, hw] of pts) x.lineTo(r, c - hw);
+      for (let k = N; k >= 0; k--) x.lineTo(pts[k][0], pts[k][1] + pts[k][2]);
+    }
+    x.closePath();
+    x.fill();
+    x.stroke();
+    x.restore();
+  }
+  // la cara
+  x.beginPath();
+  x.arc(0, 0, f, 0, Math.PI * 2);
+  x.fill();
+  x.lineWidth = lw * 1.5;
+  x.stroke();
+  x.lineWidth = lw * 1.3;
+  x.fillStyle = BROWN;
+  const line = (pts) => {
+    x.beginPath();
+    x.moveTo(pts[0] * f, pts[1] * f);
+    for (let k = 2; k < pts.length; k += 4) x.quadraticCurveTo(pts[k] * f, pts[k + 1] * f, pts[k + 2] * f, pts[k + 3] * f);
+    x.stroke();
+  };
+  for (const s of [-1, 1]) {
+    // la ceja, el ojo (la almendra y la pupila) y el cachete
+    line([s * 0.1, -0.3, s * 0.36, -0.52, s * 0.62, -0.3]);
+    x.beginPath();
+    x.moveTo(s * 0.17 * f, -0.13 * f);
+    x.quadraticCurveTo(s * 0.38 * f, -0.3 * f, s * 0.59 * f, -0.13 * f);
+    x.quadraticCurveTo(s * 0.38 * f, -0.02 * f, s * 0.17 * f, -0.13 * f);
+    x.stroke();
+    x.beginPath();
+    x.arc(s * 0.38 * f, -0.14 * f, 0.07 * f, 0, Math.PI * 2);
+    x.fill();
+    line([s * 0.5, 0.1, s * 0.62, 0.24, s * 0.5, 0.36]);
+  }
+  // la nariz (larga, con las alitas) y la boca chica de labios marcados
+  line([0.02, -0.2, 0.1, 0.06, 0.08, 0.2]);
+  line([0.12, 0.2, 0, 0.3, -0.12, 0.2]);
+  line([-0.26, 0.47, 0, 0.58, 0.26, 0.47]);
+  line([-0.14, 0.58, 0, 0.66, 0.14, 0.58]);
+  x.restore();
+}
+
+// La bandera argentina en un canvas: tres franjas iguales y el Sol de Mayo en
+// la blanca (de 5/6 de su alto). `seams`: las costuras a mano (la del easter egg).
+export function banderaArgentina(w = 1024, h = 640, { seams = false } = {}) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const x = c.getContext('2d');
+  x.fillStyle = '#74acdf';
+  x.fillRect(0, 0, w, h);
+  x.fillStyle = '#f4f2ec';
+  x.fillRect(0, h / 3, w, h / 3);
+  if (seams) {
+    x.strokeStyle = 'rgba(80,90,110,0.35)';
+    x.lineWidth = h / 160;
+    x.setLineDash([h / 53, h / 40]);
+    for (const y of [h / 3, (2 * h) / 3]) {
+      x.beginPath();
+      x.moveTo(0, y);
+      x.lineTo(w, y);
+      x.stroke();
+    }
+    x.setLineDash([]);
+  }
+  solDeMayo(x, w / 2, h / 2, ((h / 3) * 5) / 12);
+  return c;
+}
+// (una textura por tipo, compartida por todas las banderas del mapa)
+const banderaTexs = {};
+export function banderaTexture({ seams = false } = {}) {
+  const k = seams ? 'seams' : 'plain';
+  return (banderaTexs[k] ||= toTexture(banderaArgentina(1024, 640, { seams }), { repeat: false }));
+}
+
 // Revoque a la cal de los edificios viejos: crema, parejo, con manchas de
 // humedad suaves y algún descascarado (sin la faja de los galpones).
 function revoque({ seed, base = 0xd8c8a8 }) {
@@ -687,9 +809,18 @@ export function monumentoMaterials(T, M, std) {
   M.lampGlass = new THREE.MeshStandardMaterial({ color: 0xfff2d8, emissive: 0xffd9a0, emissiveIntensity: 2.2, roughness: 0.3 });
   M.lampGlassOff = new THREE.MeshStandardMaterial({ color: 0xb8b0a0, emissive: 0x2a2418, emissiveIntensity: 1, roughness: 0.3 });
   M.fachadas = T.fachada.map((f) => new THREE.MeshStandardMaterial({ map: f.map, emissiveMap: f.glow, emissive: 0xffffff, emissiveIntensity: 1.1, roughness: 0.85 }));
+  // (cuántos pisos tiene cada fachada en sus 24 m: los balcones van a esa altura, monumentoCity)
+  M.fachadas.forEach((m, i) => (m.userData.rows = [8, 7, 9][i]));
   // las estatuas de mármol, el cielorraso de la Cripta, el revoque de la ciudad
   M.marble = new THREE.MeshStandardMaterial({ color: 0xe6e0d4, roughness: 0.62, flatShading: true });
   M.bronze.flatShading = false;
+  // las estatuas del Monumento que bañan los reflectores (la Madre Patria del
+  // nicho, los jinetes, la Pampa y los Andes, la Patria Abanderada y los
+  // colosos): el mismo material con un emisivo que sube con la luz
+  // (world/monumentoLuces.js); dos dibujos más, sin luces puntuales
+  M.bronzeLit = std(T.bronze, { r: 0.5, m: 0.65, e: 0xffd2a0, ei: 0 });
+  M.bronzeLit.emissiveMap = T.bronze;
+  M.marbleLit = new THREE.MeshStandardMaterial({ color: 0xe6e0d4, roughness: 0.62, flatShading: true, emissive: 0xfff0dc, emissiveIntensity: 0 });
   M.cryptCeil = std(T.cryptMarble, { c: 0x9aa09a, r: 0.5 });
   M.revoque = std(T.revoque, { bump: 0.4 });
   M.revoqueDark = std(T.revoque, { c: 0xb8aa94, bump: 0.4 });

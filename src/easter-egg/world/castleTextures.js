@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { makeNoise, rng } from '../core/noise';
-import { toTexture } from '../core/textures';
+import { toTexture, takePre } from '../core/textures';
 import { pavedSnow } from './castleWeathering';
 
 // Texturas del castillo del Mateendrache (se pintan recién cuando se arma ese
@@ -30,8 +30,9 @@ const noiseS = (S, x, y, px, off = 0) => {
   return N.noise((x * k) / S + off, (y * k) / S, k);
 };
 
+// (en los workers del arranque, core/textureWorker.js, no hay document)
 function paint(w, h, fn) {
-  const c = document.createElement('canvas');
+  const c = typeof document !== 'undefined' ? document.createElement('canvas') : new OffscreenCanvas(w, h);
   c.width = w;
   c.height = h;
   const ctx = c.getContext('2d');
@@ -367,17 +368,23 @@ function slateTex({ seed }) {
   return c;
 }
 
-// Las texturas del castillo (una vez; si ya están, no se repintan).
+// Las texturas del castillo. También las pintan los workers del arranque
+// (core/texturePool.js): las que ya llegaron se toman de ahí (takePre).
+export const CASTLE_PAINT = {
+  castleStone: () => ashlar({ seed: 71 }),
+  castleStoneFrost: () => ashlar({ seed: 72, frost: 1 }),
+  snow: () => snowTex({ seed: 73 }),
+  flagstone: () => flagstones({ seed: 74 }),
+  ice: () => iceTex({ seed: 75 }),
+  caveRock: () => caveRockTex({ seed: 76 }),
+  slate: () => slateTex({ seed: 77 }),
+  castlePlaster: () => plasterTex({ seed: 78 }),
+};
+
+// (una vez; si ya están, no se repintan)
 export function castleTextures(T) {
   if (T.castleStone) return T;
-  T.castleStone = toTexture(ashlar({ seed: 71 }));
-  T.castleStoneFrost = toTexture(ashlar({ seed: 72, frost: 1 }));
-  T.snow = toTexture(snowTex({ seed: 73 }));
-  T.flagstone = toTexture(flagstones({ seed: 74 }));
-  T.ice = toTexture(iceTex({ seed: 75 }));
-  T.caveRock = toTexture(caveRockTex({ seed: 76 }));
-  T.slate = toTexture(slateTex({ seed: 77 }));
-  T.castlePlaster = toTexture(plasterTex({ seed: 78 }));
+  for (const [k, fn] of Object.entries(CASTLE_PAINT)) T[k] = toTexture(takePre(k) || fn());
   return T;
 }
 

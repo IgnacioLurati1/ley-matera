@@ -129,6 +129,10 @@
 .mdu-intro--castillo .mdu-intro__card { font-family: 'Cinzel', 'Special Elite', serif; color: #eef2ff; }
 .mdu-intro--esteros .mdu-intro__title { font-family: 'Kaushan Script', 'Special Elite', serif; font-size: clamp(46px, 7.6vw, 108px); color: #e8f4ea; text-shadow: 0 0 34px rgba(120, 230, 170, 0.5), 0 4px 0 #04140e; }
 .mdu-intro--esteros .mdu-intro__card { color: #e4f0e6; }
+/* Eclipse Matero: romanas espaciadas en el oro de la corona, con la luz violeta de las grietas */
+.mdu-intro--eclipse .mdu-intro__title { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 900; font-size: clamp(36px, 6.2vw, 90px); letter-spacing: 0.14em; color: #f6d88a; text-shadow: 0 0 2px #07020f, 0 0 36px rgba(140, 70, 255, 0.75), 0 4px 0 #12062a; }
+.mdu-intro--eclipse .mdu-intro__place { font-family: 'Cinzel', 'Special Elite', serif; color: #dcc8ff; letter-spacing: 0.4em; }
+.mdu-intro--eclipse .mdu-intro__card { font-family: 'Cinzel', 'Special Elite', serif; color: #efe8ff; }
 @media (prefers-reduced-motion: reduce) {
   .mdu-intro__title { transition: opacity 1s; }
 }

@@ -135,28 +135,70 @@ export default class MonumentoFog {
       return k && indoor.has(k);
     };
     const floorY = new Float32Array(w.W * w.H);
-    for (let z = 0; z < w.H; z++) for (let x = 0; x < w.W; x++) floorY[z * w.W + x] = skip(x, z) ? NaN : hAt(x + 0.5, z + 0.5);
+    // (tampoco sobre las paredes macizas: su "piso" es el del lugar caminable
+    // más cercano, y la Proa, que queda cerca del Mirador, tenía niebla a 44 m,
+    // una mancha flotando delante de la cima de la Torre; ni arriba de 40 m:
+    // el Mirador va bajo techo y el patio de la 2043 apaga la niebla.
+    // globalThis.__mduNoFogAlto: como antes)
+    const alto = globalThis.__mduNoFogAlto !== true;
+    const solid = (x, z) => w.grid[w.idx(x, z)] === 2 && w.edge[w.idx(x, z)] === 0;
+    for (let z = 0; z < w.H; z++) {
+      for (let x = 0; x < w.W; x++) {
+        const f = skip(x, z) ? NaN : hAt(x + 0.5, z + 0.5);
+        floorY[z * w.W + x] = alto && (f > 40 || solid(x, z)) ? NaN : f;
+      }
+    }
     let lo = Infinity;
     let hi = -Infinity;
     for (const v of floorY) if (!Number.isNaN(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     this.layers = [];
+    const lays = [];
     for (let y = Math.floor(lo / DY) * DY + DY; y <= hi + 1.1; y += DY) {
       const pos = [];
       for (let z = 0; z < w.H; z++) {
         for (let x = 0; x < w.W; x++) {
           const f = floorY[z * w.W + x];
           if (Number.isNaN(f)) continue;
-          // (con la rampa, se mira la esquina más baja y la más alta de la celda)
-          const fa = Math.min(f, hAt(x, z), hAt(x + 1, z + 1));
-          const fb = Math.max(f, hAt(x, z), hAt(x + 1, z + 1));
+          // (con la rampa, se mira la esquina más baja y la más alta de la celda;
+          // solo en las rampas: al lado de un desnivel las esquinas caían en la
+          // celda de abajo y la celda llevaba capas de punta a punta, una
+          // cortina de rebanadas pegada a la Torre del lado del río)
+          const ramp = !alto || (w.inside(x, z) && w.rampAt[w.idx(x, z)] >= 0);
+          const fa = ramp ? Math.min(f, hAt(x, z), hAt(x + 1, z + 1)) : f;
+          const fb = ramp ? Math.max(f, hAt(x, z), hAt(x + 1, z + 1)) : f;
           if (y < fa + 0.04 || y > fb + 1.15) continue;
           pos.push(x, y, z, x + 1, y, z, x + 1, y, z + 1, x, y, z, x + 1, y, z + 1, x, y, z + 1);
         }
       }
       if (!pos.length) continue;
+      lays.push(pos);
+    }
+    // Todas las capas en una sola malla (eran ~170 dibujos por cuadro): todas
+    // tienen el mismo color, y "encima" con el mismo color da lo mismo en
+    // cualquier orden. Las pares van primero: en Baja se dibuja ese tramo.
+    // Las capas sueltas de antes siguen armadas sobre la misma memoria (cada una
+    // su tramo, su esfera y su caja), escondidas: globalThis.__mduNoFogMerge.
+    const order = [...lays.keys()].sort((a, b) => (a % 2) - (b % 2) || a - b);
+    const at = new Array(lays.length);
+    let n = 0;
+    for (const i of order) {
+      at[i] = n;
+      n += lays[i].length;
+    }
+    const all = new Float32Array(n);
+    for (const i of order) all.set(lays[i], at[i]);
+    const attr = new THREE.BufferAttribute(all, 3);
+    this.evenCount = lays.reduce((s, p, i) => s + (i % 2 ? 0 : p.length / 3), 0);
+    for (const [i, pos] of lays.entries()) {
+      const tmp = new THREE.BufferGeometry();
+      tmp.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      tmp.computeBoundingSphere();
+      tmp.computeBoundingBox();
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      geo.computeBoundingSphere();
+      geo.setAttribute('position', attr);
+      geo.setDrawRange(at[i] / 3, pos.length / 3);
+      geo.boundingSphere = tmp.boundingSphere;
+      geo.boundingBox = tmp.boundingBox;
       const m = new THREE.Mesh(geo, this.mat);
       m.renderOrder = 4;
       m.frustumCulled = true;
@@ -164,6 +206,16 @@ export default class MonumentoFog {
       this.root.add(m);
       this.layers.push(m);
     }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', attr);
+    geo.computeBoundingSphere();
+    this.all = new THREE.Mesh(geo, this.mat);
+    this.all.renderOrder = 4;
+    this.all.userData.reflect = false;
+    // (al armar el mapa se ven las dos, así core/sizeCull anota las sueltas como
+    // antes; el primer update deja una)
+    this.root.add(this.all);
+    this.merged = null;
     // el manto del río: tres capas grandes sobre el agua, hacia el horizonte
     const rm = this.mat.clone();
     rm.uniforms = { ...this.u, uA: { value: 0.14 * amount }, uTop: { value: 2.4 } };
@@ -182,12 +234,16 @@ export default class MonumentoFog {
   update(dt, t) {
     const g = this.g;
     const q = g.tier?.('night') || g.settings?.quality || 'medium';
-    if (q !== this.q) {
-      this.q = q;
+    const mg = globalThis.__mduNoFogMerge !== true;
+    if (q !== this.q || mg !== this.merged) {
       const k = TIER[q] ?? 1;
-      this.root.visible = k > 0;
+      if (q !== this.q) this.root.visible = k > 0;
+      this.q = q;
+      this.merged = mg;
       // en Baja una capa sí y otra no (más gruesas)
-      this.layers.forEach((m, i) => (m.visible = k >= 0.8 || i % 2 === 0));
+      this.layers.forEach((m, i) => (m.visible = !mg && (k >= 0.8 || i % 2 === 0)));
+      this.all.visible = mg;
+      this.all.geometry.setDrawRange(0, k >= 0.8 ? Infinity : this.evenCount);
       this.u.uA.value = this.base * (k >= 0.8 ? 1 : 1.7);
     }
     this.u.uT.value = t;

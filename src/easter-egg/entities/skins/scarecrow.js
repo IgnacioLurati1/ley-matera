@@ -93,11 +93,9 @@ function buildFork() {
     tip.rotation.x = 0.25;
     g.add(tip);
   }
+  // (con recorte: piezas rígidas, su esfera sirve)
   g.traverse((o) => {
-    if (o.isMesh) {
-      o.castShadow = true;
-      o.frustumCulled = false;
-    }
+    if (o.isMesh) o.castShadow = true;
   });
   return g;
 }

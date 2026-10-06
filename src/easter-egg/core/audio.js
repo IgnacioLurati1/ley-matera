@@ -8,8 +8,17 @@ import { zombieSound, speechPlan, voiceLength, renderVoice, RATE } from './voice
 import { MAP_ID } from '../config/map';
 import { esterosStart, esterosEnd } from '../fx/esterosMusic';
 import { monumentoStart, monumentoEnd } from '../fx/monumentoMusic';
+import { eclipseStart, eclipseEnd } from '../fx/eclipseMusic';
 import SfxPack from './sfxPack';
 import WeaponSfx from './weaponSfx';
+import { rng } from './noise';
+
+// Una semilla de una frase (la misma en todas las compus).
+const seedOf = (s) => {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0 || 1;
+};
 
 const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
 // Audio.out: cuántos sonidos recientes (en LOAD_TAU segundos) aguanta con
@@ -98,6 +107,9 @@ const SHOTS = {
 // Qué voz del navegador usa cada personaje (la posición en la lista de voces
 // de hombre): los que hablan juntos quedan en voces distintas.
 const VOICE_SLOT = { abuelo: 0, fierro: 0, alcaide: 1, entidad: 2, gil: 1, francisco: 1, capataz: 1, capatazJoven: 2, anacleto: 2, cirilo: 3, benito: 4, nicanor: 0, espantapajaros: 3, radio: 2, anunciador: 1, caballeroFuego: 1, caballeroViento: 2, caballeroRayo: 3, caballeroHielo: 4, sargento: 0 };
+
+// cuánto abre la boca cada vocal del murmullo (talkLevel)
+const MOUTH_OPEN = { a: 1, e: 0.7, o: 0.8, i: 0.4, u: 0.45, y: 0.15, w: 0.35 };
 
 export default class GameAudio {
   constructor() {
@@ -321,12 +333,25 @@ export default class GameAudio {
   }
 
   // Banco de sonidos de zombie: varias tomas de cada tipo, generadas una vez.
+  // (en el worker de las voces si está: eran ~200 ms de carga al abrir; hasta
+  // que llegan, growl no tiene con qué y no suena, y en el título no hay zombies)
   buildBank() {
     const plan = { moan: 10, groan: 8, breath: 6, snarl: 8, scream: 6, death: 8, boss: 3 };
-    for (const [kind, n] of Object.entries(plan)) {
-      this.bank[kind] = [];
-      for (let i = 0; i < n; i++) this.bank[kind].push(this.toBuffer(zombieSound(kind).data));
-    }
+    const here = () => {
+      for (const [kind, n] of Object.entries(plan)) {
+        if (this.bank[kind]?.length) continue;
+        this.bank[kind] = [];
+        for (let i = 0; i < n; i++) this.bank[kind].push(this.toBuffer(zombieSound(kind).data));
+      }
+    };
+    if (this.voiceWorker) {
+      const id = ++this.voiceJobId;
+      this.voiceJobs.set(id, (data) => {
+        if (!data) return here();
+        for (const kind in data) this.bank[kind] = data[kind].map((d) => this.toBuffer(d));
+      });
+      this.voiceWorker.postMessage({ id, bank: plan });
+    } else here();
     this.bake();
   }
 
@@ -501,6 +526,12 @@ export default class GameAudio {
     // un cuadro con la cámara en NaN (teletransportes) tira una excepción en
     // setTargetAtTime: ese cuadro se saltea y el oído queda donde estaba
     if (!Number.isFinite(pos.x + pos.y + pos.z + fwd.x + fwd.y + fwd.z)) return;
+    // dónde está el oído y cuándo se movió (los fuegos: startFire)
+    const e = (this.ear ||= { x: 0, y: 0, z: 0, at: 0 });
+    e.x = pos.x;
+    e.y = pos.y;
+    e.z = pos.z;
+    e.at = performance.now();
     const l = this.ctx.listener;
     if (l.positionX) {
       // (de un saque cada cuadro: con setTargetAtTime la curva no termina
@@ -1753,7 +1784,19 @@ export default class GameAudio {
   // `cut`: a la frase la interrumpe lo que sigue (termina en seco, sin pausa).
   say(text, speaker = 'abuelo', { cine = false, cut = false } = {}) {
     const pauses = (text.match(/[,.;:!?…]/g) || []).length;
-    const talk = (rate) => Math.max(1.6, (text.length * 0.064 + pauses * 0.22) / rate + 0.3);
+    // en línea, lo de las cinemáticas dura lo mismo en todas las compus (el
+    // guion de cada una avanza con lo que devuelve esto): murmullos con la
+    // suerte atada a la frase y ese largo aunque esta compu use otras voces.
+    // Antes cada murmullo variaba ±0,25 s al azar y el final de un mapa
+    // terminaba más de 1 s corrido entre jugadores. (this.online lo pone Game;
+    // globalThis.__mduNoVoiceSync: como antes)
+    const key = cine && this.online?.() && globalThis.__mduNoVoiceSync !== true ? seedOf(`${speaker}|${text}`) : 0;
+    let fixed = 0;
+    if (key) {
+      const pl = speechPlan(text, speaker, rng(key), { cut });
+      fixed = voiceLength(pl.segs, pl.P);
+    }
+    const talk = (rate) => fixed || Math.max(1.6, (text.length * 0.064 + pauses * 0.22) / rate + 0.3);
     this.sayWait = 0;
     if (this.cine && !cine) return talk(1);
     const now = this.ctx.currentTime;
@@ -1816,7 +1859,7 @@ export default class GameAudio {
         /* sigue con murmullos */
       }
     }
-    return this.murmur(text, speaker, now + wait, cut);
+    return this.murmur(text, speaker, now + wait, cut, key ? rng(key) : Math.random);
   }
 
   // Algo de voz para dentro de `secs` (se cancela con hush).
@@ -1871,8 +1914,8 @@ export default class GameAudio {
     for (const job of jobs) job(null);
   }
 
-  murmur(text, speaker, when = 0, cut = false) {
-    const { segs, P } = speechPlan(text, speaker, Math.random, { cut });
+  murmur(text, speaker, when = 0, cut = false, r = Math.random) {
+    const { segs, P } = speechPlan(text, speaker, r, { cut });
     const fx = {
       abuelo: { reverb: 0.55, gain: 1.1 },
       anunciador: { reverb: 1.1, gain: 1.4 },
@@ -1908,6 +1951,8 @@ export default class GameAudio {
     const dur = voiceLength(segs, P);
     this.voiceEnd = Math.max(this.voiceEnd, at + dur);
     const gen = this.voiceGen;
+    // lo que va diciendo, para la boca de los que hablan en escena (talkLevel)
+    (this.talks ||= []).push({ speaker, at, end: at + dur, segs, gen });
     const play = (data) => {
       // hubo hush mientras se renderizaba
       if (gen !== this.voiceGen) return;
@@ -1928,6 +1973,36 @@ export default class GameAudio {
       this.voiceWorker.postMessage({ id, segs, P });
     } else play(null);
     return dur;
+  }
+
+  // Cuánto abre la boca `speaker` ahora (0-1): la vocal y el volumen del
+  // murmullo que suena (ui/cineLife, la mandíbula de los gauchos en escena).
+  talkLevel(speaker) {
+    const L = this.talks;
+    if (!L?.length || !speaker) return 0;
+    const now = this.ctx.currentTime;
+    let out = 0;
+    for (let i = L.length - 1; i >= 0; i--) {
+      const T = L[i];
+      if (T.gen !== this.voiceGen || now > T.end + 1) {
+        L.splice(i, 1);
+        continue;
+      }
+      if (T.speaker !== speaker || now < T.at || now > T.end) continue;
+      let u = now - T.at;
+      for (const s of T.segs) {
+        if (u > s.dur) {
+          u -= s.dur;
+          continue;
+        }
+        if (s.amp) {
+          const amp = s.amp[0] + (s.amp[1] - s.amp[0]) * (u / s.dur);
+          out = Math.max(out, amp * Math.min(1, s.voiced ?? 1) * (MOUTH_OPEN[s.v] ?? 0.5));
+        }
+        break;
+      }
+    }
+    return out;
   }
 
   announce(text) {
@@ -2032,6 +2107,8 @@ export default class GameAudio {
     else if (MAP_ID === 'esteros') esterosStart(this, t);
     // el Monumento: la banda de los Granaderos (fx/monumentoMusic.js)
     else if (MAP_ID === 'monumento') monumentoStart(this, t);
+    // Eclipse Matero: los pedazos de cada mapa que se rajan (fx/eclipseMusic.js)
+    else if (MAP_ID === 'eclipse') eclipseStart(this, t);
     else this.molinoStart(t);
   }
 
@@ -2044,6 +2121,7 @@ export default class GameAudio {
     else if (MAP_ID === 'castillo') this.castilloEnd(t);
     else if (MAP_ID === 'esteros') esterosEnd(this, t);
     else if (MAP_ID === 'monumento') monumentoEnd(this, t);
+    else if (MAP_ID === 'eclipse') eclipseEnd(this, t);
     else this.molinoEnd(t);
   }
 
@@ -2628,7 +2706,9 @@ export default class GameAudio {
   }
 
   // Fuego del barbacuá: crepitar en un lugar fijo.
-  startFire(pos) {
+  // (opts.crackle false: solo el rumor, sin el tic-tic del crepitar; la Llama
+  // Votiva del Monumento, world/papLlama.js)
+  startFire(pos, opts = {}) {
     const c = this.ctx;
     const o = this.out({ pos, gain: 0.6, reverb: 0.1 });
     const src = c.createBufferSource();
@@ -2637,13 +2717,28 @@ export default class GameAudio {
     const f = c.createBiquadFilter();
     f.type = 'lowpass';
     f.frequency.value = 500;
-    src.connect(f).connect(o);
+    // A más de ~25 m el fuego se calla: el crepitar ni se arma y el rumor baja
+    // a cero justo (rampa lineal: con setTargetAtTime nunca llega y el panner
+    // HRTF seguía calculando). Sin el oído moviéndose (el título, los menús)
+    // tampoco crepita: era el tic-tic que se oía al tocar los botones.
+    const gate = c.createGain();
+    src.connect(f).connect(gate).connect(o);
     src.start();
-    const crackle = setInterval(() => {
+    const fire = { src, crackle: 0, out: o, on: true, near: true };
+    fire.crackle = setInterval(() => {
       if (c.state !== 'running') return;
-      this.noise(o, { dur: 0.03, type: 'highpass', freq: 2500, gain: 0.3 + Math.random() * 0.5 });
+      const e = this.ear;
+      const near = !e || (pos.x - e.x) ** 2 + (pos.y - e.y) ** 2 + (pos.z - e.z) ** 2 < (fire.near ? 26 * 26 : 24 * 24);
+      if (near !== fire.near) {
+        fire.near = near;
+        const t = c.currentTime;
+        gate.gain.cancelScheduledValues(t);
+        gate.gain.setValueAtTime(gate.gain.value, t);
+        gate.gain.linearRampToValueAtTime(near ? 1 : 0, t + 0.4);
+      }
+      if (near && opts.crackle !== false && e && performance.now() - e.at < 500) this.noise(o, { dur: 0.03, type: 'highpass', freq: 2500, gain: 0.3 + Math.random() * 0.5 });
     }, 140);
-    this.fire = { src, crackle, out: o, on: true };
+    this.fire = fire;
     // un mapa puede tener varios fuegos: se apagan todos al cambiar de mapa
     (this.fires ||= []).push(this.fire);
   }

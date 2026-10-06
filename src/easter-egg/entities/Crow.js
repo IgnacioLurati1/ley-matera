@@ -35,6 +35,8 @@ export default class Crow {
     this.feathers = [];
     this.rig = this.build();
     this.rig.visible = false;
+    // (escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+    this.rig.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
     game.scene.add(this.rig);
     this.vel = new THREE.Vector3();
     this.orbit = 0;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PROPS } from '../config/map';
-import { mesh, boxGeo, cylGeo } from './props';
+import { mesh, boxGeo, cylGeo, mergeByMaterial } from './props';
+import { leanGroup } from './staticLean';
 
 // El Pack-a-Pava del castillo está del otro lado del barranco, en las termas
 // del Inca, y se llega por el puente levadizo de la barbacana. Es a mitad de
@@ -122,6 +123,10 @@ export default class PapTermas {
         plug.add(s);
       }
       plug.position.y = 0.14;
+      // (la cúpula y las agujas, una malla por material: se prenden, se apagan
+      // y laten juntas con el grupo; sin sombra, como eran)
+      mergeByMaterial(plug);
+      for (const c of plug.children) c.castShadow = c.receiveShadow = false;
       grp.add(plug);
       q.root.add(grp);
       return { i, x, y, z, r, grp, sheet, plug, hp: HP, broken: false, melt: 0, flash: 0, gey: 0, center: new THREE.Vector3(x, y + 0.4, z) };
@@ -217,6 +222,12 @@ export default class PapTermas {
     // la traba (un diente que cae sobre la rueda)
     winch.add(mesh(boxGeo(0.06, 0.34, 0.06), iron, axis.x + 0.12, axis.y + 0.46, WINCH.z + 0.92, 0, 0, 0.5));
     for (const o of winch.children) o.castShadow = true;
+    // (los soportes y la traba no se mueven; el tambor, la rueda y la rueda
+    // dentada giran enteros: una malla por material cada uno, staticLean.leanGroup)
+    const fixedW = new THREE.Group();
+    winch.add(fixedW);
+    for (const o of [...winch.children]) if (o.isMesh) fixedW.add(o);
+    for (const grp of [fixedW, drum, wheel, gear]) leanGroup(grp);
     q.root.add(winch);
     this.drum = drum;
     this.wheel = wheel;
@@ -284,6 +295,9 @@ export default class PapTermas {
       // los carámbanos que cuelgan
       for (let k = 0; k < 5; k++) grp.add(mesh(new THREE.ConeGeometry(0.05 + r() * 0.04, 0.3 + r() * 0.4, 5), mat, (r() - 0.5) * 0.5, -0.35 - r() * 0.15, r() * 0.15, Math.PI, 0, 0));
     }
+    // (todo el hielo de la grampa en una malla: eran 11-18 pedazos sueltos, un
+    // dibujo cada uno; se rompe y desaparece entera con el grupo)
+    mergeByMaterial(grp);
     this.q.root.add(grp);
     return { i, grp, mat, r: s.r, center: s.at.clone(), hp: CLAMP_HP, broken: false, flash: 0 };
   }

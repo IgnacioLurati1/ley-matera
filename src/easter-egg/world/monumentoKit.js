@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ZONES, RAMPS } from '../config/map';
+import { ZONES, RAMPS, WINDOWS } from '../config/map';
 import { rampY } from './Levels';
 
 // Herramientas de geometría del Monumento (world/Monumento*.js), encima de
@@ -166,8 +166,11 @@ export function stairs(gb, R, { tread = 'travStep', riser = 'travertino', rise =
       Z0 = z0 + a;
       Z1 = z0 + b;
     }
-    // el bloque del escalón (la tapa la hace la nariz)
-    const skip = ['bottom'];
+    // el bloque del escalón (la tapa la hace la nariz); la cara de arriba de la
+    // escalera queda adentro del escalón de al lado (o bajo el descanso): no va,
+    // así no hay dos caras encimadas
+    const lowS = (R.y1 > R.y0) === fromStart ? -1 : 1;
+    const skip = ['bottom', alongX ? (lowS > 0 ? '-x' : '+x') : lowS > 0 ? '-z' : '+z'];
     bbox(gb, riser, X0, bottom, Z0, X1, y, Z1, { b: 0.015, skip, top: tread });
     // la nariz: un bocel que sobresale del lado que baja
     if (nose) {
@@ -235,6 +238,18 @@ export function mergeMeshes(meshes, { castShadow = true, receiveShadow = true } 
 // Torneado: un perfil [radio, altura] girado (urnas, farolas, balaustres).
 export function lathe(prof, seg = 20) {
   return new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), seg);
+}
+
+// UV en metros/2 para un cilindro o un torneado de eje vertical (como todo lo
+// demás): alrededor, el largo del perímetro; para arriba, la altura. Con las
+// UV de three la textura de 2 m quedaba estirada a lo alto de una columna de
+// 9 m o a lo ancho de un tambor de 35 m de perímetro.
+export function cylUV(geo) {
+  const p = geo.attributes.position;
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < p.count; i++) uv.setXY(i, (uv.getX(i) * Math.PI * Math.hypot(p.getX(i), p.getZ(i))), p.getY(i) / 2);
+  uv.needsUpdate = true;
+  return geo;
 }
 
 // Un mesh puesto en (x, y, z) con giro en y.
@@ -318,7 +333,9 @@ export function roomShell(w, gb, keys, { wall, ceil, base = 'travertinoDark', sk
         const ca = ceilAt(x, z, ax, az);
         const cb = ceilAt(x, z, bx, bz);
         const isDoor = w.inside(nx, nz) && w.grid[w.idx(nx, nz)] === DOOR;
-        const isWin = w.inside(nx, nz) && w.grid[w.idx(nx, nz)] === 4;
+        // (solo las ventanas de esta sala: la grilla es de un nivel y una
+        // ventana del Mirador puede caer pegada a la Cripta, 46 m más abajo)
+        const isWin = w.inside(nx, nz) && w.grid[w.idx(nx, nz)] === 4 && (WINDOWS || []).some((wi) => wi.cell[0] === nx && wi.cell[1] === nz && keys.includes(wi.zone));
         const n = [-dx, 0, -dz];
         if (isWin) {
           // la rejilla: pared abajo del antepecho y arriba del dintel, y atrás

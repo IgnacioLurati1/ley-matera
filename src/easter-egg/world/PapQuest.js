@@ -5,6 +5,7 @@ import { mesh, boxGeo, cylGeo } from './props';
 import PapTermas from './papTermas';
 import PapYacare from './papYacare';
 import PapLlama from './papLlama';
+import PapDesgarro from './papDesgarro';
 
 // Antes de usar el Pack-a-Pava hay que prepararlo, y cada mapa tiene su vuelta
 // (corta, pero no al toque):
@@ -54,7 +55,7 @@ export default class PapQuest {
     this.pap = game.interact.pap;
     this.papIt = game.interact.list.find((it) => it.kind === 'pap');
     this.done = false;
-    this.kind = { granja: 'gallina', penal: 'llaves', torre: 'roldana', castillo: 'termas', esteros: 'yacare', monumento: 'llama' }[MAP_ID] || 'pavitas';
+    this.kind = { granja: 'gallina', penal: 'llaves', torre: 'roldana', castillo: 'termas', esteros: 'yacare', monumento: 'llama', eclipse: 'desgarro' }[MAP_ID] || 'pavitas';
     if (this.kind === 'pavitas') this.buildPavitas();
     else if (this.kind === 'gallina') this.buildHen();
     else if (this.kind === 'llaves') this.buildKeys();
@@ -65,6 +66,8 @@ export default class PapQuest {
     else if (this.kind === 'yacare') this.termas = new PapYacare(this);
     // el Monumento: la Llama Votiva (world/papLlama.js: el cañón, la antorcha, la pesca y la pava)
     else if (this.kind === 'llama') this.termas = new PapLlama(this);
+    // Eclipse Matero: el puente trabado del Desgarro (world/papDesgarro.js)
+    else if (this.kind === 'desgarro') this.termas = new PapDesgarro(this);
     else this.buildHoist();
     // lo que dice la máquina mientras no está lista (la de verdad no dice nada)
     const it = this.papIt;
@@ -213,9 +216,20 @@ export default class PapQuest {
       kettle.position.set(a.x, fy + d.y, a.z);
       kettle.rotation.y = a.rot;
       this.root.add(kettle);
+      // En la repisa no tira sombra: cada silbido la sacude un poquito y, como
+      // es algo quieto, eso rehacía todas las sombras guardadas (la luna y los
+      // cubos de las lámparas, fx/Epic ShadowCache) cada pocos segundos: un
+      // tirón grande en Épica. Al caerse vuelve a tener sombra.
+      // (globalThis.__mduPavitaShadow: como antes)
+      const casters = [];
+      kettle.traverse((o) => o.isMesh && o.castShadow && casters.push(o));
+      const cast = globalThis.__mduPavitaShadow === true;
+      for (const o of casters) o.castShadow = cast;
       return {
         i,
         kettle,
+        casters,
+        cast,
         base: kettle.position.clone(),
         center: kettle.position.clone().setY(kettle.position.y + 0.15),
         face: new THREE.Vector3(d.face[0], 0, d.face[1]),
@@ -254,6 +268,8 @@ export default class PapQuest {
     const g = this.g;
     for (const p of this.pavitas) {
       if (p.state === 'up') {
+        const cast = globalThis.__mduPavitaShadow === true;
+        if (p.cast !== cast) this.pavitaShadow(p, cast);
         if (!this.playing) continue;
         // un hilito de vapor siempre, y cada tanto un silbido que se oye de lejos
         p.steamT -= dt;
@@ -290,6 +306,11 @@ export default class PapQuest {
         }
       }
     }
+  }
+
+  pavitaShadow(p, on) {
+    p.cast = on;
+    for (const o of p.casters) o.castShadow = on;
   }
 
   layDown(p) {
@@ -343,6 +364,7 @@ export default class PapQuest {
     if (!p || p.state !== 'up') return;
     const g = this.g;
     p.kettle.position.copy(p.base);
+    this.pavitaShadow(p, true);
     if (quiet) {
       p.state = 'down';
       p.kettle.position.addScaledVector(p.face, 0.8);

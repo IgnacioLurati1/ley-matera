@@ -118,7 +118,8 @@ export default class HorseRig {
     const any = pool.some((z) => mine(z) && z.active);
     if (!any && !this.on) return;
     this.on = any;
-    for (const im of this.all) im.visible = any;
+    // las piezas se dibujan solo si alguno las usa (con el modelo quedan vacías)
+    let pieces = false;
     const flag = this.flag;
     for (const z of pool) {
       if (!mine(z) || !z.active || z.state === 'dogspawn') {
@@ -186,6 +187,7 @@ export default class HorseRig {
         this.hidePieces(z.slot);
         continue;
       }
+      pieces = true;
       this.body.setMatrixAt(z.slot, local(tmpM, 0, HIP_Y + 0.22, 0, 0, 0, 0));
       const H = local(tmpM, 0, HIP_Y + 0.35, 0.55, headP, 0, 0);
       this.head.setMatrixAt(z.slot, H);
@@ -207,7 +209,10 @@ export default class HorseRig {
         this.hoof.setMatrixAt(z.slot * 4 + k, knee);
       });
     }
-    for (const im of this.all) im.instanceMatrix.needsUpdate = true;
+    for (const im of this.all) {
+      im.visible = pieces;
+      im.instanceMatrix.needsUpdate = true;
+    }
   }
 
   // Rayo contra el caballo: la cabeza y tres esferas a lo largo del cuerpo.

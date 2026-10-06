@@ -50,17 +50,23 @@ export function itemModel(kind, M, vm = false) {
     mud.position.y = 0.16;
     g.add(mud);
   } else if (kind === 'cana') {
-    // la caña de pescar con su reel y el hilo que baja al agua
+    // la caña de pescar con su reel, inclinada hacia adelante (al río), y el
+    // hilo que cuelga de la punta derecho al agua. (Antes iba de punta hacia
+    // atrás: en la mano quedaba detrás de la cámara y no se veía.)
+    const tilt = globalThis.__mduNoCanaVm ? 0 : -0.9;
+    const arm = new THREE.Group();
+    arm.rotation.x = tilt;
+    g.add(arm);
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.018, 1.6, 6), M.woodDark);
     rod.position.y = 0.8;
-    g.add(rod);
+    arm.add(rod);
     const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 12), M.iron);
     reel.rotation.z = Math.PI / 2;
     reel.position.set(0.04, 0.22, 0);
-    g.add(reel);
+    arm.add(reel);
     const line = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.002, 3, 3), new THREE.MeshBasicMaterial({ color: 0xdddddd }));
-    line.position.set(0, 1.6, -1.5);
-    line.rotation.x = 1.1;
+    line.position.set(0, 1.6 * Math.cos(tilt) - 1.5, 1.6 * Math.sin(tilt));
+    line.name = 'hilo';
     g.add(line);
   } else if (kind === 'celeste' || kind === 'blanca' || kind === 'bandera') {
     // un rollo de tela (o la bandera doblada)
@@ -91,7 +97,7 @@ export function itemModel(kind, M, vm = false) {
 const VM = {
   antorcha: { pos: [0.27, -0.62, -0.62], rot: [-0.35, 0.2, -0.32], s: 0.85 },
   pava: { pos: [0.0, -0.46, -0.62], rot: [0.1, 0.4, 0], s: 0.9 },
-  cana: { pos: [0.18, -0.34, -0.42], rot: [0.9, 0, -0.1], s: 1 },
+  cana: globalThis.__mduNoCanaVm ? { pos: [0.18, -0.34, -0.42], rot: [0.9, 0, -0.1], s: 1 } : { pos: [0.2, -0.42, -0.4], rot: [0, -0.12, -0.08], s: 1 },
   celeste: { pos: [0.12, -0.3, -0.5], rot: [0.2, 0.3, 0.1], s: 0.9 },
   blanca: { pos: [0.12, -0.3, -0.5], rot: [0.2, 0.3, 0.1], s: 0.9 },
   bandera: { pos: [0.12, -0.3, -0.5], rot: [0.2, 0.3, 0.1], s: 0.9 },
@@ -149,7 +155,8 @@ export default class Carry {
   // (devuelve true: se comió la tecla)
   input(input) {
     if (input.mouse.leftPressed && this.swingT <= 0) {
-      this.swingT = 0.45;
+      // (el golpe se ve solo con la antorcha: con la caña el clic recoge)
+      if (this.kind === 'antorcha' || globalThis.__mduNoCanaVm) this.swingT = 0.45;
       this.onSwing?.(this.kind);
     }
     if (input.hit('KeyG')) this.onDrop?.(this.kind);
@@ -170,8 +177,9 @@ export default class Carry {
         this.vm.position.set(v.pos[0] - k * 0.3, v.pos[1] + Math.sin(t * 7) * 0.008 + k * 0.1, v.pos[2] - k * 0.2);
         this.vm.rotation.set(v.rot[0] - k * 1.2, v.rot[1] + k * 0.8, v.rot[2]);
       }
-      // la pava pesa: se camina despacio
-      if (this.kind === 'pava') g.player.slowT = Math.max(g.player.slowT, 0.1);
+      // la pava: sin armas, pero se puede correr (el usuario, 2026-10-05; antes
+      // pesaba y se caminaba despacio: __mduNoPavaRun)
+      if (this.kind === 'pava' && globalThis.__mduNoPavaRun) g.player.slowT = Math.max(g.player.slowT, 0.1);
     } else if (this.wm) {
       // en la mano del compañero (o a la altura del pecho, adelante)
       const p = g.net?.remote.get(this.id);

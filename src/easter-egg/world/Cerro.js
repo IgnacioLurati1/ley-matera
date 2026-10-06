@@ -7,6 +7,7 @@ import GilHeld, { HELD_HOME } from './gilHeld';
 import { soulGeometry, soulMaterial, SOUL_TIME } from './soulLook';
 import { warmObject } from '../fx/ghostMat';
 import { PENAL_CARCEL } from '../core/music';
+import { gilFightBlend } from '../entities/skins/gil';
 
 // El Cerro del Espinillo: la punta de la isla, arriba de la capilla del penal.
 // Cuando el mate supremo queda armado en el espinillo aparece el Gauchito Gil,
@@ -111,7 +112,8 @@ export default class Cerro extends Arena {
       const l = new THREE.PointLight(0xff3a2a, 0, 28, 1.6);
       l.position.set(x + (k ? 4 : -4), y + 3.5, z);
       this.g.scene.add(l);
-      return l;
+      // (no cuenta como luz mientras está apagada: World.adoptLight)
+      return this.g.world.adoptLight(l);
     });
     this.lightHome = this.lights.map((l) => l.position.clone());
     this.wardMesh = new THREE.Mesh(
@@ -526,6 +528,10 @@ export default class Cerro extends Arena {
     this.startSweep(m);
     this.g.net?.event('bfx', m);
     this.g.zombies.setState(b, 'summon');
+    // (con los clips de Blender: quieto hasta que termina de revolear, no sale
+    // caminando en medio del giro; 'summon' dura 1,2 s y el clip del molinete
+    // termina 1,1 s después del último golpe: skins/gil.js)
+    if (gilFightBlend()) b.holdT = Math.max(b.holdT || 0, SWEEP_WARN + (n - 1) * SWEEP_GAP + 1.1 - 1.2);
   }
 
   startSweep(m) {

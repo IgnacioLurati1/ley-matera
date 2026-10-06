@@ -271,7 +271,9 @@ export const EE = {
   cueva: { dragon: [89.5, 24.5, 0], fogon: [84.5, 31], mate: [91.8, 30.8], dial: [86.8, 33.4], cadenas: [[80.25, 21, 3], [100.75, 21, 9], [80.25, 30, 16], [100.75, 30, 26]] },
   // el techo del gran salón donde se posa (x, y, z, giro) y la cumbre del juramento (x, z, giro)
   techo: [52, 42.7, 40.5, 0],
-  cumbre: [51.5, 14.2, Math.PI / 2],
+  // (más al norte y un poco girado hacia la jura: en 14.2 las patas y la cola
+  // tapaban a los caballeros que salen de las dos primeras tumbas)
+  cumbre: [50, 16.4, 1.48],
   jura: [57.2, 14.2],
   // el Chiquitijuein en el adarve (x, y, z) y de dónde salen los Caballeros Negros
   // (parado arriba de la almena que da al patio: detrás del parapeto, desde el
@@ -541,7 +543,8 @@ export const ACT = {
 // (los cuervos, parados arriba de las almenas)
 export const CRITTERS = {
   flocks: [
-    { perch: [[43.5, 65.5], [45.5, 65.5], [47.5, 65.5]], yaw: Math.PI, y: 33.8 },
+    // (el adarve tiene el parapeto bajo, sin merlones: rail 'puente', 0,95 m)
+    { perch: [[43.5, 65.5], [45.5, 65.5], [47.5, 65.5]], yaw: Math.PI, y: 32.95 },
     { perch: [[45.5, 7.5], [49.5, 7.5], [53.5, 7.5]], yaw: 0, y: 41.8 },
   ],
   rats: [[[84.5, 58.5], [91.5, 58.5]], [[71.5, 66.5], [80.5, 66.5]]],

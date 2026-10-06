@@ -901,17 +901,34 @@ export default class PulperiaScene {
     this.surf.setQuality(quality);
     if (this.compiledFor !== quality) {
       this.compiledFor = quality;
-      renderer.compile(this.scene, this.camera);
       // y un cuadro de verdad afuera de la pantalla: sube las mallas, las
       // texturas y arma la sombra del farol (lo que compile no hace)
-      const rt = new THREE.WebGLRenderTarget(320, 180);
-      const prev = renderer.getRenderTarget();
-      renderer.setRenderTarget(rt);
-      renderer.shadowMap.needsUpdate = true;
-      this.update(0.016);
-      renderer.render(this.scene, this.camera);
-      renderer.setRenderTarget(prev);
-      rt.dispose();
+      // (a la pantalla, como se dibuja abierta —con un blanco aparte salían
+      // otros programas, compilados de una: ~1 s—, recortado a un píxel: el
+      // título lo tapa en el cuadro siguiente)
+      const frame = () => {
+        const prev = renderer.getRenderTarget();
+        renderer.setRenderTarget(null);
+        renderer.setScissorTest(true);
+        renderer.setScissor(0, 0, 1, 1);
+        renderer.shadowMap.needsUpdate = true;
+        this.update(0.016);
+        renderer.render(this.scene, this.camera);
+        renderer.setScissorTest(false);
+        renderer.setRenderTarget(prev);
+      };
+      // (2026-10-05: compilar de una trababa el título 1,2 s, justo cuando uno
+      // abría el libro o cualquier cosa; ahora la placa compila de a poco y el
+      // cuadro de afuera va cuando terminó. globalThis.__mduNoPulpAsync: como antes)
+      if (renderer.compileAsync && globalThis.__mduNoPulpAsync !== true) {
+        renderer
+          .compileAsync(this.scene, this.camera)
+          .then(frame)
+          .catch(() => {});
+      } else {
+        renderer.compile(this.scene, this.camera);
+        frame();
+      }
     }
   }
 

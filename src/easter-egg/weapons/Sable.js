@@ -19,6 +19,9 @@ import Carga from './sableCarga';
 //  · Derecho: lo tira. Vuela girando en una vuelta de boomerang, corta a todo
 //    lo que cruza y vuelve a la mano (contra una pared, rebota y vuelve).
 //    Mientras está en el aire la mano queda vacía (el izquierdo: la faka).
+//    Gasta munición (mag/reserve del config; el cargador se llena solo).
+//    Los tajos, la medialuna y el tiro pegan lo justo para matar de un golpe
+//    hasta la ronda `oneHit` (no infinito); infinita es solo la Carga.
 //  · El de San Lorenzo llena la carga con las bajas (~25). Llena, el derecho
 //    mantenido: ¡la Carga de San Lorenzo! (weapons/sableCarga.js).
 //  · Inspeccionar (E): el saludo militar con el sable. Al sacarlo, desenvaina.
@@ -346,15 +349,16 @@ export default class Sable {
       const h = this.rHold;
       this.rHold = -1;
       if (this.mode === 'charge') this.toIdle();
-      if (h < 0.3 && this.cd <= 0) this.startThrow(st);
+      if (h < 0.3 && this.cd <= 0 && this.canThrow(st)) this.startThrow(st);
       return;
     }
     if (input.mouse.rightPressed && this.mode === 'idle') {
+      // (la Carga no gasta munición)
       if (C && this.kills >= C.kills) {
         this.rHold = 0;
         return;
       }
-      if (this.cd <= 0) this.startThrow(st);
+      if (this.cd <= 0 && this.canThrow(st)) this.startThrow(st);
       return;
     }
     if (this.mode === 'slash') {
@@ -366,6 +370,48 @@ export default class Sable {
       this.queued = false;
       this.startSlash(st);
     }
+  }
+
+  // ---------------- la munición del tiro ----------------
+  // El derecho (tirarlo) gasta: pocas en la mano y bastante reserva; cuando
+  // vuelve a la mano con el cargador vacío, se llena solo de la reserva (no se
+  // recarga con la R). La Carga no gasta. (El usuario, 2026-10-05;
+  // globalThis.__mduNoSableAmmo: como antes, sin munición.)
+  usesAmmo(st) {
+    return !globalThis.__mduNoSableAmmo && (st?.mag || 0) > 0;
+  }
+
+  ammoSlot() {
+    return this.w.slots.find((s) => s.id === 'sable') || null;
+  }
+
+  // ¿Hay para tirarlo? Sin munición no sale y suena vacío.
+  canThrow(st) {
+    if (!this.usesAmmo(st)) return true;
+    const s = this.ammoSlot();
+    if (s && s.mag > 0) return true;
+    this.g.audio.empty?.();
+    return false;
+  }
+
+  spendThrow(st) {
+    const s = this.ammoSlot();
+    if (!this.usesAmmo(st) || !s) return;
+    s.mag = Math.max(0, s.mag - 1);
+    this.w.updateHud();
+  }
+
+  // el cargador vacío se llena de la reserva con el sable en la mano
+  refillThrows() {
+    const w = this.w;
+    const s = w.slot;
+    const st = w.stats;
+    if (s?.id !== 'sable' || this.mode !== 'idle' || !this.usesAmmo(st) || s.mag > 0 || s.reserve <= 0) return;
+    const take = Math.min(st.mag, s.reserve);
+    s.mag += take;
+    s.reserve -= take;
+    this.g.audio.mech?.(this.g.audio.now, [0, 0.1]);
+    w.updateHud();
   }
 
   toIdle() {
@@ -390,7 +436,8 @@ export default class Sable {
     this.hit = false;
     w.state = 'sable';
     w.stateT = 0;
-    g.net?.act?.('stab', this.dur);
+    // (k: cuál del combo, para el muñeco de los compañeros: net/gauchoSkin sableArm)
+    g.net?.act?.('stab', this.dur, globalThis.__mduNoSableAvatar ? null : this.combo);
   }
 
   // El tajo arranca a cortar: silbido, el arco en el mundo y (el de San
@@ -412,6 +459,15 @@ export default class Sable {
       // la medialuna: sale del pecho hacia la mira (apenas inclinada)
       const dir = new THREE.Vector3().copy(fwd);
       dir.y = Math.max(-0.3, Math.min(0.3, dir.y));
+      // (en las gradas y escalinatas sigue la pendiente: derecha se metía en
+      // el primer escalón y no llegaba a los de arriba)
+      if (g.world.levels && !globalThis.__mduNoWaveSlope) {
+        const fl = Math.hypot(fwd.x, fwd.z) || 1;
+        const ax = P.x + (fwd.x / fl) * 8;
+        const az = P.z + (fwd.z / fl) * 8;
+        const rise = (g.world.floorAt(ax, az, P.y + 2.4) - g.world.floorAt(P.x, P.z, P.y + 0.5)) / 8;
+        if (Number.isFinite(rise) && Math.abs(rise) > 0.03 && Math.abs(rise) < 0.45) dir.y = Math.max(-0.3, Math.min(0.3, rise));
+      }
       dir.normalize();
       const o = tmpV3.copy(this.eye(tmpV3)).addScaledVector(dir, 1.1);
       o.y -= 0.42;
@@ -472,7 +528,9 @@ export default class Sable {
     const g = this.g;
     if (big(z)) return Math.max(B.bossMin, (z.maxHp || bossHealth(g.rounds?.round || 1)) * B.boss);
     const r = g.rounds?.round || 1;
-    if (r <= S.oneHit) return 1e9;
+    // (de un tajo: lo que tiene, con margen; ya no infinito, el usuario
+    // 2026-10-05. Infinita queda solo la Carga, a los comunes)
+    if (r <= S.oneHit) return globalThis.__mduNoSableDmg ? 1e9 : Math.max(zombieHealth(r), z.maxHp || 0) * 1.1;
     return zombieHealth(r) / (r <= S.oneHit + 12 ? 1.9 : 2.8);
   }
 
@@ -497,7 +555,14 @@ export default class Sable {
   addKill(C) {
     if (this.kills >= C.kills) return;
     this.kills++;
-    if (this.kills >= C.kills) this.sndReady();
+    if (this.kills >= C.kills) {
+      this.sndReady();
+      // (la primera vez, qué hacer: el sol del aro solo no alcanzaba)
+      if (!this.cargaTold && !globalThis.__mduNoCargaHint) {
+        this.cargaTold = true;
+        this.g.hud.subtitle?.('¡Carga lista! Mantené el clic derecho.', 3.5);
+      }
+    }
   }
 
   // La medialuna de San Lorenzo: corta a todos los de la línea (una vez cada uno).
@@ -579,6 +644,7 @@ export default class Sable {
     this.t = 0;
     this.w.state = 'idle';
     this.cd = T.cd;
+    this.spendThrow(st);
     this.fx.sndThrow(null, up);
     g.player.addRecoil(0.02, -0.01);
     g.stats.shots++;
@@ -674,6 +740,32 @@ export default class Sable {
   cargaReach(o, fwd, len) {
     const g = this.g;
     const right = tmpV3.set(-fwd.z, 0, fwd.x);
+    // (con escalones: de a tramos siguiendo el piso; el rayo derecho chocaba
+    // con el primer escalón de las gradas y la carga moría a los 10 m)
+    if (g.world.levels && !globalThis.__mduNoCargaSlope) {
+      const d = [0, -2.4, 2.4].map((l) => {
+        let x = o.x + right.x * l;
+        let z = o.z + right.z * l;
+        let y = g.world.floorAt(x, z, o.y + 0.5);
+        let k = 0;
+        while (k < len) {
+          const step = Math.min(2, len - k);
+          const hit = g.world.raycast(tmpV.set(x, y + 1.3, z), fwd, step, hitTmp);
+          if (hit < step) return k + hit;
+          const nx = x + fwd.x * step;
+          const nz = z + fwd.z * step;
+          const ny = g.world.floorAt(nx, nz, y + 1.6);
+          // (una pared o un barranco: hasta ahí)
+          if (!Number.isFinite(ny) || ny - y > 1.2 || y - ny > 3) return k + step * 0.5;
+          x = nx;
+          z = nz;
+          y = ny;
+          k += step;
+        }
+        return len;
+      });
+      return Math.max(6, Math.min(len, Math.max(d[0] + 2, (d[1] + d[2]) / 2 + 1)));
+    }
     const d = [0, -2.4, 2.4].map((l) => {
       const from = tmpV.copy(o).addScaledVector(right, l);
       from.y += 1.3;
@@ -699,7 +791,9 @@ export default class Sable {
       if (along < from || along > to + 0.4) continue;
       const lat = dx * ch.right.x + dz * ch.right.z;
       if (Math.abs(lat) > C.half + 0.5) continue;
-      if (Math.abs(z.pos.y - ch.o.y) > 3 && !z.crow) continue;
+      // (sube y baja con el piso: en las gradas el de arriba queda más alto)
+      const tol = globalThis.__mduNoCargaSlope ? 3 : 3 + Math.abs(along) * 0.18;
+      if (Math.abs(z.pos.y - ch.o.y) > tol && !z.crow) continue;
       ch.hits.add(z);
       const point = new THREE.Vector3(z.pos.x, aimY(z), z.pos.z);
       const amount = big(z) ? Math.max(C.bossMin, (z.maxHp || bossHealth(g.rounds?.round || 1)) * C.boss) : 1e9;
@@ -752,6 +846,7 @@ export default class Sable {
     // (sin el sable en las manos, la carga se vacía: el de San Lorenzo arranca de cero)
     if (this.kills && !w.slots.some((s) => s.id === 'sable')) this.kills = 0;
     this.prevState = w.state;
+    this.refillThrows();
     // el tiempo del golpe (frena un instante al pegar)
     this.t += dt * (this.stopT > 0 ? 0.08 : 1);
     const st = this.st;

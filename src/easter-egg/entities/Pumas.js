@@ -155,7 +155,8 @@ export default class PumaRig {
     const any = pool.some((z) => z.dog && z.active);
     if (!any && !this.on) return;
     this.on = any;
-    for (const im of this.all) im.visible = any;
+    // las piezas se dibujan solo si alguno las usa (con el modelo quedan vacías)
+    let pieces = false;
     for (const z of pool) {
       if (!z.dog || !z.active) {
         if (z.dogShown) {
@@ -246,6 +247,7 @@ export default class PumaRig {
       }
       if (z.dogSkin) this.skin.hide(z.slot);
       z.dogSkin = false;
+      pieces = true;
       this.body.setMatrixAt(z.slot, local(tmpM, 0, HIP_Y + 0.12, 0, 0, 0, 0));
       const H = local(tmpM, 0, HIP_Y + 0.2, 0.46, headP, 0, 0);
       this.head.setMatrixAt(z.slot, H);
@@ -272,7 +274,10 @@ export default class PumaRig {
         this.paw.setMatrixAt(z.slot * 4 + k, knee);
       });
     }
-    for (const im of this.all) im.instanceMatrix.needsUpdate = true;
+    for (const im of this.all) {
+      im.visible = pieces;
+      im.instanceMatrix.needsUpdate = true;
+    }
   }
 
   // La voz del puma: 'cry' (el grito), 'growl' (bufido), 'attack', 'die'.

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import SliceWalk from './sliceWalk';
 
 // Partículas (sangre, chispas, polvo, vapor, fuego, escarcha, almas),
 // haces (trazadoras, rayos), calcos en paredes, luces de destello y restos.
@@ -166,6 +167,8 @@ const tmpM = new THREE.Matrix4();
 const tmpC = new THREE.Color();
 const tmpR = new THREE.Vector3();
 const DOWN = new THREE.Vector3(0, -1, 0);
+// objetos de la escena por llamada al rehacer lowFlats (fx/sliceWalk.js)
+const FLATS_N = 300;
 const decalRay = new THREE.Raycaster();
 
 export default class Effects {
@@ -212,11 +215,19 @@ export default class Effects {
       return { mesh: m, next: 0, used: 0 };
     });
 
-    // luces de destello reutilizables (cantidad fija para no recompilar shaders)
+    // luces de destello reutilizables (cantidad fija para no recompilar shaders).
+    // Una sola de verdad; las otras dos (cuando se pisan dos destellos, la
+    // linterna de la intro) van con las de evento (World.adoptLight), con poco
+    // peso: no le sacan su luz a un fuego de jefe
     this.flashes = [];
     for (let i = 0; i < 3; i++) {
       const l = new THREE.PointLight(0xffc070, 0, 12, 2);
+      // (sin sombra de fuego, fx/Epic: salta de impacto en impacto y, tirando
+      // sin parar al mismo lugar, pasaba por un fuego quieto; cada salto
+      // rehacía lo quieto de su sombra, ~400 llamadas por cuadro)
+      l.userData.noShadow = true;
       this.scene.add(l);
+      if (i > 0) game.world?.adoptLight?.(l, 0.3);
       this.flashes.push({ light: l, life: 0, max: 1, peak: 0 });
     }
 
@@ -566,20 +577,36 @@ export default class Effects {
   // de mapa. (Las muy grandes, como el piso entero, son el piso de la grilla.)
   lowFlats() {
     const now = this.g.time || 0;
-    if (this.flats && this.flatsW === this.g.world && now - this.flatsT < 30 && now >= this.flatsT) return this.flats;
-    this.flatsT = now;
-    this.flatsW = this.g.world;
-    this.tops = new Map();
-    const L = (this.flats = []);
+    const same = this.flats && this.flatsW === this.g.world && now >= this.flatsT;
+    if (same && now - this.flatsT < 30) return this.flats;
     const root = this.g.scene;
-    if (!root) return L;
-    root.traverse((o) => {
+    const add = (L) => (o) => {
       if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || !o.visible || o.material?.transparent || !o.geometry) return;
       const geo = o.geometry;
       const tris = (geo.index ? geo.index.count : geo.attributes.position?.count || 0) / 3;
       if (tris > 20000) return;
       L.push({ o, b: new THREE.Box3().setFromObject(o) });
-    });
+    };
+    // la vieja (pasaron 30 s): se rehace de a tajadas (fx/sliceWalk.js) y
+    // mientras tanto sirve la de antes
+    if (same && root) {
+      const N = (this.flatsNext ||= []);
+      if (!(this.flatsWalk ||= new SliceWalk()).step([root], add(N), FLATS_N)) return this.flats;
+      this.flats = N;
+      this.flatsNext = [];
+      this.flatsT = now;
+      this.tops = new Map();
+      return N;
+    }
+    // la primera vez o en otro mapa: entera, ya
+    this.flatsT = now;
+    this.flatsW = this.g.world;
+    this.tops = new Map();
+    this.flatsWalk?.reset();
+    this.flatsNext = [];
+    const L = (this.flats = []);
+    if (!root) return L;
+    root.traverse(add(L));
     return L;
   }
 

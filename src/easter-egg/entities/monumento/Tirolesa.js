@@ -34,6 +34,10 @@ export default class Tirolesa {
     this.dir = new THREE.Vector3().subVectors(this.B, this.A);
     this.len = this.dir.length();
     this.dir.normalize();
+    // se cuelga al costado del cable (a la derecha, mirando la bajada): justo
+    // debajo, el cable bajaba empinado por el medio de la vista como una cuña negra
+    const side = globalThis.__mduNoTiroSide ? 0 : 0.5;
+    this.side = new THREE.Vector3(-this.dir.z, 0, this.dir.x).normalize().multiplyScalar(side);
     // el cable (con una comba apenas) y su sombra no hace falta
     const pts = [];
     for (let i = 0; i <= 24; i++) {
@@ -128,7 +132,7 @@ export default class Tirolesa {
       // salta el antepecho y se cuelga
       const k = R.t / HOP_T;
       this.at(0, tmpA);
-      P.pos.lerpVectors(R.from, tmpV.copy(tmpA).setY(tmpA.y - HANG), k);
+      P.pos.lerpVectors(R.from, tmpV.copy(tmpA).setY(tmpA.y - HANG).add(this.side), k);
       P.pos.y += Math.sin(k * Math.PI) * 0.5;
     } else {
       const left = this.len - R.s;
@@ -136,7 +140,7 @@ export default class Tirolesa {
       else R.v = Math.max(2.5, R.v - (R.v * R.v) / (2 * Math.max(0.5, left)) * dt);
       R.s = Math.min(this.len, R.s + R.v * dt);
       this.at(R.s, tmpA);
-      P.pos.copy(tmpA).setY(tmpA.y - HANG);
+      P.pos.copy(tmpA).setY(tmpA.y - HANG).add(this.side);
       // un vaivén colgado y el temblor del cable a toda velocidad
       P.pos.x += Math.sin(R.t * 2.3) * 0.08;
       g.fx?.addShake?.(dt * 0.25 * (R.v / VMAX));
@@ -144,7 +148,7 @@ export default class Tirolesa {
       if (R.s >= this.len - 0.05) this.land();
     }
     if (this.ride) {
-      this.trolley.position.copy(P.pos).setY(P.pos.y + HANG + 0.05);
+      this.trolley.position.copy(P.pos).sub(this.side).setY(P.pos.y + HANG + 0.05);
       this.trolley.rotation.y = Math.atan2(this.dir.x, this.dir.z);
     }
     P.onGround = false;

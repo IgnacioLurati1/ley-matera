@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ZOMBIE_DAMAGE } from '../config/rules';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mesh, boxGeo, cylGeo } from '../world/props';
 
 // La telesilla del alcaide (penal): una cabina colgada de un cable que va de la
@@ -50,6 +51,19 @@ const DROP_T = 2.2;
 const TOTAL = RISE_T + GLIDE_T + DROP_T;
 // si la esperan del otro lado: un rato, después vuelven a salir cerca de los jugadores
 const WAIT_MAX = 25;
+// La palanca para llamarla (en el motor del muelle y en el poste de arriba):
+// sale de abajo de la chapa y va inclinada para afuera, con la bocha en la
+// punta. (2026-10-05, el usuario: antes se inclinaba para adentro, se metía en
+// el motor y la punta asomaba por arriba de la tabla, suelta)
+function callLever(M, x, y, z) {
+  const lv = new THREE.Group();
+  lv.position.set(x, y, z);
+  lv.rotation.x = -0.45;
+  lv.add(mesh(cylGeo(0.02, 0.02, 0.3, 6), M.brass, 0, 0.15, 0));
+  lv.add(mesh(new THREE.SphereGeometry(0.04, 8, 6), M.redPaint || M.brass, 0, 0.31, 0));
+  return lv;
+}
+
 // la palanca de adentro (giro sobre la pared): abajo apagada, arriba andando
 const LEVER_OFF = 2.3;
 const LEVER_ON = 0.35;
@@ -115,6 +129,17 @@ export default class PenalLift {
     this.buildWalls();
     this.register();
     this.link();
+    // lo que no se mueve (torres, cables, el motor, la estación), junto por
+    // material: eran ~190 piezas sueltas, un dibujo cada una
+    // (window.__noMergeStill: sueltas, para comparar)
+    if (!window.__noMergeStill) mergeStill(this.root, [this.cabin, this.winch, this.fly, this.redLamp, ...this.wheels]);
+    // lo que se mueve entero, junto por dentro: la cabina (menos la puerta, el
+    // brazo de la palanca, el carro que gira y el farol que se prende), el
+    // carro, el volante del motor y cada rueda del cable
+    if (!globalThis.__mduNoMerge) {
+      mergeStill(this.cabin, [this.door, this.arm, this.car, this.bulb]);
+      for (const o of [this.car, this.fly, ...this.wheels.map((w) => w.children[0])]) mergeStill(o, []);
+    }
   }
 
   // ---------------- lo que se ve ----------------
@@ -370,7 +395,7 @@ export default class PenalLift {
     m.add(lamp);
     // la palanca para llamarla (en el frente)
     m.add(mesh(boxGeo(0.3, 0.3, 0.05), M.iron, -0.2, 0.8, -0.47));
-    m.add(mesh(cylGeo(0.02, 0.02, 0.35, 6), M.brass, -0.2, 0.95, -0.52, 0.4, 0, 0));
+    m.add(callLever(M, -0.2, 0.72, -0.5));
     this.root.add(m);
     this.g.world.addBox([MOTOR.x - 0.9, y, MOTOR.z - 0.45, MOTOR.x + 0.9, y + 1.1, MOTOR.z + 0.45], { kind: 'prop' });
     this.motorPos = new THREE.Vector3(MOTOR.x, y + 1.2, MOTOR.z);
@@ -409,7 +434,7 @@ export default class PenalLift {
         post.position.set(P.x, y, P.z);
         post.add(mesh(boxGeo(0.16, 1.4, 0.16), M.woodDark, 0, 0.7, 0));
         post.add(mesh(boxGeo(0.3, 0.3, 0.06), M.iron, 0, 1.05, -0.1));
-        post.add(mesh(cylGeo(0.02, 0.02, 0.35, 6), M.brass, 0, 1.2, -0.16, 0.4, 0, 0));
+        post.add(callLever(M, 0, 0.97, -0.13));
         // la campana
         post.add(mesh(cylGeo(0.06, 0.14, 0.18, 10, true), M.brass, 0.16, 1.5, 0));
         post.add(mesh(boxGeo(0.34, 0.04, 0.04), M.woodDark, 0.08, 1.62, 0));
@@ -1095,5 +1120,49 @@ export default class PenalLift {
     for (const list of Object.values(this.walls)) for (const b of list) b.active = false;
     if (g.world.navLinks) g.world.navLinks = null;
     this.root.removeFromParent();
+  }
+}
+
+// Las mallas quietas de un grupo (a cualquier profundidad, fuera de las ramas
+// de skip, que se mueven o se prenden y apagan), juntas por material y sombra.
+function mergeStill(root, skip) {
+  const out = new Set(skip.filter(Boolean));
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const sets = new Map();
+  const walk = (o) => {
+    if (out.has(o) || !o.visible) return;
+    if (o.isMesh && !o.isSkinnedMesh && !o.isInstancedMesh && !o.children.length && !Array.isArray(o.material) && !o.morphTargetInfluences && o.geometry?.attributes?.position) {
+      const k = `${o.material.uuid}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}|${o.renderOrder}`;
+      let L = sets.get(k);
+      if (!L) sets.set(k, (L = []));
+      L.push(o);
+      return;
+    }
+    for (const c of o.children) walk(c);
+  };
+  walk(root);
+  const m4 = new THREE.Matrix4();
+  for (const L of sets.values()) {
+    if (L.length < 2) continue;
+    const geos = L.map((o) => {
+      let g = o.geometry.clone().applyMatrix4(m4.multiplyMatrices(inv, o.matrixWorld));
+      // (las caras de una caja o un cilindro vienen en grupos: con un material, sobran)
+      g.clearGroups();
+      if (g.index) g = g.toNonIndexed();
+      for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n)) g.deleteAttribute(n);
+      if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      if (!g.attributes.normal) g.computeVertexNormals();
+      return g;
+    });
+    const merged = mergeGeometries(geos);
+    geos.forEach((g) => g.dispose());
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, L[0].material);
+    m.castShadow = L[0].castShadow;
+    m.receiveShadow = L[0].receiveShadow;
+    m.renderOrder = L[0].renderOrder;
+    root.add(m);
+    for (const o of L) o.removeFromParent();
   }
 }

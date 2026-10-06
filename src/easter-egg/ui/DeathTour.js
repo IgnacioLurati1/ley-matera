@@ -1,7 +1,15 @@
 import * as THREE from 'three';
 import { ZONES, TITLE_CAM, MAP_W, MAP_H, SKY } from '../config/map';
 import { path, EASE } from './Intro';
+import { rng } from '../core/noise';
 import './deathTour.css';
+
+// Una semilla de un texto (la misma en todas las compus).
+const seedOf = (s) => {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0 || 1;
+};
 
 // Al morir, después de la caída y el alma que sube (Game.startEnd), la cámara
 // sale a recorrer el mapa como quedó (con la sangre, los muertos que siguen
@@ -33,6 +41,14 @@ export default class DeathTour {
     this.t = 0;
     this.i = -1;
     this.done = false;
+    // en línea, el mismo paseo en todas las compus y en hora (la regla de las
+    // escenas, ui/FarmCinematic): las tomas con la suerte de la partida (el
+    // mapa y la ronda, que llega con el fin) y el reloj de verdad desde acá.
+    // Antes cada uno veía otras tomas y la compu lenta iba atrasada.
+    // (globalThis.__mduNoCineSync: como antes)
+    const sync = !!g.net && globalThis.__mduNoCineSync !== true;
+    this.rand = sync ? rng(seedOf(`${g.mapId}|${g.stats?.round ?? 0}`)) : Math.random;
+    this.wallAt = sync ? performance.now() : 0;
     this.shots = this.plan();
     this.fog0 = g.weather?.cur?.fog ?? null;
     this.fogK = 1;
@@ -66,7 +82,7 @@ export default class DeathTour {
     const usable = intro.filter((s) => s.cam && s.look && !s.fn && !s.wake && !s.black);
     const places = usable.filter((s) => s.where);
     // las de la entrada, en otro orden cada vez
-    const pick = places.slice().sort(() => Math.random() - 0.5).slice(0, ZONE_SHOTS);
+    const pick = places.slice().sort(() => this.rand() - 0.5).slice(0, ZONE_SHOTS);
     for (const s of pick) out.push({ d: Math.min(ZONE_D + 0.8, Math.max(ZONE_D, s.d)), camAt: s.camAt || path(s.cam), lookAt: s.lookAt || path(s.look), where: s.where, fog: s.fog ?? 1, fov: s.fov });
     // (sin tomas de lugares: las zonas del mapa)
     if (out.length < 2) for (const s of this.zoneShots(ZONE_SHOTS - out.length)) out.push(s);
@@ -91,7 +107,7 @@ export default class DeathTour {
   }
 
   // Una grúa que gira alrededor de c (radio r, alto h), mirándolo.
-  orbit(c, r, h, d, a0 = Math.random() * Math.PI * 2, sweep = 0.7) {
+  orbit(c, r, h, d, a0 = this.rand() * Math.PI * 2, sweep = 0.7) {
     return {
       d,
       final: true,
@@ -112,7 +128,7 @@ export default class DeathTour {
     if (tower) {
       const c = new THREE.Vector3(TITLE_CAM.look[0], 0, TITLE_CAM.look[2]);
       const top = (g.world.tower.top ?? TITLE_CAM.look[1] * 2) || 70;
-      const a0 = Math.random() * Math.PI * 2;
+      const a0 = this.rand() * Math.PI * 2;
       return {
         d: FINAL_D + 2,
         final: true,
@@ -135,7 +151,7 @@ export default class DeathTour {
   zoneShots(n) {
     const out = [];
     const list = Object.entries(ZONES).filter(([, z]) => z.rects?.length && !z.with && !z.wild);
-    list.sort(() => Math.random() - 0.5);
+    list.sort(() => this.rand() - 0.5);
     for (const [, z] of list.slice(0, n)) {
       let x0 = Infinity;
       let z0 = Infinity;
@@ -168,7 +184,11 @@ export default class DeathTour {
   // ---------------- cada cuadro ----------------
   update(dt) {
     const g = this.g;
-    this.t += dt;
+    // (en línea el reloj de verdad: una trabada de hasta 30 s cuenta)
+    const now = performance.now();
+    const w = this.wallAt ? (now - this.wallAt) / 1000 : 0;
+    if (this.wallAt) this.wallAt = now;
+    this.t += w >= 0.002 && w < 30 ? w : dt;
     const T = Math.min(this.t, this.total + 60);
     let i = this.shots.findIndex((s) => T < s.t0 + s.d);
     if (i < 0) i = this.shots.length - 1;

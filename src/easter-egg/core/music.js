@@ -40,6 +40,12 @@ export const TRACKS = {
   'intro-torre': { name: 'Intro de la torre', gain: 0.83 },
   'intro-castillo': { name: 'Intro de Der Mateendrache', gain: 1 },
   'intro-esteros': { name: 'Intro de Mate no Numa', gain: 0.96 },
+  // el Himno Nacional (la introducción orquestal): los primeros 45 s, con
+  // fundido al final (la grabación viene ~3 dB más fuerte que las otras)
+  'intro-monumento': { name: 'Intro del Monumento al Mate', gain: 0.73 },
+  // Aurora ("Alta en el cielo", la canción a la bandera) para el final de
+  // Belgrano (entities/MonumentoEgg.playEnding); debajo de las voces
+  'fin-monumento': { name: 'El final del Monumento (Aurora)', gain: 0.5 },
   // (el golpe fuerte del principio, a los 3,82 s: la subida suena antes y el
   // Mandinga aparece justo en el golpe; antes arrancaba cuando ya estaba)
   'jefe-molino': { name: 'Pelea final del molino', gain: 0.98, boom: 3.82, loop: [2, 193] },
@@ -53,11 +59,24 @@ export const TRACKS = {
   // (el golpe de verdad es a los 23,9 s, donde se descarga todo: el de 10,75
   // es un pico chico de la intro y el de 20,6 arranca la subida que lo arma)
   'jefe-torre': { name: 'Pelea contra Francisco', gain: 0.66, boom: 23.9, loop: [23.9, 173] },
-  'jefe-esteros': { name: 'Pelea contra el Luisón', gain: 0.77, boom: 33.9, loop: [33.9, 375.5] },
+  // (un poco más fuerte: 0,77 → 0,92, +1,5 dB; el usuario, 2026-10-05)
+  'jefe-esteros': { name: 'Pelea contra el Luisón', gain: 0.92, boom: 33.9, loop: [33.9, 375.5] },
   'jefe-generico': { name: 'La vanguardia', gain: 0.97, loop: [2, 122.5] },
   // la otra de los jefes de ronda (sale una u otra al azar)
   'jefe-generico-2': { name: 'Pelea de los jefes de ronda', gain: 0.97, loop: [2, 190.5] },
   'defensa-granja': { name: 'La defensa del yerbal', gain: 0.95 },
+  // el Desgarro Cósmico de Eclipse Matero (entities/eclipse/Desgarro10.js): el coro
+  // (Fantasy Choir 2 de cesisco, CC0; a -12 LUFS)
+  'desgarro-eclipse': { name: 'El Desgarro Cósmico', gain: 0.85 },
+  // San Lorenzo (entities/eclipse/SanLorenzo.js): la pelea (Epic Boss Battle, Junkala, CC0; da la vuelta sin costura) y el clímax, la Marcha
+  'jefe-eclipse': { name: 'El Combate de San Lorenzo', gain: 0.8, loop: [0.05, 123.3] },
+  'marcha-san-lorenzo': { name: 'La Marcha de San Lorenzo', gain: 0.8, loop: [6, 204] },
+  // el final de Eclipse Matero (ui/EclipseEnding.js): de fondo, bajita, del
+  // santuario a cuando se cose el universo (Determined Pursuit, Emma_MA, CC0)
+  'cine-eclipse-final': { name: 'El final de Eclipse Matero', gain: 0.45 },
+  // la entrada de Eclipse Matero (ui/eclipseIntro.js): 32 s de silencio y la
+  // pelea de San Lorenzo, que entra con el choque del sol y la luna
+  'intro-eclipse': { name: 'Intro de Eclipse Matero', gain: 0.8 },
   // el asedio del castillo (entities/castle/Asedio.js), después de los campanazos
   // (la eligió el usuario; al final tiene 4 s de silencio: da la vuelta antes)
   'asedio-castillo': { name: 'El asedio', gain: 1, loop: [0, 116] },
@@ -226,6 +245,7 @@ const INTROS = [
   ['torre', 'La torre'],
   ['castillo', 'Der Mateendrache'],
   ['esteros', 'Mate no Numa'],
+  ['monumento', 'Monumento al Mate'],
 ];
 
 // Pelea en la arena del mapa: el easter egg listo, todo abierto y adentro.
@@ -309,6 +329,106 @@ export const SCENES = [
       g.ee.asedio?.debugStart();
     },
   },
+  // el Desgarro Cósmico de Eclipse Matero (entities/eclipse/Desgarro10.js): ya, con
+  // modo dios (la entrada existe solo con el mapa prendido: __mduEclipse)
+  ...(globalThis.__mduEclipse === true
+    ? [
+        {
+          id: 'desgarro-eclipse',
+          map: 'eclipse',
+          group: 'Jefes',
+          name: 'Eclipse Matero: el Desgarro Cósmico (los jinetes y la cúpula)',
+          track: 'desgarro-eclipse',
+          go: (g) => {
+            g.godMode = true;
+            g.ee.d10?.debugStart();
+          },
+        },
+        // San Lorenzo (entities/eclipse/SanLorenzo.js): la pelea desde la llegada, y la escena de Cabral
+        { id: 'san-lorenzo', map: 'eclipse', group: 'Jefes', name: 'Eclipse Matero: el Combate de San Lorenzo (desde la llegada)', track: 'jefe-eclipse', go: (g) => { g.godMode = true; g.ee.debugFinal(); g.ee.sendEgg({ a: 'cebar' }); g.ee.sendEgg({ a: 'corte' }); } },
+        { id: 'cine-cabral', map: 'eclipse', group: 'Cinemáticas', name: 'Eclipse Matero: la caída de San Martín y Cabral', go: (g) => { g.godMode = true; g.ee.debugFinal(); g.ee.sendEgg({ a: 'cebar' }); g.ee.sendEgg({ a: 'corte' }); g.later(1.5, () => g.ee.arena?.debugPhase?.(3)); } },
+        // la escena del Sable (ui/eclipseCineSable.js): delante de la Llama, prendida
+        { id: 'cine-eclipse-sable', map: 'eclipse', group: 'Cinemáticas', name: 'Eclipse Matero: el Sable (los cuatro por el desgarro)', go: (g) => g.ee.scenes?.debugSableGo?.() },
+        // el final (ui/EclipseEnding.js): pone la arena de San Lorenzo y arranca
+        { id: 'cine-eclipse-final', map: 'eclipse', group: 'Cinemáticas', name: 'Eclipse Matero: el final (el Gil, el santuario, el fogón y la linterna)', go: (g) => g.ee.scenes?.debugEnding?.() },
+        // ---- Atajos de Eclipse Matero (el usuario, 2026-10-06: "andá poniendo en Alt+I todos los atajos") ----
+        // (ir a una isla: a la altura de su piso, en el medio; se activan sus zonas)
+        ...['centro', 'molino', 'tapera', 'penal', 'monumento', 'torre', 'castillo', 'desgarro'].map((isla) => ({
+          id: `ecl-isla-${isla}`,
+          map: 'eclipse',
+          group: 'Atajos',
+          name: `Eclipse: ir a ${isla === 'desgarro' ? 'la Disformidad' : isla === 'centro' ? 'el claro' : 'la isla ' + isla}`,
+          go: async (g) => {
+            const { ISLANDS } = await import('../config/maps/eclipse');
+            const I = ISLANDS[isla];
+            if (!I) return;
+            const [x, z] = I.center;
+            const P = g.player;
+            P.pos.set(x, g.world.floorAt(x, z, I.top + 2), z);
+            P.vel?.set?.(0, 0, 0);
+            for (const k of I.zones) g.activateZone?.(k);
+          },
+        })),
+        { id: 'ecl-guadana', map: 'eclipse', group: 'Atajos', name: 'Eclipse: el Desgarrador Cósmico (la común)', go: (g) => g.weapons.cosmic?.give(0) },
+        { id: 'ecl-guadana-up', map: 'eclipse', group: 'Atajos', name: 'Eclipse: el Desgarrador del Eclipse (la mejorada)', go: (g) => g.weapons.cosmic?.give(1) },
+        { id: 'ecl-furia', map: 'eclipse', group: 'Atajos', name: 'Eclipse: la Furia Cósmica llena (H para usarla)', go: (g) => { const C = g.weapons.cosmic; if (!C) return; if (!C.held()) C.give(1); C.kills = 999; } },
+        { id: 'ecl-caos', map: 'eclipse', group: 'Atajos', name: 'Eclipse: el Cazador del Caos (potenciador, 20 s)', go: (g) => g.powerups?.applyEffect?.('caos', true, false) },
+        { id: 'ecl-portales', map: 'eclipse', group: 'Atajos', name: 'Eclipse: todos los portales abiertos', go: (g) => { for (const P of g.ee.portals.list) g.ee.portals.unlock(P.def.id); } },
+        { id: 'ecl-luz', map: 'eclipse', group: 'Atajos', name: 'Eclipse: la luz prendida', go: (g) => g.turnOnPower?.() },
+        { id: 'ecl-pap-cicatrices', map: 'eclipse', group: 'Atajos', name: 'Eclipse: Pack-a-Pava I, las tres cicatrices cerradas (abre la Disformidad)', go: (g) => { g.turnOnPower?.(); const T = g.papq?.termas; if (!T) return; for (const sc of T.scars) T.applyHit(sc.i, T.need(), true); } },
+        { id: 'ecl-pap-ojos', map: 'eclipse', group: 'Atajos', name: 'Eclipse: Pack-a-Pava II, los cuatro ojos abiertos (queda el ritual)', go: (g) => { g.turnOnPower?.(); const T = g.papq?.termas; if (!T) return; for (const sc of T.scars) T.applyHit(sc.i, T.need(), true); for (const e of T.eyes) T.applyEye(e.i, T.eyeNeed(), true); } },
+        { id: 'ecl-pap-ritual', map: 'eclipse', group: 'Atajos', name: 'Eclipse: Pack-a-Pava III, el ritual (en la Disformidad, ya)', go: async (g) => { g.turnOnPower?.(); const T = g.papq?.termas; if (!T) return; for (const sc of T.scars) T.applyHit(sc.i, T.need(), true); for (const e of T.eyes) T.applyEye(e.i, T.eyeNeed(), true); const P = g.player; P.pos.set(T.pap.x, T.pap.y, T.pap.z + 3); P.vel?.set?.(0, 0, 0); g.ee.portals.unlock(10); T.startRitual(); } },
+        { id: 'ecl-pap-listo', map: 'eclipse', group: 'Atajos', name: 'Eclipse: el Pack-a-Pava despierto (ritual hecho)', go: (g) => { g.turnOnPower?.(); const T = g.papq?.termas; if (!T) return; T.complete(); g.papq.finish?.(); g.ee.portals.unlock(10); } },
+        // los pasos del easter egg (cada uno hecho de golpe)
+        ...[['brasa', 'la Brasa (molino)'], ['yerba', 'la Yerba (La Tapera)'], ['bombilla', 'la Bombilla (penal)'], ['agua', 'el Agua (castillo)'], ['calabaza', 'la Calabaza (laguna)'], ['sable', 'el Sable (Monumento)'], ['canon', 'el cañón de Obligado (totalidad)'], ['guadana', 'la guadaña armada (hoja + asta + temple)']].map(([k, n]) => ({
+          id: `ecl-paso-${k}`,
+          map: 'eclipse',
+          group: 'Atajos',
+          name: `Eclipse, paso: ${n}`,
+          go: (g) => {
+            const S = g.ee.steps[k];
+            if (!S) return;
+            S.st.done = 1;
+            if (k === 'guadana') { S.st.hoja = S.st.asta = S.st.forged = 1; if (!g.weapons.cosmic?.held?.()) g.weapons.cosmic?.give(0); }
+            if (k === 'canon') { g.ee.totality = true; g.world.eclipse?.set?.(1, 2); }
+            S.refresh?.();
+            g.ee.got(k, 0);
+          },
+        })),
+        ...[1, 2, 3, 4, 5, 6].map((n) => ({
+          id: `ecl-temple-${n}`,
+          map: 'eclipse',
+          group: 'Atajos',
+          name: `Eclipse, el Temple: etapa ${n} (${['', 'el despertar', 'fuego: el brasero del castillo', 'viento: la llama de la cima al algarrobo', 'rayo: el patio del penal', 'hielo: la muela del molino', 'el temple en la Disformidad (con totalidad)'][n]})`,
+          go: (g) => {
+            const T = g.ee.steps.temple;
+            if (!g.weapons.cosmic?.held?.()) g.weapons.cosmic?.give(0);
+            g.ee.got_.guadana = 1;
+            T.st.on = 1;
+            T.st.stage = n;
+            if (n === 6) { g.ee.totality = true; g.world.eclipse?.set?.(1, 2); }
+            T.refresh?.();
+            g.hud?.subtitle?.(T.hint(n), 5);
+          },
+        })),
+        { id: 'ecl-temple-hecho', map: 'eclipse', group: 'Atajos', name: 'Eclipse, el Temple hecho: el Desgarrador del Eclipse', go: (g) => { const T = g.ee.steps.temple; T.st.stage = 7; T.st.done = 1; T.refresh?.(); g.ee.got_.temple = 1; if (!g.weapons.cosmic?.held?.()) g.weapons.cosmic?.give(1); else g.weapons.cosmic?.upgrade(); } },
+        { id: 'ecl-todo', map: 'eclipse', group: 'Atajos', name: 'Eclipse: todo junto (como Alt+K: queda cebar en el fogón)', go: (g) => g.ee.debugFinal() },
+        { id: 'ecl-cebar', map: 'eclipse', group: 'Atajos', name: 'Eclipse: el Primer Mate cebado (queda el corte con la Furia)', go: (g) => { g.ee.debugFinal(); g.ee.sendEgg({ a: 'cebar' }); } },
+        { id: 'ecl-corte', map: 'eclipse', group: 'Atajos', name: 'Eclipse: el corte: a San Lorenzo', go: (g) => { g.ee.debugFinal(); g.ee.sendEgg({ a: 'cebar' }); g.ee.sendEgg({ a: 'corte' }); } },
+        ...[0, 1, 2, 3, 4, 5].map((n) => ({
+          id: `ecl-arena-${n}`,
+          map: 'eclipse',
+          group: 'Atajos',
+          name: `Eclipse, San Lorenzo fase ${n}: ${['la llegada (el sable)', 'el desembarco', 'El Eclipse y las amarras', 'Cabral', 'Febo asoma (la corona)', 'el final'][n]}`,
+          go: (g) => { g.godMode = true; g.ee.debugFinal(); g.ee.sendEgg({ a: 'cebar' }); g.ee.sendEgg({ a: 'corte' }); setTimeout(() => g.ee.arena?.debugPhase?.(n), 800); },
+        })),
+        { id: 'ecl-choque', map: 'eclipse', group: 'Atajos', name: 'Eclipse: un choque grande en el cielo, ya', go: (g) => { const E = g.world.eclipse; if (!E) return; E.fightT = 0; E.clashBig = true; } },
+        { id: 'ecl-totalidad', map: 'eclipse', group: 'Atajos', name: 'Eclipse: la totalidad (el eclipse cerrado)', go: (g) => g.world.eclipse?.set?.(1, 3) },
+        { id: 'ecl-normal', map: 'eclipse', group: 'Atajos', name: 'Eclipse: el eclipse como al empezar', go: (g) => g.world.eclipse?.set?.(0.45, 3) },
+        // la entrada (ui/eclipseIntro.js): la partida misma
+        { id: 'intro-eclipse', map: 'eclipse', group: 'Entradas', name: 'Entrada: Eclipse Matero', track: 'intro-eclipse', intro: true },
+      ]
+    : []),
   {
     id: 'cine-castillo-medio',
     map: 'castillo',
@@ -399,6 +519,8 @@ export const SCENES = [
       g.later(5, () => g.cheatBoss());
     },
   },
+  // el final del Monumento (ui/MonumentoEnding.js): la Bandera, Belgrano y el mate
+  { id: 'fin-monumento', map: 'monumento', group: 'Cinemáticas', name: 'Monumento: el final (la Primera Bandera y Belgrano)', track: 'fin-monumento', go: (g) => g.ee.playEnding() },
   // Las de mitad de partida (y los finales) que no tienen canción propia:
   // igual van, para poder verlas (el usuario, 2026-09-26).
   { id: 'cine-penal-yerba', map: 'penal', group: 'Cinemáticas', name: 'Mate of the Dead: la Voz de Arriba y la yerba de oro', go: (g) => g.ee.startYerbaScene() },

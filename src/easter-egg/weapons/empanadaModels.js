@@ -361,9 +361,12 @@ export const empanadaMaterials = () => Object.keys(COOK).map(doughMat);
 
 // ---------------- armado ----------------
 // Anillos de la cáscara: de la base (centro) al borde y de ahí a la tapa.
-const TH = 128;
-const RINGS_B = 10;
-const RINGS_T = 14;
+// (las de adorno, buildEmpanada(id, { lite: true }), con menos: TH 40, 4 y 5
+// anillos y los pliegues de menos caras)
+let TH = 128;
+let RINGS_B = 10;
+let RINGS_T = 14;
+let BLOB_K = 1;
 
 function buildShell(S, look, seed) {
   const out = S.out;
@@ -504,7 +507,7 @@ function topNormal(S, x, z, out) {
 
 // Un elipsoide coloreado (pliegue, marca) como geometría suelta.
 function blob(sx, sy, sz, color, at, q, seg = [10, 6]) {
-  const g = new THREE.SphereGeometry(1, seg[0], seg[1]);
+  const g = new THREE.SphereGeometry(1, Math.max(4, Math.round(seg[0] * BLOB_K)), Math.max(3, Math.round(seg[1] * BLOB_K)));
   g.scale(sx, sy, sz);
   if (q) g.applyQuaternion(q);
   g.translate(at.x, at.y, at.z);
@@ -790,8 +793,23 @@ function shellGeo(pos, col, idx) {
 }
 
 // Una empanada: { group, mesh, setBite(n) (0 entera, 1 y 2 mordida), dispose() }.
-// La base queda en y = 0.
-export function buildEmpanada(id) {
+// La base queda en y = 0. opts.lite: la de adorno (la canasta del horno de
+// barro), ~3 veces menos triángulos; no se muerde.
+export function buildEmpanada(id, opts = {}) {
+  if (!opts.lite) return buildFull(id);
+  const keep = [TH, RINGS_B, RINGS_T, BLOB_K];
+  TH = 40;
+  RINGS_B = 4;
+  RINGS_T = 5;
+  BLOB_K = 0.55;
+  try {
+    return buildFull(id);
+  } finally {
+    [TH, RINGS_B, RINGS_T, BLOB_K] = keep;
+  }
+}
+
+function buildFull(id) {
   const E = EMPANADA[id] || EMPANADA.carne;
   const look = E.look;
   const seed = [...E.id].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) & 0xffff;

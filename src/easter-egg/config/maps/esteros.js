@@ -175,7 +175,8 @@ export const ZONES = {
   },
   // la sala de doble altura con la galería de arriba, y el despacho cerrado
   H2: { name: 'La Casona', sub: 'La sala del coronel, con la galería arriba', y: 0.6, roof: 7.4, rects: [[66, 8, 75, 12]], floor: 'parquet', wall: 'plasterWhite', ext: 'plasterWhite', ceil: 'planksDark' },
-  H3: { name: 'La Galería', sub: 'Desde acá el coronel miraba el estero', y: 4.2, roof: 7.4, rects: [[66, 6, 75, 7]], floor: 'parquet', wall: 'plasterWhite', ext: 'plasterWhite', ceil: 'planksDark', cliff: 'plasterWhite' },
+  // (with: se abre con la sala de abajo; sin eso no se activaba nunca y su cartel no salía)
+  H3: { name: 'La Galería', sub: 'Desde acá el coronel miraba el estero', with: 'H2', y: 4.2, roof: 7.4, rects: [[66, 6, 75, 7]], floor: 'parquet', wall: 'plasterWhite', ext: 'plasterWhite', ceil: 'planksDark', cliff: 'plasterWhite' },
   H4: { name: 'El Despacho del Coronel', sub: 'Los papeles de la partida siguen sobre el escritorio', y: 4.2, roof: 7.4, rects: [[66, 2, 75, 4]], floor: 'parquet', wall: 'plasterOffice', ext: 'plasterWhite', ceil: 'planksDark' },
   // el puente de tablas sobre el riacho, entre el Obraje y la Casona
   P: { name: 'El Puente de Tablas', sub: 'Cruje con cada paso... y con cada muerto', y: 0.55, rects: [[56, 12, 66, 13]], floor: 'planks', outdoor: true, edge: 'rail', join: ['H'] },
@@ -385,13 +386,18 @@ export const PROPS = [
   // ---- el obraje ----
   { type: 'locomovil', pos: [33.6, 9.3], rot: 0 },
   { type: 'troncos', pos: [34.2, 17.8], rot: 0.3, rows: 3 },
-  { type: 'troncos', pos: [50.3, 15.4], rot: 1.4, rows: 2, len: 2.6, hacha: true },
+  // (en el rincón contra el pajonal, al oeste de la caja: en [50.3, 15.4]
+  // atravesaba la caja de la zona y tapaba dónde pararse para abrirla)
+  { type: 'troncos', pos: [47.6, 15.0], rot: 0.04, rows: 2, len: 2.6, hacha: true },
   { type: 'carreta', pos: [36, 14.6], rot: 0.2 },
   { type: 'farolPoste', pos: [37.5, 12.5] },
   { type: 'mesaTosca', pos: [42.5, 7.6], len: 2.2 },
   // ---- la pesquería ----
   { type: 'redesPalo', pos: [71.5, 32.5], rot: 0.3 },
   { type: 'redesPalo', pos: [74.5, 44.2], rot: 1.2, len: 2 },
+  // (la tercera red, contra el pajonal del este: un pescado del yacaré en cada
+  // red, world/papYacare.js; antes los tres colgaban juntos de las dos primeras)
+  { type: 'redesPalo', pos: [80.2, 31], rot: -1.5708, len: 1.8 },
   { type: 'bote', pos: [57.4, 34.2], rot: 1.6, y: -0.3 },
   { type: 'bote', pos: [58.8, 46.4], rot: 1.9, y: -0.3 },
   { type: 'farolPoste', pos: [66.5, 37.5] },

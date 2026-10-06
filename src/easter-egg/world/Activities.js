@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PERKS, PERK_ORDER } from '../config/perks';
-import { mesh, boxGeo, cylGeo } from './props';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mesh, boxGeo, cylGeo, compactGroup } from './props';
 import { ACT } from '../config/map';
 import { fireflies } from '../fx/Fireflies';
 import { shieldModel } from './shieldModels';
@@ -46,6 +47,12 @@ const tmpV = new THREE.Vector3();
 // Se usa recién en el primer update: antes la utilería no está en la escena
 // (el mundo la junta en una malla al final de armar el mapa).
 const restRay = new THREE.Raycaster();
+// Lo que no se mueve por dentro (la radio, cada pieza del escudo, la mesa, los
+// postes): una malla por material (world/props.js compactGroup; lo escondido,
+// lo que cambia de material solo y lo que se mueve aparte quedan como están).
+// __mduNoMerge / __mduNo1d: como antes, para comparar.
+const join = (o) => (globalThis.__mduNoMerge || globalThis.__mduNo1d ? o : compactGroup(o));
+
 export function restY(g, x, y, z, skip = null) {
   g.scene.updateMatrixWorld();
   restRay.set(new THREE.Vector3(x, y + 0.25, z), new THREE.Vector3(0, -1, 0));
@@ -187,7 +194,8 @@ export default class Activities {
     g.audio.powerupGrab();
     g.hud.toast(gift.name);
     if (gift.id === 'perk') {
-      const missing = PERK_ORDER.filter((id) => !g.player.perks.has(id) && id !== 'deadshot');
+      // (el Deadshot ya hace algo: también se regala; __mduNoDeadshotGift: afuera, como antes)
+      const missing = PERK_ORDER.filter((id) => !g.player.perks.has(id) && (id !== 'deadshot' || !globalThis.__mduNoDeadshotGift));
       const id = missing[Math.floor(Math.random() * missing.length)];
       if (id) g.weapons.drink(PERKS[id].color, () => g.player.givePerk(id));
       else g.addPoints(2500, null, true);
@@ -262,16 +270,21 @@ export default class Activities {
           p.position.set(x, ry, z);
           p.add(mesh(cylGeo(0.05, 0.06, 2.3, 8), M.iron, 0, 1.15, 0));
           for (const y of [0.5, 1.1, 1.7]) p.add(mesh(cylGeo(0.06, 0.06, 0.1, 10), M.glassLampOff, 0, y, 0));
-          this.root.add(p);
+          this.root.add(join(p));
           return new THREE.Vector3(x, ry, z);
         });
       } else if (def.kind !== 'scald' && !def.own) {
         // (las duchas hirvientes largan el agua por las regaderas: no llevan
         // rejillas; las de `own` traen su dibujo: la Llamarada Votiva del Monumento)
+        // (todas en una malla: eran decenas de cajitas sueltas, un dibujo cada una)
         const [x0, z0, x1, z1] = def.rect;
+        const grates = [];
         for (let x = x0 + 0.4; x < x1 - 0.2; x += 0.8) {
-          for (let z = z0 + 0.4; z < z1 - 0.2; z += 0.8) this.root.add(mesh(boxGeo(0.5, 0.02, 0.5), M.iron, x, ry + 0.012, z));
+          for (let z = z0 + 0.4; z < z1 - 0.2; z += 0.8) grates.push(new THREE.BoxGeometry(0.5, 0.02, 0.5).translate(x, ry + 0.012, z));
         }
+        const merged = grates.length ? mergeGeometries(grates) : null;
+        for (const gg of grates) gg.dispose();
+        if (merged) this.root.add(mesh(merged, M.iron));
       }
       // (en el motín del penal se corta la luz: las eléctricas no andan)
       const lit = () => g.world.power && !g.defense?.cut;
@@ -335,7 +348,7 @@ export default class Activities {
     g.audio.powerupGrab();
     g.hud.toast(gift ? gift.name : 'Ánima');
     if (id === 'perk') {
-      const missing = PERK_ORDER.filter((p) => !g.player.perks.has(p) && p !== 'deadshot');
+      const missing = PERK_ORDER.filter((p) => !g.player.perks.has(p) && (p !== 'deadshot' || !globalThis.__mduNoDeadshotGift));
       const pick = missing[Math.floor(Math.random() * missing.length)];
       if (pick) g.weapons.drink(PERKS[pick].color, () => g.player.givePerk(pick));
       else g.addPoints(2500, null, true);
@@ -499,7 +512,8 @@ export default class Activities {
       dial.position.set(-0.08, 0.08, 0.081);
       group.add(dial);
       for (const x of [0.05, 0.11]) group.add(mesh(cylGeo(0.018, 0.018, 0.02, 10), M.brass, x, 0.07, 0.085, Math.PI / 2, 0, 0));
-      this.root.add(group);
+      // (el dial queda aparte: su material se prende al sonar)
+      this.root.add(join(group));
       const radio = { def, i, group, dial: dialMat, heard: false, playing: false, pos: new THREE.Vector3(def.pos[0], y + 0.2, def.pos[2]) };
       g.interact.add({
         kind: 'radio',
@@ -582,7 +596,8 @@ export default class Activities {
         for (let i = 0; i < 3; i++) obj.add(mesh(new THREE.TorusGeometry(0.12 - i * 0.02, 0.012, 5, 16), M.leather, 0, 0.02 + i * 0.02, 0, Math.PI / 2, 0, 0));
         obj.add(mesh(boxGeo(0.06, 0.012, 0.05), M.brass, 0.14, 0.02, 0));
       }
-      this.root.add(obj);
+      // (gira entera mientras espera)
+      this.root.add(join(obj));
       // unas luciérnagas alrededor: se ven si uno mira con atención
       const fx = new THREE.Group();
       fx.position.set(def.pos[0], def.pos[1], def.pos[2]);
@@ -630,7 +645,8 @@ export default class Activities {
     bench.add(holder);
     this.bench = bench;
     this.benchShield = holder;
-    this.root.add(bench);
+    // (el escudo de la mesa arranca escondido: queda aparte, como está)
+    this.root.add(join(bench));
     g.world.addBox([ACT.bench.pos[0] - 1, by, ACT.bench.pos[1] - 0.45, ACT.bench.pos[0] + 1, by + 1, ACT.bench.pos[1] + 0.45], { kind: 'prop' });
     g.interact.add({
       kind: 'bench',

@@ -3,6 +3,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { assetUrl } from '../../lib/assets';
 import { skinLook } from '../entities/bossSkin';
+import { lean } from './castleLean';
+import { DragonBlend, dragonBlendOn, loadDragonClips, BLEND_GLB } from './dragonBlend';
 
 // El Mateendrache: el dragón de piedra y yerba que duerme encadenado abajo
 // del castillo. Escamas de piedra verde con yerba entre las juntas, el pecho
@@ -54,6 +56,14 @@ const nkL = new THREE.Vector3();
 const nkQ = new THREE.Quaternion();
 const nkQ2 = new THREE.Quaternion();
 const nkI = new THREE.Quaternion();
+// hasta dónde puede mirar (desde la base del cuello, en el marco del bicho):
+// de costado LOOK_YAW, para arriba LOOK_UP y para abajo LOOK_DOWN (rad). Más
+// atrás o más arriba el cuello se doblaba para atrás, sobre el lomo (al jurar,
+// la corona de luz queda arriba del cuerpo: el usuario, 2026-10-03)
+const LOOK_YAW = 1.2;
+const LOOK_UP = 1.15;
+const LOOK_DOWN = -0.75;
+const lkD = new THREE.Vector3();
 
 // ---------------- el cuerpo de verdad ----------------
 // El Mateendrache de Meshy (el modelo, sin esqueleto de fábrica: los huesos,
@@ -65,16 +75,21 @@ const SKIN_URL = '/assets/sotano/modelos/mateendrache/modelo.glb';
 const SK = { p: null, gltf: null };
 // la cola del modelo es más larga que la de piezas: se acorta un poco
 const TAIL_K = 0.8;
-// cuánto abre la boca (rad por unidad de `jaw`; la de piezas abre 0,55)
-const JAW_OPEN = 0.16;
+// cuánto abre la boca (rad por unidad de `jaw`; la de piezas abre 0,55). El
+// modelo (2026-10-03) tiene el labio cortado y lo de adentro oscuro: abre
+// de verdad (antes, con la boca cerrada de Meshy, 0,16 y se rasgaba)
+const JAW_OPEN = 0.45;
 
 export function loadDragonSkin() {
   if (typeof window !== 'undefined' && window.__dragonSkinOff) return null;
   SK.p ||= new Promise((ok) => {
     new GLTFLoader().load(
-      assetUrl(SKIN_URL),
+      // (con los clips de Blender, BLEND_GLB: hoy el mismo modelo; world/dragonBlend.js)
+      assetUrl(dragonBlendOn() ? BLEND_GLB : SKIN_URL),
       (gl) => {
         SK.gltf = gl;
+        // (sin el lector: guardaba el archivo entero en memoria entre mapas)
+        gl.parser = null;
         ok(gl);
       },
       undefined,
@@ -352,6 +367,10 @@ export default class Mateendrache {
       if (o.isMesh) o.castShadow = false;
     });
     for (const W of this.wings) W.mem.frustumCulled = false;
+    // los clips de Blender encima de la pose de piezas (world/dragonBlend.js; __mduNoDragonBlend: como antes)
+    this.jawOpenK = JAW_OPEN;
+    this.bl = dragonBlendOn() ? new DragonBlend(this) : null;
+    if (this.bl) loadDragonClips();
     this.update(0);
     // el cuerpo de verdad: ya, si está bajado; si no, cuando llegue
     if (SK.gltf) this.attachSkin();
@@ -511,7 +530,8 @@ export default class Mateendrache {
       return;
     }
     // parado: el torso a 2.6 m, el cuello sube en curva y la cola baja al piso
-    const sway = Math.sin(t * 0.7) * 0.25;
+    // (mirando algo, el cuello casi no se hamaca: si no, iba y venía todo el tiempo)
+    const sway = Math.sin(t * 0.7) * 0.25 * (1 - 0.8 * (this.lookK || 0));
     for (let i = 0; i < N; i++) {
       if (i < NECK) {
         const k = 1 - i / NECK;
@@ -530,6 +550,7 @@ export default class Mateendrache {
   // Cambia de pose en `secs` (desde donde esté ahora).
   setPose(name, secs = 1.5) {
     if (name === this.pose && this.blend >= 1) return;
+    this.prevPose = this.pose;
     this.from = this.P.map((p) => p.clone());
     this.pose = name;
     this.blend = 0;
@@ -539,6 +560,20 @@ export default class Mateendrache {
   // Abre la boca (0 a 1) y mira a un punto (en el mundo) o a nada.
   open(k) {
     this.jawWant = k;
+  }
+
+  // Parado, las alas abiertas del todo (k 1) o como siempre (0), de a poco.
+  spreadWings(k) {
+    this.wingWant = k;
+  }
+
+  // El rugido (fx/DragonFire roar): abre la boca de golpe, la tiene abierta
+  // lo que dura y la cierra, escupa o no.
+  roarJaw(secs) {
+    // (dragonBlend: cada rugido arranca el clip 'rugido' parado)
+    this.roarN = (this.roarN || 0) + 1;
+    this.roarT = 0;
+    this.roarDur = Math.max(0.6, secs);
   }
 
   look(p) {
@@ -573,6 +608,7 @@ export default class Mateendrache {
     this.M.coal.emissiveIntensity = glow;
     this.updateHead(dt, t);
     this.updateLegs();
+    this.wingDt = dt;
     this.updateWings(t);
     this.driveSkin(glow);
   }
@@ -587,6 +623,7 @@ export default class Mateendrache {
     if (this.lookAt) nkL.copy(this.lookAt);
     else if (this.lookK < 0.01) return;
     this.root.worldToLocal(tmpA.copy(nkL));
+    this.reachable(tmpA);
     const B = this.P[NECK];
     nkA.subVectors(this.P[0], B).normalize();
     nkB.subVectors(tmpA, B).normalize();
@@ -599,6 +636,24 @@ export default class Mateendrache {
     }
   }
 
+  // Un punto a mirar (en el marco del bicho) llevado a lo que el cuello
+  // alcanza sin doblarse para atrás: el mismo largo desde la base del cuello,
+  // con el rumbo y la altura topados. Durmiendo, como está.
+  reachable(p) {
+    // (window.__lookClampOff: como antes, para comparar)
+    if (this.pose === 'sleep' || window.__lookClampOff) return p;
+    const B = this.P[NECK];
+    const d = lkD.subVectors(p, B);
+    const len = d.length();
+    if (len < 1e-4) return p;
+    // (lo de atrás cuenta como adelante: casi encima, un pelito para atrás
+    // daba vuelta el rumbo y el cuello se torcía de costado)
+    const yaw = Math.max(-LOOK_YAW, Math.min(LOOK_YAW, Math.atan2(d.x, Math.abs(d.z))));
+    const el = Math.max(LOOK_DOWN, Math.min(LOOK_UP, Math.atan2(d.y, Math.hypot(d.x, d.z))));
+    const c = Math.cos(el);
+    return p.set(Math.sin(yaw) * c, Math.sin(el), Math.cos(yaw) * c).multiplyScalar(len).add(B);
+  }
+
   updateHead(dt, t) {
     const h = this.head;
     const p0 = this.P[0];
@@ -607,6 +662,7 @@ export default class Mateendrache {
     if (this.lookAt) {
       tmpW.copy(this.lookAt);
       this.root.worldToLocal(tmpW);
+      this.reachable(tmpW);
       tmpW.sub(p0).normalize();
       f.lerp(tmpW, 0.6).normalize();
     }
@@ -616,8 +672,15 @@ export default class Mateendrache {
     tmpQ.setFromRotationMatrix(tmpM);
     h.quaternion.slerp(tmpQ, Math.min(1, dt * 4 + (this.hSnap ? 1 : 0)));
     this.hSnap = false;
-    // la mandíbula y los ojos
-    this.jaw += (this.jawWant - this.jaw) * Math.min(1, dt * 6);
+    // la mandíbula y los ojos (rugiendo, abierta aunque no escupa)
+    let want = this.jawWant;
+    if (this.roarT != null) {
+      this.roarT += dt;
+      const u = this.roarT / this.roarDur;
+      if (u >= 1) this.roarT = null;
+      else want = Math.max(want, Math.min(1, u * 7, (1 - u) * 4));
+    }
+    this.jaw += (want - this.jaw) * Math.min(1, dt * 9);
     this.jawObj.rotation.x = this.jaw * 0.55;
     const awake = this.pose !== 'sleep' || this.eyes > 0;
     const lid = awake ? 0 : 1;
@@ -657,9 +720,12 @@ export default class Mateendrache {
     const S = this.segs[NECK + 2];
     const fly = this.pose === 'fly' ? smooth(this.blend) : this.from && this.fromFly ? 1 - smooth(this.blend) : 0;
     this.fromFly = this.pose === 'fly';
-    const spread = this.pose === 'stand' ? 0.55 + Math.sin(t * 0.5) * 0.05 : fly;
+    // (parado, spreadWings() las abre del todo: para que se vean, en las escenas)
+    this.wingK = (this.wingK || 0) + ((this.wingWant || 0) - (this.wingK || 0)) * Math.min(1, (this.wingDt || 0) * 2.2);
+    const wk = this.pose === 'stand' ? smooth(this.wingK) : 0;
+    const spread = this.pose === 'stand' ? 0.55 + Math.sin(t * 0.5) * 0.05 + 0.45 * wk : fly;
     // (flapK: cuánto aletea; menos cuando planea con alguien arriba)
-    const flap = Math.sin(t * 3.2) * 0.75 * fly * (this.flapK ?? 1) + (this.pose === 'stand' ? Math.sin(t * 1.3) * 0.08 : 0);
+    const flap = Math.sin(t * 3.2) * 0.75 * fly * (this.flapK ?? 1) + (this.pose === 'stand' ? Math.sin(t * 1.3) * (0.08 + 0.14 * wk) : 0);
     for (const W of this.wings) {
       // el ancla: arriba del lomo, mirando hacia la cabeza
       frame(this.F[NECK + 2], tmpM);
@@ -720,6 +786,9 @@ export default class Mateendrache {
         this.procMeshes.push(o);
       }
     });
+    // (las piezas escondidas, afuera de la escena: no se recorren en cada
+    // cuadro; quedan los grupos, de donde se atan las cadenas de la cueva)
+    if (lean()) for (const o of this.procMeshes) if (!o.children.length) o.removeFromParent();
     this.root.add(model);
     // los ojos: dos brasas ámbar en la cabeza (despierto)
     const eyeG = new THREE.SphereGeometry(0.085, 10, 8);
@@ -836,6 +905,12 @@ export default class Mateendrache {
     S.mesh.material.emissiveIntensity = glow;
     const awake = this.pose !== 'sleep' || this.eyes > 0;
     for (const e of S.eyes) e.visible = awake;
+    // los clips de Blender encima (dragonBlend): las piezas quedan donde quedó el cuerpo
+    if (this.bl?.apply(this.wingDt || 0)) {
+      for (let i = 0; i < N; i++) this.segs[i].o.position.copy(B['s' + i].position);
+      this.head.position.copy(B.head.position);
+      this.head.quaternion.copy(B.head.quaternion);
+    }
     S.model.updateMatrixWorld(true);
   }
 
@@ -864,6 +939,8 @@ export default class Mateendrache {
     this.root.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
     });
+    // (las piezas que salieron de la escena al llegar el cuerpo)
+    for (const o of this.procMeshes || []) o.geometry?.dispose();
     for (const m of Object.values(this.M)) {
       m.map?.dispose();
       m.dispose();

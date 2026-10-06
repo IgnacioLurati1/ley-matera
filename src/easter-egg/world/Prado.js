@@ -4,6 +4,7 @@ import Arena from './Arena';
 import { mesh, boxGeo, cylGeo, mergeByMaterial } from './props';
 import { EE } from '../config/map';
 import { depthPrepass } from '../fx/prepass';
+import { lightGrass } from '../config/quality';
 import { skinBoneAt } from '../entities/bossSkin';
 
 // El Prado: el claro redondo en el maizal donde termina la granja. Se abre
@@ -80,7 +81,7 @@ export default class Prado extends Arena {
     // existe desde que se arma el mapa, apagada. Sumar una en medio de la
     // partida recompila todos los shaders (en Épico congelaba unos 13 s).
     this.cineLight = new THREE.PointLight(0xc8a0ff, 0, 45, 1.4);
-    this.g.scene.add(this.cineLight);
+    this.g.scene.add(this.g.world.adoptLight(this.cineLight));
     this.braziers = [];
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2 + 0.2;
@@ -94,7 +95,8 @@ export default class Prado extends Arena {
       const l = new THREE.PointLight(0xff7a2a, 0, 26, 1.6);
       l.position.set(x + (k ? 4 : -4), 3.5, z);
       this.g.scene.add(l);
-      return l;
+      // (no cuenta como luz mientras está apagada: World.adoptLight)
+      return this.g.world.adoptLight(l);
     });
     this.wardMesh = new THREE.Mesh(
       new THREE.SphereGeometry(1, 20, 14),
@@ -135,6 +137,8 @@ export default class Prado extends Arena {
     }
     this.decor();
     this.buildGrass();
+    // hasta la pelea, (escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+    this.root.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
   }
 
   start() {
@@ -679,7 +683,7 @@ export default class Prado extends Arena {
     const g = this.g;
     const M = g.world.M;
     const { x, z, r } = this.A;
-    const low = (g.tier?.('grass') ?? g.settings?.quality) === 'perf';
+    const low = lightGrass(g);
     const step = low ? GRASS.stepLow : GRASS.step;
     const R = r - 0.9;
     let seed = 71;

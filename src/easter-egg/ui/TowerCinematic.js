@@ -4,9 +4,12 @@ import Avatars from '../net/Avatars';
 import { buildChiqui, chiquiGiggle, chiquiGlitch, chiquiTap } from '../world/Chiqui';
 import { groundY } from '../world/Llano';
 import { warmScene } from './cineWarm';
-import { crewIds, glowFront } from './cineCrew';
+import { crewIds, glowFront, personaOf, PERSONA_T } from './cineCrew';
+import { cineClip, poseCineClip, cineSnap, cineBlendFrom, headProp, FACE_EYES } from '../net/gauchoSkin';
+import { assetUrl } from '../../lib/assets';
 import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
 import { skinBoneAt, preloadBossSkin } from '../entities/bossSkin';
+import { ClipBody } from './fierroNpc';
 
 // Final de la torre (el modo historia; el del Challenge es otro:
 // entities/challengeHeaven.js), adentro del juego. Rehecho el 2026-09-29 (el
@@ -87,6 +90,10 @@ const tmpC = new THREE.Vector3();
 const tmpD = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const HAND = new THREE.Vector3(0, -0.17, 0);
+const tmpM = new THREE.Matrix4();
+const tmpM2 = new THREE.Matrix4();
+// lo que corren el cuerpo para atrás algunos clips (m: ui/cineCrew, penal_clips.py back)
+const DISP = { stagger: 0.32, winded: 0.36, kneelDown: 0.1, kneelHold: 0.1 };
 
 const smooth = (u) => u * u * (3 - 2 * u);
 const clamp01 = (u) => Math.max(0, Math.min(1, u));
@@ -125,6 +132,9 @@ export default class TowerCinematic {
   play(onDone) {
     const g = this.g;
     this.onDone = onDone;
+    // (en línea el reloj cuenta desde acá, como ui/FarmCinematic: la compu que
+    // se traba armando la escena no arranca atrasada; update)
+    this.wallAt = g.net && globalThis.__mduNoCineSync !== true ? performance.now() : 0;
     this.onKey = (e) => {
       if (e.code === 'Escape' || e.code === 'Space' || e.code === 'Enter') this.finish();
     };
@@ -186,6 +196,27 @@ export default class TowerCinematic {
       this.bedOut = au.out({ gain: 0.8, reverb: 0.6 });
       au.noise(this.bedOut, { t: au.now, dur: 70, type: 'lowpass', freq: 140, q: 0.5, gain: 0.3, attack: 2, brown: true });
     }
+    // los gauchos con movimientos animados a mano en Blender, cada uno con su
+    // carácter (ui/cineCrew PERSONA): los del final del penal y los de acá
+    // (C:/Users/ignac/Tools/mdu-blender penal_clips.py y torre_clips.py).
+    // globalThis.__mduBlend = false: como antes (la pose de piezas).
+    this.PC = null;
+    if (globalThis.__mduBlend !== false) {
+      const get = (f) => fetch(assetUrl(`/assets/sotano/modelos/gaucho/${f}`)).then((r) => r.json());
+      Promise.all([get('cine-penal.json'), get('cine-torre.json')])
+        .then((Js) => {
+          const C = {};
+          for (const J of Js) for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+          this.PC = C;
+        })
+        .catch(() => {});
+    }
+    // (los anteojos del Canchero se arman ya, escondidos: se compilan con el resto)
+    this.shades = this.buildShades();
+    this.shadesHand = new THREE.Group();
+    this.shadesHand.add(this.shades);
+    this.shadesHand.visible = false;
+    this.root.add(this.shadesHand);
     this.script = this.buildScript();
     // todo lo que va a aparecer se compila ya, en segundo plano
     warmScene(g);
@@ -247,7 +278,8 @@ export default class TowerCinematic {
   buildGauchos() {
     const g = this.g;
     const me = g.net?.id ?? 0;
-    const ids = crewIds(g).filter((id) => id !== me);
+    const crew = crewIds(g);
+    const ids = crew.filter((id) => id !== me);
     ids.splice(1, 0, me);
     this.gauchos = ids.map((id, i) => {
       const r = { id: ME + id, name: '', noTag: true, pos: new THREE.Vector3(), yaw: 0, pitch: 0, speed: 0, moving: false, crouch: false };
@@ -258,6 +290,7 @@ export default class TowerCinematic {
       a.M.poncho.color.copy(own.poncho.color);
       for (const m of Object.values(own)) m.dispose();
       r.a = a;
+      r.persona = personaOf(Math.max(0, crew.indexOf(id)));
       r.slot = i - (ids.length - 1) / 2;
       r.headP = 0;
       r.arms = null;
@@ -327,6 +360,14 @@ export default class TowerCinematic {
       }
       P.headP = f.headP;
     };
+    // con los clips de Blender (ui/fierroNpc: cine-torre2.json): parado, habla
+    // con la mano, levanta el brazo al remolino, "miren", camina con el paso de
+    // siempre y, en el secreto, la mano en el pecho. Sin mate (las manos
+    // gesticulan). globalThis.__mduBlend = false: la pose de piezas de antes.
+    this.fBody = globalThis.__mduBlend === false ? null : new ClipBody(f, this.people.list.get(FIERRO));
+    if (this.fBody) this.fBody.mate = 'hide';
+    this.fOne = null;
+    this.fTalkUntil = 0;
   }
 
   // El mate supremo: el de verdad (weapons/Supremo.js) y su brillo.
@@ -372,6 +413,9 @@ export default class TowerCinematic {
       // los gauchos salen del vapor
       [0, () => {
         for (const r of this.gauchos) this.walkTo(r, r.home, 1.25, (Math.abs(r.slot) - 0.5) * 0.35);
+        // al llegar: el Valiente de brazos cruzados, el Miedoso encogido, el
+        // Canchero en jarra, el Viejo resoplando
+        this.wantAll({ valiente: 'crossArms', miedoso: 'cower', canchero: 'cool', viejo: 'winded' });
         this.shotOver();
         return 5.4;
       }],
@@ -379,6 +423,14 @@ export default class TowerCinematic {
       [0, () => {
         this.possess();
         this.shotFace();
+        // el Valiente se lleva la mano al facón, el Miedoso se agacha, el
+        // Canchero apenas se mueve, el Viejo trastabilla
+        this.react({ valiente: ['fists'], miedoso: ['duck', 'cower', 1.5], canchero: ['dust', 'cool', 1.9], viejo: ['stagger', 'winded', 1.45] }, 0.35);
+        // (las reacciones se ven: un corte a ellos y de vuelta a su cara)
+        if (this.PC) {
+          this.later(0.7, () => this.shotReverse());
+          this.later(2.4, () => this.shotFace());
+        }
         return 3.3;
       }],
       [0, () => {
@@ -394,10 +446,13 @@ export default class TowerCinematic {
       [0, () => {
         this.fp = 'talk';
         this.shotTwo();
+        this.react({ valiente: ['crossArms'], viejo: ['scratchHead'] }, 0.8);
         return this.say('francisco', 'Subí esta torre buscando el mate que no se termina nunca.') + 0.2;
       }],
       [0, () => {
         this.shotReverse();
+        // (las almas: el Miedoso se santigua)
+        this.react({ miedoso: ['santiguar', 'pray', 2] }, 1.2);
         return this.say('francisco', 'Y me lo dieron... a cambio de las almas de todos los gauchos.') + 0.3;
       }],
       [0, () => {
@@ -410,7 +465,13 @@ export default class TowerCinematic {
         this.fp = 'free';
         this.quake(1.3);
         this.shotQuake();
+        // el Valiente mira la bóveda con la mano en el facón, el Miedoso se tapa
+        // la nuca, el Canchero se sujeta el sombrero, al Viejo se le aflojan las
+        // piernas y cae de rodillas
+        this.react({ valiente: ['fistUp'], miedoso: ['duck', 'cower', 1.5], canchero: ['holdHat'], viejo: ['kneelDown', 'kneelHold', 1] }, 0.6);
+        this.later(4, () => this.react({ valiente: ['fists'], canchero: ['cool'] }, 0.5));
         for (const r of this.gauchos) {
+          if (this.PC) continue;
           this.later(0.3 + Math.random() * 0.4, () => (r.crouch = true));
           this.later(3.4 + Math.random() * 0.5, () => (r.crouch = false));
         }
@@ -444,12 +505,16 @@ export default class TowerCinematic {
         this.fp = 'peace';
         this.ascend();
         this.shotAscend();
+        // el Valiente, la mano en el pecho; el Miedoso le dice chau tímido y
+        // reza; el Canchero lo mira en jarra; el Viejo sigue de rodillas
+        this.react({ valiente: ['chestHand'], miedoso: ['wave', 'pray', 2.5], canchero: ['cool'] }, 1.6);
         return 6.6;
       }],
       // Fierro, donde estaba Francisco
       [0.2, () => {
         this.fierroIn();
         this.shotFierro();
+        this.react({ valiente: ['crossArms'], miedoso: ['duck', 'cower', 1.5], viejo: ['scratchHead'] }, 0.5);
         return 1.2;
       }],
       [0, () => this.say('fierro', 'Ya pasó, muchachos.') + 0.2],
@@ -474,13 +539,19 @@ export default class TowerCinematic {
         this.shotCalm();
         this.fierro.armTo = 0.55;
         this.later(3.2, () => (this.fierro.armTo = 0));
+        // ("Miren": abre el brazo hacia el llano)
+        this.fOne = { name: 'fShow', until: this.t + 3.3 };
         return this.say('fierro', 'Miren. Cien años girando... y el remolino por fin se calma.') + 1.4;
       }],
       // hasta las almenas; el del mate lo levanta al sol
       [0, () => {
         this.hideText();
-        for (const r of this.gauchos) this.walkTo(r, r.wall, 1.1, Math.abs(r.slot) * 0.2);
+        for (const r of this.gauchos) this.walkTo(r, r.wall, 1.1, Math.abs(r.slot) * 0.2 + (PERSONA_T[r.persona]?.delay || 0) * 0.6);
         this.walkTo(this.fierro, this.fierro.wall, 1, 0.6);
+        // en las almenas, al sol: el Valiente lo mira de frente, el Miedoso reza,
+        // el Canchero en jarra (los anteojos, después), el Viejo se sienta
+        this.wantAll({ valiente: 'crossArms', miedoso: 'pray', canchero: 'cool', viejo: 'winded' });
+        this.later(6, () => this.wantAll({ viejo: 'sitRest' }));
         this.look = this.sunAt;
         this.shotDawn();
         this.later(3.9, () => this.raiseMate());
@@ -494,6 +565,17 @@ export default class TowerCinematic {
       }],
       [0, () => {
         this.shotTopReverse();
+        // el chiste: el Canchero saca los anteojos de sol del poncho y se los pone
+        // (de cerca), con el sol del amanecer en la cara
+        const cc = this.gauchos.find((r) => r.persona === 'canchero' && r !== this.lead);
+        if (cc && this.PC) {
+          this.act(cc, 'shades', { fade: 0.4 });
+          this.shadesT = this.t;
+          this.shadesR = cc;
+          this.later(2.2, () => this.act(cc, 'cool', { loop: true, fade: 0.3 }));
+          this.shotShades(cc, 2.6);
+          this.later(2.6, () => this.shotTopReverse());
+        }
         return this.say('fierro', 'Y cuando venga... lo vamos a enfrentar juntos.') + 0.6;
       }],
       // el secreto (lo dice para él): los cuatro de antes
@@ -547,6 +629,8 @@ export default class TowerCinematic {
     this.el.classList.toggle('is-fran', who === 'francisco');
     this.el.classList.toggle('is-secreto', secret);
     this.sub = { text, t0: this.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.05)), k: -1 };
+    // (Fierro gesticula mientras habla: fierroClips)
+    if (who === 'fierro') this.fTalkUntil = this.t + d;
     return d;
   }
 
@@ -564,6 +648,11 @@ export default class TowerCinematic {
 
   // Alguien camina hasta `to` (a `speed` m/s), después de `delay` segundos.
   walkTo(r, to, speed = 1.2, delay = 0) {
+    // (sin demora, ya: si no, ese cuadro salía con la pose de piezas)
+    if (r.cc) {
+      if (delay > 0) this.later(delay, () => this.release(r));
+      else this.release(r);
+    }
     r.goal = to.clone();
     r.walk = speed;
     r.walkT = this.t + Math.max(0, delay);
@@ -739,6 +828,8 @@ export default class TowerCinematic {
     const f = this.fierro;
     f.dead = false;
     this.fierroOn = true;
+    // (aparece de golpe, en el fogonazo: el clip sin mezcla)
+    this.fCut = true;
     f.yaw = faceTo(f.pos, this.lead.pos.x, this.lead.pos.z);
     g.fx.sparkle(tmpV.copy(f.pos).setY(f.pos.y + 1), [0.6, 0.8, 1], 60, 1.2);
     g.fx.flash(tmpV.copy(f.pos).setY(f.pos.y + 1.2), 0x7ab8ff, 80, 0.6, 14);
@@ -751,6 +842,7 @@ export default class TowerCinematic {
   portal() {
     const g = this.g;
     this.fierro.armTo = 1;
+    this.fOne = { name: 'fRaise', until: Infinity };
     this.portalT = 0;
     this.portalC = this.groupCenter(new THREE.Vector3());
     g.audio.whoosh?.(this.fierro.pos);
@@ -775,6 +867,8 @@ export default class TowerCinematic {
     this.portalT = null;
     this.fierro.armTo = 0;
     this.fierro.arm = 0;
+    this.fOne = null;
+    this.fCut = true;
     this.look = null;
     const y = this.top;
     const T = TOWER;
@@ -791,9 +885,20 @@ export default class TowerCinematic {
       r.speed = 0;
       r.yaw = faceTo(r.pos, this.sunAt.x, this.sunAt.z);
       r.headP = 0;
-      // (llegan agachados, del golpe)
-      r.crouch = true;
-      this.later(0.9 + Math.random() * 0.5, () => (r.crouch = false));
+      r.cc = null;
+      r.rel = null;
+      r.want = null;
+      r.at = null;
+      // (llegan agachados, del golpe; cada uno se para a su tiempo: con los
+      // clips, agachado con las manos en la nuca y después su postura)
+      if (this.PC && r !== this.lead) {
+        r.cc = { name: 'duck', t0: this.t - 0.35, loop: false, rate: 1, look: 0, fade: 0, at: this.t, snap: null };
+        const up = { valiente: 'crossArms', miedoso: 'cower', canchero: 'cool', viejo: 'winded' }[r.persona] || 'crossArms';
+        this.later(0.8 + (PERSONA_T[r.persona]?.delay || 0) * 1.5, () => !r.goal && this.act(r, up, { loop: true, fade: 0.8 }));
+      } else if (!this.PC) {
+        r.crouch = true;
+        this.later(0.9 + Math.random() * 0.5, () => (r.crouch = false));
+      }
     }
     this.lead.arms = 'hold';
     const f = this.fierro;
@@ -873,7 +978,10 @@ export default class TowerCinematic {
     const g = this.g;
     const C = this.chiq;
     const o = C.root;
-    const t = (S.t += dt);
+    // (en línea con el reloj de la escena, que es el de verdad: con el dt, la
+    // compu lenta se atrasaba en esta toma)
+    if (S.t0 == null) S.t0 = this.t - S.t;
+    const t = (S.t = this.wallAt ? this.t - S.t0 : S.t + dt);
     C.update(dt, this.t);
     const cam = g.camera.position;
     // de lejos los ojos se tienen que ver; de cerca, apenas dos chispas (del
@@ -891,17 +999,25 @@ export default class TowerCinematic {
       o.position.z += Math.cos(face) * dt * v;
       o.position.y = groundY(o.position.x, o.position.z) + (C.skin ? 0 : Math.abs(Math.sin(t * 5.5)) * 0.03);
       C.arms[0].rotation.x = Math.sin(t * 5.5) * 0.25;
+      // (con el cuerpo de verdad, la bombilla de bastón se clava en el piso
+      // cada dos pasos y el "tic" suena cuando toca: world/Chiqui cane)
+      if (C.skin && !C.cane) {
+        C.cane = true;
+        C.onTap = () => chiquiTap(g.audio, 0.6);
+      }
       const step = Math.floor(t * 1.75);
       if (step !== S.steps) {
         S.steps = step;
         g.audio.footstep?.('dirt', 0.25);
-        if (step % 2) chiquiTap(g.audio, 0.6);
+        if (step % 2 && !C.skin) chiquiTap(g.audio, 0.6);
       }
     } else if (t >= CHIQ.stop && !S.stop) {
       // se para; no se oye nada
       S.stop = o.position.clone();
       o.position.y = groundY(o.position.x, o.position.z);
       C.arms[0].rotation.x = 0;
+      C.cane = false;
+      C.onTap = null;
     }
     // da vuelta la cabeza (el cuerpo no) hasta mirarte por arriba del hombro;
     // con el cuerpo de verdad se da vuelta entero (la cabeza sola, media vuelta, quedaba rara)
@@ -1002,8 +1118,176 @@ export default class TowerCinematic {
     return out.multiplyScalar(1 / this.gauchos.length);
   }
 
+  // ---------------- los gauchos con carácter (clips de Blender) ----------------
+  // Un gaucho pasa a un clip, desde la pose que tiene ahora (sin saltos). o:
+  // loop, rate, t (por dónde arranca), fade, look (rad).
+  act(r, name, o = {}) {
+    if (!this.PC?.[name] || r === this.lead && this.mateAt !== 'floor' && this.mateAt !== 'fran') return;
+    // (lo que el clip anterior lo corrió de lugar —trastabillar, arrodillarse—
+    // pasa a su posición: si no, al cambiar de clip se deslizaba de vuelta)
+    if (r.cc) {
+      const d = DISP[r.cc.name] || 0;
+      const n = DISP[name] || 0;
+      if (d !== n) {
+        r.pos.x += Math.sin(r.yaw) * (d - n);
+        r.pos.z += Math.cos(r.yaw) * (d - n);
+      }
+    }
+    const snap = cineSnap(r.a);
+    r.rel = null;
+    r.cc = { name, t0: this.t - (o.t || 0) / (o.rate || 1), loop: !!o.loop, rate: o.rate || 1, look: o.look || 0, fade: o.fade ?? 0.35, at: this.t, snap };
+  }
+
+  // Deja el clip (para caminar o para la pose de siempre), sin salto.
+  release(r) {
+    if (!r.cc) return;
+    const d = DISP[r.cc.name] || 0;
+    if (d) {
+      r.pos.x += Math.sin(r.yaw) * d;
+      r.pos.z += Math.cos(r.yaw) * d;
+    }
+    r.rel = { snap: cineSnap(r.a), t0: this.t };
+    r.cc = null;
+  }
+
+  // Lo que hace cada uno cuando no camina (si está caminando, al llegar).
+  wantAll(map) {
+    for (const r of this.gauchos) {
+      const name = map[r.persona];
+      if (!name || !this.PC?.[name]) continue;
+      r.want = { name, o: { loop: true, fade: 0.5, t: this.gauchos.indexOf(r) * 0.6 } };
+    }
+  }
+
+  // Una reacción por carácter: { persona: [clip, después (vuelta), cuándo] },
+  // cada uno a su tiempo (PERSONA_T.delay × k).
+  react(map, k = 1) {
+    for (const r of this.gauchos) {
+      const m = map[r.persona];
+      if (!m || r.goal) continue;
+      const t0 = (PERSONA_T[r.persona]?.delay || 0) * k;
+      const [a, b, d] = m;
+      const loopA = !b;
+      this.later(t0, () => {
+        if (r.goal) return;
+        r.want = null;
+        this.act(r, a, { loop: loopA, fade: loopA ? 0.5 : 0.25 });
+      });
+      if (b) this.later(t0 + (d || 1.5), () => !r.goal && this.act(r, b, { loop: true, fade: 0.4 }));
+    }
+  }
+
+  // Lo pendiente de cada uno, cuando deja de caminar. Antes de que los muñecos
+  // se rearmen (people.update): la foto de la pose tiene que ser la del clip
+  // que tenía (después ya es la de piezas y saltaba).
+  applyWants() {
+    if (!this.PC) return;
+    for (const r of this.gauchos) {
+      if (!r.want || r.goal) continue;
+      const w = r.want;
+      r.want = null;
+      this.act(r, w.name, w.o);
+    }
+  }
+
+  poseGauchos(dt) {
+    if (!this.PC) return;
+    const t = this.t;
+    for (const r of this.gauchos) {
+      const a = r.a;
+      if (!a?.gs?.on) continue;
+      // (camina de verdad recién después de su demora: hasta ahí sigue en su clip)
+      const walking = !!r.goal && t >= r.walkT;
+      const S = r.cc;
+      if (S && !walking) {
+        const c = this.PC[S.name];
+        const lt = (t - S.t0) * S.rate;
+        const o = { loop: S.loop, look: S.look };
+        if (S.snap && t - S.at < S.fade) {
+          o.snap = S.snap;
+          o.sw = smooth(clamp01((t - S.at) / S.fade));
+        }
+        poseCineClip(a, c, S.loop ? lt : Math.min(lt, c.dur), r.pos.x, r.pos.y, r.pos.z, (r.yaw || 0) + Math.PI, o);
+      } else if (r.rel) {
+        const k = (t - r.rel.t0) / 0.45;
+        if (k >= 1) r.rel = null;
+        else cineBlendFrom(a, r.rel.snap, smooth(clamp01(k)));
+      }
+      // el mate de cada uno: con las manos ocupadas no está (si no, quedaba
+      // volando donde lo dejaba la pose de antes)
+      if (S || r.rel) {
+        if (a.gun) a.gun.visible = false;
+        a.hand.visible = false;
+      }
+    }
+  }
+
+  // Los anteojos de sol del Canchero (como en el final del penal): en la mano
+  // hasta que llegan a la cara, después colgados de la cabeza.
+  buildShades() {
+    const root = new THREE.Group();
+    const glass = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, metalness: 0.7, roughness: 0.12 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xc9a040, metalness: 1, roughness: 0.3 });
+    const E = FACE_EYES;
+    for (const sx of [-1, 1]) {
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.1, 0.4, 20).rotateX(Math.PI / 2), glass);
+      lens.scale.y = 0.85;
+      lens.position.set(E.x + sx * (E.half + 0.4), E.y - 1.3, 17.3);
+      root.add(lens);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.55, 13), gold);
+      arm.position.set(E.x + sx * (E.half + 4), E.y - 0.4, 11);
+      root.add(arm);
+    }
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(2 * E.half - 6, 0.5, 0.45), gold);
+    bridge.position.set(E.x, E.y + 0.6, 17.4);
+    root.add(bridge);
+    return root;
+  }
+
+  updateShades() {
+    const r = this.shadesR;
+    if (!r || this.shadesOn) return;
+    const a = r.a;
+    if (!a?.gs?.on) return;
+    const lt = this.t - this.shadesT;
+    // (sale del bolsillo a los 0,55 s; a los 1,15 s ya está en la cara)
+    if (lt < 0.55) return;
+    if (lt < 1.15) {
+      const B = a.gs.bones;
+      const head = B.Head;
+      const hand = B.RightHand.getWorldPosition(tmpV);
+      const sk = a.gs.mesh.skeleton;
+      const hi = sk.bones.indexOf(head);
+      tmpM.copy(head.matrixWorld).multiply(sk.boneInverses[hi]).multiply(a.gs.mesh.bindMatrix);
+      this.shadesHand.matrixAutoUpdate = false;
+      this.shadesHand.matrix.copy(tmpM);
+      tmpW.set(FACE_EYES.x, FACE_EYES.y, 16.4).applyMatrix4(tmpM);
+      this.shadesHand.matrix.premultiply(tmpM2.makeTranslation(hand.x - tmpW.x, hand.y - tmpW.y, hand.z - tmpW.z));
+      this.shadesHand.matrixWorldNeedsUpdate = true;
+      this.shadesHand.visible = true;
+      return;
+    }
+    this.shadesHand.visible = false;
+    this.shadesHand.remove(this.shades);
+    headProp(a, this.shades);
+    this.shadesOn = true;
+  }
+
   // ---------------- las tomas ----------------
   // tmpV: dónde está la cámara; tmpW: adónde mira.
+
+  // De cerca, la cara del Canchero (se pone los anteojos de sol).
+  shotShades(r, dur) {
+    const a = r.a;
+    const h = a?.gs?.on ? a.gs.bones.Head.getWorldPosition(new THREE.Vector3()) : r.pos.clone().setY(r.pos.y + 1.6);
+    const fx = -Math.sin(r.yaw);
+    const fz = -Math.cos(r.yaw);
+    this.shot(dur, (u) => {
+      const k = 1.25 - 0.3 * u;
+      tmpV.set(h.x + fx * k + fz * 0.25, h.y + 0.05, h.z + fz * k - fx * 0.25);
+      tmpW.set(h.x, h.y + 0.16, h.z);
+    }, 38);
+  }
   shot(dur, fn, fov = this.fov0) {
     this.cam = { t0: this.t, dur, fn };
     this.setFov(fov);
@@ -1188,13 +1472,23 @@ export default class TowerCinematic {
   }
 
   // Detrás de ellos, contra el sol: van hasta las almenas y levantan el mate.
+  // (más abierta y corrida a la izquierda: Fierro, que va por ese lado hasta su
+  // almena, quedaba afuera del cuadro; con los clips, __mduBlend, la nueva)
   shotDawn() {
     const S = this.S;
+    if (globalThis.__mduBlend === false) {
+      this.shot(7.4, (u) => {
+        const e = smooth(u);
+        tmpV.set(S.x - 3.3 + e * 1.6, S.y + 1.15 + e * 0.2, S.z - 0.9 + e * 0.35);
+        tmpW.set(S.x + 12, S.y + 2.4 + e * 0.6, S.z + 0.8);
+      }, 50);
+      return;
+    }
     this.shot(7.4, (u) => {
       const e = smooth(u);
-      tmpV.set(S.x - 3.3 + e * 1.6, S.y + 1.15 + e * 0.2, S.z - 0.9 + e * 0.35);
-      tmpW.set(S.x + 12, S.y + 2.4 + e * 0.6, S.z + 0.8);
-    }, 50);
+      tmpV.set(S.x - 3.3 + e * 1.6, S.y + 1.25 + e * 0.2, S.z - 1.6 + e * 0.35);
+      tmpW.set(S.x + 12, S.y + 2.4 + e * 0.6, S.z - 1.4);
+    }, 60);
   }
 
   // Fierro solo, con el llano atrás (de ahí va a venir).
@@ -1264,7 +1558,13 @@ export default class TowerCinematic {
   update(dt) {
     const g = this.g;
     if (!this.script) return;
-    this.t += dt;
+    // en línea el reloj es el de verdad (la regla de las escenas, ui/FarmCinematic):
+    // la compu que se traba no se atrasa de los demás; una trabada de hasta 30 s
+    // cuenta. Solo, como antes (con el dt).
+    const now = performance.now();
+    const w = this.wallAt ? (now - this.wallAt) / 1000 : 0;
+    if (this.wallAt) this.wallAt = now;
+    this.t += w >= 0.002 && w < 30 ? w : dt;
     g.time += dt;
     g.weapons.vmRoot.visible = false;
     const t = this.t;
@@ -1281,7 +1581,8 @@ export default class TowerCinematic {
       const start = this.next + wait;
       this.step++;
       const dur = fn() || 0;
-      this.next = Math.max(start, t) + dur;
+      // (en línea, una trabada no corre el resto del guion: se pone al día)
+      this.next = (this.wallAt ? start : Math.max(start, t)) + dur;
     }
     if (!this.script) return;
     if (!this.atTop) {
@@ -1294,7 +1595,12 @@ export default class TowerCinematic {
     // el cuerpo del jefe se arma con los muertos
     if (this.franZ) g.zombies.render();
     this.updateFierro(dt);
+    this.applyWants();
+    this.fierroClips(dt);
     this.people.update(dt);
+    this.poseGauchos(dt);
+    if (this.fierroOn) this.fBody?.pose(dt);
+    this.updateShades();
     this.updateMate(dt);
     this.updateHalo(dt);
     this.updateRocks(dt);
@@ -1329,6 +1635,29 @@ export default class TowerCinematic {
     if (this.atTop && g.scene.fog && this.fogD) g.scene.fog.density = this.fogD;
   }
 
+  // Fierro con los clips (antes de people.update: la foto de la pose es la del
+  // clip que tenía). Caminando, el paso de siempre al ritmo de lo que avanza.
+  fierroClips(dt) {
+    const B = this.fBody;
+    const f = this.fierro;
+    if (!B || !this.fierroOn) return;
+    const t = this.t;
+    const fade = this.fCut ? 0 : null;
+    const prev = (f.prevP ||= f.pos.clone());
+    const v = dt > 0 ? Math.hypot(f.pos.x - prev.x, f.pos.z - prev.z) / dt : 0;
+    prev.copy(f.pos);
+    if (this.fOne && t > this.fOne.until) this.fOne = null;
+    let ok;
+    if (f.goal && t >= f.walkT && !this.fCut) {
+      B.walk(v);
+      ok = true;
+    } else if (this.fOne) ok = B.act(this.fOne.name, { loop: false, fade: fade ?? 0.35 });
+    else if (f.north) ok = B.act('fRemember', { loop: true, fade: fade ?? 0.8 });
+    else if (t < this.fTalkUntil) ok = B.act('fTalk', { loop: true, fade: fade ?? 0.5 });
+    else ok = B.act('fStand', { loop: true, fade: fade ?? (B.name === 'walk' ? 0.4 : 0.6), t: 0.3 });
+    if (ok) this.fCut = false;
+  }
+
   // Los que caminan (los gauchos y Fierro) y adónde miran los que no.
   updateWalkers(dt) {
     const t = this.t;
@@ -1346,14 +1675,26 @@ export default class TowerCinematic {
           r.pos.addScaledVector(tmpU, step / d);
           r.moving = true;
           r.speed = r.walk;
-          r.yaw = angTo(r.yaw, faceTo(r.pos, r.goal.x, r.goal.z), Math.min(1, dt * 8));
+          // (a lo sumo 4 rad/s: al arrancar a caminar no pegan el giro de golpe)
+          const wy = angTo(r.yaw, faceTo(r.pos, r.goal.x, r.goal.z), Math.min(1, dt * 8)) - r.yaw;
+          r.yaw += Math.max(-dt * 4, Math.min(dt * 4, wy));
           continue;
         }
       }
       if (r === this.fierro) continue;
-      // mirando al que habla (o al sol, o adonde caen las piedras)
+      // mirando al que habla (o al sol, o adonde caen las piedras): cada uno a
+      // su tiempo y a su ritmo (ui/cineCrew PERSONA_T: nada de "mente colmena")
       const L = this.look;
-      if (L) r.yaw = angTo(r.yaw, faceTo(r.pos, L.x, L.z), Math.min(1, dt * 3));
+      if (L) {
+        const key = `${L.x.toFixed(1)},${L.z.toFixed(1)}`;
+        if (key !== this.lookKey) {
+          this.lookKey = key;
+          this.lookT = t;
+        }
+        const PT = PERSONA_T[r.persona] || PERSONA_T.valiente;
+        if (!r.at || t - this.lookT >= PT.delay) (r.at ||= new THREE.Vector3()).copy(L);
+        r.yaw = angTo(r.yaw, faceTo(r.pos, r.at.x, r.at.z), Math.min(1, dt * PT.turn * 1.2));
+      }
       let want = 0.05;
       if (this.lookUp) want = r.crouch ? -1.25 : -0.8;
       else if (L === this.F) want = 0.28;
@@ -1407,13 +1748,17 @@ export default class TowerCinematic {
       m.emissive.set(col);
       m.emissiveIntensity = glow;
     }
-    // los ojos: dorados; peleando, destellos colorados (el ojo de la Voz)
+    // los ojos: peleando, destellos colorados (el ojo de la Voz); los dorados
+    // no se ven en esta escena (el usuario, 2026-10-03: entities/skins/francisco.js
+    // los muestra solo con redEye)
     const eye = g.zombies.bossRig.eyeMat;
+    this.redEye = false;
     if (this.possT != null) {
       const u = t - this.possT;
       const on = u > 0.2 && (u % 0.85 < 0.45 || u > 2.3);
       eye.color.set(on ? 0xff2010 : 0x000000).multiplyScalar(on ? 4 : 1);
       if (!on) eye.color.copy(this.eyeGold);
+      this.redEye = on;
     }
     // la chispa colorada que se le escapó: sube derecho hasta la bóveda
     if (this.wisp) {

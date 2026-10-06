@@ -935,9 +935,28 @@ export default class PenalMotin {
     fixed.add(mesh(boxGeo(span + 0.7, 2.95, 0.04), M.woodDark, x0, 1.475, z0 + 0.02));
     for (const s of [-1, 1]) fixed.add(mesh(boxGeo(0.1, 2.9, 0.1), M.iron, x0 + s * (span / 2 + 0.3), 1.45, z0 + 0.92));
     fixed.add(mesh(boxGeo(span + 0.7, 0.1, 0.1), M.iron, x0, 2.9, z0 + 0.92));
-    // el cartel
+    // la jaula: los costados y el techo de barrotes, de la pared a la reja
+    // (antes solo estaba el frente y por arriba y los lados quedaba abierto)
+    const cage = new THREE.Group();
+    const barM = M.bars || M.iron;
+    for (const s of [-1, 1]) {
+      const side = new THREE.Group();
+      side.rotation.y = -Math.PI / 2;
+      side.position.set(x0 + s * (span / 2 + 0.3), 0, z0 + 0.04);
+      bars(side, M, 0, 0.84, 0, 2.82, 0.15, 0.04);
+      mergeByMaterial(side);
+      cage.add(side);
+    }
+    const top = span + 0.6;
+    const nTop = Math.round(top / 0.15);
+    for (let k = 0; k <= nTop; k++) cage.add(mesh(cylGeo(0.018, 0.018, 0.9, 5), barM, x0 - top / 2 + (top * k) / nTop, 2.9, z0 + 0.48, Math.PI / 2, 0, 0));
+    cage.add(mesh(boxGeo(span + 0.7, 0.06, 0.06), M.iron, x0, 2.9, z0 + 0.07));
+    for (const s of [-1, 1]) cage.add(mesh(boxGeo(0.06, 0.06, 0.9), M.iron, x0 + s * (span / 2 + 0.3), 2.9, z0 + 0.48));
+    mergeByMaterial(cage);
+    fixed.add(cage);
+    // el cartel, clavado en las tablas del fondo (arriba de los casilleros)
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.3), new THREE.MeshStandardMaterial({ map: canvasTex(512, 80, plateDraw('DEPÓSITO · PERTENENCIAS', { font: 'bold 38px Georgia, serif' })), roughness: 0.7 }));
-    sign.position.set(x0, 2.55, z0 + 0.62);
+    sign.position.set(x0, 2.55, z0 + 0.045);
     fixed.add(sign);
     this.lockers = [];
     for (let i = 0; i < DEP.n; i++) {
@@ -1022,6 +1041,8 @@ export default class PenalMotin {
       return { leaf, s, a: 0, v: 0 };
     });
     this.rejaBox = W.addBox([x0 - span / 2 - 0.35, fy, z0 + 0.86, x0 + span / 2 + 0.35, fy + 2.9, z0 + 0.98], { kind: 'prop' });
+    // (los costados de la jaula no se abren)
+    for (const s of [-1, 1]) W.addBox([x0 + s * (span / 2 + 0.3) - 0.06, fy, z0, x0 + s * (span / 2 + 0.3) + 0.06, fy + 2.9, z0 + 0.98], { kind: 'prop' });
     // el chorro de luz que sale cuando se abre
     this.depBeamMat = beamMaterial(GOLD, 0);
     this.depBeam = new THREE.Mesh(coneGeo(1.6, 3.8), this.depBeamMat);

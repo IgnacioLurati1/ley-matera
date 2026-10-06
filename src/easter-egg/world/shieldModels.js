@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mesh, boxGeo, cylGeo } from './props';
 import { yacare, upgradeShield } from './shieldUpModels';
 import { ejercito } from './monumentoShield';
@@ -154,9 +155,59 @@ function caballero(M) {
 
 const BUILD = { molino: tranquera, granja: paja, penal: barrotes, esteros: yacare, torre: tapaPava, castillo: caballero, monumento: ejercito };
 
+// Las piezas del escudo (decenas: barrotes, clavos, tientos) en una malla por
+// material: se ve igual y es una llamada de dibujo por material en vez de una
+// por pieza (el de barrotes del penal tenía 86, en cada pasada). Lo que brilla
+// aparte (userData.glow) y lo que tiene hijos queda suelto; si un material no
+// se puede juntar (atributos distintos), sus piezas quedan como estaban.
+function mergeParts(g) {
+  g.updateMatrixWorld(true);
+  // (las piezas, en el marco del escudo: por si el armado lo giró o lo escaló)
+  const inv = new THREE.Matrix4().copy(g.matrixWorld).invert();
+  const rel = new THREE.Matrix4();
+  const keep = new Set(g.userData.glow || []);
+  const by = new Map();
+  g.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.children.length || keep.has(o) || Array.isArray(o.material) || o.geometry.morphAttributes?.position) return;
+    for (let p = o.parent; p && p !== g; p = p.parent) if (keep.has(p)) return;
+    const L = by.get(o.material) || [];
+    L.push(o);
+    by.set(o.material, L);
+  });
+  for (const [mat, list] of by) {
+    if (list.length < 2) continue;
+    let geo = null;
+    try {
+      const geos = list.map((o) => {
+        const src = o.geometry;
+        const ge = new THREE.BufferGeometry();
+        for (const k of ['position', 'normal', 'uv']) {
+          if (!src.attributes[k]) throw new Error('sin ' + k);
+          ge.setAttribute(k, src.attributes[k]);
+        }
+        if (src.index) ge.setIndex(src.index);
+        // (copia: las geometrías vienen del caché y las usan otros escudos)
+        const flat = ge.index ? ge.toNonIndexed() : ge.clone();
+        return flat.applyMatrix4(rel.multiplyMatrices(inv, o.matrixWorld));
+      });
+      geo = mergeGeometries(geos);
+    } catch {
+      geo = null;
+    }
+    if (!geo) continue;
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = list.some((o) => o.castShadow);
+    m.receiveShadow = list.some((o) => o.receiveShadow);
+    for (const o of list) o.removeFromParent();
+    g.add(m);
+  }
+}
+
 // up: el escudo mejorado de ese mapa (world/shieldUpModels, world/ShieldUpgrade)
 export function shieldModel(M, mapId, up = false) {
   const g = (BUILD[mapId] || tranquera)(M);
+  // (antes de la mejora: lo que suma upgradeShield queda en piezas sueltas)
+  mergeParts(g);
   if (up) upgradeShield(g, M, mapId);
   g.name = 'escudo';
   return g;

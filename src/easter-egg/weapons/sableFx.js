@@ -149,6 +149,30 @@ export default class SableFx {
     this.discGeo = new THREE.PlaneGeometry(1.5, 1.5);
   }
 
+  // Para la carga del mapa (Weapons.warmFx): los programas del arco y de los
+  // discos se compilaban al primer tiro del sable mejorado (~170 ms).
+  warm(grp) {
+    grp.add(new THREE.Mesh(this.arcGeos[0], this.arcMat));
+    // (los arcos y las ondas usan una copia del material hecha ya en partida, con
+    // forceSinglePass de core/drawCost puesto: es la variante de doble cara en
+    // una pasada, otro programa)
+    const one = this.arcMat.clone();
+    one.forceSinglePass = true;
+    grp.add(new THREE.Mesh(this.arcGeos[1], one));
+    for (const m of this.discMats) grp.add(new THREE.Mesh(this.discGeo, m));
+    // y un sable volando de verdad (común y mejorado) con su estela, armado
+    // como al tirarlo; no queda en la lista ni en la escena
+    for (const up of [0, 1]) {
+      const fl = this.newFlyer(up);
+      this.flyers.pop();
+      fl.group.removeFromParent();
+      fl.trailMesh.removeFromParent();
+      fl.trailMesh.geometry.setDrawRange(0, 6);
+      fl.group.visible = true;
+      grp.add(fl.group, fl.trailMesh);
+    }
+  }
+
   // (el mapa se rearmó: lo nuestro pasa a la escena nueva)
   attach() {
     const sc = this.g.scene;

@@ -190,6 +190,8 @@ export default class ZombieSkins {
       for (const d of list) d.pi = list.findIndex((o) => o.bone === d.bone.parent);
       I = { V, root, bones, list, layers: [], t: 0, v: 0, tmp: list.map(() => new THREE.Quaternion()) };
       root.visible = false;
+      // (el de un muerto: escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+      root.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
       this.g.scene.add(root);
       this.inst.set(z.slot, I);
     }

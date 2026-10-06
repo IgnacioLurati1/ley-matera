@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { assetUrl } from '../../lib/assets';
+import { HITBOX } from './skeleton';
 
 // Los jefes con cuerpo de verdad: un modelo con piel y huesos (Meshy: malla,
 // textura y esqueleto; armado para el juego con las herramientas de
@@ -54,6 +55,41 @@ const ps = new THREE.Vector3();
 for (let i = 0; i < 13; i++) {
   pq.push(new THREE.Quaternion());
   pp.push(new THREE.Vector3());
+}
+const T2 = new THREE.Vector3();
+const FEET = ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase'];
+const cullM = new THREE.Matrix4();
+
+// El recorte de un cuerpo con huesos (los jefes, el Cuervo, el Pombero, el
+// Espantapájaros, el Chiqui): una esfera alrededor de un hueso del medio (la
+// cadera), del tamaño del modelo quieto con margen (k). Sin recorte se dibujaba
+// en todas las pasadas (el reflejo, la luna y las seis caras de cada farol)
+// aunque estuviera atrás o lejos. cullList(root) al cargar; cada cuadro,
+// después de mover los huesos, cullAt(list, el centro en el mundo); on false:
+// sin recorte (calentándose abajo del piso tiene que entrar a las sombras).
+// (la del modelo quieto es la de three con los huesos, en lo local de la
+// malla: la de la geometría sola no sirve, los de Meshy traen otra escala en
+// el nodo. Con los huesos en reposo y al día: root.updateMatrixWorld antes)
+export function cullList(root, k = 1.5) {
+  const out = [];
+  root.traverse((o) => {
+    if (!o.isSkinnedMesh) return;
+    o.boundingSphere = null;
+    o.computeBoundingSphere();
+    o.frustumCulled = false;
+    out.push({ o, c: o.boundingSphere.center.clone(), r: o.boundingSphere.radius * k });
+  });
+  return out;
+}
+export function cullAt(list, at, on = true) {
+  for (const C of list) {
+    const o = C.o;
+    o.frustumCulled = on;
+    if (!on) continue;
+    // (la esfera va en lo local de la malla: el centro, del mundo a lo local)
+    o.boundingSphere.center.copy(at).applyMatrix4(cullM.copy(o.matrixWorld).invert());
+    o.boundingSphere.radius = C.r;
+  }
 }
 
 // Lo de cada jefe ya cargado (por kind).
@@ -158,13 +194,48 @@ function fresh(zs, k) {
   return LOADED[k];
 }
 
+// Al tirar una escena (Game.disposeScene): lo cargado para ella se suelta. Si
+// no, LOADED y window.__bossSkins dejaban vivo el mapa viejo entero (la escena,
+// los zombies, el mundo) hasta que volvía a aparecer ese mismo jefe.
+export function forgetBossSkins(scene) {
+  for (const [k, S] of Object.entries(LOADED)) {
+    if (S.scene !== scene) continue;
+    // (su geometría y sus huesos: el modelo es de esta escena, sacado de ella
+    // ya no lo suelta Game.disposeScene. globalThis.__mduNoBossFree: como antes)
+    if (globalThis.__mduNoBossFree !== true)
+      S.root?.traverse((o) => {
+        o.geometry?.dispose();
+        if (o.isSkinnedMesh) o.skeleton?.dispose();
+      });
+    S.root?.removeFromParent();
+    if (shown === S) shown = null;
+    WARM.delete(S);
+    delete LOADED[k];
+    if (window.__bossSkins?.[k] === S) delete window.__bossSkins[k];
+  }
+}
+
 function load(zs, skin) {
-  const S = { skin, state: 1, layers: [], v: 0, scene: zs.g.scene, zs };
+  const S = {
+    skin,
+    state: 1,
+    layers: [],
+    v: 0,
+    scene: zs.g.scene,
+    zs,
+    // las capas de ahora, para mirar (se arma cuando se pide, no cada cuadro)
+    get mode() {
+      return this.layers.map((L) => `${L.key}:${L.w.toFixed(2)}`).join(' ');
+    },
+  };
   LOADED[skin.kind] = S;
   const base = assetUrl(DIR + (skin.dir || skin.kind) + '/');
-  const clips = fetch(base + 'clips.json').then((r) => r.json());
+  // (el archivo del jefe puede pedir otro modelo y otros clips: skin.files() →
+  // { glb, clips }; el Luisón de Blender, skins/luisonBlend.js)
+  const F = skin.files?.() || {};
+  const clips = fetch(base + (F.clips || 'clips.json')).then((r) => r.json());
   new GLTFLoader().load(
-    base + 'modelo.glb',
+    base + (F.glb || 'modelo.glb'),
     async (gltf) => {
       const C = await clips;
       // (llegó tarde: ya hubo un Fast restart)
@@ -220,8 +291,11 @@ function load(zs, skin) {
       // los ojos: los del cuerpo de piezas (el mismo material: se prenden igual)
       if (meta.eye) for (const [n, o] of Object.entries(bones)) if (/^(luEye|eye)[AB]$/.test(n)) glowEye(o, zs.bossRig.eyeMat, meta.eye, zs.g.textures?.dot);
       root.visible = false;
+      // (escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+      root.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
       S.scene.add(root);
       S.root = root;
+      S.cull = cullList(root);
       S.state = 2;
       skin.ready?.(S);
       // (la luz de los personajes, sobre lo que haya puesto el archivo del jefe;
@@ -272,6 +346,7 @@ function warmUp(zs) {
     }
     if (S.warm-- > 0) {
       S.root.visible = true;
+      cullAt(S.cull, null, false);
       // (abajo del piso: el del jugador y el de una lámpara, warmSpot)
       S.root.position.copy(warmSpot(zs.g, S.warm));
       S.root.updateMatrixWorld(true);
@@ -355,7 +430,7 @@ function reach(S, up, lo, hand, handLen) {
   q.setFromUnitVectors(w.copy(b).sub(a).normalize(), u.copy(v).sub(a).normalize());
   // el antebrazo, después de girar el brazo: de donde apuntaba a donde tiene que apuntar
   w.copy(tip).sub(b).normalize().applyQuaternion(q);
-  u.copy(a).addScaledVector(T.clone().sub(a).normalize(), d).sub(v).normalize();
+  u.copy(a).addScaledVector(T2.copy(T).sub(a).normalize(), d).sub(v).normalize();
   q2.setFromUnitVectors(w, u).multiply(q);
   up.W.premultiply(q);
   lo.W.premultiply(q2);
@@ -388,6 +463,113 @@ export function skinBoneAt(zs, name, out) {
   return b ? b.getWorldPosition(out) : null;
 }
 
+// El golpe de los jefes con cuerpo de verdad que lo piden (skin.hitSkin): las
+// cajas de golpe de las piezas (skeleton.js HITBOX, las mismas medidas y las
+// mismas zonas: la cabeza sigue siendo cabeza) puestas sobre el modelo que se
+// ve, cada una a lo largo de su hueso (del hueso al de abajo) y girada como
+// él. Francisco volando (la cadera arriba, echado adelante, los brazos
+// abiertos) se veía en un lado y los tiros le pegaban a las piezas, que
+// seguían caminando en el piso (el usuario, 2026-10-05).
+// globalThis.__mduNoSkinHit: como antes (las piezas).
+// [pieza, hueso, hueso de abajo, hasta la punta de la mano]
+const HIT_SEG = [
+  [0, 'Hips', 'Spine01'],
+  [1, 'Spine02', 'neck'],
+  [2, 'Head', 'head_end'],
+  [3, 'RightArm', 'RightForeArm'],
+  [4, 'LeftArm', 'LeftForeArm'],
+  [5, 'RightForeArm', 'RightHand', 1],
+  [6, 'LeftForeArm', 'LeftHand', 1],
+  [7, 'RightUpLeg', 'RightLeg'],
+  [8, 'LeftUpLeg', 'LeftLeg'],
+  [9, 'RightLeg', 'RightFoot'],
+  [10, 'LeftLeg', 'LeftFoot'],
+];
+const HB = {};
+for (const hb of HITBOX) HB[hb.part] = hb;
+const hitBoxes = [];
+const ho = new THREE.Vector3();
+const hd = new THREE.Vector3();
+const hq = new THREE.Quaternion();
+// Las cajas de ahora (en el mundo): { part, c, q, h } (h: las medias medidas, en m).
+// null si no corre (otro jefe, sin modelo, apagado).
+export function skinHitBoxes(zs, z) {
+  const S = shown;
+  if (globalThis.__mduNoSkinHit || !S || !S.skin.hitSkin || S.state !== 2 || !S.root.visible) return null;
+  if (!z || zs.boss !== z || zs.bossRig?.kind !== S.skin.kind) return null;
+  // (los huesos de la punta no siempre son huesos: head_end se busca por nombre)
+  if (!S.hitSeg) {
+    S.hitSeg = [];
+    for (const [part, A, B, tip] of HIT_SEG) {
+      const d = S.byName[A];
+      const b = S.bones[B] || S.root.getObjectByName(B);
+      if (d && b && HB[part]) S.hitSeg.push({ part, d, b, tip: !!tip, hb: HB[part], box: { part, c: new THREE.Vector3(), q: new THREE.Quaternion(), h: [0, 0, 0] } });
+    }
+  }
+  const ps = z.scale || 1;
+  const s = S.root.scale.x;
+  hitBoxes.length = 0;
+  for (const H of S.hitSeg) {
+    const box = H.box;
+    // (las del mundo ya están: updateBossSkin las pone al día al final del cuadro)
+    a.setFromMatrixPosition(H.d.bone.matrixWorld);
+    b.setFromMatrixPosition(H.b.matrixWorld);
+    const len = a.distanceTo(b);
+    // (el antebrazo llega hasta la punta de la mano, como la pieza)
+    if (H.tip && len > 1e-4) b.addScaledVector(c.copy(b).sub(a).normalize(), (S.meta.hand || 0.2) * s);
+    box.c.copy(a).add(b).multiplyScalar(0.5);
+    // girada como la pieza que la mueve: el giro del hueso por el que tenía en reposo
+    H.d.bone.matrixWorld.decompose(T2, hq, w);
+    box.q.copy(hq).multiply(q.copy(H.d.rest).invert());
+    box.h[0] = H.hb.h[0] * ps;
+    box.h[1] = Math.max(H.hb.h[1] * ps, a.distanceTo(b) * 0.5);
+    box.h[2] = H.hb.h[2] * ps;
+    hitBoxes.push(box);
+  }
+  return hitBoxes;
+}
+
+// El tiro (o, d, maxT) contra esas cajas: { t, part, zone, arm, leg } o null;
+// undefined si no corre (el que pregunta usa las piezas).
+export function skinHit(zs, z, o, d, maxT) {
+  const list = skinHitBoxes(zs, z);
+  if (!list) return undefined;
+  let best = null;
+  for (const box of list) {
+    if (z.hidden & (1 << box.part)) continue;
+    q.copy(box.q).invert();
+    ho.copy(o).sub(box.c).applyQuaternion(q);
+    hd.copy(d).applyQuaternion(q);
+    const t = slabT(ho, hd, box.h);
+    if (t === null || t > maxT || (best && t >= best.t)) continue;
+    const hb = HB[box.part];
+    let zone = hb.zone;
+    // (lo de arriba del pecho es el cuello, como en las piezas: 0,08 de la caja)
+    if (zone === 'torso' && ho.y + hd.y * t > box.h[1] - 0.08 * (z.scale || 1)) zone = 'neck';
+    best = { t, part: box.part, zone, arm: hb.arm, leg: hb.leg };
+  }
+  return best;
+}
+function slabT(o, d, h) {
+  let tmin = -Infinity;
+  let tmax = Infinity;
+  for (const k of ['x', 'y', 'z']) {
+    const i = k === 'x' ? 0 : k === 'y' ? 1 : 2;
+    if (Math.abs(d[k]) < 1e-9) {
+      if (o[k] < -h[i] || o[k] > h[i]) return null;
+      continue;
+    }
+    let t1 = (-h[i] - o[k]) / d[k];
+    let t2 = (h[i] - o[k]) / d[k];
+    if (t1 > t2) [t1, t2] = [t2, t1];
+    tmin = Math.max(tmin, t1);
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return null;
+  }
+  if (tmax < 0) return null;
+  return Math.max(0, tmin);
+}
+
 // Baja de antes el modelo de un jefe (al empezar su pelea o su escena), así
 // no se ve el de piezas mientras carga.
 // (kind: uno o una lista; los que no tienen modelo se ignoran)
@@ -410,6 +592,36 @@ export function preloadBossSkin(zs, kind) {
       WARM.add(S);
     }
   }
+}
+
+// En la carga (ui/Arrival.load): el modelo del jefe de ronda bajado y, mientras
+// se compila el mapa, a la vista abajo del piso (sombras y G-buffer incluidos).
+// Antes bajaba recién con Rounds.start, al arrancar: compilaba en el primer
+// segundo de la partida. show(true/false) lo pone y lo saca.
+export async function readyBossSkins(zs, kinds, ms = 5000) {
+  const list = [];
+  for (const k of [].concat(kinds || [])) {
+    if (!SKINS[k] || !zs?.g?.scene || !zs.bossRig) continue;
+    preloadBossSkin(zs, k);
+    const S = fresh(zs, k);
+    if (S) list.push(S);
+  }
+  const t0 = performance.now();
+  while (list.some((S) => S.state === 1) && performance.now() - t0 < ms) await new Promise((r) => setTimeout(r, 50));
+  const ok = list.filter((S) => S.state === 2 && S.root);
+  return {
+    list: ok,
+    show(on) {
+      for (const S of ok) {
+        if (S === shown && zs.bossRig?.rig.visible) continue;
+        S.root.visible = on;
+        if (!on) continue;
+        cullAt(S.cull, null, false);
+        S.root.position.copy(warmSpot(zs.g, 1));
+        S.root.updateMatrixWorld(true);
+      }
+    },
+  };
 }
 
 // Cada cuadro, después de que Zombies.render acomodó las piezas del jefe.
@@ -479,12 +691,14 @@ export function updateBossSkin(zs, dt) {
   const top = layer(S, want.key, want.t, dt);
   // (sin subir: el salto de una escena que ya lleva el arco; queda en la capa aunque se vaya)
   if (want.flat) top.flat = true;
+  // (want.fade: cuánto tarda en entrar esta capa; si no, FADE)
+  if (want.fade && top.w < 1) top.fade = want.fade;
   for (const L of S.layers) {
     if (L !== top) L.t += dt;
     else if (want.t == null) L.t += dt;
     else L.t = want.t;
   }
-  top.w = Math.min(1, top.w + dt / FADE);
+  top.w = Math.min(1, top.w + dt / (top.fade || FADE));
   const others = S.layers.reduce((acc, L) => acc + (L === top ? 0 : L.w), 0);
   for (const L of S.layers) if (L !== top) L.w = others > 0 ? (L.w / others) * (1 - top.w) : 0;
   S.layers = S.layers.filter((L) => L === top || L.w > 1e-3);
@@ -556,9 +770,8 @@ export function updateBossSkin(zs, dt) {
   // con los pies en su altura: lo más bajo de los pies justo en floorY (el arco
   // de un salto que lleva la escena, o para que no quede flotando)
   if (want.feet) {
-    root.updateMatrixWorld(true);
     let low = Infinity;
-    for (const nm of ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase']) if (S.bones[nm]) low = Math.min(low, S.bones[nm].getWorldPosition(a).y);
+    for (const nm of FEET) if (S.bones[nm]) low = Math.min(low, S.bones[nm].getWorldPosition(a).y);
     if (low < Infinity) {
       hipsW.y += floorY - low + (S.meta.sole || 0) * s;
       hips.bone.position.copy(hips.bone.parent.worldToLocal(v.copy(hipsW)));
@@ -566,10 +779,9 @@ export function updateBossSkin(zs, dt) {
   }
   // clavado: el medio de los pies justo donde está (arriba de una piedra chica)
   if (want.pin && z?.pos) {
-    root.updateMatrixWorld(true);
     let n = 0;
     c.set(0, 0, 0);
-    for (const nm of ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase']) if (S.bones[nm]) { c.add(S.bones[nm].getWorldPosition(a)); n++; }
+    for (const nm of FEET) if (S.bones[nm]) { c.add(S.bones[nm].getWorldPosition(a)); n++; }
     if (n) {
       c.multiplyScalar(1 / n);
       hipsW.x += z.pos.x - c.x;
@@ -593,7 +805,6 @@ export function updateBossSkin(zs, dt) {
   // con el cuerpo de piezas: las manos no se meten en el piso
   if (rigW > 0.3 && S.arms.length) {
     S.floor = Math.min(z ? floorY : Infinity, pp[11].y, pp[12].y);
-    root.updateMatrixWorld(true);
     const hand = (S.meta.hand || 0.2) * s;
     for (const [up, lo, hd] of S.arms) reach(S, up, lo, hd, hand);
   }
@@ -608,7 +819,6 @@ export function updateBossSkin(zs, dt) {
     const fore = S.bones[H.fore];
     const hb = S.bones[H.bone];
     if (fore && hb) {
-      root.updateMatrixWorld(true);
       hb.getWorldPosition(a);
       fore.getWorldPosition(b);
       u.copy(a).sub(b).normalize();
@@ -630,7 +840,10 @@ export function updateBossSkin(zs, dt) {
       }
     }
   }
-  S.mode = S.layers.map((L) => `${L.key}:${L.w.toFixed(2)}`).join(' ');
+  // (todo junto, una vez: lo de arriba lee los huesos con getWorldPosition, que
+  // pone al día solo su cadena)
+  root.updateMatrixWorld(true);
+  cullAt(S.cull, hips.bone.getWorldPosition(c));
   // y al final (lo que cuelga del modelo ya puesto: aureolas, brillos...)
   skin.after?.(S, ctx, z);
 }

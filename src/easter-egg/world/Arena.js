@@ -142,12 +142,13 @@ export default class Arena {
       const l = new THREE.PointLight(0xff5a1a, 0, 30, 1.6);
       l.position.set(x + (k ? 5 : -5), 4, z);
       this.g.scene.add(l);
-      return l;
+      // (no cuenta como luz mientras está apagada: World.adoptLight)
+      return this.g.world.adoptLight(l);
     });
     // la del ánima de Fierro en el final: también existe desde el principio
     // (sumar una luz en medio de la cinemática recompila todos los shaders)
     this.cineLight = new THREE.PointLight(0x7ab8ff, 0, 7, 2);
-    this.g.scene.add(this.cineLight);
+    this.g.scene.add(this.g.world.adoptLight(this.cineLight));
     // el escudo de fuego del Mandinga y los círculos de la lluvia de fuego
     this.wardMesh = new THREE.Mesh(
       new THREE.SphereGeometry(1, 20, 14),
@@ -161,6 +162,8 @@ export default class Arena {
     this.columns(rock);
     this.buildFireCols();
     this.root.updateMatrixWorld(true);
+    // hasta la pelea, (escondido no se recorre cada cuadro: core/matrixCache.js mcSleep)
+    this.root.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
   }
 
   // Cuatro estalagmitas gordas adentro de la cueva (cubren y atontan).
@@ -504,6 +507,8 @@ export default class Arena {
     g.lures.length = 0;
     // (el cuerpo de verdad del jefe, si tiene, se baja desde ya)
     preloadBossSkin(g.zombies, this.bossOpts().kind || 'mandinga');
+    // (los clips de Blender del final del molino, ~1,3 MB: que estén al ganar)
+    if (MAP_ID === 'molino') import('../ui/MolinoCinematic').then((m) => m.prefetchMolinoClips()).catch(() => {});
     g.post.flash(1.6);
     g.audio.bossArrive();
     const song = SONG[MAP_ID];

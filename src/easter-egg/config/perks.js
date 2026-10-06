@@ -100,10 +100,14 @@ export const PERKS = {
     cost: 1500,
     color: '#1a1a1a',
     glyph: '☼',
-    desc: 'No hace absolutamente nada.',
+    desc: 'Tiros a la cabeza +25%, al cuerpo +15%.',
     label: {
       brand: 'Nadarias',
-      tagline: 'LA YERBA URUGUAYA QUE NO HACE NADA',
+      // (ahora sí hace algo: +25% a la cabeza, +15% al cuerpo, el usuario
+      // 2026-10-05; en dos renglones para que entre en el cartel. Con
+      // __mduNoLemaNuevo, el de antes: core/textures.js paintPerkLabel)
+      tagline: 'LA YERBA URUGUAYA\nQUE AHORA SÍ HACE ALGO',
+      taglineOld: 'LA YERBA URUGUAYA QUE NO HACE NADA',
       bg: '#f5cf1f',
       band: '#1b3f8f',
       bandText: '#ffffff',

@@ -9,8 +9,8 @@
 import * as P from './progress';
 import { MAP_LIST } from '../config/map';
 
-// los mapas de siempre (el bonus no cambia Trotamundos)
-const BASE_MAPS = MAP_LIST.filter((m) => !m.bonus);
+// los mapas de siempre (ni el bonus ni el final canónico cambian Trotamundos)
+const BASE_MAPS = MAP_LIST.filter((m) => !m.bonus && !m.final);
 
 // tier: bronce, plata, oro o platino (el color de la medalla)
 // stat + goal: se gana al llegar (con barra de progreso)
@@ -59,17 +59,24 @@ const SPECIAL = {
     { id: 'buyable', name: 'Buyable Ending', desc: 'Pagaron la escalera al cielo.', icon: 'stairs', tier: 'oro', secret: true, title: 'Buyable Ending' },
     { id: 'reto', name: 'Escalera al cielo', desc: 'Terminá el Challenge de la torre.', icon: 'stairs', tier: 'platino' },
   ],
+  // Eclipse Matero (solo existe con el mapa; MAP_LIST no lo trae sin el switch)
+  eclipse: [
+    { id: 'temple', name: 'Cuatro filos', desc: 'Templaste el Desgarrador del Eclipse.', icon: 'egg', tier: 'oro', secret: true, title: 'Desgarrador del Eclipse' },
+    { id: 'cabral', name: 'Muero contento', desc: 'Viste caer a Cabral en San Lorenzo.', icon: 'book', tier: 'plata', secret: true },
+    { id: 'lector11', name: 'La parte que faltaba', desc: 'Leíste el último capítulo de La Ronda Eterna.', icon: 'book', tier: 'plata', secret: true, title: 'El de la linterna' },
+  ],
   castillo: [
     { id: 'cronista', name: 'Cronista del Castillo', desc: 'Leíste las crónicas de la Gran Guerra.', icon: 'book', tier: 'plata', secret: true, title: 'Cronista del Castillo' },
     { id: 'sortija', name: 'Sortijero', desc: 'Sacaste la sortija cinco veces seguidas.', icon: 'ring', tier: 'plata', secret: true, title: 'Sortijero' },
   ],
 };
 // (el del molino ya se anunciaba con su nombre)
-const EE_TITLE = { molino: 'La Ronda del Abuelo' };
+const EE_TITLE = { molino: 'La Ronda del Abuelo', eclipse: 'El que cebó el Primer Mate' };
 
 export const MAPS = MAP_LIST.map((m) => ({ id: m.id, name: m.name, bonus: !!m.bonus }));
-// (el easter egg de un mapa bonus, cuando sea jugable: sacarlo de acá)
-const NO_EE = new Set(MAP_LIST.filter((m) => m.bonus).map((m) => m.id));
+// (el easter egg de un mapa bonus, cuando sea jugable: sacarlo de acá. El del
+// Monumento ya se juega y lo da MonumentoEgg.playEnding, como Game.win)
+const NO_EE = new Set(MAP_LIST.filter((m) => m.bonus && (m.id !== 'monumento' || globalThis.__mduNoEggLogro)).map((m) => m.id));
 const PER_MAP = MAPS.flatMap((m) => [
   ...(NO_EE.has(m.id) ? [] : [{ id: `ee_${m.id}`, name: EE_TITLE[m.id] || `${m.name}: easter egg`, desc: `Terminá el easter egg de ${m.name}.`, icon: 'egg', tier: 'oro', cat: m.id, title: EE_TITLE[m.id] }]),
   { id: `r20_${m.id}`, name: `Ronda 20 en ${m.name}`, desc: `Llegá a la ronda 20 en ${m.name}.`, icon: 'round', tier: 'plata', cat: m.id, stat: `ronda:${m.id}`, goal: 20 },

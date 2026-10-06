@@ -1,11 +1,16 @@
 import * as THREE from 'three';
 import Avatars from '../net/Avatars';
 import { makePose, solvePose } from '../entities/skeleton';
-import { PLAYER_START } from '../config/map';
+import { PLAYER_START, PROPS } from '../config/map';
 import { buildChiqui, chiquiGiggle } from '../world/Chiqui';
-import { crewIds } from './cineCrew';
+import { crewIds, personaOf, PERSONA_T } from './cineCrew';
+import CineActors from './cineActors';
 import { glowEye } from '../entities/bossSkin';
 import { walkLegs, stepPerson } from '../entities/personWalk';
+import { cineClip, poseCineClip, eyeSpots, cineSnap, headProp, FACE_EYES, gauchoClipsReady } from '../net/gauchoSkin';
+import { assetUrl } from '../../lib/assets';
+// la entrada de Eclipse Matero (el mapa escondido: solo existe con su switch)
+import { eclipse } from './eclipseIntro';
 
 // Los guiones de las cinemáticas de entrada (ui/Intro.js), uno por mapa.
 // Cada guion arma lo suyo (escondido) y devuelve:
@@ -47,6 +52,21 @@ function puppet(people, id) {
 // Pone la pose `a.P` en (x, z) mirando hacia `yaw` (el frente del muñeco es +z).
 function place(a, x, z, yaw) {
   solvePose(a.mats, x, z, yaw, 1, a.P);
+  for (const m of a.parts) {
+    m.matrix.copy(a.mats[m.part]);
+    m.matrixWorldNeedsUpdate = true;
+  }
+  a.hand.matrix.copy(a.mats[6]);
+  a.hand.matrixWorldNeedsUpdate = true;
+  for (const e of a.extras) {
+    e.obj.matrix.multiplyMatrices(a.mats[e.part], e.off);
+    e.obj.matrixWorldNeedsUpdate = true;
+  }
+}
+
+// Las piezas donde ya dicen a.mats (los clips de Blender las rearman desde los
+// huesos: net/gauchoSkin poseCineClip).
+function placeMats(a) {
   for (const m of a.parts) {
     m.matrix.copy(a.mats[m.part]);
     m.matrixWorldNeedsUpdate = true;
@@ -115,9 +135,57 @@ function lie(P, t = 0) {
   P.knR = 0.05;
 }
 
+// El Canchero se despierta estirándose (cine-introA upLazy): el clip pasa los
+// brazos por arriba de la cabeza con los codos doblados a ~65-90° (los
+// antebrazos colgando al lado de la cara, "un movimiento rarísimo", el usuario
+// 2026-10-05). Mientras se estira (LAZY, s del clip) los codos se abren hasta
+// doblarse LAZY.bend como mucho: los brazos se estiran de verdad. Después (se
+// sienta, se vuelve a acostar con las manos en la panza) el clip como está.
+// globalThis.__mduNoMolEstira: como antes.
+const LAZY = { a: 0.15, b: 1.95, fade: 0.3, bend: 0.45 };
+const oA = new THREE.Vector3();
+const oF = new THREE.Vector3();
+const oH = new THREE.Vector3();
+const oX = new THREE.Vector3();
+const oQ = new THREE.Quaternion();
+const oW = new THREE.Quaternion();
+const oP = new THREE.Quaternion();
+function openElbows(b, w, maxBend) {
+  const B = b.gs?.bones;
+  if (!B || w < 1e-3) return;
+  for (const s of ['Left', 'Right']) {
+    const F = B[s + 'ForeArm'];
+    B[s + 'Arm'].getWorldPosition(oA);
+    F.getWorldPosition(oF);
+    B[s + 'Hand'].getWorldPosition(oH);
+    const u = oA.subVectors(oF, oA).normalize();
+    const f = oH.sub(oF).normalize();
+    const bend = Math.acos(Math.max(-1, Math.min(1, u.dot(f))));
+    if (bend <= maxBend) continue;
+    oX.crossVectors(f, u);
+    if (oX.lengthSq() < 1e-8) continue;
+    oQ.setFromAxisAngle(oX.normalize(), (bend - maxBend) * w);
+    F.getWorldQuaternion(oW).premultiply(oQ);
+    F.parent.getWorldQuaternion(oP);
+    F.quaternion.copy(oP.invert().multiply(oW));
+    F.updateMatrixWorld(true);
+  }
+}
+
+// Una promesa que se cumple cuando ok() da true (o pasados ms, por las dudas).
+function waitUntil(ok, ms) {
+  const t0 = performance.now();
+  return new Promise((res) => {
+    const tick = () => (ok() || performance.now() - t0 > ms ? res() : setTimeout(tick, 50));
+    tick();
+  });
+}
+
 // Pone un muñeco tirado con la cabeza en (hx, hz) y los pies hacia `yaw`.
 function lieAt(a, hx, hz, yaw, t) {
   lie(a.P, t);
+  // (desmayado: los ojos cerrados, ui/cineLife)
+  a.faint = 1;
   place(a, hx + Math.sin(yaw) * 1.66, hz + Math.cos(yaw) * 1.66, yaw);
 }
 
@@ -227,9 +295,18 @@ function molino(g, I) {
     // (oscuro todo; el poncho, que el gaucho tiñe desde lo claro de la textura, igual de dorado)
     G.mat.color.setScalar(GOLD_SHADE);
     F.M.poncho.color.set(GOLD_PONCHO).multiplyScalar(1.7 / GOLD_SHADE);
-    for (const n of ['eyeA', 'eyeB']) {
-      const o = G.root.getObjectByName(n);
-      if (o) glowEye(o, F.M.eye, 0.014, g.textures?.dot);
+    // los ojos de oro: los pintados del modelo prendidos (con el color de
+    // F.M.eye) y su brillo delante de cada uno (net/gauchoSkin eyeSpots; las
+    // esferas en los huesos eyeA/eyeB quedaban corridas de los ojos, el usuario
+    // 2026-10-03)
+    for (const o of eyeSpots(G, F.M.eye.color)) {
+      const sm = new THREE.SpriteMaterial({ map: g.textures?.dot, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.32, toneMapped: false });
+      sm.color = F.M.eye.color;
+      const sp = new THREE.Sprite(sm);
+      const ws = 1 / o.getWorldScale(tmpV).x;
+      sp.scale.setScalar(0.06 * ws);
+      sp.frustumCulled = false;
+      o.add(sp);
     }
   };
   const eyeBase = new THREE.Color(0x120c08);
@@ -238,6 +315,8 @@ function molino(g, I) {
   // los gauchos: vos y los compañeros (un muñeco de cada uno, más el que arrastra)
   const bodies = [0, 1, 2, 3, 4].map((id) => puppet(people, 440 + id));
   const dragged = puppet(people, 450);
+  // (el que arrastra va desmayado: los ojos cerrados, ui/cineLife)
+  dragged.faint = 1;
   const lamp = buildLantern(g);
   // un mate en el pecho de cada uno (al tuyo te lo deja él; antes era solo el tuyo)
   const mates = [0, 1, 2, 3, 4].map(() => buildMate(g));
@@ -251,6 +330,315 @@ function molino(g, I) {
   const FIRE = new THREE.Vector3(D0.x + 2.5, 0, D0.z + 0.7);
   const COME = new THREE.Vector3(D0.x + 5.5, 0, D0.z - 6);
   const OVER = new THREE.Vector3(D0.x - 0.2, 0, D0.z - 0.9);
+  // Tomas animadas a mano en Blender (2026-10-03, C:/Users/ignac/Tools/mdu-blender:
+  // anim_drag2.py, anim_kneel2.py; globalThis.__mduBlend = false: las de antes).
+  // El arrastre: Francisco camina para atrás hacia el galpón tirándote de las
+  // muñecas, vos acostado con los brazos por arriba de la cabeza. Arranca a lo
+  // que camina el clip de la puerta.
+  let CC = null;
+  let B0 = null;
+  // (bajados o fallados: para ready)
+  const got = { cc: globalThis.__mduBlend === false, ia: globalThis.__mduBlend === false };
+  const dirD = D1.clone().sub(D0).normalize();
+  if (globalThis.__mduBlend !== false) {
+    fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-molino.json'))
+      .then((r) => r.json())
+      .then((J) => {
+        const C = {};
+        for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+        const h = C.drag.hips;
+        B0 = D1.clone().addScaledVector(dirD, -Math.abs(h[(C.drag.n - 1) * 3 + 2] - h[2]));
+        CC = C;
+      })
+      .catch(() => {})
+      .finally(() => (got.cc = true));
+  }
+  // (los pasos del clip: arranca a los 0,6 s, uno cada 0,7 s)
+  const STEP_B = 0.7;
+  const dragBlend = (I, lt) => {
+    // (mira hacia el cuerpo, de espaldas a la puerta: camina para atrás)
+    const yaw = Math.atan2(-dirD.x, -dirD.z);
+    if (!CC || !poseCineClip(F, CC.drag, lt, B0.x, 0, B0.z, yaw) || !poseCineClip(dragged, CC.dragged, lt, B0.x, 0, B0.z, yaw)) return false;
+    placeMats(F);
+    placeMats(dragged);
+    st.dragAt = F.gs.bones.Hips.getWorldPosition(new THREE.Vector3()).setY(0);
+    F.group.userData.at = st.dragAt;
+    // pasos y el cuerpo que se arrastra por la tierra
+    const k = Math.floor((lt - 0.6) / STEP_B);
+    if (k >= 0 && k !== st.step) {
+      st.step = k;
+      g.audio.footstep('dirt', 0.9);
+      g.audio.noise(I.bus, { t: g.audio.now, dur: 0.55, type: 'bandpass', freq: 380, q: 0.8, gain: 0.16, attack: 0.1 });
+      if (Math.random() < 0.5) g.fx.dust(dragged.gs.bones.Hips.getWorldPosition(tmpU).setY(0.05), { x: 0, y: 1, z: 0 }, [0.4, 0.3, 0.22], 2);
+    }
+    // (las dos manos ocupadas: la linterna colgada del cinto, del lado de
+    // atrás para esta cámara: no le tapa las piernas ni encandila)
+    const B = F.gs.bones;
+    B.RightUpLeg.getWorldPosition(tmpU);
+    B.Hips.getWorldPosition(tmpW);
+    tmpU.sub(tmpW).setY(0).normalize().multiplyScalar(0.16).add(B.RightUpLeg.getWorldPosition(tmpW));
+    lampAt(tmpU.x, tmpU.y - 0.12, tmpU.z);
+    lampShow(true);
+    return true;
+  };
+  // A tu costado (del lado de afuera de la fila): retrocede un pie y se
+  // arrodilla, apoya la linterna en el piso, te deja el mate en el pecho y se
+  // queda mirándote; después ('look') levanta la linterna, se para y te mira
+  // desde arriba (anim_kneel2.py). Va donde su mano cae justo en tu pecho
+  // (kneel.hand: la mano al soltar, en su espacio).
+  const kneelBlend = (I, m, lt) => {
+    // (parado arriba tuyo, la de antes: imponente en el medio; el usuario 2026-10-03)
+    if (m === 'look' || !CC?.kneel) return false;
+    const K = CC.kneel;
+    if (!st.kAt) {
+      const p = chestAt(myBody(), new THREE.Vector3());
+      const bx = tmpV.setFromMatrixPosition(myBody().mats[1]).x;
+      // mira hacia tu cuerpo desde el lado sin vecinos
+      st.kYaw = bx < H.x ? Math.PI / 2 : -Math.PI / 2;
+      const c = Math.cos(st.kYaw);
+      const sn = Math.sin(st.kYaw);
+      const [hx, , hz] = K.hand;
+      st.kAt = new THREE.Vector3(p.x - (hx * c + hz * sn), 0, p.z - (-hx * sn + hz * c));
+      const [lx, ly, lz] = K.lampAt;
+      st.kLamp = new THREE.Vector3(st.kAt.x + lx * c + lz * sn, ly + 0.25, st.kAt.z - lx * sn + lz * c);
+    }
+    // (parado, un paso más atrás que arrodillado: desde el piso se lo ve
+    // entero y la linterna no encandila; hay corte de cámara)
+    const back = m === 'kneel' ? 0 : 0.4;
+    const ox = st.kAt.x - back * Math.sin(st.kYaw);
+    const oz = st.kAt.z - back * Math.cos(st.kYaw);
+    if (!poseCineClip(F, m === 'kneel' ? K : CC.look, lt, ox, 0, oz, st.kYaw)) return false;
+    placeMats(F);
+    const cam = g.camera;
+    const hd = tmpV.setFromMatrixPosition(myBody().mats[2]);
+    const fh = F.gs.bones.Head.getWorldPosition(new THREE.Vector3());
+    if (m === 'kneel') {
+      // de los pies de la fila, en diagonal: él arrodillado y vos
+      const u = smooth(clamp01(lt / 6.6));
+      const ch = chestAt(myBody(), tmpW);
+      const sx = Math.sign(ch.x - st.kAt.x);
+      // (alejada y alta mientras está parado; se arrima cuando se arrodilla)
+      const dn = smooth(clamp01((lt - 0.8) / 1.6));
+      cam.position.set(ch.x + sx * (1.25 - 0.35 * dn), 1.25 - 0.3 * dn, ch.z + 1.9 - 0.45 * dn);
+      cam.lookAt(tmpU.set((ch.x + st.kAt.x) / 2, 0.8 - 0.28 * dn, ch.z - 0.05));
+    } else {
+      // desde tu cabeza, mirándolo a él
+      cam.position.set(hd.x + 0.04, 0.32, hd.z + 0.12);
+      cam.lookAt(fh.x, fh.y - 0.15 + 0.1 * smooth(clamp01(lt / 2)), fh.z);
+    }
+    if (m === 'kneel') {
+      // tu mate: en su mano hasta que lo deja
+      const own = mates[Math.max(0, st.ids.indexOf(st.me))];
+      if (lt < K.release) {
+        handAt(F, 6, own.position);
+        own.rotation.set(0, 0, 0);
+        own.visible = true;
+      } else if (!st.gave) {
+        st.gave = true;
+        chestAt(myBody(), tmpW);
+        g.fx.sparkle(tmpW.setY(tmpW.y + 0.05), [1, 0.85, 0.45], 16, 0.3);
+        g.audio.tone(I.bus, { t: g.audio.now, dur: 1.4, freq: 1320, gain: 0.05, attack: 0.02 });
+      }
+    } else {
+      st.eye = smooth(clamp01((lt - 1.6) / 0.9));
+      // (de acá se va caminando: 'leave')
+      st.leaveFrom = F.gs.bones.Hips.getWorldPosition(new THREE.Vector3()).setY(0);
+    }
+    // la linterna: en su mano, o apoyada en el piso mientras está arrodillado
+    const onFloor = (m === 'kneel' && lt >= K.lampDown) || (m === 'look' && lt < CC.look.lampUp);
+    if (onFloor) lampAt(st.kLamp.x + ox - st.kAt.x, st.kLamp.y, st.kLamp.z + oz - st.kAt.z);
+    else {
+      handAt(F, 5, tmpU);
+      lampAt(tmpU.x, tmpU.y - 0.02, tmpU.z);
+    }
+    lampShow(true);
+    return true;
+  };
+  // Francisco se va y se despiertan los cuatro, cada uno a su manera (ui/cineCrew
+  // PERSONA), animados en Blender (C:/Users/ignac/Tools/mdu-blender
+  // introA_clips.py → cine-introA.json); globalThis.__mduBlend = false: como antes.
+  const BLEND = globalThis.__mduBlend !== false;
+  let IA = null;
+  if (BLEND) {
+    fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-introA.json'))
+      .then((r) => r.json())
+      .then((J) => {
+        const C = {};
+        for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+        IA = C;
+      })
+      .catch(() => {})
+      .finally(() => (got.ia = true));
+  }
+  // cómo se despierta cada uno y cuándo se le cae el mate del pecho (s del clip):
+  // el Valiente de un salto en guardia, el Miedoso se sienta de golpe, retrocede
+  // y se santigua, el Canchero se estira, mira y se vuelve a acostar, el Viejo
+  // tose, se apoya en los codos y queda sentado
+  // (el Canchero, 2026-10-05, el usuario: "simplificá, que estire los brazos y
+  // luego se pare": upStretch, se estira con un bostezo y se para; el de antes,
+  // upLazy, con globalThis.__mduOldCanchero)
+  // (se decide al despertarse: los clips bajan después)
+  // (v2: "hacé que se pare así no más": upPlain, se sienta, se agacha y queda parado)
+  const canch = () => (globalThis.__mduOldCanchero === true || !IA?.upPlain ? ['upLazy', 1.9] : ['upPlain', 0.5]);
+  const WAKE = { valiente: ['upFists', 0.1], miedoso: ['upScared', 0.08], canchero: ['upLazy', 1.9], viejo: ['upOld', 0.85] };
+  // al terminar, cada uno sigue en lo suyo (va y vuelve por el final del clip):
+  // el Valiente en guardia mirando a los lados, el Miedoso temblando, el Viejo
+  // tosiendo; el Canchero duerme
+  const HOLD = { upFists: 1.45, upScared: 2.95, upOld: 3.1, upStretch: 3.7, upPlain: 2.05 };
+  const holdT = (c, name, lt) => {
+    if (lt <= c.dur || HOLD[name] == null) return Math.max(0, Math.min(lt, c.dur));
+    const w = c.dur - HOLD[name];
+    const u = (lt - c.dur) % (2 * w);
+    return u < w ? c.dur - u : HOLD[name] + (u - w);
+  };
+  // Se va caminando a lo oscuro con la linterna (walkLeave, al paso del clip:
+  // los pies no patinan). Ya de espaldas: la toma arranca con un corte.
+  const leaveBlend = (I, lt) => {
+    const c = IA?.walkLeave;
+    // (se decide en el primer cuadro: nunca se cambia a la mitad de la toma)
+    st.lvUse ??= !!(c && st.leaveFrom && F.gs?.on);
+    if (!st.lvUse || !c || !st.leaveFrom || !F.gs?.on) return false;
+    const to = tmpW.set(8.6, 0, 37.2);
+    st.lvYaw ??= Math.atan2(to.x - st.leaveFrom.x, to.z - st.leaveFrom.z);
+    if (!poseCineClip(F, c, Math.min(lt, c.dur), st.leaveFrom.x, 0, st.leaveFrom.z, st.lvYaw)) return false;
+    placeMats(F);
+    const k = Math.floor(lt / 0.48);
+    if (k !== st.step && !st.gone) {
+      st.step = k;
+      g.audio.footstep('dirt', 0.55);
+    }
+    st.eye = Math.max(0, 1 - lt * 1.5);
+    if (lt > 3.1 && !st.gone) {
+      // la linterna se apaga y no queda nadie: un poco de polvo de oro
+      st.gone = true;
+      F.gs.bones.Hips.getWorldPosition(tmpU);
+      g.fx.sparkle(tmpU.setY(1.2), [1, 0.8, 0.35], 40, 1.2);
+      g.audio.noise(I.bus, { t: g.audio.now, dur: 0.5, type: 'highpass', freq: 2500, gain: 0.12 });
+    }
+    handAt(F, 5, tmpU);
+    lampAt(tmpU.x, tmpU.y - 0.02, tmpU.z);
+    lampShow(!st.gone);
+    return true;
+  };
+  // Los cuatro se despiertan (rt: segundos desde que arrancó la toma). Cada uno
+  // pasa de la pose de tirado (cineSnap) a su clip, que arranca a su tiempo
+  // (PERSONA_T); el mate del pecho se cae al piso cuando se levanta.
+  const riseBodies = (I, rt) => {
+    if (!IA) return false;
+    const n = st.ids.length;
+    if (!st.rb) {
+      for (let i = 0; i < n; i++) if (!bodies[i].gs?.on) return false;
+      st.rb = st.ids.map((id, i) => {
+        const b = bodies[i];
+        const p = personaOf(i);
+        const [name, drop] = p === 'canchero' ? canch() : WAKE[p];
+        const c = IA[name];
+        const snap = cineSnap(b);
+        // (el origen del clip: su cadera del primer cuadro donde está la de tirado)
+        poseCineClip(b, c, 0, 0, 0, 0, 0);
+        const h0 = b.gs.bones.Hips.getWorldPosition(new THREE.Vector3());
+        return { c, name, snap, t0: rt, at: Math.max(rt + 0.3, 1.2 + PERSONA_T[p].delay * 1.6), drop, x: snap.h.x - h0.x, z: snap.h.z - h0.z, side: i < n / 2 ? -1 : 1, p, fell: null };
+      });
+    }
+    st.rb.forEach((R, i) => {
+      const b = bodies[i];
+      const ct = holdT(R.c, R.name, rt - R.at);
+      // (2026-10-05, el usuario: "cuando se despierta los pliega raro": el
+      // primer cuadro de los clips de despertar tiene los codos a 90° y se
+      // fundía ahí en 0,6 s, todavía acostados, y quedaban así hasta que
+      // arrancaba el clip. Ahora siguen tirados, con los brazos sueltos, hasta
+      // que arranca su clip, y se funde mientras se levantan: los codos se
+      // doblan al apoyarse. globalThis.__mduNoMolCodos: como antes)
+      let o;
+      if (globalThis.__mduNoMolCodos === true) o = rt - R.t0 < 0.6 ? { snap: R.snap, sw: smooth((rt - R.t0) / 0.6) } : {};
+      else o = rt < R.at + 0.8 ? { snap: R.snap, sw: smooth(clamp01((rt - R.at) / 0.8)) } : {};
+      // (el Viejo, ya sentado, tose con la cabeza más alta: si no, el ala del
+      // sombrero le tapaba la cara)
+      if (R.p === 'viejo') o.look = 0.75 * smooth(clamp01((rt - R.at - 2.3) / 0.9));
+      if (!poseCineClip(b, R.c, ct, R.x, 0, R.z, 0, o)) return;
+      // (el Canchero estirándose: los codos abiertos, ver LAZY)
+      b.wakeT = ct;
+      if (R.name === 'upLazy' && globalThis.__mduNoMolEstira !== true) {
+        const e = Math.min(clamp01((ct - LAZY.a) / LAZY.fade), clamp01((LAZY.b - ct) / LAZY.fade));
+        openElbows(b, smooth(e), LAZY.bend);
+      }
+      placeMats(b);
+      // (abre los ojos cuando empieza a levantarse)
+      b.faint = clamp01(1 - (rt - R.at) / 0.35);
+      // (desde tus ojos, tu cuerpo no se ve)
+      b.group.visible = !(st.mode === 'wake' && st.ids[i] === st.me);
+      const mt = mates[i];
+      if (rt - R.at < R.drop) return;
+      // el mate se resbala del pecho y queda tirado al lado
+      if (!R.fell) {
+        const p0 = chestAt(b, new THREE.Vector3());
+        b.gs.bones.Hips.getWorldPosition(tmpU);
+        R.fell = { t: rt, p0, p1: new THREE.Vector3(tmpU.x + R.side * 0.32, 0.07, tmpU.z + 0.15), tock: false };
+      }
+      const F2 = R.fell;
+      const u = clamp01((rt - F2.t) / 0.38);
+      mt.position.lerpVectors(F2.p0, F2.p1, u);
+      mt.position.y += Math.sin(Math.PI * u) * 0.1 * (1 - u);
+      mt.rotation.set(0, 0, lerp(0.2, R.side * Math.PI / 2, smooth(u)));
+      if (u >= 1 && !F2.tock) {
+        F2.tock = true;
+        g.audio.tone(I.bus, { t: g.audio.now, dur: 0.12, freq: 420, freqEnd: 300, gain: 0.05, attack: 0.003 });
+      }
+    });
+    return true;
+  };
+  // lo que suena cuando se despierta cada uno (en la toma, a su tiempo)
+  const riseSounds = (I, rt) => {
+    if (!st.rb) return;
+    const a = g.audio;
+    for (const R of st.rb) {
+      const lt = rt - R.at;
+      R.heard ||= new Set();
+      const once = (k, at, fn) => {
+        if (lt >= at && !R.heard.has(k)) {
+          R.heard.add(k);
+          fn();
+        }
+      };
+      if (R.p === 'valiente') once('up', 0.5, () => a.footstep('dirt', 0.8));
+      else if (R.p === 'miedoso') once('gasp', 0.05, () => a.gasp());
+      else if (R.p === 'canchero' && R.name === 'upLazy') once('yawn', 1.05, () => {
+        a.tone(I.bus, { t: a.now, dur: 1.1, type: 'sawtooth', freq: 190, freqEnd: 130, gain: 0.025, attack: 0.25 });
+        a.noise(I.bus, { t: a.now, dur: 1.2, type: 'bandpass', freq: 850, freqEnd: 480, q: 1.2, gain: 0.07, attack: 0.3 });
+      });
+      else {
+        // la tos del Viejo (los golpes de tos del clip: cada 1,1 s)
+        for (let k = 0; k < 4; k++) {
+          once(`tos${k}`, 0.2 + k * 1.1, () => {
+            for (const d of [0, 0.19]) a.noise(I.bus, { t: a.now + d, dur: 0.16, type: 'bandpass', freq: 560 - d * 300, q: 1.3, gain: 0.16, attack: 0.008 });
+          });
+        }
+      }
+    }
+  };
+  // los anteojos de sol del Canchero (como ui/cineActors): duerme con ellos puestos
+  const shades = () => {
+    const i = st.ids.findIndex((id, k) => personaOf(k) === 'canchero');
+    const b = bodies[i];
+    if (!BLEND || !b?.gs?.on || b.shades) return;
+    const glass = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, metalness: 0.7, roughness: 0.12 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xc9a040, metalness: 1, roughness: 0.3 });
+    const root = new THREE.Group();
+    const E = FACE_EYES;
+    for (const sx of [-1, 1]) {
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.1, 0.4, 20).rotateX(Math.PI / 2), glass);
+      lens.scale.y = 0.85;
+      lens.position.set(E.x + sx * (E.half + 0.4), E.y - 1.3, 17.3);
+      root.add(lens);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.55, 13), gold);
+      arm.position.set(E.x + sx * (E.half + 4), E.y - 0.4, 11);
+      root.add(arm);
+    }
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(2 * E.half - 6, 0.5, 0.45), gold);
+    bridge.position.set(E.x, E.y + 0.6, 17.4);
+    root.add(bridge);
+    b.shades = headProp(b, root);
+  };
   const coals = new THREE.Group();
   {
     const wood = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 0.95, emissive: 0x401004, emissiveIntensity: 0.6 });
@@ -272,6 +660,13 @@ function molino(g, I) {
   }
   const st = { mode: 'off', t: 0, ph: 0, eye: 0, lampOn: 1, ids: [0], me: 0, gone: false };
   let light = null;
+  // un relleno tibio sobre la fila mientras se despiertan (la toma quedaba
+  // oscura sin la linterna); de las luces virtuales (World.adoptLight: no
+  // cambia la cuenta de luces ni recompila)
+  const riseFill = new THREE.PointLight(0xffc488, 0, 7.5, 2);
+  riseFill.position.set(12.1, 2.1, 44.1);
+  g.world.adoptLight?.(riseFill, 2);
+  g.scene.add(riseFill);
 
   // los gauchos tirados en fila, con la cabeza hacia el fondo del galpón
   const layBodies = (t) => {
@@ -338,7 +733,7 @@ function molino(g, I) {
       at: [[2.2, (I) => I.card('No recordás tu nombre.', { low: true, d: 3.6 })]],
       // de costado, acompañándolo: se ve cómo arrastra el cuerpo
       fn: (I, t, u, cam) => {
-        const at = tmpV.lerpVectors(D0, D1, u);
+        const at = st.dragAt ? tmpV.copy(st.dragAt) : tmpV.lerpVectors(D0, D1, u);
         const dx = (D1.x - D0.x) / D0.distanceTo(D1);
         const dz = (D1.z - D0.z) / D0.distanceTo(D1);
         // (a mitad de camino se arrima: a 4,3 m la cámara pasaba por adentro del pozo)
@@ -431,8 +826,68 @@ function molino(g, I) {
       look: [[65.5, 0.6, 22], [64, 0.7, 23]],
       ease: 'lin',
     },
-    // 9 · te despertás en el galpón
-    {
+    // 9 · se despiertan los cuatro, cada uno a su manera (desde los pies de la fila)
+    ...(BLEND
+      ? [
+          {
+            d: 7.6,
+            fadeIn: 1.4,
+            fog: 0.9,
+            enter: (I) => {
+              st.mode = 'rise';
+              st.rise0 = I.t;
+            },
+            at: [[0.9, (I) => g.audio.bell(I.bus, g.audio.now, 45, { gain: 0.09, dur: 4 })]],
+            // (al final, un parpadeo: la que sigue es desde tus ojos)
+            tick: (I, t) => I.lid(clamp01((t - 7.42) / 0.16)),
+            // (de la punta de la fila, en diagonal, contra la pared del fondo;
+            // por arriba de la pila de yerba, que les tapaba los pies, y entre
+            // ella y la mesa; se arrima y baja despacio)
+            cam: [[14.35, 1.6, 45.65], [14.15, 1.24, 45.25]],
+            look: [[11.85, 0.62, 42.3], [11.95, 0.66, 42.3]],
+            ease: 'lin',
+            fov: 46,
+          },
+          // 10 · un parpadeo y estás en tus ojos, mirando a los demás; otro
+          // parpadeo y quedan los de la partida
+          {
+            d: 4,
+            wake: true,
+            wakeAt: 1.95,
+            enter: () => (st.mode = 'wake'),
+            fn: (I, t, u, cam) => {
+              // (tus ojos: de tu cabeza, como quedaste)
+              // y mirando a los demás (las cabezas)
+              if (!st.pov && st.rb && myBody().gs?.on) {
+                st.pov = myBody().gs.bones.Head.getWorldPosition(new THREE.Vector3()).add(tmpU.set(0, 0.06, 0.12));
+                st.povLook = new THREE.Vector3();
+                let k = 0;
+                st.ids.forEach((id, i) => {
+                  if (id === st.me || !bodies[i].gs?.on) return;
+                  st.povLook.add(bodies[i].gs.bones.Head.getWorldPosition(tmpU));
+                  k++;
+                });
+                if (k) st.povLook.divideScalar(k);
+                else st.povLook.set(st.pov.x, st.pov.y, st.pov.z + 3);
+              }
+              const p = st.pov || tmpV.set(H.x, 0.28, H.z);
+              cam.position.copy(p);
+              cam.lookAt(st.povLook || tmpW.set(p.x, p.y, p.z + 3));
+            },
+            tick: (I, t) => {
+              I.lid(t < 0.22 ? 1 : t < 1.95 ? clamp01(1 - (t - 0.22) / 0.35) : t < 2.07 ? (t - 1.95) / 0.12 : t < 2.2 ? 1 : clamp01(1 - (t - 2.2) / 0.3));
+              // con los ojos cerrados, los muñecos se van y quedan los de la partida
+              if (t >= 2.07 && !st.stood) {
+                st.stood = true;
+                bodies.forEach((b) => (b.group.visible = false));
+                if (g.net?.avatars) g.net.avatars.root.visible = true;
+              }
+            },
+          },
+        ]
+      : []),
+    // 9 · te despertás en el galpón (la de antes, __mduBlend = false)
+    ...(BLEND ? [] : [{
       d: 5.8,
       wake: true,
       wakeAt: 3,
@@ -455,7 +910,7 @@ function molino(g, I) {
           if (g.net?.avatars) g.net.avatars.root.visible = true;
         }
       },
-    },
+    }]),
   ];
 
   const cues = [
@@ -473,6 +928,12 @@ function molino(g, I) {
     fov: 52,
     shots,
     cues,
+    // (2026-10-05, el usuario: la primera vez, el arrastre salió con los muñecos
+    // de piezas, tiesos "tipo plancha": los clips y el gaucho de verdad todavía
+    // bajaban. ui/Arrival espera esto antes de compilar y arrancar: los dos
+    // json de clips, los clips del gaucho y los cuerpos de verdad puestos)
+    ready: () =>
+      waitUntil(() => got.cc && got.ia && gauchoClipsReady() && (window.__gauchoSkinOff || [F, dragged, ...bodies].every((a) => a.gs?.on)), 15000),
     start() {
       dress();
       st.mode = 'off';
@@ -481,6 +942,12 @@ function molino(g, I) {
       st.lampOn = 1;
       st.gone = false;
       st.cracked = false;
+      st.rb = null;
+      st.pov = null;
+      st.lvYaw = null;
+      st.lvUse = null;
+      st.dragOld = false;
+      st.rise0 = null;
       F.group.visible = false;
       dragged.group.visible = false;
       for (const mt of mates) mt.visible = false;
@@ -505,20 +972,37 @@ function molino(g, I) {
       };
       F.group.visible = m === 'drag' || m === 'kneel' || m === 'look' || (m === 'leave' && !st.gone) || m === 'sleep' || m === 'take';
       dragged.group.visible = m === 'drag';
-      const lying = m === 'kneel' || m === 'look' || m === 'leave' || m === 'wake';
+      const lying = m === 'kneel' || m === 'look' || m === 'leave' || m === 'wake' || m === 'rise';
       const asleep = m === 'sleep' || m === 'take';
       coals.visible = asleep;
+      // (2026-10-04, el usuario: los anteojos solo en el penal y la torre; acá
+      // el Canchero es el que se estira, bosteza y se vuelve a acostar)
+      if (globalThis.__mduIntroShades) shades();
+      // (despertándose: cada uno con su clip, y el mate cae al piso)
+      const rising = (m === 'rise' || m === 'wake') && !st.stood && riseBodies(I, t - (st.rise0 ??= t));
+      if (rising) riseSounds(I, t - st.rise0);
+      riseFill.intensity = BLEND && (m === 'rise' || m === 'wake') && !st.stood ? 7 : 0;
       if (asleep) sleepBodies(t);
-      else if (lying && !st.stood) layBodies(t);
+      else if (lying && !st.stood && !rising) layBodies(t);
       else if (!lying) bodies.forEach((b) => (b.group.visible = false));
-      const ownMate = (m === 'kneel' && lt > 3) || m === 'look' || m === 'leave' || (m === 'wake' && !st.stood);
+      const ownMate = (m === 'kneel' && lt > 3) || m === 'look' || m === 'leave' || m === 'rise' || (m === 'wake' && !st.stood);
       mates.forEach((mt, i) => {
         mt.visible = lying && !st.stood && i < st.ids.length && (st.ids[i] === st.me ? ownMate : true);
-        if (!mt.visible) return;
+        if (!mt.visible || st.rb?.[i]?.fell) return;
         chestAt(bodies[i], mt.position);
         mt.rotation.set(0, 0, 0.2);
       });
-      if (m === 'drag') {
+      // (si los clips todavía no bajaron, se esperan en el fundido de entrada; si
+      // no llegan, la toma entera es la de antes: nunca se cambia a la mitad)
+      if (m === 'drag' && !CC && BLEND && lt < 2 && !st.dragOld) {
+        F.group.visible = false;
+        dragged.group.visible = false;
+      } else if (m === 'drag' && !st.dragOld && dragBlend(I, lt)) {
+        // (piloto Blender: ya está, dragBlend)
+      } else if (m === 'drag') {
+        st.dragOld = true;
+        // (para las pruebas: salió la de antes)
+        I.dragOld = true;
         // camina despacio, encorvado, tirando del poncho con la derecha
         const u = clamp01(lt / s.d);
         tmpV.lerpVectors(D0, D1, u);
@@ -557,6 +1041,10 @@ function molino(g, I) {
         handAt(F, 5, tmpU);
         lampAt(tmpU.x, tmpU.y - 0.02, tmpU.z);
         lampShow(true);
+      } else if ((m === 'kneel' || m === 'look') && kneelBlend(I, m, lt)) {
+        // (piloto Blender: ya está, kneelBlend)
+      } else if (m === 'leave' && leaveBlend(I, lt)) {
+        // (Blender: ya está, leaveBlend)
       } else if (m === 'kneel' || m === 'look' || m === 'leave') {
         const head = tmpU.set(H.x, 0, H.z);
         if (m === 'kneel') {
@@ -687,10 +1175,16 @@ function molino(g, I) {
       coals.visible = false;
       lampShow(false);
       for (const mt of mates) mt.visible = false;
+      riseFill.intensity = 0;
       if (light) light.life = 0;
       light = null;
       st.leaveFrom = null;
       st.gave = false;
+      st.rb = null;
+      st.pov = null;
+      st.lvYaw = null;
+      st.lvUse = null;
+      st.dragOld = false;
     },
     // en la carga: todos a la vista donde van a estar
     warm(I, on) {
@@ -723,6 +1217,7 @@ function molino(g, I) {
       lamp.pool.removeFromParent();
       for (const mt of mates) mt.removeFromParent();
       coals.removeFromParent();
+      riseFill.removeFromParent();
     },
     // El final del castillo (CastleEnding): Francisco se lleva a uno de los que
     // duermen en el patio y después el arrastre de siempre (solo esa toma).
@@ -773,13 +1268,82 @@ function molino(g, I) {
 // sol, el establo colorado, el yerbal de los tablones, el barbacuá, el
 // espantapájaros de la huerta... y la cámara baja al patio, al lado del fogón.
 function granja(g, I) {
+  // Los cuatro gauchos (ui/cineActors: clips de Blender, cada uno con su
+  // carácter) parados donde arrancás, mirando hacia `look`; vos en tu lugar.
+  // globalThis.__mduBlend = false: la entrada de antes, sin ellos.
+  const BLEND = globalThis.__mduBlend !== false;
+  let crew = null;
+  const crewUp = (spots, look, floor) => {
+    crew?.dispose();
+    crew = new CineActors(g, { base: 470, floor });
+    // (2026-10-04, el usuario: los anteojos solo en el penal y la torre; acá el
+    // Canchero ceba, sin anteojos)
+    if (!globalThis.__mduIntroShades) crew.shadesOf = null;
+    const me = g.net ? g.net.id : 0;
+    // (2026-10-04: cada uno en su lugar por carácter, no en fila; el tuyo va
+    // donde arrancás, en el del Valiente, y el Valiente toma el del tuyo)
+    const mine = crew.list.find((r) => r.id - 470 === me)?.persona || 'valiente';
+    for (const r of crew.list) {
+      r.own = r.id - 470 === me;
+      const [dx, dz, at = look] = spots[r.own ? 'valiente' : r.persona === 'valiente' ? mine : r.persona];
+      r.pos.set(PLAYER_START.x + dx, 0, PLAYER_START.z + dz);
+      r.pos.y = crew.floor(r.pos.x, r.pos.z);
+      // (cada uno mira a lo suyo, y no todos exactamente igual)
+      r.yaw = Math.atan2(-(at.x - r.pos.x), -(at.z - r.pos.z)) + (((r.id * 7) % 5) - 2) * 0.04;
+    }
+    crew.show(false);
+  };
+  // el espantapájaros de la huerta (de allá vino el chillido)
+  const HUERTA = new THREE.Vector3(19.6, 0, 32);
   const shots = [
     { d: 5.2, fadeIn: 1.6, fog: 0.7, cam: [[68.6, 1.3, 59.6], [70.2, 1.7, 58.4]], look: [[75.1, 5.6, 49.4], [75.3, 5.1, 49.6]], ease: 'lin' },
     { d: 5.2, fadeIn: 0.5, fog: 0.75, where: 'El Establo', cam: [[33, 3.6, 40.5], [36, 3.9, 38.5]], look: [[60, 5.5, 27], [61, 5.2, 27]], ease: 'lin' },
     { d: 5.6, fadeIn: 0.5, fog: 0.75, where: 'Los Tablones', cam: [[8.5, 1.3, 12], [15, 1.25, 12]], look: [[24, 1.1, 12], [30, 1.3, 10]], ease: 'lin' },
     { d: 4.6, fadeIn: 0.5, fog: 0.8, where: 'El Barbacuá', cam: [[25.4, 3.1, 15], [27, 3.9, 12.8]], look: [[32.5, 3, 5], [32.5, 3.2, 5]], ease: 'lin' },
     { d: 4.8, fadeIn: 0.5, fadeOut: 0.4, fog: 0.9, where: 'La Huerta', cam: [[23.6, 1.55, 34.6], [22.9, 1.5, 33.6]], look: [[19.6, 1.75, 32], [19.6, 1.8, 32]], ease: 'lin', fov: [52, 44] },
-    { d: 4.6, fadeIn: 0.6, wake: true, wakeAt: 0.4, fog: 0.9, cam: [[38, 6, 36.5], [38, 3.5, 33]], look: [[31, 0.5, 31], [31, 0.8, 31]] },
+    // los cuatro en el patio: el cuervo vuelve a chillar y cada uno lo toma a su manera
+    ...(BLEND
+      ? [
+          {
+            d: 4.4,
+            fadeIn: 0.5,
+            fog: 0.9,
+            crew: true,
+            enter: () => {
+              if (!crew) return;
+              crew.show(true);
+              const b = crew.by;
+              crew.later(0.55, () => g.audio.crowScreech(new THREE.Vector3(26, 3, 31.5)));
+              // el Valiente encara, el Miedoso se agacha, el Viejo trastabilla; el
+              // Canchero sigue cebando como si nada
+              // (2026-10-04, el usuario: el Miedoso se quebraba los codos al pasar
+              // a asustado: de la mano en el pecho se encoge directo, sin el
+              // agachón de las manos a la nuca)
+              crew.each({ valiente: ['fists', { loop: true, look: 0.15, fade: 0.25 }], miedoso: ['cower', { loop: true, fade: 0.45 }], viejo: ['flinch', { fade: 0.3 }] }, 0.75, 1.4);
+              crew.later(0.75 + PERSONA_T.viejo.delay * 1.4 + 1.2, () => crew.act(b.viejo, 'winded', { loop: true, fade: 0.5 }));
+            },
+            // de costado y bajo, por encima del hombro del Canchero: los otros
+            // tres en profundidad; la cámara se arrima y gira un poco
+            cam: [[34.55, 0.95, 34.65], [35.3, 1.05, 34.0]],
+            look: [[39.4, 1.3, 30.25], [39.3, 1.22, 30.45]],
+            ease: 'soft',
+            fov: [48, 44],
+          },
+        ]
+      : []),
+    // (vos te vas a tus ojos; los demás se quedan donde están)
+    {
+      d: 4.6,
+      fadeIn: 0.6,
+      wake: true,
+      wakeAt: 0.4,
+      fog: 0.9,
+      cam: [[38, 6, 36.5], [38, 3.5, 33]],
+      look: [[31, 0.5, 31], [31, 0.8, 31]],
+      enter: () => {
+        for (const r of crew?.list || []) if (r.own) r.a.group.visible = false;
+      },
+    },
   ];
   const cues = [
     [0.1, (I) => {
@@ -801,7 +1365,46 @@ function granja(g, I) {
     }],
     [22.6, (I) => boom(I, 0.35)],
   ];
-  return { title: 'La Tapera', place: 'Chacra de los Cuervos · Misiones, 1987', fov: 50, shots, cues };
+  return {
+    title: 'La Tapera',
+    place: 'Chacra de los Cuervos · Misiones, 1987',
+    fov: 50,
+    // (los de la partida se ven recién al final: antes los hacen los muñecos)
+    hideTeam: BLEND,
+    shots,
+    cues,
+    // (las pruebas: los muñecos)
+    debugActors: () => crew,
+    start() {
+      // (detrás tuyo, mirando a la huerta: al terminar no te quedan delante)
+      // (el Valiente donde arrancás, de cara a la huerta; el Miedoso más atrás,
+      // a un costado (fuera de tu vista al despertar), el Viejo al fondo y el
+      // Canchero cerca de la cámara, que ni mira: ceba)
+      if (BLEND) crewUp({ valiente: [0, 0], miedoso: [-0.66, -1.78], canchero: [-0.14, 2.02, new THREE.Vector3(33, 0, 29)], viejo: [2.4, -0.4] }, HUERTA);
+    },
+    tick(I, dt) {
+      // (desde la toma de antes: escondidos, ya con su pose de clip)
+      if (!crew || I.shotI < shots.findIndex((x) => x.crew) - 1) return;
+      if (!crew.idle) {
+        crew.idle = true;
+        for (const r of crew.list) r.pos.y = crew.floor(r.pos.x, r.pos.z);
+        const b = crew.by;
+        crew.act(b.valiente, 'crossArms', { loop: true, look: 0.1 });
+        crew.act(b.miedoso, 'chestHand', { loop: true });
+        crew.act(b.canchero, 'cebar', { loop: true, look: 0.15 });
+        b.canchero.mate = true;
+        crew.act(b.viejo, 'winded', { loop: true, t: 1 });
+      }
+      crew.tick(dt);
+      // (también si el reloj saltó la toma de ellos: en línea, una trabada larga)
+      if (I.shotI >= shots.findIndex((x) => x.crew)) crew.show(true);
+      for (const r of crew.list) if (r.own && I.S.shots[I.shotI]?.wake) r.a.group.visible = false;
+    },
+    stop() {
+      crew?.dispose();
+      crew = null;
+    },
+  };
 }
 
 // ---------------- Mate of the Dead ----------------
@@ -812,13 +1415,149 @@ function penal(g, I) {
   const hideHand = () => {
     if (g.vida?.hand) g.vida.hand.root.visible = false;
   };
+  // (2026-10-04) el nombre de los presos (entities/PenalEgg: cartel sin
+  // profundidad, para leerlo entre las rejas al jugar): en la entrada quedaba
+  // flotando detrás de las rejas. Escondido mientras dura; al terminar, como estaba.
+  const tags = (on) => {
+    for (const a of g.ee?.npc?.list?.values?.() || []) if (a.tag && a.r?.id >= 300 && a.r.id < 310) a.tag.visible = on && !a.r.noTag;
+  };
+  // Los cuatro gauchos (ui/cineActors: clips de Blender, cada uno con su
+  // carácter) parados donde arrancás, mirando hacia `look`; vos en tu lugar.
+  // globalThis.__mduBlend = false: la entrada de antes, sin ellos.
+  const BLEND = globalThis.__mduBlend !== false;
+  let crew = null;
+  const crewUp = (spots, look, floor) => {
+    crew?.dispose();
+    crew = new CineActors(g, { base: 470, floor });
+    const me = g.net ? g.net.id : 0;
+    // (2026-10-04: cada uno en su lugar por carácter, no en fila; el tuyo va
+    // donde arrancás, en el del Valiente, y el Valiente toma el del tuyo)
+    const mine = crew.list.find((r) => r.id - 470 === me)?.persona || 'valiente';
+    for (const r of crew.list) {
+      r.own = r.id - 470 === me;
+      const [dx, dz, at = look] = spots[r.own ? 'valiente' : r.persona === 'valiente' ? mine : r.persona];
+      r.pos.set(PLAYER_START.x + dx, 0, PLAYER_START.z + dz);
+      r.pos.y = crew.floor(r.pos.x, r.pos.z);
+      // (cada uno mira a lo suyo, y no todos exactamente igual)
+      r.yaw = Math.atan2(-(at.x - r.pos.x), -(at.z - r.pos.z)) + (((r.id * 7) % 5) - 2) * 0.04;
+    }
+    crew.show(false);
+  };
+  // tu catre (donde dormís: tu alma sale de ahí)
+  const CATRE = new THREE.Vector3(PLAYER_START.x - 0.1, 0, PLAYER_START.z);
+  // (2026-10-04, el usuario: "¿qué significa eso de estirar el brazo hacia
+  // arriba?") tu cuerpo en el catre es el muerto de siempre (entities/GauchoLife,
+  // clip 'lay': un brazo estirado). En la entrada, dormido boca arriba: el
+  // primer cuadro de upLazy (cine-introA), en el mismo lugar y para el mismo lado.
+  let LAZY = null;
+  if (BLEND)
+    fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-introA.json'))
+      .then((r) => r.json())
+      .then((J) => (LAZY = J.clips.upLazy ? cineClip(J.clips.upLazy) : null))
+      .catch(() => {});
+  const sleepV = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  let sleepAt = null;
+  const angXZ = (v) => Math.atan2(v.x, v.z);
+  const sleepBody = () => {
+    const a = g.vida?.bodies?.list?.get(200 + (g.net?.id || 0));
+    if (!LAZY || !a?.gs?.on || !a.group.visible || globalThis.__mduNoSleepBody) return;
+    const B = a.gs.bones;
+    const y = a.r.pos.y;
+    // (GauchoLife rearma el muerto cuando se muda: se vuelve a calcular)
+    if (sleepAt && (sleepAt.a !== a || Math.abs(sleepAt.px - a.r.pos.x) + Math.abs(sleepAt.pz - a.r.pos.z) > 0.01)) sleepAt = null;
+    if (!sleepAt) {
+      // (donde está el muerto: Avatars pone 'lay' en r.pos con la cabeza para
+      // atrás de r.yaw y la cadera 0,3 m hacia la cabeza; los huesos del muerto
+      // todavía no están al día cuando corre la entrada)
+      // en el colchón de al lado (config: el 'colchon' más cerca del arranque),
+      // a lo largo, los pies para el lado de la cámara de la entrada (con la
+      // cabeza para ese lado el sombrero tapaba todo); si no hay, donde está el muerto
+      let mat = null;
+      for (const p of PROPS || []) if (p.type === 'colchon' && Math.hypot(p.pos[0] - a.r.pos.x, p.pos[1] - a.r.pos.z) < 2.5) mat = p;
+      const want = mat ? mat.rot || 0 : (a.r.yaw || 0) + Math.PI;
+      const hx = mat ? mat.pos[0] + Math.sin(want) * 0.05 : a.r.pos.x + Math.sin(want) * 0.3;
+      const hz = mat ? mat.pos[1] + Math.cos(want) * 0.05 : a.r.pos.z + Math.cos(want) * 0.3;
+      const [h0, e0] = sleepV;
+      // (las matrices de los huesos se ponen al día a mano: la de la escena
+      // todavía no pasó)
+      const at = (bone, out) => {
+        bone.updateWorldMatrix(true, false);
+        return out.setFromMatrixPosition(bone.matrixWorld);
+      };
+      // (los clips de siempre todavía no bajaron: no se puede medir)
+      if (!poseCineClip(a, LAZY, 0, 0, y, 0, 0)) return;
+      at(B.Hips, h0);
+      at(B.Head, e0);
+      const yaw = want - angXZ(tmpV.subVectors(e0, h0));
+      poseCineClip(a, LAZY, 0, 0, y, 0, yaw);
+      at(B.Hips, h0);
+      sleepAt = { x: hx - h0.x, z: hz - h0.z, y: mat ? 0.1 : 0, yaw, a, px: a.r.pos.x, pz: a.r.pos.z, h0x: h0.x, h0z: h0.z };
+    }
+    poseCineClip(a, LAZY, 0, sleepAt.x, y + sleepAt.y, sleepAt.z, sleepAt.yaw);
+    // (el brillo del alma, sobre el cuerpo dormido; al terminar vuelve al muerto)
+    if (g.vida.aura?.visible) g.vida.aura.position.set(sleepAt.x + sleepAt.h0x, y + 0.3, sleepAt.z + sleepAt.h0z);
+  };
+  const wakeBody = () => {
+    const a = g.vida?.bodies?.list?.get(200 + (g.net?.id || 0));
+    if (a && g.vida.aura) g.vida.aura.position.set(a.r.pos.x, a.r.pos.y + 0.3, a.r.pos.z);
+  };
   const shots = [
     { d: 5.6, fadeIn: 1.6, fog: 0.6, cam: [[29, 1.4, 101], [26.5, 2.2, 99.5]], look: [[17, 6.5, 97], [17.5, 8, 97]], ease: 'lin' },
     { d: 5, fadeIn: 0.5, fog: 0.65, where: 'Los Yerbales de la Leva', cam: [[60.5, 1.4, 63.5], [59, 2.2, 65.5]], look: [[53.6, 7, 72], [53.6, 8.5, 72]], ease: 'lin' },
     { d: 5, fadeIn: 0.5, where: 'El Pabellón B', cam: [[34, 5.6, 35], [40, 5.8, 35]], look: [[58, 5.2, 35], [58, 5.4, 35]], ease: 'lin' },
     { d: 4.2, fadeIn: 0.5, where: 'La Oficina del Alcaide', cam: [[48, 9.8, 22], [51.8, 9.6, 19.6]], look: [[55.5, 8.8, 16.4], [55.5, 8.7, 16.4]], ease: 'lin' },
     { d: 4.6, fadeIn: 0.5, fadeOut: 0.4, fog: 0.7, where: 'El Cerro del Espinillo', cam: [[73, 14.4, 25.5], [75, 15, 23.5]], look: [[82.5, 13.6, 18.5], [83.5, 14.5, 17.5]], ease: 'lin' },
-    { d: 5, fadeIn: 0.6, wake: true, wakeAt: 0.6, cam: [[36, 8.5, 35], [40, 6.5, 35]], look: [[46, 5, 35], [46, 5, 35]] },
+    // los cuatro en el pabellón: el rayo ilumina las rejas y cada uno a su manera
+    ...(BLEND
+      ? [
+          {
+            d: 4.6,
+            fadeIn: 0.5,
+            crew: true,
+            enter: () => {
+              if (!crew) return;
+              crew.show(true);
+              const b = crew.by;
+              crew.later(0.6, () => {
+                const P = PLAYER_START;
+                g.audio.thunder(new THREE.Vector3(P.x - 30, 30, P.z - 20));
+                if (g.weather) g.weather.flash = 1;
+                g.post?.flash?.(0.5);
+              });
+              // el Valiente aprieta los puños, el Miedoso se agacha y se santigua,
+              // el Canchero se sacude el poncho, el Viejo trastabilla y se cansa
+              // (2026-10-04, el usuario: al Miedoso una mano le atravesaba el poncho:
+              // 'duck' y 'santiguar' pasan las manos por la cintura. Ahora se
+              // encoge temblando con las manos en el pecho y vuelve a rezar)
+              crew.each({ valiente: ['fists', { loop: true, look: 0.1, fade: 0.25 }], miedoso: ['cower', { loop: true, fade: 0.2 }], canchero: ['dust', { fade: 0.4 }], viejo: ['stagger', { fade: 0.3 }] }, 0.75, 1.4);
+              crew.later(0.75 + PERSONA_T.miedoso.delay * 1.4 + 2.2, () => crew.act(b.miedoso, 'pray', { loop: true, fade: 0.6 }));
+              crew.later(0.75 + PERSONA_T.canchero.delay * 1.4 + 1.9, () => crew.act(b.canchero, 'cool', { loop: true, fade: 0.5 }));
+              crew.later(0.75 + PERSONA_T.viejo.delay * 1.4 + 1.4, () => crew.act(b.viejo, 'winded', { loop: true, fade: 0.5 }));
+            },
+            // al ras del piso, de costado: tu cuerpo dormido en primer plano y
+            // los otros tres en profundidad; la cámara se arrima y sube un poco
+            fn: (I, t, u, cam) => {
+              const P = PLAYER_START;
+              const y = g.player.pos.y;
+              const e = smooth(u);
+              cam.position.set(P.x - 1.95 + 0.35 * e, y + 0.62 + 0.18 * e, P.z - 2.4 + 0.3 * e);
+              cam.lookAt(tmpV.set(P.x + 1.7 + 0.1 * e, y + 1.05 - 0.05 * e, P.z + 0.9 - 0.1 * e));
+            },
+            fov: [50, 46],
+          },
+        ]
+      : []),
+    {
+      d: 5,
+      fadeIn: 0.6,
+      wake: true,
+      wakeAt: 0.6,
+      cam: [[36, 8.5, 35], [40, 6.5, 35]],
+      look: [[46, 5, 35], [46, 5, 35]],
+      enter: () => {
+        for (const r of crew?.list || []) if (r.own) r.a.group.visible = false;
+      },
+    },
   ];
   const strike = (I, x, y, z) => {
     const top = new THREE.Vector3(x + 6, y + 40, z - 4);
@@ -855,9 +1594,46 @@ function penal(g, I) {
     title: 'Mate of the Dead',
     place: 'Penal de la Isla del Ceibo · Corrientes, 1878',
     fov: 52,
+    hideTeam: BLEND,
     shots,
     cues,
-    tick: hideHand,
+    // (las pruebas: los muñecos)
+    debugActors: () => crew,
+    debugSleep: () => ({ lazy: !!LAZY, at: sleepAt && { x: sleepAt.x, z: sleepAt.z, yaw: sleepAt.yaw, px: sleepAt.px, pz: sleepAt.pz } }),
+    start() {
+      // (alrededor de tu catre, mirando al fondo del pabellón: al terminar no te quedan delante)
+      // (todos miran tu catre: el Canchero cerca de la cámara, el Miedoso del
+      // lado de las rejas (fuera del brillo de tu alma) y el Viejo atrás)
+      if (BLEND) crewUp({ valiente: [0, 0], miedoso: [0.3, 2.3], canchero: [1.8, -1.5], viejo: [3.15, 0.6] }, CATRE, () => g.player.pos.y);
+    },
+    tick(I, dt) {
+      hideHand();
+      tags(false);
+      sleepBody();
+      // (desde la toma de antes: escondidos, ya con su pose de clip)
+      if (!crew || I.shotI < shots.findIndex((x) => x.crew) - 1) return;
+      if (!crew.idle) {
+        crew.idle = true;
+        for (const r of crew.list) r.pos.y = crew.floor(r.pos.x, r.pos.z);
+        const b = crew.by;
+        crew.act(b.valiente, 'crossArms', { loop: true });
+        crew.act(b.miedoso, 'pray', { loop: true });
+        crew.act(b.canchero, 'cool', { loop: true });
+        crew.act(b.viejo, 'winded', { loop: true, t: 0.6 });
+      }
+      crew.tick(dt);
+      // (también si el reloj saltó la toma de ellos: en línea, una trabada larga)
+      if (I.shotI >= shots.findIndex((x) => x.crew)) crew.show(true);
+      // (vos sos el que duerme en el catre: tu alma es la que sale; en línea,
+      // los de la partida también: sus cuerpos ya están en sus catres)
+      for (const r of crew.list) if (r.own || g.net?.remote?.has(r.id - 470)) r.a.group.visible = false;
+    },
+    stop() {
+      tags(true);
+      wakeBody();
+      crew?.dispose();
+      crew = null;
+    },
   };
 }
 
@@ -865,6 +1641,36 @@ function penal(g, I) {
 // La torre en el ojo del remolino: la cámara la rodea desde abajo, sube en
 // espiral por afuera hasta la cima, mira el ojo de la Voz entre las nubes y
 // se deja caer hasta la planta baja, donde estás vos.
+// En un corte de cámara de la torre: los faroles del lugar nuevo, ya prendidos.
+// world/Tower.updateLights los muda de a poco (apaga 0,4 s y prende 0,55 s):
+// después de la toma del ojo, la planta baja arrancaba ~1 s a oscuras.
+// globalThis.__mduNoTowerSnap = true: como antes.
+const towerP = new THREE.Vector3();
+function towerLightsAt(g, x, y, z) {
+  const T = g.world.tower;
+  const pool = T?.lightPool;
+  if (!pool || !T.anchors || globalThis.__mduNoTowerSnap) return;
+  towerP.set(x, y, z);
+  for (const a of T.anchors) a.d = a.pos.distanceToSquared(towerP) + Math.abs(a.pos.y - y - 1.4) * 40;
+  const want = [...T.anchors].sort((p, q) => p.d - q.d);
+  let k = 0;
+  for (const L of pool) {
+    if (!L.visible) continue;
+    const a = want[k++];
+    const u = L.userData;
+    if (!a) {
+      u.a = null;
+      u.k = 0;
+      continue;
+    }
+    Object.assign(u, { a, k: 1, out: false, base: a.l === T.L - 1 ? 30 : 26 });
+    L.position.copy(a.pos);
+    L.color.set(a.color);
+  }
+  // (la próxima vuelta de updateLights ve la cámara ahí: los mismos)
+  T.lightT = 0.25;
+}
+
 function torre(g, I) {
   const C = new THREE.Vector3(30, 0, 30);
   const orbit = (a, r, y, out) => out.set(C.x + Math.sin(a) * r, y, C.z + Math.cos(a) * r);
@@ -937,13 +1743,117 @@ function torre(g, I) {
       g.audio.noise(I.bus, { t: g.audio.now, dur: 4.2, type: 'bandpass', freq: 400, freqEnd: 1800, q: 0.8, gain: 0.25, attack: 3 });
     }],
   ];
-  return { title: 'Revelaciones Materas', place: 'La torre del fin del mundo', fov: 55, shots, cues };
+  const S = { title: 'Revelaciones Materas', place: 'La torre del fin del mundo', fov: 55, shots, cues };
+  // (globalThis.__mduBlend = false: la de antes, sin los gauchos)
+  if (globalThis.__mduBlend === false) return S;
+  // Los cuatro gauchos (2026-10-03, ui/introCrewB.js, clips de Blender): en la
+  // planta baja, mirando para arriba por el pozo. Cuando la Voz habla, el
+  // Miedoso se santigua y el Viejo cuenta los pisos con el dedo (y se rasca la
+  // cabeza); la mirada de ellos lleva al ojo (la espiral se va). Después del
+  // rayo: el Valiente señala arriba de todo, el Miedoso se tira al piso, el
+  // Canchero se pone los anteojos de sol (la luz del ojo) y al Viejo los quince
+  // pisos ya lo cansaron. Y la caída de siempre.
+  // (2026-10-04, no en fila: en profundidad y de costado. Cuando habla la Voz:
+  // el Viejo adelante, de perfil, contando los pisos con el dedo; el Valiente
+  // más cerca del pozo, el Miedoso rezando atrás, el Canchero contra la pared
+  // del farol. Después del rayo, otro lado: el Miedoso agachado en primer
+  // plano, el Canchero con los anteojos, el Valiente señalando arriba y el
+  // Viejo que trastabilla atrás. Cada uno mira a su punto del pozo.)
+  const spots = [[25.05, 31.44, 1.854], [25.34, 32.75, 1.953], [22.15, 33.37, 1.869], [26.96, 30.98, 1.759]];
+  const spotsR = [[24.48, 32.99, 2.067], [26.55, 33.65, 1.716], [24.5, 35.15, 2.293], [22.35, 33.7, 1.956]];
+  const light = [27.5, 4.2, 31.5, 0x9a8cff, 18, 14];
+  const plan = [
+    {
+      t0: 6,
+      t1: 12.6,
+      look: 0.3,
+      spots,
+      light,
+      acts: [
+        [[6, 'defy', { loop: true }]],
+        [[6, 'idle', { loop: true }], [6.8, 'santiguar'], [8.8, 'pray', { loop: true, fade: 0.5 }]],
+        [[6, 'akimbo', { loop: true }]],
+        [[6, 'idle', { loop: true }], [7.1, 'countFloors', { look: 0 }], [11.6, 'scratchHead', { loop: true, fade: 0.5, look: 0 }]],
+      ],
+    },
+    {
+      t0: 17.6,
+      t1: 22.6,
+      look: 0.25,
+      spots: spotsR,
+      light,
+      acts: [
+        [[17.6, 'fists', { loop: true }], [18.25, 'pointTop', { fade: 0.4, look: 0 }]],
+        [[17.6, 'idle', { loop: true }], [17.8, 'duck', { fade: 0.2 }], [19.2, 'cower', { loop: true, fade: 0.5 }]],
+        [[17.6, 'akimbo', { loop: true }], [18, 'shades', { fade: 0.4 }], [20.2, 'cool', { loop: true, fade: 0.5 }]],
+        [[17.6, 'idle', { loop: true }], [18.4, 'stagger', { fade: 0.3 }], [19.9, 'winded', { loop: true, fade: 0.5 }]],
+      ],
+    },
+  ];
+  let crew = null;
+  let dead = false;
+  import('./introCrewB')
+    .then((m) => {
+      if (!dead) crew = m.introCrew(g, plan, { base: 480, shades: 18 });
+    })
+    .catch(() => {});
+  // (de costado y bajo, se acerca despacio y levanta la vista con el dedo del Viejo)
+  const look = {
+    d: 6.6,
+    fadeIn: 0.5,
+    fog: 0.6,
+    cam: [[27.1, 0.9, 28.5], [26.75, 1.02, 28.82]],
+    look: [[24.4, 1.75, 35], [24.5, 2.4, 35]],
+    fov: [56, 52],
+    ease: 'soft',
+    enter: () => towerLightsAt(g, 27.1, 0.9, 28.5),
+  };
+  // (al ras del piso, del otro lado: el Miedoso se agacha en primer plano)
+  const react = {
+    d: 5,
+    fog: 0.6,
+    cam: [[28.2, 0.75, 35.7], [27.9, 0.8, 35.45]],
+    look: [[22.8, 1.6, 32.2], [22.9, 1.55, 32.3]],
+    fov: [60, 56],
+    ease: 'soft',
+    enter: () => towerLightsAt(g, 28.2, 0.75, 35.7),
+  };
+  // (los compañeros de verdad, en su lugar para despertarse)
+  const wake = { ...shots[4], enter: () => g.net?.avatars && (g.net.avatars.root.visible = true) };
+  return {
+    ...S,
+    hideTeam: true,
+    shots: [shots[0], look, shots[2], react, shots[3], wake],
+    cues: [
+      [0.1, (I) => {
+        wind(I, 32, { gain: 0.34, freq: 240, attack: 3 });
+        drone(I, 30, 38, { gain: 0.05, type: 'triangle' });
+      }],
+      ...cues.slice(1, 7),
+      [18.3, (I) => I.card('Quince pisos. Y arriba de todo, te espera.', { low: true, d: 4 })],
+      [22.6, (I) => {
+        g.audio.whoosh?.(g.camera.position.clone());
+        g.audio.noise(I.bus, { t: g.audio.now, dur: 4.2, type: 'bandpass', freq: 400, freqEnd: 1800, q: 0.8, gain: 0.25, attack: 3 });
+      }],
+    ],
+    tick: (I, dt, t) => crew?.update(t),
+    warm: (I, on) => crew?.warm(on),
+    stop: () => crew?.hide(),
+    dispose: () => {
+      dead = true;
+      crew?.dispose();
+    },
+    debugCrew: () => crew?.debugCrew() || [],
+    // (las pruebas: el plan, y el piso de cada uno se vuelve a medir)
+    debugPlan: () => (crew?.debugFloor?.(), plan),
+  };
 }
 
 // ---------------- Revelaciones Materas: el Challenge ----------------
-// Sin personajes ni historia: la cámara mira el pozo desde arriba de la cima
-// (todos los pisos sin centro, la bombilla de oro por el medio), pasa por el
-// altar de la Supernova y se tira de cabeza por el agujero hasta la planta baja.
+// Sin historia: la cámara mira el pozo desde arriba de la cima (todos los
+// pisos sin centro, la bombilla de oro por el medio), pasa por el altar de la
+// Supernova y se tira de cabeza por el agujero hasta la planta baja, donde
+// esperan los cuatro.
 function torreReto(g, I) {
   const C = new THREE.Vector3(30, 0, 30);
   const shots = [
@@ -997,7 +1907,73 @@ function torreReto(g, I) {
     }],
     [12.3, (I) => I.card('Sin historia. Sin ayuda. Aguantá.', { low: true, d: 3 })],
   ];
-  return { title: 'Revelaciones Materas', place: 'Challenge', fov: 58, shots, cues };
+  const S = { title: 'Revelaciones Materas', place: 'Challenge', fov: 58, shots, cues };
+  // (globalThis.__mduBlend = false: la de antes, sin nadie)
+  if (globalThis.__mduBlend === false) return S;
+  // Al fondo de la caída, los cuatro (ui/introCrewB.js; sin historia igual):
+  // cada uno se prepara a su manera. El Valiente en guardia, el Miedoso se
+  // santigua y reza, el Canchero (con los anteojos ya puestos) ni se inmuta y
+  // el Viejo, que todavía no empezó, ya está cansado.
+  // (2026-10-04, no en fila: el Valiente en guardia adelante, de tres cuartos;
+  // el Canchero al costado, el Miedoso rezando atrás y el Viejo al fondo)
+  const spots = [[26.79, 31.37, 1.925], [25.11, 33.26, 2.046], [24.66, 31.77, 2.053], [22.26, 33.68, 1.961]];
+  const plan = [
+    {
+      t0: 12.2,
+      t1: 15.6,
+      look: 0.1,
+      spots,
+      light: [27.5, 4.2, 31.5, 0x9a8cff, 18, 14],
+      acts: [
+        [[12.2, 'fists', { loop: true }]],
+        [[12.2, 'santiguar'], [14.2, 'pray', { loop: true, fade: 0.5 }]],
+        [[12.2, 'cool', { loop: true }]],
+        [[12.2, 'idle', { loop: true }], [12.9, 'stagger'], [14.4, 'winded', { loop: true, fade: 0.5 }]],
+      ],
+    },
+  ];
+  let crew = null;
+  let dead = false;
+  import('./introCrewB')
+    .then((m) => {
+      // (sin anteojos: solo en el penal y la torre de la historia)
+      if (!dead) crew = m.introCrew(g, plan, { base: 480, shades: globalThis.__mduIntroShades ? 'on' : null });
+    })
+    .catch(() => {});
+  // (bajo y de costado, se arrima despacio; los faroles ya prendidos al cortar)
+  const ready = {
+    d: 3.4,
+    fog: 0.6,
+    cam: [[26.9, 0.8, 28.7], [26.55, 0.9, 29.0]],
+    look: [[24.2, 1.6, 35], [24.3, 1.7, 35]],
+    fov: [56, 53],
+    ease: 'soft',
+    enter: () => towerLightsAt(g, 26.9, 0.8, 28.7),
+  };
+  const wake = { ...shots[3], enter: () => g.net?.avatars && (g.net.avatars.root.visible = true) };
+  return {
+    ...S,
+    hideTeam: true,
+    shots: [shots[0], shots[1], shots[2], ready, wake],
+    cues: [
+      [0.1, (I) => {
+        wind(I, 20, { gain: 0.34, freq: 260, attack: 2 });
+        drone(I, 19, 36, { gain: 0.05, type: 'sawtooth' });
+      }],
+      ...cues.slice(1, 6),
+      [12.6, (I) => I.card('Sin historia. Sin ayuda. Aguantá.', { low: true, d: 3 })],
+    ],
+    tick: (I, dt, t) => crew?.update(t),
+    warm: (I, on) => crew?.warm(on),
+    stop: () => crew?.hide(),
+    dispose: () => {
+      dead = true;
+      crew?.dispose();
+    },
+    debugCrew: () => crew?.debugCrew() || [],
+    // (las pruebas: el plan, y el piso de cada uno se vuelve a medir)
+    debugPlan: () => (crew?.debugFloor?.(), plan),
+  };
 }
 
 // ---------------- Der Mateendrache ----------------
@@ -1106,7 +2082,7 @@ function castillo(g, I) {
       g.ee?.cueva?.whistle?.(0.5);
     }],
   ];
-  return {
+  const S = {
     title: 'Der Mateendrache',
     place: 'Castillo del Mateendrache · Cordillera de los Andes',
     fov: 52,
@@ -1123,6 +2099,95 @@ function castillo(g, I) {
     },
     dispose: () => chiqui.root.removeFromParent(),
   };
+  // (globalThis.__mduBlend = false: la de antes, sin los gauchos)
+  if (globalThis.__mduBlend === false) return S;
+  // Los cuatro (2026-10-03, ui/introCrewB.js, clips de Blender). En el patio,
+  // de noche y con nieve, mientras Fierro cuenta lo de la guerra: el Valiente
+  // encara el castillo, el Miedoso tirita abrazado, el Canchero se sacude la
+  // nieve del poncho y el Viejo se agarra el sombrero con el viento.
+  const toKeep = (x, z) => Math.atan2(50 - x, 45 - z);
+  // (la antorcha de la pared, al costado del Canchero y no detrás de la cabeza)
+  // (2026-10-04, no en fila: en profundidad hacia la esquina del brasero, cada
+  // uno girado a lo suyo: el Valiente adelante, el Canchero sacudiéndose la
+  // nieve en el medio, el Miedoso tiritando pegado al brasero y el Viejo al
+  // fondo con el sombrero)
+  const patio = [[49.35, 57.5, 0.4], [46.96, 57.81, -0.8], [48.39, 57.39, 0.2], [50.25, 59.7, -0.3]].map(([x, z, k]) => [x, z, toKeep(x, z) + k]);
+  // (2026-10-04, el usuario: en la cumbre no van: recién llegan al castillo,
+  // están en el patio; la toma muestra las tumbas solas)
+  const plan = [
+    {
+      t0: 7,
+      t1: 12.2,
+      look: 0.2,
+      spots: patio,
+      light: [48, 27.5, 55.5, 0xffb070, 10, 10],
+      acts: [
+        [[7, 'defy', { loop: true }]],
+        [[7, 'shiver', { loop: true }]],
+        [[7, 'akimbo', { loop: true }], [8.6, 'dust', { fade: 0.4 }], [10.6, 'akimbo', { loop: true, fade: 0.5 }]],
+        [[7, 'holdHat', { loop: true, look: 0 }]],
+      ],
+    },
+  ];
+  let crew = null;
+  let dead = false;
+  import('./introCrewB')
+    .then((m) => {
+      // (sin anteojos: solo en el penal y la torre)
+      if (!dead) crew = m.introCrew(g, plan, { base: 490, shades: globalThis.__mduIntroShades ? 'on' : null });
+    })
+    .catch(() => {});
+  // (2026-10-04: un poco de arriba, por encima del borde de la fuente: más bajo,
+  // la fuente le tapaba los pies al Viejo y en (50.1, 25.55, 54.3) la cámara
+  // quedaba adentro de un velo claro los primeros 2,5 s)
+  const patioShot = { d: 5.2, fadeIn: 0.5, fog: 0.7, where: 'El Patio de Armas', cam: [[50.3, 26.4, 53.9], [49.9, 26.45, 54.35]], look: [[48.5, 25.1, 58.3], [48.55, 25.1, 58.3]], fov: [52, 50], ease: 'soft' };
+  // la cumbre: las cuatro tumbas solas, de cerca y pasando por cada una (de
+  // lejos, la llama del brasero de la cumbre (51.5, 16) pasaba delante de la cámara)
+  const cumbreShot = {
+    d: 5.2,
+    fadeIn: 0.5,
+    fog: 0.6,
+    where: 'La Cumbre de los Caballeros',
+    fn: (I, t, u, cam) => {
+      const e = smooth(u);
+      const x = lerp(46.4, 55.6, e);
+      cam.position.set(x, 41.55, 14.7);
+      cam.lookAt(tmpV.set(x - lerp(1.9, -0.2, e), 41, 11.4));
+    },
+    fov: 50,
+  };
+  const wake = {
+    ...shots[6],
+    enter: () => {
+      shots[6].enter();
+      if (g.net?.avatars) g.net.avatars.root.visible = true;
+    },
+  };
+  return {
+    ...S,
+    hideTeam: true,
+    shots: [shots[0], patioShot, shots[2], shots[3], cumbreShot, shots[5], wake],
+    warm: (I, on) => {
+      S.warm(I, on);
+      crew?.warm(on);
+    },
+    tick: (I, dt, t) => {
+      S.tick(I, dt);
+      crew?.update(t);
+    },
+    stop: () => {
+      S.stop();
+      crew?.hide();
+    },
+    dispose: () => {
+      S.dispose();
+      dead = true;
+      crew?.dispose();
+    },
+    debugCrew: () => crew?.debugCrew() || [],
+    // (las pruebas: el plan, y el piso de cada uno se vuelve a medir)
+    debugPlan: () => (crew?.debugFloor?.(), plan),
+  };
 }
 
 // ---------------- Mate no Numa ----------------
@@ -1138,6 +2203,8 @@ function castillo(g, I) {
 const CANOE_PATH = [[61.5, 77], [57.5, 71], [52, 68.8], [47.5, 66], [44.6, 63.4]];
 // cuándo sale y cuándo llega (segundos de la cinemática)
 const CANOE_T0 = 8;
+// (el piso de los que van sentados, sobre el agua: el fondo de la canoa)
+const SEAT_Y = 0.02;
 const CANOE_DUR = 22.5;
 // quién va dónde (z local de la canoa: + es la proa) y el color de cada poncho
 const CREW = [
@@ -1229,7 +2296,8 @@ function buildCanoe(g) {
 // La vara del botador (el largo va hacia +y desde el pie).
 function buildPole() {
   const geo = new THREE.CylinderGeometry(0.02, 0.027, 3.6, 6).translate(0, 1.8, 0);
-  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x5a4630, roughness: 0.8 }));
+  // (2026-10-04: más clara, caña vieja: de noche la oscura no se veía)
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x9a8058, roughness: 0.8 }));
   m.castShadow = true;
   m.visible = false;
   return m;
@@ -1377,15 +2445,18 @@ function esteros(g, I) {
     const ph = (T / STROKE) % 1;
     const push = st.hold || boat.speed === 0 ? 0.35 : ph < 0.62 ? smooth(ph / 0.62) : 1 - smooth((ph - 0.62) / 0.38);
     P.rootY = boat.y + 0.05;
-    P.torsoP = 0.12 + push * 0.3;
+    // (2026-10-04, el usuario: la de antes, pero empujando menos: al final de
+    // la empujada el brazo bajaba hasta la cadera y la mano se metía en el
+    // poncho. Las manos quedan adelante del poncho)
+    P.torsoP = 0.12 + push * 0.22;
     P.hipLp = -0.15;
     P.hipRp = 0.22;
     P.knL = 0.25;
     P.knR = 0.2;
-    P.shRp = lerp(-0.9, -0.1, push);
+    P.shRp = lerp(-0.9, -0.5, push);
     P.shRr = -0.3;
-    P.elR = lerp(-0.6, -0.25, push);
-    P.shLp = lerp(-1.2, -0.5, push);
+    P.elR = lerp(-0.6, -0.4, push);
+    P.shLp = lerp(-1.2, -0.75, push);
     P.shLr = -0.3;
     P.elL = lerp(-1, -0.7, push);
     // se da vuelta hacia el pajonal (la voz)
@@ -1671,13 +2742,90 @@ function monumento(g, I) {
     // lejos, el clarín de los Granaderos
     [27.6, () => g.audio.bugle(new THREE.Vector3(102, 0, 30))],
   ];
-  return {
+  const S = {
     title: 'Monumento al Mate',
     place: 'Monumento a la Bandera · Rosario',
     fov: 55,
     shots,
     cues,
   };
+  // (globalThis.__mduBlend = false: la de antes, sin los gauchos)
+  if (globalThis.__mduBlend === false) return S;
+  // Los cuatro (2026-10-03, ui/introCrewB.js, clips de Blender). En la
+  // costanera, contra la baranda: el Miedoso ve algo en el río, lo señala con
+  // la mano temblando y se encoge; el Valiente se pone en guardia, el Canchero
+  // (de anteojos) ni se mueve y al Viejo el susto lo deja sin aire. Después, al
+  // lado de la Llama apagada: el Valiente con la mano en el pecho, el Miedoso
+  // se santigua, el Canchero de brazos cruzados y el Viejo, que estaba al lado,
+  // se rasca la cabeza (¿habrá sido él?). Todo lo de después, 1 s más tarde.
+  // (2026-10-04: sin 'idle' al arrancar: los brazos colgando quedaban de maniquí;
+  // el Miedoso con la mano en el pecho y el Viejo ya cansado)
+  // (en la vereda, contra la baranda: mirando al río, un poco hacia la cámara)
+  // (corridos 2 m hacia el sur: el tramo de la baranda tapiado con tablas, z 38-39,
+  // le tapaba las piernas al Viejo; de 3/4, el Viejo adelante y los demás en fila)
+  const costa = [[111.8, 35.25], [111.95, 36.3], [111.6, 34], [111.55, 37.3]].map(([x, z]) => [x, z, Math.atan2(1, -0.2)]);
+  const U = [27.5, 30.5];
+  const llama = [[29.3, 31.9], [25.9, 31.7], [25.2, 30.3], [28.9, 30.8]].map(([x, z]) => [x, z, Math.atan2(U[0] - x, U[1] - z)]);
+  const plan = [
+    {
+      t0: 6.4,
+      t1: 12.4,
+      look: -0.1,
+      spots: costa,
+      acts: [
+        [[6.4, 'crossArms', { loop: true }], [8.3, 'fists', { loop: true, fade: 0.3 }]],
+        [[6.4, 'chestHand', { loop: true }], [7.7, 'pointRiver', { fade: 0.3 }], [10.5, 'cower', { loop: true, fade: 0.5 }]],
+        [[6.4, 'cool', { loop: true }]],
+        [[6.4, 'winded', { loop: true, off: 1.1 }], [8.9, 'stagger', { fade: 0.4 }], [10.4, 'winded', { loop: true, fade: 0.5 }]],
+      ],
+    },
+    {
+      t0: 23.4,
+      t1: 28.4,
+      look: -0.15,
+      spots: llama,
+      acts: [
+        [[23.4, 'chestHand', { loop: true, look: 0 }]],
+        [[23.4, 'chestHand', { loop: true }], [24.6, 'santiguar', { fade: 0.35 }], [26.6, 'pray', { loop: true, fade: 0.5 }]],
+        [[23.4, 'crossArms', { loop: true }]],
+        [[23.4, 'winded', { loop: true }], [24.9, 'scratchHead', { loop: true, fade: 0.5 }]],
+      ],
+    },
+  ];
+  let crew = null;
+  let dead = false;
+  import('./introCrewB')
+    .then((m) => {
+      // (sin anteojos: solo en el penal y la torre)
+      if (!dead) crew = m.introCrew(g, plan, { base: 500, shades: globalThis.__mduIntroShades ? 'on' : null });
+    })
+    .catch(() => {});
+  // (del lado del río, la baranda adelante)
+  const costaShot = { d: 6, fadeIn: 0.5, fog: 0.8, where: 'La Costanera', cam: [[114.8, -2.9, 38.25], [114.55, -3, 38]], look: [[111.8, -3.65, 35.6], [111.8, -3.6, 35.7]], ease: 'lin', fov: 51 };
+  const wake = { ...shots[5], enter: () => g.net?.avatars && (g.net.avatars.root.visible = true) };
+  return {
+    ...S,
+    hideTeam: true,
+    shots: [shots[0], costaShot, shots[2], shots[3], shots[4], wake],
+    cues: [
+      [0.1, (I) => {
+        wind(I, 35, { gain: 0.24, freq: 260, attack: 3 });
+        drone(I, 31, 41, { gain: 0.045, type: 'triangle' });
+      }],
+      ...cues.slice(1, 3),
+      [8.4, (I) => I.card('Algo se mueve en el río.', { low: true, d: 3.2 })],
+      [24.4, (I) => I.card('La niebla apagó la Llama.', { low: true, d: 3.4 })],
+      [28.6, () => g.audio.bugle(new THREE.Vector3(102, 0, 30))],
+    ],
+    tick: (I, dt, t) => crew?.update(t),
+    warm: (I, on) => crew?.warm(on),
+    stop: () => crew?.hide(),
+    dispose: () => {
+      dead = true;
+      crew?.dispose();
+    },
+    debugCrew: () => crew?.debugCrew() || [],
+  };
 }
 
-export const SCRIPTS = { molino, granja, penal, torre, torreReto, castillo, esteros, monumento };
+export const SCRIPTS = { molino, granja, penal, torre, torreReto, castillo, esteros, monumento, eclipse };

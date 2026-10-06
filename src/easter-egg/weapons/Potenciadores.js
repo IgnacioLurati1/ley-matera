@@ -24,6 +24,23 @@ const MAX_GHOSTS = 28;
 // segundos suena más fuerte (ahí entra al farol)
 const ALMA_PEAK = 1.1;
 const UP = new THREE.Vector3(0, 1, 0);
+// el clic derecho del farol: una carga de gaucho life para el que lo tiene y los
+// que estén a BLESS_R m, una vez por farol. La animación: sube el farol, en
+// BLESS_AT revienta la luz y en BLESS_T vuelve a su lugar.
+const BLESS_R = 10;
+const BLESS_AT = 0.38;
+const BLESS_T = 1.1;
+// el muerto vaciado se hace espíritu (su cuerpo, translúcido) y el farol lo
+// chupa: se despega (SPIRIT_RISE de la vuelta), se estira y entra girando
+const SPIRIT_T = 0.9;
+const SPIRIT_RISE = 0.2;
+const MAX_SPIRITS = 8;
+const tmpQ = new THREE.Quaternion();
+const tmpQ2 = new THREE.Quaternion();
+const QID = new THREE.Quaternion();
+let spiritBase = null;
+const spiritMat = () =>
+  (spiritBase ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(SOUL[0] * 0.55, SOUL[1] * 0.85, SOUL[2] * 0.8), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false })).clone();
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpU = new THREE.Vector3();
@@ -105,6 +122,13 @@ export default class Potenciadores {
     this.flare = 0;
     this.souls = 0;
     this.had = null;
+    // el clic derecho (una vez por farol) y los espíritus que se chupa
+    this.blessed = false;
+    this.blessT = 0;
+    this.blessDone = false;
+    this.spirits = [];
+    this.spiritFree = [];
+    this.spiritMote = 0;
     this.lastShot = 0;
     this.buildMotes();
     this.buildGhosts();
@@ -297,6 +321,7 @@ export default class Potenciadores {
     if (st.kind !== 'farol') return false;
     this.holding = !!input.mouse.left && p.alive && !p.downed;
     this.inputT = this.g.time;
+    if (input.mouse.rightPressed && p.alive && !p.downed) this.bless();
     return true;
   }
 
@@ -307,7 +332,14 @@ export default class Potenciadores {
     const id = w.temp?.id || null;
     // se apagó el farol en la mano: revienta
     if (this.had === 'farol' && id !== 'farol') this.burst();
+    // uno nuevo trae su clic derecho
+    if (id === 'farol' && this.had !== 'farol') {
+      this.blessed = false;
+      this.blessT = 0;
+    }
     this.had = id;
+    this.updateBless(dt);
+    this.updateSpirits(dt);
     if (g.time - this.inputT > 0.1) this.holding = false;
     if (id === 'farol') this.updateFarol(dt, w.stats);
     else if (this.drain.size) this.drain.clear();
@@ -432,17 +464,243 @@ export default class Potenciadores {
     chestOf(z, tmpV);
     const at = tmpV.clone();
     const dir = new THREE.Vector3().subVectors(at, this.lamp).setY(0).normalize();
+    // (el espíritu sale de la pose de ahora, antes de que caiga)
+    const sp = this.spirit(z, this.lamp);
     g.zombies.damage(z, 1e9, { type: 'souls', zone: 'torso', point: at.clone(), dir });
     // el cuerpo queda gris ceniza (lo pinta el que manda a los muertos)
     if (!g.net?.guest && z.dead) g.zombies.paint(z, 0x5c6266);
-    this.ghost(at.clone().setY(at.y - 0.4), this.lamp);
+    if (sp) this.hideBody(z);
+    else this.ghost(at.clone().setY(at.y - 0.4), this.lamp);
     this.souls++;
     this.flare = Math.max(this.flare, 0.6);
     this.pend.vx += (Math.random() - 0.5) * 0.9;
     // (con el grabado, el alma ya viene sonando desde que empezó a salir)
     if (!this.g.audio?.guns?.has('alma')) this.wail(at);
     g.hud.hitmarker(false);
-    if (g.net) g.net.share('pot', { k: this.r(at), o: this.r(this.lamp) });
+    if (g.net) g.net.share('pot', { k: this.r(at), o: this.r(this.lamp), zi: z === g.zombies.boss ? 0xffff : z.id & 0xffff });
+  }
+
+  // ---------------- el espíritu que se chupa el farol ----------------
+  // El cuerpo del muerto, pieza por pieza en su pose, en una sola malla
+  // translúcida (posiciones en el mundo, centradas). null si no hay de dónde.
+  spiritOf(z) {
+    const Z = this.g.zombies;
+    if (!z?.mats || !Z?.meshes || z.boss) return null;
+    const parts = [];
+    let n = 0;
+    for (const M of Z.meshes) {
+      if (M.key === 'eye' || (M.need && !z.flags?.[M.need])) continue;
+      const geo = Z.geo?.[M.key];
+      const P = geo?.attributes?.position;
+      if (!P) continue;
+      for (const part of M.parts) {
+        if (z.hidden & (1 << part) || !z.mats[part]) continue;
+        parts.push([geo, z.mats[part]]);
+        n += (geo.index ? geo.index.count : P.count) * 3;
+      }
+    }
+    if (!n) return null;
+    const pos = new Float32Array(n);
+    let o = 0;
+    const box = new THREE.Box3();
+    for (const [geo, m] of parts) {
+      const P = geo.attributes.position;
+      const I = geo.index;
+      const cnt = I ? I.count : P.count;
+      for (let i = 0; i < cnt; i++) {
+        tmpV.fromBufferAttribute(P, I ? I.getX(i) : i).applyMatrix4(m);
+        box.expandByPoint(tmpV);
+        pos[o++] = tmpV.x;
+        pos[o++] = tmpV.y;
+        pos[o++] = tmpV.z;
+      }
+    }
+    const c = box.getCenter(new THREE.Vector3());
+    for (let i = 0; i < n; i += 3) {
+      pos[i] -= c.x;
+      pos[i + 1] -= c.y;
+      pos[i + 2] -= c.z;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.computeBoundingSphere();
+    return { geo, c };
+  }
+
+  // Arranca el espíritu de z hacia `to` (un Vector3 que se puede mover: el farol).
+  spirit(z, to) {
+    const s = this.spiritOf(z);
+    if (!s) return false;
+    let x = this.spiritFree.pop();
+    if (!x) {
+      if (this.spirits.length >= MAX_SPIRITS) this.endSpirit(this.spirits[0], 0);
+      x = this.spiritFree.pop() || { mesh: new THREE.Mesh(new THREE.BufferGeometry(), spiritMat()) };
+      x.mesh.frustumCulled = false;
+      x.mesh.renderOrder = 6;
+      x.mesh.userData.reflect = false;
+    }
+    x.mesh.geometry.dispose();
+    x.mesh.geometry = s.geo;
+    x.from = s.c;
+    x.to = to;
+    x.t = 0;
+    x.spin = (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random());
+    x.mesh.position.copy(s.c);
+    x.mesh.quaternion.identity();
+    x.mesh.scale.setScalar(1);
+    x.mesh.material.opacity = 0;
+    this.g.scene.add(x.mesh);
+    this.spirits.push(x);
+    return true;
+  }
+
+  // El cuerpo ya no se ve (se lo llevó el farol): todas sus piezas escondidas.
+  hideBody(z) {
+    z.hidden = 0xffffff;
+  }
+
+  endSpirit(x, i = this.spirits.indexOf(x)) {
+    if (i >= 0) this.spirits.splice(i, 1);
+    x.mesh.removeFromParent();
+    x.mesh.geometry.dispose();
+    x.mesh.geometry = new THREE.BufferGeometry();
+    this.spiritFree.push(x);
+  }
+
+  updateSpirits(dt) {
+    if (!this.spirits.length) return;
+    const g = this.g;
+    this.spiritMote -= dt;
+    const mote = this.spiritMote <= 0;
+    if (mote) this.spiritMote = 0.025;
+    for (let i = this.spirits.length - 1; i >= 0; i--) {
+      const x = this.spirits[i];
+      x.t += dt;
+      const k = x.t / SPIRIT_T;
+      const m = x.mesh;
+      if (k >= 1) {
+        // entró: el farol se ilumina y tiembla
+        this.flare = Math.max(this.flare, 0.75);
+        this.pend.vx += (Math.random() - 0.5) * 0.6;
+        g.fx.flash(x.to, 0x5aff82, 9, 0.14, 7);
+        g.fx.sparkle(x.to, SOUL, 6, 0.25);
+        this.endSpirit(x, i);
+        continue;
+      }
+      if (k < SPIRIT_RISE) {
+        // se despega del cuerpo
+        const e = k / SPIRIT_RISE;
+        m.position.copy(x.from);
+        m.position.y += e * 0.28;
+        m.scale.set(1 + e * 0.08, 1 + e * 0.12, 1 + e * 0.08);
+        m.material.opacity = 0.6 * e;
+        m.quaternion.setFromAxisAngle(UP, Math.sin(e * Math.PI) * 0.15 * x.spin);
+        continue;
+      }
+      // y el farol lo chupa: por arriba, cada vez más rápido, estirándose hacia él
+      const e = (k - SPIRIT_RISE) / (1 - SPIRIT_RISE);
+      const ee = e * e;
+      const a = tmpV2.copy(x.from);
+      a.y += 0.28;
+      const b = x.to;
+      const u = 1 - ee;
+      const cx = (a.x + b.x) / 2;
+      const cy = Math.max(a.y, b.y) + 0.9;
+      const cz = (a.z + b.z) / 2;
+      m.position.set(u * u * a.x + 2 * u * ee * cx + ee * ee * b.x, u * u * a.y + 2 * u * ee * cy + ee * ee * b.y, u * u * a.z + 2 * u * ee * cz + ee * ee * b.z);
+      tmpU.subVectors(b, m.position);
+      if (tmpU.lengthSq() > 1e-6) {
+        tmpU.normalize();
+        // de pie se va inclinando hasta apuntar al farol, y gira sobre ese eje
+        tmpQ.setFromUnitVectors(UP, tmpU);
+        tmpQ2.setFromAxisAngle(tmpU, x.spin * e * Math.PI * 2.5);
+        m.quaternion.slerpQuaternions(QID, tmpQ, Math.min(1, e * 2.2)).premultiply(tmpQ2);
+      }
+      const sh = Math.pow(1 - e, 1.3);
+      m.scale.set(0.95 * sh + 0.03, (1 + e * 2.4) * sh + 0.05, 0.95 * sh + 0.03);
+      m.material.opacity = (e > 0.85 ? (1 - e) / 0.15 : 1) * (0.6 + e * 0.3);
+      if (mote && Math.random() < 0.7) this.mote(m.position, b, { dur: 0.16 + Math.random() * 0.1, r: 0.12, arc: 0.1 });
+    }
+  }
+
+  // (para compilarlo al cargar el mapa: Weapons.warmFx)
+  spiritWarmMat() {
+    return spiritMat();
+  }
+
+  // ---------------- el clic derecho: gaucho life para los de al lado ----------------
+  bless() {
+    const g = this.g;
+    if (this.blessT > 0) return;
+    if (this.blessed) {
+      g.audio.deny?.();
+      return;
+    }
+    this.blessed = true;
+    this.blessT = 1e-4;
+    this.blessDone = false;
+  }
+
+  updateBless(dt) {
+    if (!(this.blessT > 0)) return;
+    this.blessT += dt;
+    if (!this.blessDone && this.blessT >= BLESS_AT) {
+      this.blessDone = true;
+      this.w.muzzleWorld(this.lamp);
+      this.blessFx(this.lamp.clone(), true);
+    }
+    if (this.blessT >= BLESS_T) this.blessT = 0;
+  }
+
+  // La luz del farol revienta en un anillo verde por el piso y les da una carga
+  // a los que están a BLESS_R m (mine: el que lo usó; a los de las otras compus
+  // les llega el aviso y cada uno se da la suya).
+  blessFx(at, mine) {
+    const g = this.g;
+    const fy = g.world.floorAt?.(at.x, at.z, at.y) ?? at.y - 1.2;
+    const y0 = Number.isFinite(fy) ? fy + 0.08 : at.y - 1.2;
+    for (let i = 0; i < 96; i++) {
+      const a = (i / 96) * Math.PI * 2;
+      const v = 13 + Math.random() * 3;
+      g.fx.add.spawn(at.x, y0 + Math.random() * 0.15, at.z, Math.cos(a) * v, 0.3, Math.sin(a) * v, { color: SOUL, size: 0.2, size1: 0.03, life: 0.75, drag: 1.6 });
+    }
+    // y una columna de luz que sube
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * 0.35;
+      g.fx.add.spawn(at.x + Math.cos(a) * r, y0, at.z + Math.sin(a) * r, 0, 3 + Math.random() * 4, 0, { color: SOUL, size: 0.14, size1: 0.02, life: 0.9, drag: 0.8 });
+    }
+    g.fx.flash(at, 0x5aff82, 24, 0.6, 26);
+    g.fx.addShake?.(mine ? 0.25 : 0.1);
+    this.flare = Math.max(this.flare, 1);
+    this.wail(at);
+    // las lucecitas a cada uno que la recibe
+    for (const a of g.session?.avatars?.list?.values?.() || []) {
+      const p = a.r?.pos;
+      if (!p || p.distanceTo(at) > BLESS_R) continue;
+      const to = new THREE.Vector3(p.x, p.y + 1.2, p.z);
+      for (let k = 0; k < 8; k++) this.mote(at, to, { dur: 0.45 + Math.random() * 0.3, r: 0.4, arc: 1 });
+    }
+    const P = g.player;
+    if (mine || (P.alive && P.pos.distanceTo(at) <= BLESS_R + 0.5)) {
+      this.giveCharge(at);
+    }
+    if (mine && g.net) g.net.share('pot', { bl: 1, o: this.r(at) });
+  }
+
+  giveCharge(at) {
+    const g = this.g;
+    const v = g.vida;
+    // (lucecitas que vienen al pecho: a la cámara misma tapaban la pantalla)
+    const cam = g.camera;
+    const to = new THREE.Vector3(0, -0.5, -0.9).applyQuaternion(cam.quaternion).add(cam.position);
+    if (at.distanceTo(to) > 0.5) for (let k = 0; k < 6; k++) this.mote(at, to, { dur: 0.5 + Math.random() * 0.35, r: 0.35, arc: 0.6 });
+    if (!v) return;
+    if (v.charges < v.max) {
+      v.charges++;
+      v.hud();
+      g.hud.toast('+1 carga de gaucho life');
+    }
   }
 
   // A un jefe le saca una parte de la vida (de invitado: el anfitrión sabe cuánta tiene).
@@ -544,7 +802,18 @@ export default class Potenciadores {
     P.z = Math.max(-0.6, Math.min(0.6, P.z + P.vz * dt));
     m.swing.rotation.set(P.z + Math.sin(t * 1.3) * 0.015, Math.sin(t * 0.7) * 0.08, P.x + Math.sin(t * 1.1) * 0.02);
     // el corazón y lo que gira adentro
-    const pulse = 1 + Math.sin(t * 6.5) * 0.08 + this.flare * 0.55 + on * 0.18;
+    // el clic derecho: lo levanta, revienta la luz y lo baja
+    let lift = 0;
+    if (this.blessT > 0) {
+      const b = this.blessT;
+      lift = b < BLESS_AT ? 1 - (1 - b / BLESS_AT) ** 3 : 1 - Math.min(1, (b - BLESS_AT) / (BLESS_T - BLESS_AT)) ** 2;
+    }
+    const root = this.w.model?.root;
+    if (root) {
+      const base = (root.userData.blessBase ||= root.position.clone());
+      root.position.set(base.x - lift * 0.06, base.y + lift * 0.17, base.z - lift * 0.08);
+    }
+    const pulse = 1 + Math.sin(t * 6.5) * 0.08 + this.flare * 0.55 + on * 0.18 + lift * 0.5;
     m.core.scale.setScalar(pulse);
     const s = 1 + this.flare * 0.9 + on * 0.3 + Math.min(0.5, this.souls * 0.02) + Math.sin(t * 7) * 0.06;
     m.aura.scale.setScalar(s);
@@ -555,7 +824,7 @@ export default class Potenciadores {
     });
     // la luz verde del corazón (alumbra la mano, la cadena y la jaula)
     m.core.getWorldPosition(Lt.position);
-    Lt.intensity = (0.3 + on * 0.3 + this.flare * 0.8 + Math.min(0.25, this.souls * 0.015)) * (0.9 + Math.sin(t * 13) * 0.05 + Math.random() * 0.05);
+    Lt.intensity = (0.3 + on * 0.3 + this.flare * 0.8 + lift * 0.9 + Math.min(0.25, this.souls * 0.015)) * (0.9 + Math.sin(t * 13) * 0.05 + Math.random() * 0.05);
   }
 
   // ---------------- Admin Mate ----------------
@@ -607,13 +876,20 @@ export default class Potenciadores {
     }
     if (!m.o) return;
     const o = V(m.o);
+    if (m.bl) {
+      this.blessFx(o, false);
+      return;
+    }
     if (m.u) {
       this.burst(o, true);
       return;
     }
     if (m.k) {
       const at = V(m.k);
-      this.ghost(at.clone().setY(at.y - 0.4), o);
+      // (el espíritu, con el cuerpo de esta compu si está)
+      const z = m.zi != null ? (m.zi === 0xffff ? g.zombies.boss : g.net?.findZombie?.(m.zi)) : null;
+      if (z && this.spirit(z, o)) this.hideBody(z);
+      else this.ghost(at.clone().setY(at.y - 0.4), o);
       // (el de otro: llega cuando ya salió, suena desde casi lo más fuerte)
       if (!this.almaStart(0.25, at)) this.wail(at);
       return;

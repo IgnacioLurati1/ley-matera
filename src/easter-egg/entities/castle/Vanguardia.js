@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { EE } from '../../config/map';
 import { buildChiqui, chiquiGiggle } from '../../world/Chiqui';
+import { sleepHidden } from '../../world/castleLean';
 import { myId, isHost, announce, players } from './common';
 import Juramento from './Juramento';
 import { preloadBossSkin } from '../bossSkin';
@@ -40,6 +41,7 @@ export default class Vanguardia {
     this.chiqui.scale.setScalar(1.3);
     this.chiqui.visible = false;
     this.root.add(this.chiqui);
+    sleepHidden(this.chiqui);
     this.register();
   }
 
