@@ -246,9 +246,9 @@ void main() {
 }`;
 
 export function sableBeatOn(cine) {
-  // (el Gil viene de Eclipse Matero a buscar el sable: mientras ese mapa está
-  // en obra y escondido, la escena del Monumento queda como siempre)
-  return globalThis.__mduEclipse === true && globalThis.__mduNoSableGil !== true && !!cine.crew;
+  // (el Gil viene a buscar el sable; el usuario la quiso en el juego antes de
+  // que salga el mapa que sigue, 2026-10-06. __mduNoSableGil: la escena como antes)
+  return globalThis.__mduNoSableGil !== true && !!cine.crew;
 }
 
 export default class SableBeat {
