@@ -140,3 +140,17 @@ alter table public.orders add column if not exists profit integer;
 alter table public.orders enable row level security;
 drop policy if exists "orders admin" on public.orders;
 create policy "orders admin" on public.orders for all to authenticated using (true) with check (true);
+
+-- ---------- Compras de mercadería (también en migrations_purchases.sql) ----------
+create table if not exists public.purchases (
+  id bigint generated always as identity primary key,
+  bought_on date not null default current_date,           -- día de la compra
+  total integer not null default 0 check (total >= 0),   -- cuánto salió
+  items jsonb not null default '[]'::jsonb,               -- [{ productId, title, qty }]
+  note text not null default '',                          -- proveedor, factura…
+  created_at timestamptz not null default now()
+);
+
+alter table public.purchases enable row level security;
+drop policy if exists "purchases admin" on public.purchases;
+create policy "purchases admin" on public.purchases for all to authenticated using (true) with check (true);

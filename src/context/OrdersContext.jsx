@@ -136,12 +136,12 @@ const toRow = (o) => ({
   ...(optional.profit ? { profit: o.profit ?? null } : {}),
 });
 
-const ensure = ({ error, data }) => {
+export const ensure = ({ error, data }) => {
   if (error) throw error;
   return data;
 };
 // La tabla todavía no existe (falta correr supabase/migrations_orders.sql).
-const isMissingTable = (e) =>
+export const isMissingTable = (e) =>
   e &&
   (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|could not find the table/i.test(e.message ?? ''));
 

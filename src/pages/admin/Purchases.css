@@ -1,0 +1,30 @@
+/* ---------- Compras de mercadería ---------- */
+.purchase-form__row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.purchase-form__qty { width: 64px; text-align: center; padding-left: 6px; padding-right: 6px; }
+.purchase-form__unit { color: var(--muted); font-weight: 700; font-size: 0.85rem; margin-right: 4px; }
+.purchase-total {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--title);
+  font-variant-numeric: tabular-nums;
+}
+
+.plist { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.plist__item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1.5px solid var(--line);
+  border-left: 5px solid var(--wood);
+  background: var(--paper);
+}
+.plist__head { display: flex; align-items: center; gap: 10px; }
+.plist__head strong { font-size: 1.1rem; color: var(--title); font-variant-numeric: tabular-nums; }
+.plist__head span { color: var(--muted); font-size: 0.88rem; font-weight: 700; }
+.plist__head .icon-btn { margin-left: auto; color: var(--danger); }
+.plist__note { margin: 2px 0 0; font-weight: 700; color: var(--title); }
+.plist__items { margin: 4px 0 0; color: var(--muted); font-size: 0.88rem; line-height: 1.4; }
+
+@media (max-width: 560px) {
+  .purchase-form__row { grid-template-columns: 1fr; }
+}

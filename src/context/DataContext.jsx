@@ -221,7 +221,9 @@ export function DataProvider({ children }) {
       // Mueve el stock por una venta: sign = -1 descuenta, +1 devuelve.
       // Sólo toca productos que controlan stock (stock no vacío). Las unidades
       // que se vendieron sin stock (`reserved`) nunca salieron del stock.
-      adjustStock: async (items, sign) => {
+      // `fromZero` (compras que entran): los que no controlaban stock empiezan
+      // a controlarlo desde 0, así quedan con las unidades que entraron.
+      adjustStock: async (items, sign, { fromZero = false } = {}) => {
         guard();
         if (!optional.stock) return [];
         const qty = new Map();
@@ -232,7 +234,8 @@ export function DataProvider({ children }) {
         const changes = [...qty]
           .map(([id, n]) => {
             const p = state.products.find((x) => x.id === id);
-            return p && p.stock != null ? { id, title: p.title, stock: Math.max(0, p.stock + sign * n) } : null;
+            const base = p?.stock ?? (fromZero && sign > 0 ? 0 : null);
+            return p && base != null ? { id, title: p.title, stock: Math.max(0, base + sign * n) } : null;
           })
           .filter(Boolean);
         await Promise.all(

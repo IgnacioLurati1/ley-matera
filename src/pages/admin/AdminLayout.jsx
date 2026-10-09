@@ -2,11 +2,13 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { OrdersProvider } from '../../context/OrdersContext';
+import { PurchasesProvider } from '../../context/PurchasesContext';
 import { LogoutIcon } from '../../components/Icons';
 import './Admin.css';
 
 const TABS = [
   { to: '/admin', label: 'Ventas', end: true },
+  { to: '/admin/compras', label: 'Compras' },
   { to: '/admin/productos', label: 'Productos' },
   { to: '/admin/destacados', label: 'Destacados' },
   { to: '/admin/promos', label: 'Promos' },
@@ -56,7 +58,9 @@ export default function AdminLayout() {
 
       <div className="admin__content page-enter">
         <OrdersProvider>
-          <Outlet />
+          <PurchasesProvider>
+            <Outlet />
+          </PurchasesProvider>
         </OrdersProvider>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useData } from '../../context/DataContext';
-import { STATUSES, collected, isPaid, orderProfit } from '../../context/OrdersContext';
+import { STATUSES, collected, isPaid, orderSpent } from '../../context/OrdersContext';
+import { purchasesTotal, usePurchases } from '../../context/PurchasesContext';
 import { money } from '../../lib/format';
 
 const MONTHS = 6;
@@ -15,6 +16,7 @@ const pctChange = (now, before) => (before ? Math.round(((now - before) / before
 // promedio, productos más vendidos y cómo están repartidas las ventas por estado.
 export default function SalesInsights({ orders }) {
   const { products } = useData();
+  const { purchases } = usePurchases();
 
   const stats = useMemo(() => {
     const active = orders.filter((o) => o.status !== 'cancelado');
@@ -47,22 +49,25 @@ export default function SalesInsights({ orders }) {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5);
 
-    // Ganancia total: ventas pagadas o entregadas cuyo invertido se sabe (la
-    // suma de sus artículos o el cambiado en la tabla). Las otras se avisan aparte.
+    // Ganancia total: lo cobrado en ventas pagadas o entregadas menos lo
+    // invertido, que es el total de las compras de mercadería (Compras) más lo
+    // invertido por artículo en las ventas que lo tienen (Productos o cambiado
+    // en la tabla). Sin compras cargadas, se avisan las ventas sin invertido.
     const byId = new Map(products.map((p) => [p.id, p]));
-    const profit = { got: 0, gain: 0, count: 0, unknown: 0, unknownSum: 0 };
+    const profit = { got: 0, sales: 0, count: 0, unknown: 0, unknownSum: 0 };
     orders.filter(isPaid).forEach((o) => {
-      const g = orderProfit(o, byId);
-      if (g == null) {
+      const spent = orderSpent(o, byId);
+      profit.got += o.price;
+      profit.sales += spent ?? 0;
+      profit.count += 1;
+      if (spent == null) {
         profit.unknown += 1;
         profit.unknownSum += o.price;
-      } else {
-        profit.got += o.price;
-        profit.gain += g;
-        profit.count += 1;
       }
     });
-    profit.spent = profit.got - profit.gain;
+    profit.purchases = purchasesTotal(purchases);
+    profit.spent = profit.sales + profit.purchases;
+    profit.gain = profit.got - profit.spent;
     profit.margin = profit.got ? Math.round((profit.gain / profit.got) * 100) : null;
     // Plata que sigue invertida en mercadería sin vender.
     profit.inStock = products.reduce((n, p) => n + (p.cost != null && p.stock > 0 ? p.cost * p.stock : 0), 0);
@@ -83,7 +88,7 @@ export default function SalesInsights({ orders }) {
       total: orders.length,
       profit,
     };
-  }, [orders, products]);
+  }, [orders, products, purchases]);
 
   if (!orders.length) return null;
 
@@ -105,7 +110,13 @@ export default function SalesInsights({ orders }) {
           <div className="profit__item">
             <span>Invertido</span>
             <strong>{money(stats.profit.spent)}</strong>
-            <small>En lo que se vendió</small>
+            <small>
+              {stats.profit.purchases && stats.profit.sales
+                ? `Compras ${money(stats.profit.purchases)} + artículos ${money(stats.profit.sales)}`
+                : stats.profit.purchases
+                  ? 'Compras de mercadería'
+                  : 'En lo que se vendió'}
+            </small>
           </div>
           <b className="profit__op" aria-hidden>
             =
@@ -116,11 +127,11 @@ export default function SalesInsights({ orders }) {
             <small>{stats.profit.margin != null ? `${stats.profit.margin}% de lo cobrado` : 'Todavía sin ventas pagadas'}</small>
           </div>
         </div>
-        {stats.profit.unknown > 0 && (
+        {stats.profit.unknown > 0 && !stats.profit.purchases && (
           <p className="warn">
             {stats.profit.unknown === 1 ? '1 venta pagada' : `${stats.profit.unknown} ventas pagadas`} (
-            {money(stats.profit.unknownSum)}) no {stats.profit.unknown === 1 ? 'suma' : 'suman'}: cargá lo invertido en
-            Productos o en la tabla de ventas.
+            {money(stats.profit.unknownSum)}) no {stats.profit.unknown === 1 ? 'tiene' : 'tienen'} invertido: cargá las
+            compras en Compras, o lo invertido en Productos o en la tabla de ventas.
           </p>
         )}
         {stats.profit.inStock > 0 && (

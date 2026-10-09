@@ -15,6 +15,7 @@ import NotFound from './pages/NotFound';
 import PageMeta from './components/PageMeta';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminHome from './pages/admin/AdminHome';
+import PurchasesAdmin from './pages/admin/PurchasesAdmin';
 import ProductsAdmin from './pages/admin/ProductsAdmin';
 import FeaturedAdmin from './pages/admin/FeaturedAdmin';
 import PromosAdmin from './pages/admin/PromosAdmin';
@@ -72,6 +73,7 @@ export default function App() {
             }
           >
             <Route index element={<AdminHome />} />
+            <Route path="compras" element={<PurchasesAdmin />} />
             <Route path="productos" element={<ProductsAdmin />} />
             <Route path="destacados" element={<FeaturedAdmin />} />
             <Route path="promos" element={<PromosAdmin />} />
