@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { mesh, boxGeo, cylGeo } from './props';
 import { yacare, upgradeShield } from './shieldUpModels';
 import { ejercito } from './monumentoShield';
+import { caballeros } from './eclipseShield';
 
 // El escudo armable de cada mapa, hecho con las tres piezas que se juntan
 // (config/maps/*: ACT.parts y ACT.shield). Mide unos 0,7 m; la cara mira a +z,
@@ -153,7 +154,9 @@ function caballero(M) {
   return g;
 }
 
-const BUILD = { molino: tranquera, granja: paja, penal: barrotes, esteros: yacare, torre: tapaPava, castillo: caballero, monumento: ejercito };
+const BUILD = { molino: tranquera, granja: paja, penal: barrotes, esteros: yacare, torre: tapaPava, castillo: caballero, monumento: ejercito, eclipse: caballeros };
+// (2026-10-10, Eclipse: el suyo; globalThis.__mduOldEclEscudo: el del molino, como antes)
+if (globalThis.__mduOldEclEscudo === true) BUILD.eclipse = tranquera;
 
 // Las piezas del escudo (decenas: barrotes, clavos, tientos) en una malla por
 // material: se ve igual y es una llamada de dibujo por material en vez de una

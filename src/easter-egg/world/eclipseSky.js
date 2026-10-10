@@ -1,6 +1,18 @@
 import * as THREE from 'three';
 import { SKY, ZONES } from '../config/map';
 import { ISLANDS } from '../config/maps/eclipse';
+import { buildSkyFight } from './eclipseGfxFight';
+import { eclSfx } from '../fx/eclipseSfx';
+
+// (2026-10-08, el usuario: "cosmical shockwave, es para cuando el Chiquitijuein
+// y Francisco en el cielo chocan y generan la onda de choque; ojo con la
+// frecuencia del evento y con el sonido para que no aturda". Suena solo en el
+// choque grande —el de la onda en las grietas, uno de cada cuatro, cada
+// ~1,5 min— y en lugar del trueno fuerte (no encima); entre uno y otro, al
+// menos SHOCK_GAP s (si no, el trueno de siempre). El archivo, más bajo y
+// con menos sub que el original: sfx/eclipse/onda-choque.mp3, -18 LUFS.
+// globalThis.__mduOldShockSfx: el trueno, como antes)
+const SHOCK_GAP = 75;
 
 // El cielo de Eclipse Matero: el cielo roto.
 //
@@ -157,7 +169,7 @@ const FRAG = /* glsl */ `
   uniform float uTime, uCloud, uFlash, uBlood, uFogAmt, uDay;
   uniform vec3 uFogColor, uSun, uHorizon, uZenith, uGlow;
   uniform vec3 uE, uEU, uEV;
-  uniform float uK, uPulse, uCrack, uQ, uDark, uNight, uDim;
+  uniform float uK, uPulse, uCrack, uQ, uDark, uNight, uDim, uSunSoft;
   // la pelea: cuánto dura el choque (1 → 0), hacia dónde se lanza la sombra y el ángulo del rayo
   uniform float uClash, uClashA;
   uniform vec2 uClashD;
@@ -274,8 +286,10 @@ const FRAG = /* glsl */ `
       float s = max(dot(d, fc), 0.0);
       float b = (h - 0.08) / 0.07;
       c = mix(c, acc * 0.75, exp(-b * b) * 0.55);
-      c += vec3(1.0, 0.5, 0.16) * (pow(s, 5.0) * 0.32 + pow(s, 40.0) * 0.35);
-      c = mix(c, vec3(2.0, 0.9, 0.25), smoothstep(0.9988, 0.9991, s));
+      // (sesión 1f, el usuario: "el glow de ver el sol te deja ciego": el disco
+      // pasaba de 1 —el brillo lo agrandaba— y el resplandor era ancho)
+      c += vec3(1.0, 0.5, 0.16) * (pow(s, 5.0) * 0.32 + pow(s, 40.0) * 0.35) * uSunSoft;
+      c = mix(c, vec3(2.0, 0.9, 0.25) * mix(1.0, 0.5, step(0.5, 1.0 - uSunSoft)), smoothstep(0.9988, 0.9991, s));
       float v = fbm(cp * vec2(0.5, 3.2) + vec2(t * 0.004, 0.0), cfw * 3.2, oct);
       vec3 cir = mix(acc * 0.8, vec3(1.0, 0.7, 0.35), pow(s, 3.0));
       c = mix(c, cir * (1.0 - 0.5 * smoothstep(0.3, 0.9, h)), smoothstep(0.55, 0.85, v) * 0.55 * smoothstep(0.03, 0.14, h) * (1.0 - 0.5 * smoothstep(0.35, 0.9, h)));
@@ -737,6 +751,8 @@ export function buildEclipseSky(w) {
     uDark: { value: 1 },
     uNight: { value: SKY_NIGHT() },
     uDim: { value: 0 },
+    // el sol de La Tapera, más suave (globalThis.__mduOldTaperaSun: como antes)
+    uSunSoft: { value: globalThis.__mduOldTaperaSun === true ? 1 : 0.45 },
     uClash: { value: 0 },
     uClashA: { value: 0 },
     uClashD: { value: new THREE.Vector2() },
@@ -805,6 +821,8 @@ export function buildEclipseSky(w) {
     clashA: 0,
     clashBig: false,
     lunge: 0,
+    // quién va ganando (-1 Francisco … 1 el Chiquitijuein; lo lleva world/eclipseGfxFight)
+    lead: 0,
     // (globalThis.__mduNoSkyFight: la pelea quieta, como antes)
     // k de 0 (apenas se tocan) a 1 (totalidad), en secs segundos (0 = ya)
     set(k, secs = SET_SECS) {
@@ -833,23 +851,42 @@ export function buildEclipseSky(w) {
       // 2,5 s: estallido de oro, rayo, pedazos de aureola, sacudida y trueno
       // lejos); uno de cada cuatro es grande (la onda en las grietas también)
       const g = w.g;
-      if (globalThis.__mduNoSkyFight !== true && g?.state !== 'title' && this.k < 0.98) {
+      // (2026-10-10, el usuario: en la cinemática final "se oyó un cosmical
+      // shockwave... el eclipse murió, ¿sigue habiendo choques en el cielo?". Sí:
+      // con El Eclipse caído (k a 0: el disco se corrió del sol, San Lorenzo fase
+      // 5 y el final) la pelea seguía, con su sacudida y su onda. Sin sombra sobre
+      // el sol no hay choque. globalThis.__mduOldSkyFightEnd: como antes)
+      const over = this.target <= 0.1 && globalThis.__mduOldSkyFightEnd !== true;
+      if (globalThis.__mduNoSkyFight !== true && g?.state !== 'title' && this.k < 0.98 && !over) {
         this.fightT -= dt;
         if (this.fightT <= 0) {
           this.fightT = 14 + Math.random() * 16;
           this.clashK = 1;
           this.clashA = Math.random() * Math.PI * 2;
-          this.clashBig = Math.random() < 0.25;
+          // (si lo pidió alguien de afuera —la carga del Desgarro Cósmico—, grande)
+          this.clashBig = this.bigNext === true || this.clashBig === true || Math.random() < 0.25;
+          this.bigNext = false;
           this.lunge = 1;
           if (this.clashBig) this.pulse(0.7);
           g?.fx?.addShake?.(this.clashBig ? 0.35 : 0.15);
           if (g?.audio?.thunder && g.camera) {
             const far = E.clone().multiplyScalar(220).add(g.camera.position);
-            g.audio.thunder(far, this.clashBig);
+            const S = globalThis.__mduOldShockSfx !== true && g.audio.ctx ? eclSfx(g) : null;
+            S?.load(['onda-choque']);
+            const now = g.time || 0;
+            // (en la entrada no: tiene la suya, en el primer choque)
+            if (this.clashBig && !g.intro?.active && S?.has('onda-choque') && now - (this.shockAt ?? -1e9) >= SHOCK_GAP) {
+              this.shockAt = now;
+              S.play('onda-choque', { gain: 0.9, reverb: 0.45 });
+              // (mientras la onda todavía suena —10 s—, ningún trueno encima)
+            } else if (now - (this.shockAt ?? -1e9) > 10) g.audio.thunder(far, this.clashBig);
           }
         }
       }
-      if (this.clashK > 0) this.clashK = Math.max(0, this.clashK - dt / 2.5);
+      if (this.clashK > 0) {
+        this.clashK = Math.max(0, this.clashK - dt / 2.5);
+        if (this.clashK === 0) this.clashBig = false;
+      }
       if (this.lunge > 0) this.lunge = Math.max(0, this.lunge - dt / 1.2);
       const k = this.k;
       const p = Math.min(1, this.pulseK);
@@ -860,20 +897,34 @@ export function buildEclipseSky(w) {
       // la tironeada: el disco negro se sacude apenas (menos en la totalidad) y
       // en el choque se lanza hacia adelante y retrocede
       const lg = Math.sin(this.lunge * Math.PI) * 0.035 * (1 - k * 0.6);
-      const off = moonOff(k) + Math.sin(t * 0.31) * 0.0018 * (1 - k) + Math.sin(t * 1.7) * 0.0006 * (1 - k) - lg;
+      // quién va ganando la pelea (world/eclipseGfxFight: lead > 0, el
+      // Chiquitijuein): el disco muerde más o retrocede (menos cerca de la totalidad)
+      const ld = globalThis.__mduNoSkyFight === true ? 0 : this.lead || 0;
+      const off = moonOff(k) * (1 - 0.3 * ld * (1 - k)) + Math.sin(t * 0.31) * 0.0018 * (1 - k) + Math.sin(t * 1.7) * 0.0006 * (1 - k) - lg;
       uniforms.uMoonOff.value.copy(uniforms.uMoonU.value).multiplyScalar(off);
       uniforms.uClashD.value.set(Math.cos(this.clashA) * lg, Math.sin(this.clashA) * lg);
-      uniforms.uCrack.value = 0.85 + 1.4 * k * k + 1.4 * p + 0.5 * this.clashK;
+      // (sesión 1f: las grietas en reposo pintaban de violeta todas las islas y
+      // tapaban el tinte de cada una; los pulsos y el choque siguen enteros.
+      // __mduNoEclMood: como antes)
+      const ck = globalThis.__mduNoEclMood === true ? [0.85, 1.4] : [0.42, 1.0];
+      uniforms.uCrack.value = ck[0] + ck[1] * k * k + 1.4 * p + 0.5 * this.clashK;
       // (la luz parpadea en el choque)
       uniforms.uDark.value = (1 - 0.42 * smoothstep(0.45, 1, k)) * (1 - 0.2 * this.clashK * (0.5 + 0.5 * Math.sin(t * 23)));
     },
   };
   w.eclipse = ecl;
+  // las figuras y los tiros de la pelea (world/eclipseGfxFight.js, grafica-v3)
+  // (el usuario, 2026-10-06: "la pelea con Francisco en el cielo sacala, dejá
+  // el solcito y la luna, se ven horribles": sin figuras ni tiros; el sol y la
+  // luna siguen con sus choques. globalThis.__mduSkyFightOn = true: la pelea)
+  const fight = globalThis.__mduSkyFightOn === true ? buildSkyFight(w, ecl, { E, EU, EV, uniforms }) : { update() {}, dispose() {} };
+  w.eclipseFight = fight;
   const prev = w.extraUpdate;
   const tmp = new THREE.Vector3();
   w.extraUpdate = (dt, t) => {
     prev?.(dt, t);
     ecl.update(dt, t);
+    fight.update(dt, t);
     // los sprites del contrato, en la dirección del eclipse desde la cámara
     const cam = w.g.camera;
     if (cam) {
@@ -894,7 +945,9 @@ function smoothstep(a, b, x) {
 // baja al techo más alto (las alturas salen del config, no van escritas acá).
 export function eclipseShadow(moon) {
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for (const I of Object.values(ISLANDS)) {
+  // (mundo, it. 4: La Disformidad, la dimensión de afuera, no entra: está 60 m más arriba y lejos)
+  for (const [id, I] of Object.entries(ISLANDS)) {
+    if (id === 'abismo' || id === 'grietas') continue;
     const [a, b, c, d] = I.box;
     x0 = Math.min(x0, a);
     z0 = Math.min(z0, b);
@@ -902,7 +955,7 @@ export function eclipseShadow(moon) {
     z1 = Math.max(z1, d + 1);
   }
   for (const Z of Object.values(ZONES)) {
-    if (!Z.isla) continue;
+    if (!Z.isla || Z.isla === 'abismo' || Z.isla === 'grietas') continue;
     const ys = [Z.y || 0, ...(Z.rects || []).map((r) => r[4] ?? Z.y ?? 0)];
     y0 = Math.min(y0, ...ys);
     // (lo techado hasta su techo; lo abierto, paredes y barandas de unos 4 m)

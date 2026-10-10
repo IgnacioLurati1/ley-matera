@@ -39,7 +39,15 @@ export const MAP_GFX = {
   torre: { epic: { lamps: 3 } },
   // Eclipse Matero (2026-10-06): el usuario vio todo "plano y sin oclusión": en
   // Alta la oclusión va como en Ultra
-  eclipse: { high: { ao: 12 } },
+  // y (ITERACION-6 M2/M4, 2026-10-07) el pasto con el suavizado temporal, como
+  // en el estero, y los bordes finos de las islas de lejos (cordones, barandas,
+  // aleros: "en la vista aérea los bordes de las islas titilan") con MSAA
+  // (__mduNoEclMsaa: SMAA, como antes; __mduNoEclGrassAA: todo como antes)
+  // (2026-10-09, rendimiento: SMAA con el suavizado temporal, como el estero.
+  // Medido desde lo alto girando sobre las islas: bordes titilando fuerte 0,02%
+  // con MSAA, 0,04% así y 0,40% sin el temporal; el MSAA costaba 0,4-0,9 ms de
+  // placa a 1440p. globalThis.__mduEclMsaa10: con MSAA, como antes)
+  eclipse: { high: { ao: 12 }, ...(globalThis.__mduNoEclGrassAA === true ? {} : { ultra: { aa: globalThis.__mduNoEclMsaa === true || globalThis.__mduEclMsaa10 !== true ? 'smaa' : 'msaa', taa: true }, epic: { aa: globalThis.__mduNoEclMsaa === true || globalThis.__mduEclMsaa10 !== true ? 'smaa' : 'msaa' } }) },
   // el molino y La Tapera (2026-10-03): mirando de la capilla al cementerio o
   // del corral al maizal las cinco luces con sombra alcanzaban toda la pantalla
   // (el molino NO: con 3 el farol del cementerio y el del galpón iluminaban la

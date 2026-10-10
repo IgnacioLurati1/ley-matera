@@ -22,27 +22,30 @@ const HEAD_RZ = 14.9;
 
 let MATS = null;
 
-export function buildVincha() {
+// mats: los materiales de otra (las bandanas de los compañeros, crewBandana);
+// tailLen: el largo de las puntas (cm; las del Gil, 24).
+export function buildVincha(mats = null, tailLen = 24) {
   MATS ||= {
     band: new THREE.MeshStandardMaterial({ color: 0xd8141c, roughness: 0.85, metalness: 0 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x8e0c12, roughness: 0.9, metalness: 0, side: THREE.DoubleSide }),
   };
+  const own = mats || MATS;
   const root = new THREE.Group();
   // la banda: un aro chato alrededor de la cabeza
-  const ring = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 2.8, 24, 1, true), MATS.band);
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 2.8, 24, 1, true), own.band);
   ring.material.side = THREE.DoubleSide;
   ring.scale.set(HEAD_RX, 1, HEAD_RZ);
   ring.position.set(HEAD_X, BAND_Y, HEAD_Z);
   root.add(ring);
   // el nudo, en la nuca
-  const knot = new THREE.Mesh(new THREE.BoxGeometry(4.2, 3.4, 2.6), MATS.dark);
+  const knot = new THREE.Mesh(new THREE.BoxGeometry(4.2, 3.4, 2.6), own.dark);
   // (el pelo de la malla llega a z -14 en la nuca: el nudo y las puntas van afuera de él)
   knot.position.set(HEAD_X, BAND_Y - 0.8, HEAD_Z - HEAD_RZ - 3.0);
   root.add(knot);
   // las dos puntas: largas, abiertas, cayendo sobre la nuca y la espalda
   for (const sx of [-1, 1]) {
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(2.8, 24, 0.6), sx < 0 ? MATS.band : MATS.dark);
-    tail.geometry.translate(0, -12, 0);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(2.8, tailLen, 0.6), sx < 0 ? own.band : own.dark);
+    tail.geometry.translate(0, -tailLen / 2, 0);
     tail.position.set(HEAD_X + sx * 1.6, BAND_Y - 1.6, HEAD_Z - HEAD_RZ - 3.6);
     // (giradas para que las puntas caigan hacia atrás, lejos del pelo)
     tail.rotation.set(0.2, 0, sx * 0.26);
@@ -55,7 +58,50 @@ export function buildVincha() {
 // el objeto (o null si todavía no se puede: se vuelve a llamar).
 export function gilVincha(a) {
   if (!a || a.vincha) return a?.vincha || null;
+  // (si el modelo todavía no cargó, queda pedida: net/Avatars.update la pone)
+  a.wantVincha = true;
   if (!a.gs?.on) return null;
+  // (si le había tocado la bandana de los compañeros, se la saca)
+  if (a.bandana) {
+    a.bandana.removeFromParent();
+    a.bandana = null;
+  }
   a.vincha = headProp(a, buildVincha());
   return a.vincha;
+}
+
+// Las bandanas de los compañeros del Gil (2026-10-10, el usuario: "añadí
+// bandanas a los personajes de mate no numa y los de eclipse (o sea los
+// compañeros del gil; los que no tienen nombre que juegan los otros mapas
+// dejalos como están)"). La misma vincha, del color del poncho de cada uno y
+// con las puntas más cortas: la colorada de puntas largas sigue siendo solo la
+// del Gil (lo que lo distingue). La pone net/Avatars.update en los juegos de
+// muñecos que la piden (`bandanas`), solo en esos dos mapas.
+// globalThis.__mduNoBandanas: sin ellas.
+export const BANDANA_MAPS = new Set(['esteros', 'eclipse']);
+const darker = new THREE.Color();
+export function crewBandana(a) {
+  if (!a || a.bandana || a.vincha || a.wantVincha || a.noBandana) return a?.bandana || null;
+  if (!a.gs?.on || !a.M?.poncho) return null;
+  const mats = {
+    band: new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0 }),
+    dark: new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, side: THREE.DoubleSide }),
+  };
+  a.bandana = headProp(a, buildVincha(mats, 13));
+  if (!a.bandana) return null;
+  a.bandana.userData.mats = mats;
+  a.bandana.userData.hex = -1;
+  bandanaColor(a);
+  return a.bandana;
+}
+// (el poncho puede cambiar de color —los papeles de Eclipse, net/Avatars restyle—: la bandana lo sigue)
+export function bandanaColor(a) {
+  const B = a?.bandana;
+  const c = a?.M?.poncho?.color;
+  if (!B || !c) return;
+  const hex = c.getHex();
+  if (hex === B.userData.hex) return;
+  B.userData.hex = hex;
+  B.userData.mats.band.color.copy(c);
+  B.userData.mats.dark.color.copy(darker.copy(c).multiplyScalar(0.62));
 }

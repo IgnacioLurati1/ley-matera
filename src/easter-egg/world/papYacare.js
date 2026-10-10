@@ -334,7 +334,7 @@ export default class PapYacare {
     g.net?.event('papq', { kd: 'yacare', fi: i });
     g.audio.pickup?.();
     const left = FISH - this.fed - this.stock;
-    g.hud.subtitle(left > 0 ? `Un pescado para el yacaré. Faltan ${left}.` : 'Ya están los pescados: al yacaré del Pack-a-Pava, en el Embalsado.', 3);
+    g.hud.subtitle(`Pescado ${FISH - left}/${FISH}`, 2.5);
     return true;
   }
 
@@ -601,7 +601,6 @@ export default class PapYacare {
     if (m.yf != null) while (this.fed < m.yf) this.feed(true);
     if (m.fi != null && !this.taken[m.fi]) {
       this.takeFish(m.fi, true);
-      if (!quiet) this.g.hud.subtitle('Alguien sacó un pescado de la red.', 2.5);
     }
     if (m.fd != null) while (this.fed < m.fd) this.feed(true);
   }

@@ -1147,7 +1147,7 @@ export default class GranGuerra extends Arena {
     if (this.song) g.hud.toast(`♪ ${SONG.name}`);
     // (lo dice el anfitrión y les llega a todos: el que entra tarde, en el
     // caos, no tiene que leer lo de las gemas)
-    if (isHost(g)) announce(g, '¡El Chiquitijuein en su forma verdadera! Rompan las gemas del poncho de a una: solo se rompe la que brilla, con el mate de la luz de su color.', 6, true);
+    if (isHost(g)) announce(g, '', 6, true);
     chiquiGiggle(g.audio, { pos: this.col.root.position.clone().setY(this.A.y + 15), gain: 2.2, ref: 40, pitch: 0.55 });
     // (el invitado que llega tarde o termina el vuelo después: le pide al
     // anfitrión cómo va la pelea, que no la manda sola cada tanto)
@@ -1711,7 +1711,7 @@ export default class GranGuerra extends Arena {
     this.gnome.hp = this.gnome.max;
     this.hornCd = 8;
     this.sync();
-    announce(g, '¡Ahí está el de verdad! Chiquito y rápido. El cuerno del medio llama al dragón (mantener F).', 6, true);
+    announce(g, '', 6, true);
   }
 
   gnomeAppear() {
@@ -2786,7 +2786,7 @@ export default class GranGuerra extends Arena {
     });
     this.trick = { t: 0, dmg: 0 };
     chiquiGiggle(g.audio, { pos: from, gain: 1.8, ref: 16, echo: 0.8 });
-    announce(g, '¡Se hizo cinco! El de verdad deja brasas donde pisa; los otros revientan en humo.', 5, true);
+    announce(g, '', 5, true);
   }
 
   // (anfitrión) se le terminó el truco
@@ -2874,7 +2874,7 @@ export default class GranGuerra extends Arena {
     this.shield.visible = true;
     for (const R of this.altRings) R.grp.visible = true;
     this.song?.level?.(1.3, 3);
-    announce(g, '¡No se deja! Se metió en un remolino y el Éter se rompe. Párense en los cuatro altares: cada uno trae a su caballero.', 7, true);
+    announce(g, '', 7, true);
   }
 
   // (anfitrión) rayos, yerba del cielo, pedazos, gravedad, y los altares
@@ -3033,7 +3033,7 @@ export default class GranGuerra extends Arena {
     this.pinT = g.time;
     this.setStage('pin');
     this.sync();
-    announce(g, '¡Los cuatro caballeros de la luz lo tienen agarrado! ¡El golpe final!', 5, true);
+    announce(g, '', 5, true);
   }
 
   zapFx(i, p) {

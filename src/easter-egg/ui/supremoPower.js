@@ -46,10 +46,13 @@ export default class SupremoPower {
   // dónde está en la piedra, root: donde van las reliquias sueltas, light: una
   // luz ya creada (o nada), now(): el reloj de la escena, later(s, fn),
   // shake(k), onBoom(): lo de cada escena en el estallido, kill: la ola deshace
-  // a los muertos del mapa (los mata el anfitrión) }
+  // a los muertos del mapa (los mata el anfitrión), bright: cuánto de los
+  // fogonazos y de la luz (1: todo; el armado del penal lo baja) }
   constructor(g, o) {
     this.g = g;
     this.o = o;
+    this.bright = o.bright ?? 1;
+    if (this.SF) this.SF.dim = this.bright;
     this.A = o.A;
     this.mate = o.mate;
     this.sup = o.sup;
@@ -68,9 +71,9 @@ export default class SupremoPower {
     // escondidas, para que se compilen con el resto)
     this.orbs = SIX.map((c) => {
       const ob = new THREE.Group();
-      const glow = spr(g.textures.dot, c, 2.2, 0);
+      const glow = spr(g.textures.dot, c, 2.2 * this.bright, 0);
       glow.scale.setScalar(1.5);
-      const star = spr(flareTexture(), c, 2.6, 0.5);
+      const star = spr(flareTexture(), c, 2.6 * this.bright, 0.5);
       star.scale.setScalar(2.4);
       ob.add(glow, star);
       ob.visible = false;
@@ -147,7 +150,7 @@ export default class SupremoPower {
     const top = O.to.clone().setY(O.to.y + 60);
     this.held(O.o.position, top, SIX[i], 0.5);
     this.held(O.o.position, top, 0xffffff, 0.13);
-    if (i % 2 === 0) g.fx.flash(tmpV.copy(base).setY(base.y + 1.5), SIX[i], 22, 0.5, 12);
+    if (i % 2 === 0) g.fx.flash(tmpV.copy(base).setY(base.y + 1.5), SIX[i], 22 * this.bright, 0.5, 12);
     for (let k = 0; k < 18; k++) {
       const a = (k / 18) * TAU;
       g.fx.add.spawn(base.x, base.y + 0.1, base.z, Math.cos(a) * (3 + Math.random() * 2), 0.5 + Math.random(), Math.sin(a) * (3 + Math.random() * 2), { color: SIX_RGB[i], size: 0.12, size1: 0, life: 0.6, drag: 2.5 });
@@ -182,7 +185,7 @@ export default class SupremoPower {
   // cuadro y las puntas pegadas a `a` y `b`, que se mueven).
   held(a, b, color, width) {
     const F = this.g.fx;
-    F.beam(a, b, { color, width, life: 1 });
+    F.beam(a, b, { color, width: width * (0.4 + 0.6 * this.bright), life: 1 });
     this.helds.push({ B: F.beams[F.beams.length - 1], a, b, k: 1 });
   }
 
@@ -234,7 +237,7 @@ export default class SupremoPower {
           tmpV.set(rnd(), Math.random() * 0.8 + 0.2, rnd()).normalize().multiplyScalar(3 + Math.random() * 5);
           g.fx.add.spawn(to.x, to.y + 0.3, to.z, tmpV.x, tmpV.y, tmpV.z, { color: j % 3 ? GOLD_RGB[j % 3] : SIX_RGB[i % 6], size: 0.2, size1: 0, life: 0.9, drag: 1.5 });
         }
-        if (i % 5 === 0) g.fx.flash(to, col, 40, 0.45, 26);
+        if (i % 5 === 0) g.fx.flash(to, col, 40 * this.bright, 0.45, 26);
       });
     }
     // los muertos del mapa se deshacen en luz cuando les llega (el anfitrión los mata)
@@ -255,14 +258,15 @@ export default class SupremoPower {
       tmpV.set(rnd(), flat ? rnd() * 0.25 : rnd() * 2, rnd()).normalize().multiplyScalar((flat ? 14 : 6) + Math.random() * 10);
       g.fx.add.spawn(M.x, M.y, M.z, tmpV.x, tmpV.y, tmpV.z, { color: i % 3 ? GOLD_RGB[i % 3] : SIX_RGB[i % 6], size: 0.2, size1: 0.01, life: 0.8 + Math.random() * 0.6, drag: 1.4 });
     }
-    g.fx.flash(M, 0xffc860, 140, 1.2, 40);
+    const K = this.bright;
+    g.fx.flash(M, 0xffc860, 140 * K, 1.2, 40);
     if (this.light) {
       this.light.color.set(0xffd070);
-      this.light.intensity = 60;
+      this.light.intensity = 60 * K;
     }
-    g.post.flash(0.7);
+    g.post.flash(0.7 * K);
     if (g.weather) {
-      g.weather.flash = 1;
+      g.weather.flash = K;
       g.weather.set?.('clear', false);
     }
     this.shake(1.6);
@@ -446,7 +450,7 @@ export default class SupremoPower {
     // (el brillo es hijo del mate: su tamaño en el mundo no crece con él)
     if (this.glow) {
       this.glow.scale.setScalar(glow / sc);
-      this.glow.material.opacity = Math.min(1, 0.6 + glow * 0.08);
+      this.glow.material.opacity = Math.min(1, 0.6 + glow * 0.08) * (0.4 + 0.6 * this.bright);
     }
     if (Math.random() < 0.8) g.fx.sparkle(M, [1, 0.85, 0.4], 2, 0.4 + glow * 0.05);
     // la luz del mate
@@ -454,7 +458,7 @@ export default class SupremoPower {
     if (L && this.stage !== 'done') {
       L.color.set(0xffc050);
       L.position.copy(M).setY(M.y + 0.3);
-      L.intensity += (Math.min(18, 4 + glow * 2.5) - L.intensity) * Math.min(1, dt * 3);
+      L.intensity += (Math.min(18, 4 + glow * 2.5) * this.bright - L.intensity) * Math.min(1, dt * 3);
     }
   }
 
@@ -500,6 +504,7 @@ export default class SupremoPower {
     for (const H of this.helds) H.B.life = 0;
     this.helds = [];
     this.SF?.clear();
+    if (this.SF) this.SF.dim = 1;
     this.sig = null;
     for (const O of this.orbs) {
       O.o.visible = false;

@@ -88,6 +88,10 @@ const PERK_TUNES = {
   // Stamin-Up (Trotadora): un malambo al galope (ta-ta-tán), en mi menor, que
   // se larga a correr escala arriba y termina arriba de todo
   stamin: { wave: 'square', bpm: 200, cutoff: 3000, notes: [[64, 0.5], [64, 0.25], [64, 0.25], [71, 0.5], [64, 0.5], [67, 0.5], [67, 0.25], [67, 0.25], [74, 0.5], [67, 0.5], [69, 0.5], [71, 0.5], [72, 0.5], [74, 0.5], [76, 0.5], [78, 0.5], [79, 1], [78, 0.5], [76, 0.5], [79, 0.5], [83, 2]] },
+  // el Catalizador Caótico (CaoSé, solo Eclipse): el tritono que late (re y
+  // sol sostenido), una escala de tonos enteros que se dispara, la raja que cae
+  // a los saltos... y la corona de oro: re mayor arriba de todo (el eclipse)
+  catal: { wave: 'sawtooth', bpm: 152, cutoff: 2300, notes: [[50, 0.5], [56, 0.5], [50, 0.5], [56, 0.5], [58, 0.25], [60, 0.25], [62, 0.25], [64, 0.25], [66, 0.25], [68, 0.25], [70, 0.25], [80, 0.5], [73, 0.25], [67, 0.25], [61, 0.25], [55, 0.5], [0, 0.5], [62, 0.5], [66, 0.5], [69, 0.5], [74, 2]] },
 };
 
 const BOX_TUNE = [[76, 1], [79, 1], [84, 1], [83, 0.5], [79, 0.5], [76, 1], [74, 1], [77, 1], [81, 1], [79, 2], [72, 1], [76, 2]];
@@ -1676,6 +1680,14 @@ export default class GameAudio {
         this.noise(o, { t: t + 0.45, dur: 0.75, type: 'highpass', freq: 3800, q: 0.5, gain: 0.3, attack: 0.25 });
         for (const d of [1.25, 1.42, 1.51]) this.tone(o, { t: t + d, dur: 0.05, freq: 900 + Math.random() * 500, freqEnd: 300, gain: 0.25, attack: 0.002 });
         break;
+      case 'catal':
+        // la Disformidad que chupa (de agudo a grave, con el aire que se va),
+        // el vidrio que se raja y la corona que suena como una campana de oro
+        this.noise(o, { t, dur: 0.6, type: 'bandpass', freq: 2600, freqEnd: 300, q: 1.2, gain: 0.5, attack: 0.25 });
+        this.tone(o, { t, dur: 0.65, type: 'sawtooth', freq: 220, freqEnd: 38, gain: 0.16, attack: 0.05 });
+        for (const d of [0.62, 0.68, 0.75]) this.noise(o, { t: t + d, dur: 0.03, type: 'highpass', freq: 4200, gain: 0.45, attack: 0.002 });
+        for (const [n, d] of [[74, 0.85], [78, 0.85], [81, 0.85], [86, 0.95]]) this.tone(o, { t: t + d, dur: 0.9, type: 'triangle', freq: midi(n), gain: 0.07, attack: 0.004, release: 0.8 });
+        break;
       case 'stamin': {
         // el galope que arranca y se va apurando, y el resoplido del que corre
         let tt = t;
@@ -1782,7 +1794,14 @@ export default class GameAudio {
   // cinemática ({ cine: true }); las demás se callan. Devuelve cuánto dura lo
   // que dice, sin contar la espera.
   // `cut`: a la frase la interrumpe lo que sigue (termina en seco, sin pausa).
-  say(text, speaker = 'abuelo', { cine = false, cut = false } = {}) {
+  // `low`: la charla de los gauchos entre ellos (ui/dialogos.js). Cualquier
+  // otra voz que llegue mientras dicen algo los calla (onYield avisa).
+  say(text, speaker = 'abuelo', { cine = false, cut = false, low = false } = {}) {
+    if (!low && this.lowEnd > this.ctx.currentTime) {
+      this.lowEnd = 0;
+      this.hush();
+      this.onYield?.();
+    }
     const pauses = (text.match(/[,.;:!?…]/g) || []).length;
     // en línea, lo de las cinemáticas dura lo mismo en todas las compus (el
     // guion de cada una avanza con lo que devuelve esto): murmullos con la
@@ -1807,6 +1826,7 @@ export default class GameAudio {
     if (this.voiceMode === 'off') {
       const d = talk(1);
       this.voiceEnd = now + wait + d;
+      if (low) this.lowEnd = this.voiceEnd;
       return d;
     }
     // en automática el Capataz murmura (con la voz del navegador pierde la gracia)
@@ -1853,13 +1873,16 @@ export default class GameAudio {
         };
         const d = talk(V.rate);
         this.voiceEnd = now + wait + d;
+        if (low) this.lowEnd = this.voiceEnd;
         this.voiceLater(wait, () => speechSynthesis.speak(u));
         return d;
       } catch {
         /* sigue con murmullos */
       }
     }
-    return this.murmur(text, speaker, now + wait, cut, key ? rng(key) : Math.random);
+    const d = this.murmur(text, speaker, now + wait, cut, key ? rng(key) : Math.random);
+    if (low) this.lowEnd = this.voiceEnd;
+    return d;
   }
 
   // Algo de voz para dentro de `secs` (se cancela con hush).
@@ -1897,6 +1920,7 @@ export default class GameAudio {
     }
     this.voiceSrc.clear();
     this.voiceEnd = 0;
+    this.lowEnd = 0;
   }
 
   // Arranca (o termina) una cinemática: se callan todos para darle lugar.
@@ -1943,6 +1967,8 @@ export default class GameAudio {
       caballeroHielo: { reverb: 1.5, gain: 1.4, filter: [{ type: 'highpass', freq: 140 }, { type: 'peaking', freq: 3600, q: 2.5, gain: 5 }] },
       // el Sargento, como desde abajo del agua: sin agudos y con un pico hueco en los graves
       sargento: { reverb: 0.6, gain: 1.3, filter: [{ type: 'lowpass', freq: 1900 }, { type: 'peaking', freq: 520, q: 1.4, gain: 5 }] },
+      // San Martín, de mando: sin graves y con presencia (se distingue de Fierro y del Gil)
+      ...(globalThis.__mduOldVoces10 === true ? {} : { sanmartin: { reverb: 0.5, gain: 1.2, filter: [{ type: 'highpass', freq: 170 }, { type: 'peaking', freq: 2400, q: 1.2, gain: 5 }] } }),
     }[speaker] || { reverb: 0.4, gain: 1 };
     // espera su turno (si alguien está hablando); el largo sale de los
     // segmentos, así se sabe antes de renderizar
@@ -2736,6 +2762,12 @@ export default class GameAudio {
         gate.gain.setValueAtTime(gate.gain.value, t);
         gate.gain.linearRampToValueAtTime(near ? 1 : 0, t + 0.4);
       }
+      // (2026-10-09, el usuario: "un sonidito como de moneda todo el tiempo" en
+      // la cinemática final de Eclipse, "en cualquier momento, medio raro": era
+      // este tic-tic, el del fogón del mapa, que sonaba con la oreja cerca aunque
+      // en pantalla no hubiera fuego. En las cinemáticas no crepita; el rumor
+      // sigue. globalThis.__mduOldCineCrackle: como antes)
+      if (this.cine && globalThis.__mduOldCineCrackle !== true) return;
       if (near && opts.crackle !== false && e && performance.now() - e.at < 500) this.noise(o, { dur: 0.03, type: 'highpass', freq: 2500, gain: 0.3 + Math.random() * 0.5 });
     }, 140);
     this.fire = fire;

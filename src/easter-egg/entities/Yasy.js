@@ -799,7 +799,6 @@ export default class Yasy {
       W.equipModel();
       W.updateHud();
     }
-    g.hud.subtitle('La hoz ahora es de oro', 2.5);
     this.sndGold();
   }
 

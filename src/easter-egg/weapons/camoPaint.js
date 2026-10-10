@@ -76,7 +76,7 @@ export function fbm(u, v, cx, cy, oct = 4, s = 0) {
 
 // Voronoi que empalma: [distancia al punto más cerca, al segundo, un número
 // de la celda, y el centro de la celda (x, y en celdas)].
-function voronoi(u, v, cx, cy, s = 0, jitter = 0.8) {
+export function voronoi(u, v, cx, cy, s = 0, jitter = 0.8) {
   const x = u * cx;
   const y = v * cy;
   const xi = Math.floor(x);

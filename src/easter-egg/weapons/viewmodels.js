@@ -133,7 +133,7 @@ function yerba(r, y, M) {
 }
 
 // Bombilla: caño, pico curvo y filtro. Devuelve el grupo y la punta.
-function bombilla({ len = 0.24, thick = 1, mat, tilt = VM_POSE.bombTilt, count = 1, spread = 0.02, bend = 0 }, M, y) {
+function bombilla({ len = 0.24, thick = 1, mat, tilt = VM_POSE.bombTilt, count = 1, spread = 0.02, bend = 0, filter = null }, M, y) {
   const g = new THREE.Group();
   const tips = [];
   const straws = [];
@@ -145,9 +145,10 @@ function bombilla({ len = 0.24, thick = 1, mat, tilt = VM_POSE.bombTilt, count =
     b.add(tube);
     // el filtro queda enterrado en la yerba: con las bombillas gruesas no crece
     // más que la boca (si no, al inspeccionar asoma media esfera por arriba)
-    const filter = new THREE.Mesh(new THREE.SphereGeometry(Math.min(r * 3, 0.017), 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat || M.silver);
-    filter.rotation.x = Math.PI;
-    b.add(filter);
+    // (filter: el radio, para los de cuello finito: si no, el filtro asoma por el costado)
+    const fil = new THREE.Mesh(new THREE.SphereGeometry(filter ?? Math.min(r * 3, 0.017), 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat || M.silver);
+    fil.rotation.x = Math.PI;
+    b.add(fil);
     // pico: tramo corto doblado
     const pico = new THREE.Group();
     pico.position.y = len;
@@ -505,7 +506,7 @@ export function registerMate(id, build) {
 // camoId: el camuflaje elegido en la armería (weapons/camos.js). Solo va sin
 // mejorar: al pasar por el Pack-a-Pava lo reemplaza el del mapa.
 export function buildMate(id, upgraded, T, hand = 'R', camoId = null) {
-  if (EXTRA[id]) return EXTRA[id](upgraded, T, hand);
+  if (EXTRA[id]) return EXTRA[id](upgraded, T, hand, camoId);
   if (id === 'hoz') return buildHoz(upgraded, T, camoId === 'oro');
   if (id === 'bombillon') return buildBombillon(T);
   const M = mats(T);
@@ -666,7 +667,9 @@ export function buildMate(id, upgraded, T, hand = 'R', camoId = null) {
       faja.rotation.x = Math.PI / 2;
       faja.position.y = top.y * 0.45;
       mate.add(faja);
-      bomb = { len: 0.16 };
+      // (la calabacita achicada es finita donde va el filtro: con el de
+      // siempre, 1,65 cm, asomaba por el costado; el usuario, 2026-10-08)
+      bomb = { len: 0.16, filter: 0.011 };
       break;
     }
     case 'mk3': {

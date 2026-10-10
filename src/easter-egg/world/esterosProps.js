@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mesh, boxGeo, cylGeo, addBuilders } from './props';
+import { mesh, boxGeo, cylGeo, addBuilders, mergeByMaterial } from './props';
 import { leafCrownGeometry } from './esterosGrass';
 import { SKY, MAP_W, MAP_H } from '../config/map';
 
@@ -255,27 +255,36 @@ const BUILDERS = {
   algarrobo(M, o, r) {
     const g = new THREE.Group();
     const s = o.s || 1;
-    stick(g, M.bark, [0, 0, 0], [0.3 * s, 2.2 * s, 0.1 * s], 0.75 * s, 0.55 * s, 9);
+    // (cada pieza anotada, userData.part: el final de El Pacto donde Gil se
+    // niega lo parte en pedazos, ui/esterosQuiebre.js. id: la rama grande, la
+    // del medio y la punta, "0.1.0")
+    const part = (m, p) => {
+      m.userData.part = p;
+      return m;
+    };
+    part(stick(g, M.bark, [0, 0, 0], [0.3 * s, 2.2 * s, 0.1 * s], 0.75 * s, 0.55 * s, 9), { kind: 'trunk' });
     // raíces
     for (let k = 0; k < 6; k++) {
       const a = (k / 6) * Math.PI * 2 + r() * 0.5;
-      stick(g, M.bark, [Math.cos(a) * 0.4 * s, 0.35 * s, Math.sin(a) * 0.4 * s], [Math.cos(a) * 1.6 * s, -0.1, Math.sin(a) * 1.6 * s], 0.28 * s, 0.08 * s, 6);
+      part(stick(g, M.bark, [Math.cos(a) * 0.4 * s, 0.35 * s, Math.sin(a) * 0.4 * s], [Math.cos(a) * 1.6 * s, -0.1, Math.sin(a) * 1.6 * s], 0.28 * s, 0.08 * s, 6), { kind: 'root' });
     }
     const tips = [];
     // (de dónde sale cada punta: las sogas cuelgan de ese último tramo)
     const froms = [];
-    const branch = (from, dir, len, rad, depth) => {
+    const ids = [];
+    const branch = (from, dir, len, rad, depth, id) => {
       const to = [from[0] + dir[0] * len, from[1] + dir[1] * len, from[2] + dir[2] * len];
-      stick(g, M.bark, from, to, rad, rad * 0.65, 6);
+      part(stick(g, M.bark, from, to, rad, rad * 0.65, 6), { kind: 'branch', id, depth });
       if (depth <= 0) {
         tips.push(to);
         froms.push(from);
+        ids.push(id);
         return;
       }
       for (let k = 0; k < 2; k++) {
         const d = [dir[0] + (r() - 0.5) * 0.9, dir[1] * 0.6 + (r() - 0.2) * 0.4, dir[2] + (r() - 0.5) * 0.9];
         const l = Math.hypot(...d);
-        branch(to, d.map((v) => v / l), len * 0.72, rad * 0.62, depth - 1);
+        branch(to, d.map((v) => v / l), len * 0.72, rad * 0.62, depth - 1, `${id}.${k}`);
       }
     };
     const top = [0.3 * s, 2.2 * s, 0.1 * s];
@@ -285,15 +294,15 @@ const BUILDERS = {
       const up = 0.5 + (o.alza?.[k] || 0);
       const n = Math.hypot(0.85, up) / Math.hypot(0.85, 0.5);
       const d = [(Math.cos(a) * 0.85) / n, up / n, (Math.sin(a) * 0.85) / n];
-      branch(top, d, (k === 0 ? 4.2 : 3) * s, 0.36 * s, 2);
+      branch(top, d, (k === 0 ? 4.2 : 3) * s, 0.36 * s, 2, `${k}`);
     }
     const crown = leafCrownGeometry();
-    for (const t of tips) {
-      if (r() < 0.45) continue;
+    tips.forEach((t, i) => {
+      if (r() < 0.45) return;
       const m = mesh(crown, M.leafDark || M.leaf, t[0], t[1] + 0.2, t[2]);
       m.scale.set(1.3 * s, 0.45 * s, 1.1 * s);
-      g.add(m);
-    }
+      g.add(part(m, { kind: 'crown', id: ids[i] }));
+    });
     // las sogas: de la rama más larga (la primera)
     const long = tips.slice(0, 4);
     long.forEach((t, k) => {
@@ -303,9 +312,20 @@ const BUILDERS = {
       // en una cuenta que no caía sobre ninguna rama)
       const f = froms[k];
       const p = [f[0] + (t[0] - f[0]) * 0.55, f[1] + (t[1] - f[1]) * 0.55, f[2] + (t[2] - f[2]) * 0.55];
-      stick(g, M.rope, p, [p[0], p[1] - len, p[2]], 0.02);
-      g.add(mesh(new THREE.TorusGeometry(0.14, 0.02, 5, 10), M.rope, p[0], p[1] - len - 0.12, p[2], 0, r() * 3, Math.PI / 2));
+      part(stick(g, M.rope, p, [p[0], p[1] - len, p[2]], 0.02), { kind: 'rope', id: ids[k], at: p });
+      g.add(part(mesh(new THREE.TorusGeometry(0.14, 0.02, 5, 10), M.rope, p[0], p[1] - len - 0.12, p[2], 0, r() * 3, Math.PI / 2), { kind: 'rope', id: ids[k], at: p }));
     });
+    // Un objeto propio (World.buildProps: dynamic.algarrobo) y no un pedazo de
+    // la malla de todo el mapa: el final lo esconde y pone sus pedazos. Se ve
+    // igual que fundido (una malla por material, sin el color por vértice);
+    // las piezas sueltas quedan en g.pieces. globalThis.__mduNoQuiebre: como
+    // antes (fundido con el mapa, y el final sin el algarrobo que se parte).
+    if (globalThis.__mduNoQuiebre !== true) {
+      g.name = 'algarrobo';
+      g.userData.dynamic = true;
+      g.pieces = [...g.children];
+      mergeByMaterial(g);
+    }
     return { obj: g, boxes: [[-0.8 * s, 0, -0.8 * s, 0.8 * s, 3 * s, 0.8 * s]] };
   },
 

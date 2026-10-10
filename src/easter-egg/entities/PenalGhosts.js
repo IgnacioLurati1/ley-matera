@@ -81,7 +81,6 @@ const NIC_LINES = {
   // (Cirilo ya salió)
   free: ['El Cirilo ya está afuera... Gracias, gaucho. Algún día me va a tocar a mí.'],
 };
-const NIC_TOLD = 'Nicanor contó dónde está la llave de Cirilo: colgada del cinturón del Alcaide. Hay que derretirle el llavero con ácido (Bombilla Gut + kit de la enfermería + encierro de los calabozos).';
 
 // la ronda del patio (una hora de sol por día, dando vueltas)
 const RONDA = { x: 66, z: 47, rx: 3, rz: 2.2, n: 30 };
@@ -455,7 +454,7 @@ export default class PenalGhosts {
   tellNicanor() {
     if (this.nicanor) return;
     this.nicanor = true;
-    this.egg.announce(NIC_TOLD, 7, true);
+    this.egg.announce('', 7, true);
     this.egg.netSync();
   }
 
@@ -581,10 +580,10 @@ export default class PenalGhosts {
     this.burst(i);
     g.net?.event('pee', { skb: i });
     const n = this.broken.filter(Boolean).length;
-    if (n < this.skulls.length) this.egg.announce(`Se quebró una calavera de ánima (${n}/${this.skulls.length}). Su alma se fue para la oficina del Alcaide.`, 4);
+    if (n < this.skulls.length) this.egg.announce(`Se quebró una calavera de ánima (${n}/${this.skulls.length}).`, 3);
     else {
       this.gut = 'ready';
-      this.egg.announce('Se quebraron las tres calaveras. En el escritorio del Alcaide apareció una Bombilla Gut: es del primero que la agarre.', 5, true);
+      this.egg.announce('', 5, true);
       g.hud.achievement?.('Las calaveras de ánima', 'Las rompiste con el cuchillo de Anacleto');
     }
     this.egg.netSync();
@@ -624,7 +623,6 @@ export default class PenalGhosts {
     this.gut = 'taken';
     g.weapons.give('gut');
     g.audio.powerupGrab();
-    g.hud.subtitle('La Bombilla Gut del Alcaide es tuya. No hay otra: la próxima sale de la caja.', 4);
   }
 
   // ---------------- red ----------------
@@ -688,7 +686,6 @@ export default class PenalGhosts {
         const len = d.length();
         if (len > 10 || d.dot(fwd) / len < 0.8) continue;
         this.hinted = true;
-        g.hud.subtitle('Una calavera de ánima... Con el cuerpo no se ve, pero el cuchillo de Anacleto la encuentra igual. Acordate dónde está.', 6);
         break;
       }
     }

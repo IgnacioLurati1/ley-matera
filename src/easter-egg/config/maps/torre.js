@@ -628,10 +628,11 @@ export function challenge() {
     // sin transmisiones (nadie cuenta nada); el escudo y los frascos quedan
     ACT: { ...ACT, radios: [] },
     // (la caja trae los mates de todos los mapas, menos los especiales de otro
-    // mapa: world/Interactables.js inBox)
+    // mapa: world/Interactables.js inBox; el Caótico y la Llamarada, solo en
+    // la caja de su mapa: el usuario, 2026-10-08)
     // (y los potenciadores: balas infinitas y botas; en lugar del Admin Mate,
     // el especial de cualquier mapa: entities/Powerups.js)
-    FEATURES: { ...FEATURES, egg: 'reto', boxAll: { skip: ['gut'] }, pups: ['infinito', 'botas'], anySpecial: true },
+    FEATURES: { ...FEATURES, egg: 'reto', boxAll: { skip: ['gut', 'caotico', 'llamarada'] }, pups: ['infinito', 'botas'], anySpecial: true },
     EE: {
       // (towerDecor deja libres los dos lugares)
       altar,

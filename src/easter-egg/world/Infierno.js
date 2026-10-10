@@ -583,7 +583,6 @@ export default class Infierno extends Arena {
     this.setWard(false);
     this.landFx(F.land.x, F.land.z);
     this.send({ land: [+F.land.x.toFixed(2), +F.land.z.toFixed(2)] });
-    this.shout('¡Francisco se vino abajo! Está atontado: ¡ahora es cuando!');
     g.powerups.bag.push('maxammo');
     g.powerups.drop(tmpV.set(this.A.x + (Math.random() - 0.5) * 6, this.A.y || 0, this.A.z + 3 + Math.random() * 3).clone(), true);
     this.setStage(next);
@@ -597,7 +596,6 @@ export default class Infierno extends Arena {
         g.fx.sparkle(new THREE.Vector3(b.pos.x, (b.baseY || 0) + 3, b.pos.z), [1, 0.85, 0.3], 80, 2);
         g.audio.bossArrive();
         g.say('francisco', '¿Creen que me pueden ganar? Tengo el mate que no se termina nunca. Un sorbo... y soy eterno.', 'boss');
-        this.shout('¡Francisco tomó del mate supremo!');
       });
       g.later(11, () => this.active && g.say('fierro', '¡Ojo, que sube el mate cocido! No se queden en la orilla.', 'npc'));
     } else {
@@ -606,7 +604,6 @@ export default class Infierno extends Arena {
         g.post?.flash(1.4);
         g.audio.bossArrive();
         g.say('francisco', '¡Basta! Si el mate no es mío... no va a ser de nadie.', 'boss');
-        this.shout('¡Francisco, el Eterno!');
       });
     }
   }
@@ -1052,7 +1049,6 @@ export default class Infierno extends Arena {
         if (k < 0.1 && !this.said.last) {
           this.said.last = true;
           g.say('francisco', 'No... no puede ser. ¡El mate es mío! ¡Es mío!', 'boss');
-          this.shout('¡A Francisco le queda un suspiro!');
         }
         break;
       default:
@@ -1085,7 +1081,6 @@ export default class Infierno extends Arena {
     if (this.specialT > 0) return;
     this.specialT = this.stage === 'p3' ? 12 : 15;
     const n = 2 + Math.min(4, (g.rounds?.players || 1) - 1);
-    this.shout('¡Francisco llama a los bichos de todos los mapas!');
     for (let i = 0; i < n; i++) g.later(i * 0.5, () => g.zombies.spawnDog(1800, i % 2 ? 'horse' : 'dog'));
   }
 

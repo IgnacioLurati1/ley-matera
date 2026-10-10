@@ -3,7 +3,8 @@ import { buildTextures } from './core/textures';
 import { paintInWorkers } from './core/texturePool';
 import { setPapMap } from './weapons/camos';
 import { eclipseBake } from './fx/eclipseMusic';
-import { sizeCull } from './core/sizeCull';
+import { sizeCull, setFarHook } from './core/sizeCull';
+import { eclipseLejos } from './world/eclipseLejos';
 import { drawCost } from './core/drawCost';
 import { devKeys } from './core/devKeys';
 import { retireScene } from './core/sceneFlush';
@@ -12,6 +13,7 @@ import './core/matrixCache';
 import GameAudio from './core/audio';
 import Input from './core/input';
 import World from './world/World';
+import { ceilAt } from './world/Levels';
 import Navigation from './world/Navigation';
 import Barriers from './world/Barriers';
 import Interactables from './world/Interactables';
@@ -70,6 +72,7 @@ import EclipseWeather from './world/eclipseAtmos';
 import Intro from './ui/Intro';
 import Session from './net/Session';
 import Avatars from './net/Avatars';
+import { gilVincha } from './net/gilLook';
 import Weapons from './weapons/Weapons';
 import { weaponTour } from './weapons/weaponTour';
 import Empanadas from './entities/Empanadas';
@@ -78,6 +81,8 @@ import { scoreboard } from './ui/Scoreboard';
 import Menus from './ui/Menus';
 import Levels from './ui/Levels';
 import LogrosTracker from './entities/logrosTracker';
+import Dialogos from './ui/dialogos';
+import MenuAmbience from './ui/menuAmbience';
 import { addPesos } from './core/progress';
 import Arrival, { prewarmMaps, compile as rewarmShaders, warmWorld } from './ui/Arrival';
 import TitleIntro from './ui/TitleIntro';
@@ -88,6 +93,7 @@ import { setBinds, remapTable } from './core/controls';
 import { START_POINTS, ZOMBIE_DAMAGE } from './config/rules';
 import { START_ZONE, ZONES, FEATURES, FIRES, TITLE_CAM, TEXT, MAPS, useMap, modeOf } from './config/map';
 import { PERKS } from './config/perks';
+import { roomEnvAsync } from './core/roomEnv';
 
 const SETTINGS_KEY = 'lm-zombies-settings';
 const BEST_KEY = 'lm-zombies-best';
@@ -168,9 +174,11 @@ const store = {
 };
 
 export default class Game {
-  constructor(root, { onExit, signal } = {}) {
+  constructor(root, { onExit, signal, logo = null } = {}) {
     this.root = root;
     this.onExit = onExit;
+    // el logo de Luta Studios que tapa la carga (ui/StudioLogo; puede faltar)
+    this.logo = logo;
     // dónde encontrarse para armar salas (lo pone el sitio; puede faltar)
     this.signal = signal || null;
     this.net = null;
@@ -206,6 +214,14 @@ export default class Game {
       else this.settings.qualityMode = 'manual';
     }
     if (!MAPS[this.settings.map]) this.settings.map = 'molino';
+    // al abrir el juego se carga siempre el molino, el más rápido de armar
+    // (el usuario, 2026-10-09): los demás se eligen después en el título.
+    // (las pruebas automáticas entran al mapa de sus ajustes, salvo con
+    // window.__mduBootMolino = true)
+    if (!navigator.webdriver || globalThis.__mduBootMolino) {
+      this.settings.map = 'molino';
+      this.settings.mode = 'story';
+    }
     // en qué mapa se juega (en línea lo decide el anfitrión) y en qué modo
     // (la torre tiene Historia y Challenge; los demás, solo el de siempre)
     this.mapId = this.settings.map;
@@ -234,7 +250,9 @@ export default class Game {
     }
 
     // Renderizador: pedimos la placa de video de alto rendimiento (dedicada).
-    const canvas = document.createElement('canvas');
+    // (con el logo de Luta Studios el lienzo ya viene con su contexto creado:
+    // ui/StudioLogo gameCanvas, que pide estos mismos atributos)
+    const canvas = this.logo?.canvas || document.createElement('canvas');
     canvas.className = 'mdu-canvas';
     root.prepend(canvas);
     this.canvas = canvas;
@@ -250,6 +268,9 @@ export default class Game {
     this.gpu = this.detectGpu();
     if (this.settings.qualityMode === 'auto') this.settings.quality = this.autoTier();
     this.perf = { t: 0, n: 0, warm: false };
+    // los reflejos de los mates (core/roomEnv): se compilan en paralelo
+    // mientras carga lo demás, así armarlos no traba la placa (ni el logo)
+    const roomEnvP = roomEnvAsync(r).catch(() => null);
     // los tirones (core/hitchLog.js; Alt+H los muestra)
     this.hitch = new HitchLog(this);
 
@@ -259,6 +280,8 @@ export default class Game {
     this.audio = new GameAudio();
     // la música de las escenas (entradas, jefes, cinemáticas, muerte)
     this.music = new Music(this);
+    // el ambiente del mapa elegido mientras se está en el menú (ui/menuAmbience.js)
+    this.menuAmb = new MenuAmbience(this.audio);
     this.audio.setVolumes(this.settings);
     this.audio.setMix(this.settings);
     this.audio.voiceMode = this.settings.voiceMode;
@@ -289,7 +312,14 @@ export default class Game {
     root.insertBefore(this.hud.root, this.menus.loading);
 
     await step(0.3, TEXT.loading);
+    this.roomEnv = await roomEnvP;
     this.buildScene();
+    // Lo que sigue (posproceso y compilar los shaders del mapa) ocupa la placa
+    // en tandas largas, y el logo de Luta Studios (ui/StudioLogo, un lienzo
+    // en otro hilo) espera en la misma fila para mostrar cada cuadro: se
+    // quedaba quieto hasta 0,5 s justo al apagarse. Se arranca cuando el logo
+    // se apagó; hasta acá todo cargó detrás de él.
+    if (this.logo && !this.logo.over && globalThis.__mduLogoNoWait !== true) await this.logo.clear;
     await step(0.38, 'Despertando a los peones…');
     this.post = new PostFX(this.renderer, this.scene, this.camera, this.weapons.vmScene, this.weapons.vmCamera, this);
     this.post.setUpscale?.(this.settings.upscale, this.settings.sharp, this.settings.fsrPct);
@@ -305,6 +335,13 @@ export default class Game {
     this.arrival = new Arrival(this);
     await prewarmMaps(this, step, 0.42, 0.99);
     await step(1, 'Listo.');
+    // el logo de Luta Studios: la carga corrió detrás. Si terminó antes que
+    // el logo, se espera a que se vaya y se ve la barra llena un momento.
+    if (this.logo && !this.logo.over) {
+      await this.logo.done;
+      await new Promise((r) => setTimeout(r, 450));
+    }
+    this.logo = null;
     // la entrada del menú principal (ui/TitleIntro): tapa de negro antes del título
     this.titleIntro = new TitleIntro(this);
     await this.titleIntro.cover();
@@ -662,6 +699,8 @@ export default class Game {
     this.yasy = this.matorral ? new Yasy(this) : null;
     // el paso previo del Pack-a-Pava (uno distinto en cada mapa)
     this.papq = new PapQuest(this);
+    // los gauchos que hablan en la partida (ui/dialogos.js)
+    this.dlg = new Dialogos(this);
     // la cinemática de entrada (arma sus muñecos ya, para que se compilen en la carga)
     this.intro?.dispose();
     this.intro = new Intro(this);
@@ -722,6 +761,11 @@ export default class Game {
       },
       { camera: this.camera, rooms: this.world.tower ? [] : rooms },
     );
+    // Eclipse: las otras islas, cada una en una o dos mallas juntas (world/eclipseLejos.js)
+    setFarHook(null);
+    // (las islas dormidas engancharon el dibujo del mapa anterior: se sueltan)
+    this.lejos?.unhook?.();
+    this.lejos = this.mapId === 'eclipse' ? eclipseLejos(this) : null;
   }
 
   // Saca lo que quedó de la animación de fin de partida.
@@ -859,7 +903,11 @@ export default class Game {
     this.audio.setCritical(false);
     this.audio.setUnder(false);
     this.weather?.stopAudio();
-    this.buildScene();
+    // (Eclipse: rearmar el mapa son ~4 s; con la pantalla quieta parecía
+    // colgado. Se arma tapado por la postal, como al elegirlo en el título:
+    // Arrival.switchMap, más abajo. agente rend; __mduNoEclExitCover: como antes)
+    const cover = this.mapId === 'eclipse' && globalThis.__mduNoEclExitCover !== true && !!this.arrival;
+    if (!cover) this.buildScene();
     this.state = 'title';
     // (el mate en la mano no va en el menú: saliendo a mitad de una recarga
     // quedaba el termo en el medio del título; el usuario 2026-10-05)
@@ -872,6 +920,7 @@ export default class Game {
     this.menus.showClick(false);
     this.menus.show('title');
     if (message) this.hud.subtitle(message, 5);
+    if (cover) this.arrival.switchMap();
   }
 
   // Desde la pausa, jugando solo: se deja la partida y se vuelve al menú del
@@ -913,7 +962,8 @@ export default class Game {
     // Ojos de Vidrio (una empanada): no ven a nadie
     if (this.emp?.blind()) return null;
     // (maizIn: escondido en una mata del Maizaster, entities/maizaster.js)
-    if (!this.net) return this.player.canBeHit() && !this.player.maizIn && (wet || !submerged(this.player)) ? this.player : null;
+    // (ee.noTarget: el que viaja en el ascensor del Monumento, entities/MonumentoEgg.js)
+    if (!this.net) return this.player.canBeHit() && !this.player.maizIn && !this.ee?.noTarget?.(this.player, y) && (wet || !submerged(this.player)) ? this.player : null;
     return this.net.nearest(x, z, y, wet);
   }
 
@@ -967,7 +1017,9 @@ export default class Game {
             ? 'Modo prueba: 100.000 puntos, los cuatro mates templados y la vanguardia vencida. El dragón te espera en la cumbre: jurá (mantener F) y a la Gran Guerra.'
             : FEATURES.esteros
               ? 'Modo prueba: 100.000 puntos, todo abierto y el Liquidificador en la mano. El Luisón viene al algarrobo: matalo y Gil decide.'
-              : 'Modo prueba: 100.000 puntos, todo abierto. El Abuelo te espera en la capilla con el último mate.';
+              : FEATURES.eclipse
+                ? 'Modo prueba: 100.000 puntos, todo abierto y el Desgarrador del Eclipse en la mano.'
+                : 'Modo prueba: 100.000 puntos, todo abierto. El Abuelo te espera en la capilla con el último mate.';
     this.hud.subtitle(msg, 5);
   }
 
@@ -1039,6 +1091,7 @@ export default class Game {
     this.weapons.reset();
     this.player.reset();
     this.emp?.newRun();
+    this.dlg?.reset();
     // en línea cada uno arranca al lado del otro, no encimados
     const id = this.net?.id || 0;
     if (id > 0) this.spawnBeside(id);
@@ -1295,6 +1348,8 @@ export default class Game {
     this.endBody = new Avatars(this, this.net);
     const body = { id: this.net?.id || 0, name: '', noTag: true, corpse: true, shield: !!p.shield, pos: new THREE.Vector3(p.pos.x, y, p.pos.z), yaw: p.yaw, pitch: 0, speed: 0 };
     this.endBody.add(body);
+    // (el que hace de Gil, con su vincha y no la bandana de los compañeros: net/gilLook.js)
+    if (this.ee?.isGil?.() && globalThis.__mduNoBandanas !== true) gilVincha(this.endBody.list.get(body.id));
     // tirado a su manera, según su carácter en la cuadrilla (ui/deathPose.js)
     this.endPose = deathPose(this, this.endBody, body.id, body);
     this.hud.show(false);
@@ -1380,13 +1435,13 @@ export default class Game {
     this.stats.round = this.rounds.round;
     this.stats.won = true;
     // ganar es terminar el easter egg del mapa: queda anotado (core/eggs.js);
-    // con el sexto, el super easter egg (lo muestra la pantalla del final)
+    // con el último, el super easter egg (lo muestra la pantalla del final)
     this.stats.easterEgg = true;
     const was = isKnight();
     // (el Challenge de la torre no cuenta: su final es la escalera al cielo)
     if (!this.cheated && this.modeNow === 'story' && markEgg(this.mapId) && !was && isKnight()) this.stats.knight = true;
     // la experiencia: el easter egg (el Challenge de la torre, menos) y, con
-    // los seis, el super easter egg (una sola vez)
+    // todos, el super easter egg (una sola vez)
     this.levels.egg({ challenge: this.modeNow !== 'story' });
     if (this.modeNow === 'story' && eggsDone().length === eggsTotal()) this.levels.superEgg();
     if (this.stats.round > this.best) {
@@ -1604,15 +1659,52 @@ export default class Game {
     // congelaba más de un segundo.
     if (this.state === 'playing' || this.state === 'paused') {
       const tok = (this.rewarmTok = (this.rewarmTok || 0) + 1);
-      setTimeout(() => {
-        if (tok === this.rewarmTok && (this.state === 'playing' || this.state === 'paused'))
-          rewarmShaders(this)
-            .then(() => {
-              // (y el mapa entero, con las variantes de la calidad nueva)
-              if (tok === this.rewarmTok && (this.state === 'playing' || this.state === 'paused')) warmWorld(this);
-            })
-            .catch(() => {});
-      }, 250);
+      // Y hasta que termine no se dibuja (ni corre la partida, solo): el primer
+      // cuadro con la calidad nueva compilaba de a uno, esperando cada uno, los
+      // materiales a la vista (en ANGLE ~350 ms cada uno: 19 s en el castillo,
+      // 20-56 s en Eclipse, que el usuario vio como "se crashea"). De fondo van
+      // todos a la vez: 2-4 s, con un aviso. (globalThis.__mduNoQualityHold: como antes)
+      const hold = globalThis.__mduNoQualityHold !== true;
+      if (hold) this.qualityHold(true);
+      // (las lámparas prendidas, ya con la cantidad de la calidad nueva: si no,
+      // se compilaba con la cuenta vieja y el primer cuadro recompilaba igual)
+      if (hold && this.world) {
+        this.world.lightT = 0;
+        this.world.cullLights?.(0);
+        this.world.syncLights?.(this.camera);
+      }
+      setTimeout(
+        () => {
+          if (tok === this.rewarmTok && (this.state === 'playing' || this.state === 'paused'))
+            rewarmShaders(this)
+              .then(() => {
+                // (y el mapa entero, con las variantes de la calidad nueva)
+                if (tok === this.rewarmTok && (this.state === 'playing' || this.state === 'paused')) warmWorld(this);
+              })
+              .catch(() => {})
+              .finally(() => {
+                if (tok === this.rewarmTok) this.qualityHold(false);
+              });
+          else if (tok === this.rewarmTok) this.qualityHold(false);
+        },
+        hold ? 0 : 250,
+      );
+    }
+  }
+
+  // El aviso mientras se compila la calidad nueva (applyQuality); con él
+  // prendido el bucle no dibuja (y solo, tampoco corre la partida).
+  qualityHold(on) {
+    this.qHold = on;
+    if (on && !this.qHoldEl) {
+      const el = document.createElement('div');
+      el.textContent = 'Aplicando gráficos…';
+      el.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:60;padding:10px 18px;border-radius:6px;background:rgba(0,0,0,.72);color:#f2e6c8;font:600 16px/1.2 system-ui,sans-serif;letter-spacing:.04em;pointer-events:none';
+      (this.root || document.body).appendChild(el);
+      this.qHoldEl = el;
+    } else if (!on && this.qHoldEl) {
+      this.qHoldEl.remove();
+      this.qHoldEl = null;
     }
   }
 
@@ -1673,17 +1765,46 @@ export default class Game {
       }
     }
     this.music?.tick(dt);
+    this.menuAmb?.tick(this);
+    // (Eclipse Matero: el ambiente de cada isla, fx/eclipseAmbience.js; existe
+    // si lo armó entities/EclipseEgg.js, y se calla solo fuera de la partida)
+    this.audio?.eclAmb?.tick(dt);
     // un menú con escena 3D propia (la pulpería, la armería): se dibuja ella
     // sola, sin el mundo de atrás (menus.stage = { render(renderer, dt) })
     const stage = this.state === 'title' ? this.menus?.stage : null;
     if (stage) stage.render(this.renderer, dt);
     else if (this.state === 'title') this.titleCam(dt);
-    else if (this.state === 'playing' || this.state === 'over') this.update(dt);
+    else if ((this.state === 'playing' || this.state === 'over') && !(this.qHold && !this.net)) this.update(dt);
     // las cinemáticas de la granja y el penal pasan adentro del mundo
     else if (this.state === 'won' && this.cine?.update) this.cine.update(dt);
-    if (!stage) this.render(dt);
+    this.nearPlane();
+    if (!stage && !this.qHold && !this.switchHold) this.render(dt);
     this.hitch?.end();
     this.input.endFrame();
+  }
+
+  // (2026-10-08, el usuario: "el castillo titila en el menú", "los bordes que
+  // tienen barandas siguen titilando cuando se ven de lejos". Eclipse ve islas
+  // a 100-150 m y con el plano cercano en 0,05 la profundidad allá distingue
+  // ~2 cm: paredes y techos a 3-9 cm (molino: statics contra los techos) se
+  // pisaban. En Eclipse: 1 m en el menú (no hay nada cerca de la cámara) y
+  // 0,12 jugando (la esquina del plano queda a 0,22 m, adentro del radio del
+  // jugador, 0,36: no corta paredes; con un techo a menos de 0,16 m de los
+  // ojos —saltando bajo un techo bajo— baja hasta 0,05 para no verlo de
+  // adentro: el plano llega 1,25 veces más arriba que su distancia).
+  // globalThis.__mduOldEclNear: siempre 0,05)
+  nearPlane() {
+    const c = this.camera;
+    if (!c) return;
+    let n = this.mapId !== 'eclipse' || globalThis.__mduOldEclNear === true ? 0.05 : this.state === 'title' ? 1 : 0.12;
+    if (n === 0.12 && this.world?.levels) {
+      const room = ceilAt(this.world, Math.floor(c.position.x), Math.floor(c.position.z)) - c.position.y;
+      if (room < 0.16) n = Math.max(0.05, Math.round((room - 0.01) / 1.25 / 0.01) * 0.01);
+    }
+    if (c.near === n) return;
+    c.near = n;
+    c.updateProjectionMatrix();
+    if (this.post?.taa) this.post.taa.valid = false;
   }
 
   // Cámara lenta recorriendo el patio detrás del menú.
@@ -1783,6 +1904,7 @@ export default class Game {
     A.cat = null;
     this.ee.update(dt);
     this.papq?.update(dt);
+    this.dlg?.update(dt);
     A.cat = 'world';
     this.world.update(dt, this.time);
     this.ambience.update(dt);
@@ -1804,7 +1926,10 @@ export default class Game {
     const w = this.weapons;
     const st = w.stats;
     const adsFov = st?.scope ? st.adsFov || 22 : this.baseFov * 0.8;
-    const targetFov = this.intro?.active ? this.intro.fov : this.baseFov + (adsFov - this.baseFov) * w.adsT + (this.player.sprinting ? 4 : 0);
+    // (las cinemáticas del easter egg que piden su lente —ui/EclipseEnding
+    // wantFov—: si no, el de la partida les pisaba cada toma a ~74°)
+    const cineFov = this.ee?.scene?.cine?.wantFov;
+    const targetFov = this.intro?.active ? this.intro.fov : cineFov > 0 ? cineFov : this.baseFov + (adsFov - this.baseFov) * w.adsT + (this.player.sprinting ? 4 : 0);
     if (Math.abs(this.camera.fov - targetFov) > 0.05) {
       this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 14);
       this.camera.updateProjectionMatrix();

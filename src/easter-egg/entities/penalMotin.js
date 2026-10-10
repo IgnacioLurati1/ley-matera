@@ -1340,7 +1340,6 @@ export default class PenalMotin {
     this.claimed = [false, false, false, false];
     this.startFx(false);
     g.later(2.1, () => this.active && g.say('alcaide', LINES.start));
-    g.later(3.8, () => this.active && this.ee.announce('Tres tableros quemados: dales corriente desde el gaucho life', 4));
     this.sync(true);
   }
 
@@ -1416,7 +1415,7 @@ export default class PenalMotin {
     this.applyFin(n);
     if (n === 3) {
       this.openFx();
-      g.later(3, () => this.ee.announce('El depósito del pabellón se abrió: buscá tu casillero', 5, true));
+      g.later(3, () => this.ee.announce('', 5, true));
     } else if (n > 0) {
       // un power-up por tablero, cerca de los que quedaron de pie
       const c = this.teamCenter(tmpW);

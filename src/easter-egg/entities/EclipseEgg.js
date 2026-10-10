@@ -10,7 +10,14 @@ import Guadana from './eclipse/Guadana';
 import Temple from './eclipse/Temple';
 import Desgarro10 from './eclipse/Desgarro10';
 import SanLorenzo from './eclipse/SanLorenzo';
+import Trampas from './eclipse/Trampas';
+import Mates from './eclipse/Mates';
+import Disformidad from './eclipse/Disformidad';
+import Rincones from './eclipse/Rincones';
+import Sombrero from './eclipse/Sombrero';
 import { Marker, HoldZone, myId, isHost, players, dist2 } from './eclipse/common';
+import { PrimerMateCine, CruceCine, buildCruceRift, cruceOn } from '../ui/eclipseCruce';
+import { eclAmbience } from '../fx/eclipseAmbience';
 
 // El easter egg de Eclipse Matero: "El Primer Mate".
 //
@@ -23,8 +30,9 @@ import { Marker, HoldZone, myId, isHost, players, dist2 } from './eclipse/common
 //       (entities/eclipse/Guadana.js).
 //  II.  Templar la guadaña: "El Temple de los Cuatro Filos" (entities/eclipse/
 //       Temple.js), que da el Desgarrador del Eclipse y la Furia Cósmica.
-//  III. Cebar el Primer Mate en el fogón del claro: el mate muestra dónde
-//       cortar; con la Furia, el tajo abre el desgarro a San Lorenzo (1813).
+//  III. Cebar el Primer Mate en el fogón del claro: el vapor abre un desgarro
+//       a San Lorenzo (1813) y se cruza (ui/eclipseCruce.js; antes, el mate
+//       mostraba dónde cortar y el tajo de la Furia abría la arena).
 //       La pelea final y el final van aparte (ui/SanLorenzo, ui/EclipseEnding).
 // Guía: la voz de Martín Fierro, en subtítulos cortos (qué + dónde).
 // Los portales del desgarro que unen las islas: world/eclipsePortals.js. Sin
@@ -76,6 +84,16 @@ export default class EclipseEgg {
     game.defense = this.d10;
     // la pelea final: San Lorenzo (entities/eclipse/SanLorenzo.js)
     this.arena = new SanLorenzo(this);
+    // las trampas del desgarro, una por isla (entities/eclipse/Trampas.js; v5)
+    this.trampas = new Trampas(this);
+    // los siete mates perdidos, uno por isla (entities/eclipse/Mates.js; v5)
+    this.mates = new Mates(this);
+    // (mundo, it. 4) la Disformidad aprieta: entrar es hostil (entities/eclipse/Disformidad.js)
+    this.disf = new Disformidad(this);
+    // (mundo, it. 4) cosas para hacer en las zonas que no tenían nada (entities/eclipse/Rincones.js)
+    this.rinc = new Rincones(this);
+    // el chambergo del matrero: el sombrero del equipo (entities/eclipse/Sombrero.js; 2026-10-10)
+    this.somb = new Sombrero(this);
     // el fogón: la voz de Fierro y donde se ceba
     const f = EE.fogon || [140.5, 158.5];
     const w = game.world;
@@ -104,8 +122,39 @@ export default class EclipseEgg {
         return true;
       },
     });
+    // (qa-flujo) preguntarle a Fierro en el fogón: lo que sigue, qué + dónde.
+    // Local (cada uno escucha lo suyo); con todo junto manda el de cebar.
+    this.fierroIt = game.interact.add({
+      kind: 'eclipse-fierro',
+      local: true,
+      pos: this.fogon.clone().add(V(0, 1, 0)),
+      radius: 2.4,
+      prompt: () => (this.done || this.cebado || this.ready() ? null : { text: 'escuchar a Fierro', noCost: true }),
+      cost: () => 0,
+      use: () => {
+        if (this.done || this.cebado || this.ready()) return false;
+        this.fierro(true);
+        return true;
+      },
+    });
+    // (ITERACION-7 C6) cruzar el desgarro a San Lorenzo: con el aviso
+    this.cruceIt = game.interact.add({
+      kind: 'eclipse-cruce',
+      pos: this.cutAt.clone().add(V(0, 1.2, 0)),
+      radius: 3.2,
+      prompt: () => (this.canCross() ? { text: 'cruzar a San Lorenzo: la batalla final (no hay vuelta)', noCost: true, hold: true } : null),
+      cost: () => 0,
+      holdTime: 1.5,
+      use: () => {
+        if (!this.canCross()) return false;
+        this.sendEgg({ a: 'cruzar' });
+        return true;
+      },
+    });
+    this.rift = null;
     this.unlisten = null;
     this.fierroT = 0;
+    this.fierroI = 0;
   }
 
   // ---------------- lo que el juego llama ----------------
@@ -127,11 +176,14 @@ export default class EclipseEgg {
     for (const s of Object.values(this.steps)) s.onKill?.(z, info);
     // los ojos de la Disformidad (world/papDesgarro.js)
     this.g.papq?.termas?.onKill?.(z, info);
+    this.somb?.onKill(z, info);
   }
 
   // los tiros (Weapons): la arena de San Lorenzo los mira (amarras, El Eclipse)
   onShot(o, d, t) {
     this.arena?.onShot?.(o, d, t);
+    this.rinc?.onShot?.(o, d, t);
+    this.somb?.onShot?.(o, d, t);
   }
 
   // Game la llama mientras hay una escena del easter egg (this.scene): la cámara
@@ -154,6 +206,10 @@ export default class EclipseEgg {
     if (m?.k === 'egg' && isHost(this.g)) this.sendEgg(m);
     if (m?.k === 'd10') this.d10.onGuest?.(m, from);
     if (m?.k === 'sl') this.arena.onGuest?.(m, from);
+    if (m?.k === 'trap') this.trampas.onGuest?.(m, from);
+    if (m?.k === 'mates') this.mates.onGuest?.(m, from);
+    if (m?.k === 'rinc') this.rinc.onGuest?.(m, from);
+    if (m?.k === 'somb') this.somb.onGuest?.(m, from);
   }
 
   // ---------------- los personajes ----------------
@@ -235,6 +291,9 @@ export default class EclipseEgg {
     if (this.got_[k]) return;
     this.got_[k] = 1;
     const g = this.g;
+    // (el anfitrión manda el estado entero: los atajos de Alt+I marcan pasos sin
+    // pasar por la red, y así los invitados igual se enteran)
+    if (isHost(g) && g.net) g.net.event('ee', this.fullState());
     if (NAME[k] && INGREDIENTES.includes(k)) g.hud.toast(`${NAME[k]}: ${INGREDIENTES.filter((x) => this.got_[x]).length} de ${INGREDIENTES.length}`);
     if (k === 'guadana') this.steps.temple.start();
     if (this.ready()) {
@@ -242,7 +301,9 @@ export default class EclipseEgg {
       g.hud.subtitle('Todo junto. El fogón del claro: que el Gil cebe el Primer Mate.', 5);
     } else if (INGREDIENTES.includes(k)) {
       const left = INGREDIENTES.filter((x) => !this.got_[x]);
-      if (left.length <= 2) g.hud.subtitle(`Falta${left.length > 1 ? 'n' : ''}: ${left.map((x) => NAME[x]).join(' y ')}.`, 4);
+      // (qa-flujo: con los seis y sin el temple decía "Falta: .")
+      if (!left.length) g.hud.subtitle('Los seis, juntos. Falta templar la guadaña.', 4);
+      else if (left.length <= 2) g.hud.subtitle(`Falta${left.length > 1 ? 'n' : ''}: ${left.map((x) => NAME[x]).join(' y ')}.`, 4);
     }
   }
 
@@ -250,6 +311,7 @@ export default class EclipseEgg {
   onTotality() {
     this.totality = true;
     this.g.defense?.forceEarly?.();
+    if (isHost(this.g) && this.g.net) this.g.net.event('ee', this.fullState());
   }
 
   // Un encierro: más muertos por un rato (el anfitrión; las rondas siguen)
@@ -270,6 +332,15 @@ export default class EclipseEgg {
   applyEgg(m) {
     const g = this.g;
     if (m.a === 'cebar') {
+      if (cruceOn()) {
+        if (this.cebado) return;
+        this.cebado = 1;
+        this.mF.set(false);
+        g.world.eclipse?.set?.(1, 2);
+        this.step = 3;
+        this.playPrimerMate();
+        return;
+      }
       this.cebado = 1;
       this.mF.set(false);
       this.mC.set(true);
@@ -288,7 +359,88 @@ export default class EclipseEgg {
       g.hud.subtitle('El desgarro se abre al 3 de febrero de 1813. San Lorenzo.', 5);
       this.step = 4;
       this.startArena();
+    } else if (m.a === 'cruzar') {
+      if (this.corte || !cruceOn()) return;
+      this.corte = 1;
+      this.step = 4;
+      this.playCruce();
     }
+  }
+
+  // ---------------- el camino a San Lorenzo (ui/eclipseCruce.js) ----------------
+  cruceRift() {
+    if (!this.rift) this.rift = buildCruceRift(this);
+    return this.rift;
+  }
+
+  // el desgarro abierto en el claro (al terminar el Primer Mate, o el que entra tarde)
+  showRift() {
+    const r = this.cruceRift();
+    r.root.visible = true;
+    r.U.uOpen.value = 1;
+    r.U.uCrack.value = 0;
+    r.U.uFlash.value = 0;
+  }
+
+  canCross() {
+    return cruceOn() && !!this.cebado && !this.corte && !this.scene && !this.arena?.active && !!this.rift?.root.visible;
+  }
+
+  // El Primer Mate (en todas las compus): el vapor abre el desgarro.
+  playPrimerMate() {
+    const g = this.g;
+    const rift = this.cruceRift();
+    const done = () => {
+      this.showRift();
+      g.hud.subtitle('El desgarro a San Lorenzo: la batalla final. Crucen cuando estén listos (no hay vuelta).', 7);
+    };
+    if (this.scene) return done();
+    let cine;
+    try {
+      cine = new PrimerMateCine(this, rift);
+    } catch (e) {
+      console.error('Primer Mate: no se armó la escena', e);
+      return done();
+    }
+    this.scene = { update: (dt) => cine.update(dt), kind: 'eclipse-mate', cine };
+    cine.play(() => {
+      if (this.scene?.cine === cine) this.scene = null;
+      done();
+    });
+  }
+
+  // El cruce (en todas las compus): entran, blanco, la arena se arma debajo y el vuelo.
+  playCruce() {
+    const rift = this.cruceRift();
+    let started = false;
+    const go = () => {
+      if (started) return;
+      started = true;
+      rift.root.visible = false;
+      this.startArena({ cine: true });
+    };
+    // (si todavía corría el Primer Mate en esta compu, se corta)
+    if (this.scene?.kind === 'eclipse-mate') this.scene.cine.skip();
+    if (this.scene) {
+      go();
+      this.arena.arrived?.();
+      return;
+    }
+    let cine;
+    try {
+      cine = new CruceCine(this, rift, go);
+    } catch (e) {
+      console.error('El cruce: no se armó la escena', e);
+      go();
+      this.arena.arrived?.();
+      return;
+    }
+    this.scene = { update: (dt) => cine.update(dt), kind: 'eclipse-cruce', cine };
+    cine.play(() => {
+      if (this.scene?.cine === cine) this.scene = null;
+      go();
+      this.arena.arrived?.();
+    });
   }
 
   // Se ganó San Lorenzo (entities/eclipse/SanLorenzo.js): el final. La
@@ -306,9 +458,9 @@ export default class EclipseEgg {
   }
 
   // (mientras no hay arena, el mapa se da por hecho acá, para probar el camino entero)
-  startArena() {
+  startArena(opts = {}) {
     const g = this.g;
-    if (this.arena?.start?.() !== false) return;
+    if (this.arena?.start?.(opts) !== false) return;
     this.done = true;
     markEgg?.('eclipse');
     g.hud.subtitle('(La batalla de San Lorenzo todavía no está armada.)', 5);
@@ -318,20 +470,28 @@ export default class EclipseEgg {
   onScythe(ev) {
     if (ev.type === 'cut') this.steps.yerba?.onCut(ev);
     this.steps.temple?.onScythe(ev);
-    if (ev.type === 'cut' && this.cebado && !this.corte && this.g.weapons.cosmic?.furiaOn && dist2(ev.o, this.cutAt) < (ev.range || 3) + 1) this.sendEgg({ a: 'corte' });
+    if (!cruceOn() && ev.type === 'cut' && this.cebado && !this.corte && this.g.weapons.cosmic?.furiaOn && dist2(ev.o, this.cutAt) < (ev.range || 3) + 1) this.sendEgg({ a: 'corte' });
   }
 
   update(dt) {
     const g = this.g;
     const t = g.time || 0;
+    // (el ambiente de cada isla: lo pasa Game.loop, ver fx/eclipseAmbience.js)
+    eclAmbience(g);
     this.portals.update(dt);
     // la guadaña avisa lo suyo (cuando ya existe)
     if (!this.unlisten && g.weapons?.cosmic?.listen) this.unlisten = g.weapons.cosmic.listen((ev) => this.onScythe(ev));
     for (const s of Object.values(this.steps)) s.update(dt, t);
     this.d10.update(dt);
     this.arena.update(dt);
+    this.trampas.update(dt);
+    this.mates.update(dt, t);
+    this.disf.update(dt);
+    this.rinc.update(dt);
+    this.somb.update(dt);
     this.mF.update(dt, t);
     this.mC.update(dt, t);
+    if (this.rift?.root.visible) this.rift.tick(dt, g.camera);
     if (g.state !== 'playing') return;
     // los papeles (el anfitrión reparte; los demás los reciben)
     if (isHost(g)) {
@@ -358,25 +518,55 @@ export default class EclipseEgg {
     }
   }
 
-  // Lo que dice Fierro: qué falta y dónde (qué + dónde, corto).
-  fierro() {
+  // Lo que dice Fierro: qué falta y dónde (qué + dónde, corto). Cada vez, lo
+  // siguiente de la lista de lo pendiente (qa-flujo: antes, un ingrediente al
+  // azar; la guadaña sin decir cómo se llega a la Disformidad; el temple y el
+  // cañón recién al final). `ask`: se lo preguntaron en el fogón.
+  fierro(ask = false) {
     const g = this.g;
+    // (el desgarro abierto, esperando: el recordatorio y el aviso)
+    if (cruceOn() && this.cebado && !this.corte && !this.done && !this.scene && !ask) return g.hud.subtitle('El desgarro del claro lleva a San Lorenzo: la batalla final. No hay vuelta.', 5);
     if (this.done || this.cebado) return;
-    if (!this.has('guadana')) return g.hud.subtitle(this.steps.guadana.st.hoja || this.steps.guadana.st.asta ? 'Las dos piezas, y templarlas en un desgarro abierto.' : 'Primero el filo: la hoja en el Establo de La Tapera, el asta en la laguna.', 5);
-    const left = INGREDIENTES.filter((x) => !this.got_[x]);
-    if (left.length) {
-      const where = { calabaza: 'la laguna del claro', yerba: 'el maizal de La Tapera', agua: 'el patio del Castillo', bombilla: 'el pabellón del Penal', brasa: 'la capilla del Molino', sable: 'la Llama del Monumento' };
-      const k = left[Math.floor(Math.random() * left.length)];
-      return g.hud.subtitle(`Falta ${NAME[k]}: ${where[k]}.`, 5);
+    // (preguntado seguido, las líneas se apilaban en bloque: una cada 3 s como mucho)
+    if (ask && g.time - (this.fierroAt || -9) < 3) return;
+    if (ask) this.fierroAt = g.time;
+    // (no encima de la escena del Sable)
+    if (!ask && this.scenes?.debugSable?.()?.on) return;
+    const say = [];
+    if (!this.has('guadana')) {
+      const G = this.steps.guadana.st;
+      const T = g.papq?.termas;
+      if (!G.hoja && !G.asta) say.push('Primero el filo: la hoja en el Establo Colorado de La Tapera; el asta, una tacuara a orillas de la laguna.');
+      else if (!G.hoja) say.push('Falta la hoja: el Establo Colorado de La Tapera.');
+      else if (!G.asta) say.push('Falta el asta: una tacuara a orillas de la laguna del claro.');
+      else if (!g.world.power) say.push('Para templar el filo, primero la luz: el tablero del galpón del Molino.');
+      else if (T && !T.allScars()) say.push(T.hintI?.() || 'Tres cicatrices flotan en el claro: cerralas a tiros. Abren el portal negro del Nudo.');
+      else if (!this.steps.guadana.papAwake()) say.push('En la Disformidad: abrí los cuatro ojos con bajas y hacé el ritual del Pack-a-Pava.');
+      else say.push('Templá el filo al lado del Pack-a-Pava, en la Disformidad.');
     }
-    if (!this.has('temple')) return g.hud.subtitle(`El temple: ${this.steps.temple.hint(this.steps.temple.stage || 1)}`, 5);
+    const T = this.steps.temple;
+    if (this.has('guadana') && !this.has('temple')) say.push(`El temple: ${T.hint(T.stage || 1)}`);
+    if (!this.has('canon') && !(this.has('guadana') && T.stage === 6)) say.push('El cañón de la cima de la Torre: el eclipse total.');
+    const where = { calabaza: 'el Gil cava en la laguna del claro', yerba: 'la Yerba Madre, en el maizal de La Tapera', agua: 'los cuatro altares del patio del Castillo', bombilla: 'la celda de las siete rayas, Pabellón B del Penal', brasa: 'las velas de la capilla del Molino', sable: 'la Llama Votiva del Propileo, en el Monumento' };
+    for (const k of INGREDIENTES) if (!this.got_[k]) say.push(`Falta ${NAME[k]}: ${where[k]}.`);
+    if (!say.length) return;
+    // (lo principal, la guadaña o el temple, primero; cuando cambia, de nuevo desde ahí)
+    if (say[0] !== this.fierroKey) {
+      this.fierroKey = say[0];
+      this.fierroI = 0;
+    }
+    // (solo, cada tanto: lo principal mientras haya guadaña o temple por hacer;
+    // preguntado en el fogón, o sin principal: uno por vez, en orden)
+    const main = !this.has('temple');
+    const line = ask || !main ? say[this.fierroI++ % say.length] : say[0];
+    g.hud.subtitle(line, ask ? 6 : 5);
   }
 
   // ---------------- la red ----------------
   fullState() {
     const steps = {};
     for (const [id, s] of Object.entries(this.steps)) steps[id] = s.state();
-    return { step: this.step, done: this.done, ptl: this.portals.state(), roles: [...this.roles], d10: this.d10.state(), sl: this.arena.state(), got: { ...this.got_ }, tot: this.totality ? 1 : 0, ceb: this.cebado, cor: this.corte, steps };
+    return { step: this.step, done: this.done, ptl: this.portals.state(), roles: [...this.roles], d10: this.d10.state(), sl: this.arena.state(), ...this.trampas.state(), ...this.mates.state(), ...this.rinc.state(), ...this.somb.state(), got: { ...this.got_ }, tot: this.totality ? 1 : 0, ceb: this.cebado, cor: this.corte, steps };
   }
 
   applyRemote(m) {
@@ -391,12 +581,24 @@ export default class EclipseEgg {
     if (m.k === 'egg') return this.applyEgg(m);
     if (m.k === 'd10') return this.d10.apply(m);
     if (m.k === 'sl') return this.arena.apply(m);
+    if (m.k === 'trap') return this.trampas.apply(m);
+    if (m.k === 'mates') return this.mates.apply(m);
+    if (m.k === 'rinc') return this.rinc.apply(m);
+    if (m.k === 'somb') return this.somb.apply(m);
     if (m.d10) this.d10.applyFull(m.d10);
+    if (m.tr) this.trampas.applyFull(m.tr);
+    if (m.mt != null) this.mates.applyFull(m.mt);
+    if (m.rc) this.rinc.applyFull(m.rc);
+    if (m.sb) this.somb.applyFull(m.sb);
     if (m.sl) this.arena.applyFull(m.sl);
     if (m.roles) this.setRoles(m.roles);
     if (m.ptl) this.portals.applyFull(m.ptl);
     if (m.got) for (const k of Object.keys(m.got)) this.got_[k] = 1;
-    if (m.tot) this.totality = true;
+    if (m.tot && !this.totality) {
+      this.totality = true;
+      // (el cielo del que entra tarde o recibe el estado: a la totalidad también)
+      this.g.world.eclipse?.set?.(1, 3);
+    }
     if (m.ceb) this.cebado = m.ceb;
     if (m.cor) this.corte = m.cor;
     if (m.steps) for (const [id, st] of Object.entries(m.steps)) this.steps[id]?.applyFull(st);
@@ -404,6 +606,10 @@ export default class EclipseEgg {
     if (m.done != null) this.done = m.done;
     this.mF.set(this.ready() && !this.cebado);
     this.mC.set(!!this.cebado && !this.corte);
+    if (cruceOn()) {
+      this.mC.set(false);
+      if (this.cebado && !this.corte && !this.scene) this.showRift();
+    }
   }
 
   // Alt+K: abre todos los portales, da todo lo juntado y la guadaña templada;
@@ -425,6 +631,7 @@ export default class EclipseEgg {
     this.steps.temple.st.stage = 7;
     this.mF.set(true);
     g.hud.subtitle('Todo junto: cebá el Primer Mate en el fogón del claro.', 5);
+    if (g.net) g.net.event('ee', this.fullState());
   }
 
   dispose() {
@@ -434,9 +641,15 @@ export default class EclipseEgg {
     for (const s of Object.values(this.steps)) s.dispose();
     this.d10.dispose();
     this.arena.dispose();
+    this.trampas.dispose();
+    this.mates.dispose();
+    this.disf.dispose();
+    this.rinc.dispose();
+    this.somb.dispose();
     if (this.g.defense === this.d10) this.g.defense = null;
     this.mF.dispose();
     this.mC.dispose();
+    this.rift?.dispose();
     this.portals.dispose();
     setSleeveColor(null);
   }

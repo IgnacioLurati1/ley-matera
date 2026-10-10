@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import './intro.css';
 import { MAP_ID, MODE, ZONES, START_ZONE } from '../config/map';
 import { SCRIPTS } from './introShots';
+import { settleMemory } from '../core/memSettle';
 
 // Cinemática de entrada de cada mapa: antes de la primera ronda, unos paneos
 // del lugar con carteles que cuentan qué hay que hacer ahí, y al final la
@@ -140,7 +141,10 @@ export default class Intro {
     // guiones queda de fondo, bajita (no en el final del castillo, que usa
     // la entrada del molino adentro de su cinemática)
     // (en línea, si arrancó atrasada, la canción también va por donde va la entrada)
-    if (!g.cine && g.music?.play(`intro-${this.map}`, { at: this.t > 0.5 ? this.t : 0, while: (G) => G.state === 'playing' || G.state === 'paused' })) this.bus.gain.value = 0.4;
+    // (S.song: el guion trae otra —Eclipse Matero, la del usuario—)
+    this.song = this.S.song || `intro-${this.map}`;
+    // (S.songFadeIn: entra de a poco —Eclipse Matero, la del usuario arrancaba de golpe—)
+    if (!g.cine && g.music?.play(this.song, { at: this.t > 0.5 ? this.t : 0, fadeIn: this.t > 0.5 ? 0 : this.S.songFadeIn || 0, while: (G) => G.state === 'playing' || G.state === 'paused' })) this.bus.gain.value = 0.4;
     this.S.start?.(this);
     window.addEventListener('keydown', this.onKey);
     return true;
@@ -404,7 +408,7 @@ export default class Intro {
       /* sin audio */
     }
     // la canción sigue un poco en la partida y se va
-    if (g.music?.is(`intro-${this.map}`)) g.music.stop(natural ? 6 : 2);
+    if (g.music?.is(this.song || `intro-${this.map}`)) g.music.stop(natural ? 6 : 2);
     if (natural) this.finish();
     else {
       this.dark(1, 0.3);
@@ -420,6 +424,10 @@ export default class Intro {
     window.removeEventListener('keydown', this.onKey);
     this.S.stop?.(this);
     this.park();
+    // lo de la carga y de la cinemática ya no se usa: que el recolector pase
+    // ahora, mientras se va el negro, y no a los 30-100 s de partida (solo en
+    // la versión de escritorio: core/memSettle)
+    settleMemory();
     if (g.weather && this.fog0 != null) g.weather.cur.fog = this.fog0;
     if (g.net?.avatars) g.net.avatars.root.visible = true;
     const el = this.el;
@@ -438,8 +446,7 @@ export default class Intro {
     const Z = ZONES[START_ZONE];
     g.hud.location(Z.name, Z.sub || '');
     // (el mismo de GauchoLife.startRun: las teclas ya están en su cartel)
-    if (g.vida?.active) g.hud.subtitle('Gaucho life: tu rayo prende las máquinas.', 4);
-    else g.hud.subtitle('Aguantá lo que puedas.', 4);
+    if (!g.vida?.active) g.hud.subtitle('Aguantá lo que puedas.', 4);
     if (!g.input.locked) g.menus.showClick(true);
   }
 

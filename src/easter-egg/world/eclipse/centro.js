@@ -8,6 +8,7 @@ import { rng } from '../../core/noise';
 import { coverageMips } from '../../core/textures';
 import { leafCrownGeometry, evenFoliage } from '../esterosGrass';
 import { windy } from '../../fx/grassPush';
+import { jitterGrass } from '../../fx/TAA';
 import { ANCHORS } from '../../entities/eclipse/Ingredientes';
 
 // El Claro del Algarrobo (isla "centro" de Eclipse Matero, layout v4), lo que
@@ -85,7 +86,10 @@ export function tpShift(k) {
 export function keepOut(extra = []) {
   const pts = [];
   for (const d of [...PERK_SPOTS, ...WALL_BUYS, ...BOX_SPOTS, POWER, PAP].filter(Boolean)) pts.push([d.cell[0] + 0.5 + d.face[0] * 0.9, d.cell[1] + 0.5 + d.face[1] * 0.9, 1.7]);
-  for (const d of DOORS) for (const [x, z] of d.cells) pts.push([x + 0.5, z + 0.5, 1.6]);
+  // (mundo, it. 4: 1,6 m + el radio que pasa cada uno dejaba utilería grande pegada a las
+  // puertas -los radios son menores que la pieza-; con 2,3 m quedan 1,2 m libres delante)
+  const DR = globalThis.__mduNoDoorClear === true ? 1.6 : 2.3;
+  for (const d of DOORS) for (const [x, z] of d.cells) pts.push([x + 0.5, z + 0.5, DR]);
   for (const r of RISERS) pts.push([r.pos[0], r.pos[1], 1.2]);
   for (const p of PORTALS) for (const e of [p.a, p.b]) pts.push([e.pos[0], e.pos[1], 3]);
   pts.push([PLAYER_START.x, PLAYER_START.z, 1.6]);
@@ -140,7 +144,11 @@ let SEED = 7000;
 export const FOOT = [];
 export function put(w, def, { boxes = true, seed, scale = 1, foot = true } = {}) {
   const d = def.y == null ? { ...def, y: w.floorAt(def.pos[0], def.pos[1]) } : def;
-  const res = buildProp(d, w.M, seed ?? (SEED += 17));
+  const sd = seed ?? (SEED += 17);
+  const res = buildProp(d, w.M, sd);
+  // (el fogón del claro: con qué suerte se armó, para rehacerlo igual —el
+  // final de Eclipse lo deja solo en el blanco, ui/EclipseEnding voidStart—)
+  if (def.type === 'fogonCampo') w.fogonSeed = sd;
   if (!res) {
     console.warn('[eclipse arte] sin constructor:', def.type);
     return null;
@@ -302,7 +310,15 @@ export function tuftMat() {
 // luz de lo de atrás se dibujaban encima y la paja se veía transparente.
 export const CUT_GBUF = { key: 'eclCut', patch() {} };
 export function cutToGbuf(...mats) {
-  for (const m of mats) if (m && !m.userData.gbuf) m.userData.gbuf = CUT_GBUF;
+  for (const m of mats) {
+    if (m && !m.userData.gbuf) m.userData.gbuf = CUT_GBUF;
+    // (sesión 1f, el usuario: "el pasto sigue titilando en los bordes, efecto
+    // sierra": en Épica el suavizado temporal promedia el pasto marcado, pero
+    // sin correrlo una fracción de píxel por cuadro (fx/TAA jitterGrass) el
+    // promedio era siempre la misma escalera. Solo el de las matas tenía.
+    // __mduNoEclGrassJit: como antes)
+    if (m && globalThis.__mduNoEclGrassJit !== true) jitterGrass(m);
+  }
 }
 
 // Una grieta de luz violeta (la del desgarro): alfa con un rayo quebrado.
@@ -410,8 +426,42 @@ function atlas() {
   };
   // paredes: [humedad que sube | hollín | musgo | chorreado]
   const wall = canvasTex(1024, 256, (x) => {
-    // humedad: de abajo para arriba, borde ondulado con la línea de sal
-    for (let i = 0; i < 40; i++) {
+    // humedad: de abajo para arriba, borde ondulado con la línea de sal.
+    // (sesión 1f, el usuario: "sombras fantasmas en Mate of the Dead": la
+    // humedad eran 40 barras de alto distinto y el chorreado, hilos duros: de
+    // lejos se leían como la sombra de unas rejas. Ahora una mancha continua
+    // de borde blando y pocos hilos borrosos. globalThis.__mduOldGrime: como antes)
+    const SOFT = globalThis.__mduOldGrime !== true;
+    if (SOFT) {
+      x.save();
+      x.filter = 'blur(7px)';
+      const top = (u) => 256 * (0.42 + 0.16 * Math.sin(u * 0.031 + 1.3) + 0.08 * Math.sin(u * 0.083 + 0.4));
+      for (const [k, col] of [[1, 'rgba(28,30,24,0.55)'], [0.82, 'rgba(70,64,48,0.22)']]) {
+        x.beginPath();
+        x.moveTo(-10, 266);
+        for (let u = -10; u <= 266; u += 6) x.lineTo(u, 256 - top(u) * k);
+        x.lineTo(266, 266);
+        x.closePath();
+        const g = x.createLinearGradient(0, 256, 0, 256 - 256 * 0.66);
+        g.addColorStop(0, col);
+        g.addColorStop(0.75, col.replace(/[\d.]+\)$/, '0.3)'));
+        g.addColorStop(1, col.replace(/[\d.]+\)$/, '0)'));
+        x.fillStyle = g;
+        x.fill();
+      }
+      x.restore();
+      // y que no corte en los costados de la celda
+      x.save();
+      x.globalCompositeOperation = 'destination-out';
+      for (const [x0, dir] of [[0, 1], [256, -1]]) {
+        const g = x.createLinearGradient(x0, 0, x0 + dir * 40, 0);
+        g.addColorStop(0, 'rgba(0,0,0,1)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        x.fillStyle = g;
+        x.fillRect(Math.min(x0, x0 + dir * 40), 0, 40, 256);
+      }
+      x.restore();
+    } else for (let i = 0; i < 40; i++) {
       const h = 256 * (0.45 + 0.3 * Math.sin(i * 0.5 + r()) * 0.5 + r() * 0.2);
       const g = x.createLinearGradient(0, 256, 0, 256 - h);
       g.addColorStop(0, 'rgba(28,30,24,0.62)');
@@ -450,16 +500,28 @@ function atlas() {
       x.fill();
     }
     // chorreado: hilos oscuros (óxido y agua) que bajan desde arriba
-    for (let i = 0; i < 26; i++) {
-      const cx = 776 + r() * 240;
+    if (SOFT) x.save();
+    if (SOFT) x.filter = 'blur(4px)';
+    for (let i = 0; i < (SOFT ? 9 : 26); i++) {
+      const cx = 790 + r() * 212;
       const len = 60 + r() * 190;
       const g = x.createLinearGradient(0, 0, 0, len);
       const rust = r() < 0.5;
       g.addColorStop(0, rust ? 'rgba(90,44,18,0.6)' : 'rgba(26,26,22,0.55)');
       g.addColorStop(1, 'rgba(40,30,20,0)');
       x.fillStyle = g;
-      x.fillRect(cx, 0, 2 + r() * 7, len);
+      if (SOFT) {
+        // un hilo que se angosta y se va
+        const w0 = 6 + r() * 12;
+        x.beginPath();
+        x.moveTo(cx - w0 / 2, 0);
+        x.lineTo(cx + w0 / 2, 0);
+        x.quadraticCurveTo(cx + w0 * 0.3, len * 0.6, cx + (r() - 0.5) * 4, len);
+        x.quadraticCurveTo(cx - w0 * 0.3, len * 0.6, cx - w0 / 2, 0);
+        x.fill();
+      } else x.fillRect(cx, 0, 2 + r() * 7, len);
     }
+    if (SOFT) x.restore();
   });
   // pisos: [humedad | sombra de contacto | barro | musgo]
   const floor = canvasTex(1024, 256, (x) => {
@@ -732,6 +794,14 @@ export function curbMats(w) {
     eclCurbTop: new THREE.MeshStandardMaterial({ map: T.stoneWall, color: 0x8e8a80, roughness: 0.9 }),
     eclCurbSide: new THREE.MeshStandardMaterial({ map: T.stoneWall, color: 0x9a968c, roughness: 0.92 }),
   };
+  // (2026-10-08, el usuario: "los bordes que tienen barandas siguen titilando
+  // cuando se ven de lejos". El cordón va 1,2 cm afuera del borde de piedra de
+  // Levels, que va 1,2 cm afuera de la cara: de lejos la profundidad no separa
+  // 1 cm y se pisaban. El cordón gana siempre: polygonOffset.
+  // globalThis.__mduOldEclCurbOff: como antes)
+  if (globalThis.__mduOldEclCurbOff !== true) {
+    for (const m of Object.values(CURB)) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
+  }
   for (const m of Object.values(CURB)) OWN_MATS.add(m);
   return CURB;
 }
@@ -796,7 +866,12 @@ export function curbs(w, isl, gb, skip = () => false) {
         const len = k === 'post' ? 1 : 0.5;
         const bx = cx + dx * len;
         const bz = cz + dz * len;
-        gb.box('eclCurbSide', Math.min(cx, bx, cx - 0.132), fy - 3.01, Math.min(cz, bz, cz - 0.132), Math.max(cx, bx, cx + 0.132), fy + (bars ? 0.31 : 0.16), Math.max(cz, bz, cz + 0.132), 1);
+        // (sesión 1f: la punta del tramo, 1,2 cm más allá que la de Levels; si no,
+        // en las escaleras —tramos a distinta altura— las dos caras de la punta
+        // quedaban en el mismo plano y titilaban: "los bordes de las escaleras
+        // cambian según el ángulo". __mduOldCurbEnds: como antes)
+        const ee = globalThis.__mduOldCurbEnds === true ? 0 : 0.012;
+        gb.box('eclCurbSide', Math.min(cx - 0.132, Math.min(cx, bx) - ee), fy - 3.01, Math.min(cz - 0.132, Math.min(cz, bz) - ee), Math.max(cx + 0.132, Math.max(cx, bx) + ee), fy + (bars ? 0.31 : 0.16), Math.max(cz + 0.132, Math.max(cz, bz) + ee), 1);
       }
     }
   });
@@ -889,23 +964,39 @@ export function farolAt(w, L, keys, out = keepOut(), h = 2.6) {
 // El cerco de palo a pique en las celdas de borde 'fence' que tocan estas
 // zonas: palos torcidos y tres tablas; la tierra tapa el cordón de Levels.
 // twist(x, z) → [subida, giro]: lo que la disformidad le hace a ese palo.
-export function paloFence(w, gb, r, keys, { ground = 'dirt', twist = null } = {}) {
+export function paloFence(w, gb, r, keys, { ground = 'dirt', twist = null, skip = null } = {}) {
   const ids = new Set(keys.map((k) => w.zoneKeys.indexOf(k)));
   const cells = new Set();
   for (const isl of new Set(keys.map((k) => ZONES[k]?.isla))) {
     islCells(w, isl, (x, z, i) => {
-      if (w.grid[i] === OUT || w.grid[i] === FLOOR || w.edge[i] !== EDGE_FENCE) return;
+      if (w.grid[i] === OUT || w.grid[i] === FLOOR || w.edge[i] !== EDGE_FENCE || skip?.has(i)) return;
       let near = false;
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (w.grid[i + dx + dz * MAP_W] === FLOOR && ids.has(w.zone[i + dx + dz * MAP_W])) near = true;
       if (near) cells.add(i);
     });
   }
+  // (sesión 1f: donde el borde baja en diagonal escalonada el cerco hacía
+  // dientes de sierra —parecían dos cercos paralelos—: las esquinas de la
+  // escalera se sacan y el cerco va derecho en diagonal. __mduNoFenceDiag)
+  const drop = new Set();
+  if (globalThis.__mduNoFenceDiag !== true) {
+    const isF = (j) => cells.has(j) && w.grid[j] !== DOOR;
+    for (const i of cells) {
+      if (!isF(i)) continue;
+      const n = [1, -1, MAP_W, -MAP_W].filter((d) => isF(i + d));
+      if (n.length !== 2 || Math.abs(n[0]) === Math.abs(n[1])) continue;
+      if (cells.has(i + n[0] + n[1])) continue;
+      if (drop.has(i + n[0]) || drop.has(i + n[1])) continue;
+      drop.add(i);
+    }
+  }
   const kind = (x, z) => {
     if (!w.inside(x, z)) return null;
     const i = w.idx(x, z);
-    if (!cells.has(i)) return null;
+    if (!cells.has(i) || drop.has(i)) return null;
     return w.grid[i] === DOOR ? 'gap' : 'fence';
   };
+  const diag = [];
   const g = new THREE.Group();
   for (const i of cells) {
     const x = i % MAP_W;
@@ -917,6 +1008,20 @@ export function paloFence(w, gb, r, keys, { ground = 'dirt', twist = null } = {}
     const cx = x + 0.5;
     const cz = z + 0.5;
     const [lift, tw] = twist ? twist(cx, cz) : [0, 0];
+    // (los tramos en diagonal, sobre las esquinas sacadas)
+    for (const [dx, dz] of [[1, 1], [1, -1]]) {
+      if (kind(x + dx, z + dz) !== 'fence') continue;
+      if (!drop.has(w.idx(x + dx, z)) && !drop.has(w.idx(x, z + dz))) continue;
+      const fy2 = w.fy[w.idx(x + dx, z + dz)];
+      const [l2] = twist ? twist(cx + dx, cz + dz) : [0];
+      for (const y of [0.35, 0.72, 1.1]) {
+        const A = new THREE.Vector3(cx, fy + lift + y, cz);
+        const B = new THREE.Vector3(cx + dx, fy2 + l2 + y, cz + dz);
+        const geo = boxGeo(0.05, A.distanceTo(B), 0.12).clone();
+        const m4 = new THREE.Matrix4().compose(A.clone().add(B).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()), new THREE.Vector3(1, 1, 1));
+        diag.push(geo.applyMatrix4(m4));
+      }
+    }
     const lean = (r() - 0.5) * 0.05;
     if (!lift && !tw) gb.box('fenceDark', cx - 0.08 + lean, fy - 0.05, cz - 0.08, cx + 0.08 + lean, fy + 1.32 + r() * 0.14, cz + 0.08, 1);
     else g.add(mesh(boxGeo(0.16, 1.4, 0.16), w.M.fenceDark, cx, fy + lift + 0.65, cz, tw * 0.5, tw, tw * 0.3));
@@ -940,6 +1045,12 @@ export function paloFence(w, gb, r, keys, { ground = 'dirt', twist = null } = {}
         }
       }
     }
+  }
+  if (diag.length) {
+    const dm = new THREE.Mesh(mergeGeos(diag), w.M.fence);
+    dm.castShadow = true;
+    dm.receiveShadow = true;
+    g.add(dm);
   }
   if (g.children.length) addFixed(w, g);
   return cells;
@@ -1002,6 +1113,8 @@ export function orbiters(w, groups, { seed = 55, mat } = {}) {
   }
   if (!items.length) return null;
   const im = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), mat || voidRockMat(w), items.length);
+  // (con nombre: ui/eclipseSableTrip las esconde del otro lado del desgarro)
+  im.name = 'eclipse:orbiters';
   im.castShadow = false;
   im.receiveShadow = true;
   im.frustumCulled = false;
@@ -1576,13 +1689,17 @@ function buildLagoon(w, isl, gb, root, r, out) {
     wind: 0.8,
     swell: 0.25,
   });
+  // (mundo, it. 4) fuera de la caja de la máscara también se descarta: la textura
+  // repetía su borde y el agua de la laguna salía en franjas por el claro a 29,85;
+  // en la cripta del estero se veía como una losa a la altura de los ojos
+  const clip = globalThis.__mduNoLagoonClip === true ? '' : 'if (any(lessThan(eclUv, vec2(0.0))) || any(greaterThan(eclUv, vec2(1.0)))) discard;\n\t';
   const wm = water.mat;
   const prev = wm.onBeforeCompile;
   wm.onBeforeCompile = (sh, rr) => {
     prev(sh, rr);
     sh.uniforms.eclMask = { value: mtex };
     sh.uniforms.eclMB = { value: MB };
-    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform sampler2D eclMask;\nuniform vec4 eclMB;\nvoid main() {\n\tif (texture2D(eclMask, (vWp.xz - eclMB.xy) * eclMB.zw).r < 0.5) discard;');
+    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform sampler2D eclMask;\nuniform vec4 eclMB;\nvoid main() {\n\tvec2 eclUv = (vWp.xz - eclMB.xy) * eclMB.zw;\n\t' + clip + 'if (texture2D(eclMask, eclUv).r < 0.5) discard;');
   };
   wm.customProgramCacheKey = () => 'water1ecl';
   // (y en el G-buffer de fx/Epic, que lo dibuja con su propio material)
@@ -1593,7 +1710,7 @@ function buildLagoon(w, isl, gb, root, r, out) {
       s.uniforms.eclMask = { value: mtex };
       s.uniforms.eclMB = { value: MB };
       s.vertexShader = s.vertexShader.replace('void main() {', 'varying vec2 vEclXZ;\nvoid main() {').replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvEclXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
-      s.fragmentShader = s.fragmentShader.replace('void main() {', 'uniform sampler2D eclMask;\nuniform vec4 eclMB;\nvarying vec2 vEclXZ;\nvoid main() {\n\tif (texture2D(eclMask, (vEclXZ - eclMB.xy) * eclMB.zw).r < 0.5) discard;');
+      s.fragmentShader = s.fragmentShader.replace('void main() {', 'uniform sampler2D eclMask;\nuniform vec4 eclMB;\nvarying vec2 vEclXZ;\nvoid main() {\n\tvec2 eclUv = (vEclXZ - eclMB.xy) * eclMB.zw;\n\t' + clip + 'if (texture2D(eclMask, eclUv).r < 0.5) discard;');
     },
   };
   w.water = water;
@@ -1972,7 +2089,7 @@ function floorCracks(w, from, r0, n, wd0, r, keys) {
 
 // La madera de adentro del algarrobo: oscura, con vetas violetas que brillan.
 let heartMatC = null;
-function heartMat() {
+export function heartMat() {
   if (heartMatC) return heartMatC;
   const r = rng(91);
   const veins = [];
@@ -2172,6 +2289,13 @@ function buildCamp(w, root, r, out) {
       const bone = new THREE.MeshStandardMaterial({ color: 0xcdb898, roughness: 0.7 });
       for (let k = 0; k < 6; k++) rod.add(mesh(boxGeo(0.02, 0.74, 0.035), bone, 0.115, 1.12, -0.24 + k * 0.096));
       g.add(rod);
+      // (sesión 1f: suelto y con nombre, para que el final —ui/EclipseEnding,
+      // el fogón de noche— lo pueda sacar: con su fuego fuerte el costillar era
+      // un panel blanco que brillaba. __mduOldAsador: junto con lo quieto, como antes)
+      if (globalThis.__mduOldAsador !== true) {
+        g.name = 'asador';
+        g.userData.dynamic = true;
+      }
       addFixed(w, g);
       w.addBox([bx - 0.2, y, bz - 0.2, bx + 0.2, y + 1.1, bz + 0.2], { kind: 'prop' });
     }
@@ -2470,6 +2594,8 @@ function buildGrieta(w, root, r, out, orbs) {
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.computeBoundingSphere();
     const m = new THREE.Mesh(g, mat);
+    // (con nombre: el final —ui/EclipseEnding FIN3— la esconde en el claro cosido)
+    m.name = 'eclipse:grieta';
     m.renderOrder = 2;
     m.matrixAutoUpdate = false;
     root.add(m);

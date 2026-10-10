@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MAP_W, ZONES } from '../../config/map';
-import { DOORS, PORTALS } from '../../config/maps/eclipse';
+import { DOORS, PORTALS, ISLANDS } from '../../config/maps/eclipse';
 import { mesh, cylGeo, boxGeo, buildProp } from '../props';
 import GeoBuilder from '../GeoBuilder';
 import { rng } from '../../core/noise';
@@ -30,6 +30,7 @@ import { winMats, windowAt, gable } from './molino';
 const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 let live = null;
 
+const fenced = new Set();
 export function build(w, g, isl) {
   // (globalThis.__mduNoArteA: las islas de arte-A en bloques, para comparar)
   if (globalThis.__mduNoArteA === true) return;
@@ -45,6 +46,7 @@ export function build(w, g, isl) {
   const mats = { ...winMats(M), ...cornMats(w) };
   const orbs = [];
   live = { w, push: null, lifted: [] };
+  fenced.clear();
   CLIFFS.length = 0;
   buildBarn(w, gb, root, r, out);
   buildCasa(w, gb, root, r, out, orbs);
@@ -52,6 +54,14 @@ export function build(w, g, isl) {
   buildMaizal(w, root, r, out, yerba);
   buildYerbal(w, gb, root, r, out);
   buildMolinoSuelto(w, r, orbs);
+  // (sesión 1f, el usuario: "en La Tapera hay zonas que deberían tener vallas y
+  // no tienen y en su lugar hay una pared invisible": el cerco de palo iba solo
+  // en el corral y el yerbal; las secciones copiadas —el patio, los tablones,
+  // los silos...— tenían el choque del alambrado sin el cerco. __mduNoTaperaFence)
+  if (globalThis.__mduNoTaperaFence !== true) {
+    const rest = ISLANDS.tapera.zones.filter((k) => ZONES[k]?.edge === 'fence' && k !== 'G' && k !== 'G3');
+    if (rest.length) for (const c of paloFence(w, gb, r, rest, { ground: 'dirt', skip: fenced })) fenced.add(c);
+  }
   // los cordones de las barandas (piedra) salvo los del cerco y del maíz, que tapan los suyos
   curbs(w, 'tapera', gb, (i) => w.edge[i] === EDGE_FENCE || w.edge[i] === EDGE_CORN);
   cliffRocks(w, root, out, r, 'tapera');
@@ -315,7 +325,7 @@ function buildCorral(w, gb, root, r, out, orbs) {
     const t = Math.max(0, 1 - d / 8);
     return [t * t * 3.0, t * 1.0];
   };
-  paloFence(w, gb, r, K, { ground: 'dirt', twist: tw });
+  for (const c of paloFence(w, gb, r, K, { ground: 'dirt', twist: tw })) fenced.add(c);
   // la torre del molino de viento, quebrada arriba (la cabeza flota suelta en I9), su farol
   const L = lightTag('farolMolino');
   if (L) {
@@ -514,7 +524,8 @@ function buildMaizal(w, root, r, out, yerba) {
     const i = w.idx(cx, cz);
     return (w.grid[i] === FLOOR && w.zone[i] === I) || (w.grid[i] !== OUT && w.grid[i] !== FLOOR && w.edge[i] === EDGE_CORN);
   };
-  live.push = makeGrassPush(w.g, isCorn);
+  // (arte6: y el pajonal del claro, world/eclipse/claroVeg.js: el empuje es uno solo para el mapa)
+  live.push = makeGrassPush(w.g, (x, z) => isCorn(x, z) || !!w.eclGrassAt?.(x, z));
   // el espantapájaros (quieto: la huerta de la granja, más grande): la cabeza y los brazos asoman sobre el maíz
   if (SCARE.x) put(w, { type: 'espantajo', pos: [SCARE.x, SCARE.z], rot: -0.5 }, { boxes: true, scale: 1.45 });
 }
@@ -562,7 +573,7 @@ function cornGeo() {
 function buildYerbal(w, gb, root, r, out) {
   const K = ['G3'];
   const y = ZONES.G3.y;
-  paloFence(w, gb, r, K, { ground: 'dirt' });
+  for (const c of paloFence(w, gb, r, K, { ground: 'dirt' })) fenced.add(c);
   farolAt(w, lightTag('farolYerbal'), K, out);
   const [x0, z0, x1, z1] = zbox('G3', true);
   // la ramada (al oeste): techo de paja sobre postes, con raídos y la balanza

@@ -102,7 +102,6 @@ export default class LastZombies {
     const on = this.ids.length > 0;
     if (on !== !!this.was) {
       this.was = on;
-      if (on) g.hud.subtitle('Quedan los últimos: se los ve a través de las paredes.', 4);
     }
     if (!on && !this.meshes) return;
     if (!this.meshes) this.build();

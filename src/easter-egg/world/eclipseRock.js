@@ -26,11 +26,15 @@ const LOOK = {
   torre: { soil: 0x5a5236, rock: 0x3c3830, deep: 0x1c1a20 },
   castillo: { soil: 0xdfe8f2, rock: 0x6c7480, deep: 0x282c38 },
   desgarro: { soil: 0x3a1c58, rock: 0x241238, deep: 0x100618 },
+  // (mundo, it. 4) La Disformidad: lajas negras con el violeta abajo
+  abismo: { soil: 0x1c0c2c, rock: 0x120818, deep: 0x05020a },
+  // (2026-10-10) los jirones de las grietas: la misma piedra
+  grietas: { soil: 0x1c0c2c, rock: 0x120818, deep: 0x05020a },
 };
 // cuánto puede colgar la masa de abajo (m). El Desgarro flota arriba del claro y
 // al lado del castillo: con la fórmula sola su roca bajaba 35 m y atravesaba el
 // claro como una columna.
-const HANG = { centro: 20, molino: 18, tapera: 20, penal: 22, monumento: 18, torre: 16, castillo: 15, desgarro: 8 };
+const HANG = { centro: 20, molino: 18, tapera: 20, penal: 22, monumento: 18, torre: 16, castillo: 15, desgarro: 8, abismo: 5, grietas: 6 };
 // el brillo del desgarro en las puntas de abajo
 const RIFT = new THREE.Color(0x7a2cc8);
 

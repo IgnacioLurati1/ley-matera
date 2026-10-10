@@ -31,6 +31,46 @@ const COVER_MS = 380;
 const later = (ms) => new Promise((r) => setTimeout(r, ms));
 const ease = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
 
+// Las letras sueltas de la entrada (inline-block) pierden el interletrado de
+// la fuente: al terminar, con el texto corrido de nuevo, el nombre se
+// achicaba un poco (hasta 3 px por letra; el usuario lo notó). Se mide dónde
+// cae cada letra en el texto corrido y se acomoda cada una a ese lugar.
+// (globalThis.__mduNoTitleKern: como antes)
+function textSpots(h1) {
+  const tn = h1.firstChild;
+  if (!tn || tn.nodeType !== 3 || h1.childNodes.length !== 1) return null;
+  const out = [];
+  const rg = document.createRange();
+  for (let i = 0; i < tn.length; i++) {
+    if (/\s/.test(tn.data[i])) continue;
+    rg.setStart(tn, i);
+    rg.setEnd(tn, i + 1);
+    const b = rg.getBoundingClientRect();
+    out.push({ x: b.left, y: b.top });
+  }
+  return out;
+}
+
+function fitLetters(h1, spots) {
+  const ls = [...h1.querySelectorAll('.mdu-ti-l')];
+  if (!spots || spots.length !== ls.length) return;
+  // (quietas mientras se miden: la animación las corre de lugar)
+  for (const l of ls) l.style.animation = 'none';
+  // cada letra, a la misma distancia de la primera de su renglón que en el
+  // texto corrido (así no importa si el renglón está centrado)
+  let first = 0;
+  for (let i = 0; i < ls.length; i++) {
+    if (Math.abs(spots[i].y - spots[first].y) > 2) first = i;
+    if (i === first) continue;
+    const a = ls[first].getBoundingClientRect();
+    const b = ls[i].getBoundingClientRect();
+    if (Math.abs(b.top - a.top) > b.height / 2) continue;
+    const dx = spots[i].x - spots[first].x - (b.left - a.left);
+    if (Math.abs(dx) > 0.05) ls[i].style.marginLeft = `${dx}px`;
+  }
+  for (const l of ls) l.style.animation = '';
+}
+
 export default class TitleIntro {
   constructor(g) {
     this.g = g;
@@ -88,6 +128,7 @@ export default class TitleIntro {
     // el nombre, letra por letra (cada una cae con un giro distinto)
     this.h1 = h1;
     this.text = h1.textContent;
+    const spots = textSpots(h1);
     h1.textContent = '';
     let i = 0;
     this.text.split(' ').forEach((word, w) => {
@@ -127,6 +168,7 @@ export default class TitleIntro {
       }
     }
     s.classList.add('is-intro');
+    if (globalThis.__mduNoTitleKern !== true) fitLetters(h1, spots);
     this.el?.classList.add('is-on');
 
     // el rayo: el cielo y el mapa se alumbran, y el trueno (si hay sonido)

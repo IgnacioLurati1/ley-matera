@@ -272,6 +272,14 @@ export default class Cupula {
   buildKnights() {
     const g = this.g;
     this.people = new Avatars(g, null);
+    // (2026-10-10, el usuario: "problema de fps en el evento de la cúpula y los
+    // jinetes". Medido con la cámara quieta, Épica 1440p: el evento costaba
+    // 1,26 ms por cuadro y 1,12 eran los cuatro caballeros —0,68 de animarlos,
+    // se los mire o no, y 0,44 de dibujarlos—; la cúpula, los jinetes y la
+    // oscuridad, casi nada. Fuera de cuadro no se animan, como los presos del
+    // penal (net/Avatars offCull; ui/castleClips tampoco les pone el clip).
+    // globalThis.__mduNoKnightCull: como antes)
+    this.people.offCull = globalThis.__mduNoKnightCull !== true;
     this.root.add(this.people.root);
     const beamGeo = new THREE.CylinderGeometry(0.032, 0.032, 1, 6, 1, true).translate(0, 0.5, 0).rotateX(Math.PI / 2);
     const colGeo = new THREE.CylinderGeometry(0.55, 0.7, DROP_H + 4, 18, 1, true).translate(0, (DROP_H + 4) / 2, 0);
@@ -315,6 +323,22 @@ export default class Cupula {
       return K;
     });
     this.people.root.visible = false;
+    // (la carga los dibuja dos cuadros, escondidos: ui/Arrival warmWorld.
+    // Compilarlos —warmObject, en dress— no alcanzaba: su primer dibujo de
+    // verdad, al bajar del cielo, era un cuadro de 63-138 ms. Y hechos luz son
+    // otra variante (transparentes): se visten apenas llega el cuerpo de
+    // verdad, en la carga, sin esperar al primer cuadro de la partida, que es
+    // después de ese dibujo. Medido, Épica 1440p.
+    // globalThis.__mduNoKnightWarm: como antes)
+    if (globalThis.__mduNoKnightWarm !== true) {
+      (g.world.warmHidden ||= []).push(this.people.root);
+      let n = 0;
+      const tryDress = () => {
+        if (this.gone || this.dress() || ++n > 80) return;
+        setTimeout(tryDress, 250);
+      };
+      tryDress();
+    }
     this.clips = new CastleClips();
   }
 
@@ -559,15 +583,19 @@ export default class Cupula {
     if (b) A.playBuffer(b, { pos: pos.clone(), gain, reverb: 0.6, ref });
   }
 
+  // el gaucho de verdad bajó: también hecho luz, y se compila ya (escondido)
+  dress() {
+    if (this.skinned || !this.knights.every((K) => K.av.gs)) return false;
+    this.skinned = true;
+    for (const K of this.knights) this.lightLook(K.av, K.c, K.k * 0.72);
+    warmObject(this.g, this.people.root);
+    return true;
+  }
+
   // ---------------- cada cuadro ----------------
   update(dt, t) {
     const g = this.g;
-    // el gaucho de verdad bajó: también hecho luz, y se compila ya (escondido)
-    if (!this.skinned && this.knights.every((K) => K.av.gs)) {
-      this.skinned = true;
-      for (const K of this.knights) this.lightLook(K.av, K.c, K.k * 0.72);
-      warmObject(g, this.people.root);
-    }
+    if (!this.skinned) this.dress();
     // la cúpula: crece desde arriba, se rompe de golpe, se apaga al final
     const sp = this.want > this.k ? dt / GROW : this.brk > 0 ? dt / SHATTER : dt / FADE;
     this.k = this.want > this.k ? Math.min(this.want, this.k + sp) : Math.max(this.want, this.k - sp);
@@ -701,6 +729,7 @@ export default class Cupula {
   }
 
   dispose() {
+    this.gone = true;
     this.root.removeFromParent();
     this.people.dispose();
     this.mat.dispose();

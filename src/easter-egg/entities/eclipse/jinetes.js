@@ -3,6 +3,22 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { assetUrl } from '../../../lib/assets';
 import { warmObject } from '../../fx/ghostMat';
+import { jineteDmg } from './catalizador';
+import { eclSfx } from '../../fx/eclipseSfx';
+// (2026-10-08, ITERACION-8: los sonidos que dejó el usuario para los jinetes
+// del caos —fx/eclipseSfx—: el ataque (el alarido antes de la picada), dos
+// tomas, la 1 más baja y con eco porque venía "muy seca y con mucho volumen";
+// la risa mientras rondan, de a ratos y de a uno; la risa demoníaca alguna vez,
+// al rondar o al salir de la grieta. Sin grabación, los sintetizados.
+// globalThis.__mduOldJineteSfx: los sintetizados, como antes)
+const REC = globalThis.__mduOldJineteSfx !== true;
+const REC_IDS = ['jinete-ataque-1', 'jinete-ataque-2', 'jinete-risa', 'risa-demoniaca', 'jinete-golpe'];
+// (2026-10-09, el usuario: "el de cuando el jinete te ataca y te pega: sacá el
+// que está ahora y poné este" —dragon-studio "ghost horror sound"—: el golpe de
+// la embestida (antes sintetizado). Es la misma toma que el ataque 2: el
+// alarido de antes de la picada queda con la 1, así no suena dos veces.
+// globalThis.__mduOldJineteGolpe: el sintetizado y las dos tomas en el alarido)
+const GOLPE = REC && globalThis.__mduOldJineteGolpe !== true;
 
 // Los jinetes del apocalipsis del Desgarro Cósmico (entities/eclipse/Desgarro10.js):
 // ánimas encapuchadas, estilo dementor, sobre caballos de hueso. Vuelan en
@@ -555,6 +571,28 @@ export default class Jinetes {
     A.bakeSound('d10Ram', 0.7, ramBody, 2);
   }
 
+  // (ITERACION-8) Uno de los grabados (fx/eclipseSfx); false si todavía no bajó
+  // (se pide) o si está apagado: suena el sintetizado.
+  rec(id, pos, gain, ref, reverb) {
+    if (!REC) return false;
+    const E = eclSfx(this.g);
+    if (!E.has(id)) {
+      E.load(REC_IDS);
+      return false;
+    }
+    return E.play(id, { pos: pos.clone(), gain, reverb, ref, rate: 0.95 + Math.random() * 0.1 });
+  }
+
+  // (la risa: no más de una cada 6 s entre todos)
+  laugh(J, gain) {
+    const now = this.g.time || 0;
+    if (now - (this.laughAt ?? -99) < 6) return true;
+    const id = Math.random() < 0.2 ? 'risa-demoniaca' : 'jinete-risa';
+    if (!this.rec(id, J.pos, id === 'risa-demoniaca' ? gain * 0.9 : gain, 16, 0.55)) return false;
+    this.laughAt = now;
+    return true;
+  }
+
   snd(key, pos, gain = 1, rate = 1, ref = 10) {
     const A = this.g.audio;
     const b = A?.bakedBuf?.(key);
@@ -595,7 +633,11 @@ export default class Jinetes {
     if (J.st === s) return;
     J.st = s;
     J.t = 0;
-    if (s === S.wind) this.snd('d10Shriek', J.pos, 1.3, 1, 14);
+    if (s === S.wind) {
+      // (el ataque: la toma 1, 3 dB más baja y con más eco)
+      const one = GOLPE || Math.random() < 0.5;
+      if (!this.rec(one ? 'jinete-ataque-1' : 'jinete-ataque-2', J.pos, one ? 0.95 : 1.3, 14, one ? 0.8 : 0.45)) this.snd('d10Shriek', J.pos, 1.3, 1, 14);
+    }
     if (s === S.dive) {
       J.diveN++;
       J.commit = false;
@@ -636,6 +678,8 @@ export default class Jinetes {
     g.fx.flash(J.pos, 0xb050ff, 10, 0.5, 30);
     for (let i = 0; i < 22; i++) g.fx.add.spawn(J.pos.x + rnd() * 1.2, J.pos.y + rnd() * 1.6, J.pos.z + rnd() * 1.2, rnd() * 3, rnd() * 3, rnd() * 3, { color: i % 3 ? [0.7, 0.25, 1] : [1, 0.6, 1], size: 0.22, size1: 0, life: 0.9 + Math.random() * 0.5, drag: 1.2 });
     this.snd('d10Shriek', J.pos, 0.8, 0.6, 16);
+    // (alguna vez, la risa demoníaca al salir)
+    if (REC && Math.random() < 0.3 && (this.g.time || 0) - (this.laughAt ?? -99) > 6 && this.rec('risa-demoniaca', J.pos, 0.85, 16, 0.6)) this.laughAt = this.g.time || 0;
   }
 
   // (en todas) Uno bajado: se deshace en luz violeta.
@@ -676,8 +720,9 @@ export default class Jinetes {
     const np = ev.nPlayers();
     // (la carga: todos a la vez; si no, hasta np+1 y con menos respiro que antes)
     const charge = ev.charge > 0;
-    const maxDive = charge ? 12 : Math.min(4, np + 1);
-    const gap = charge ? 0 : (DIVE_GAP * 0.55) / Math.sqrt(np);
+    // (el evento puede poner su ritmo: San Lorenzo, slJinetes)
+    const maxDive = charge ? 12 : (ev.maxDive?.(np) ?? Math.min(4, np + 1));
+    const gap = charge ? 0 : (ev.diveGap?.(np) ?? (DIVE_GAP * 0.55) / Math.sqrt(np));
     this.gap -= dt;
     for (const J of this.list) {
       if (J.st === S.off || J.st === S.die || J.st === S.out) continue;
@@ -958,7 +1003,9 @@ export default class Jinetes {
         J.moanT -= dt;
         if (J.moanT <= 0) {
           J.moanT = 7 + Math.random() * 9;
-          this.snd('d10Shriek', J.pos, 0.45, 0.55, 14);
+          // (rondando: la risa, de a ratos; si no, el lamento sintetizado)
+          if (REC && this.laugh(J, 0.75)) J.moanT += 6 + Math.random() * 8;
+          else this.snd('d10Shriek', J.pos, 0.45, 0.55, 14);
         }
       }
     }
@@ -978,7 +1025,9 @@ export default class Jinetes {
       if (J.hs[0].distanceTo(c) > RAM_R && J.hs[1].distanceTo(c) > RAM_R * 0.85) continue;
       J.hitMe = J.diveN;
       if (this.ev.shielded(J.z, P.pos)) continue;
-      P.damage(J.big ? RAM_DMG * 1.5 : RAM_DMG, J.pos.clone(), false);
+      // (el Catalizador Caótico: la mitad; entities/eclipse/catalizador.js)
+      // (2026-10-10: va quién pegó —J.z, un jinete—: el Escudo de la Cúpula la frena un poco; Player.damage)
+      P.damage(jineteDmg(g, J.big ? RAM_DMG * 1.5 : RAM_DMG), J.pos.clone(), false, J.z);
       // el empujón: para donde iba el jinete, y para arriba
       tmpV.set(J.vel.x, 0, J.vel.z);
       if (tmpV.lengthSq() < 0.01) tmpV.set(P.pos.x - J.pos.x, 0, P.pos.z - J.pos.z);
@@ -990,7 +1039,7 @@ export default class Jinetes {
       g.fx.addShake?.(0.55);
       g.post?.flash?.(0.18);
       g.fx.flash(c, 0xa040ff, 6, 0.3, 8);
-      this.snd('d10Ram', c, 1.3, 1, 6);
+      if (!(GOLPE && this.rec('jinete-golpe', c, 1.4, 6, 0.3))) this.snd('d10Ram', c, 1.3, 1, 6);
     }
   }
 

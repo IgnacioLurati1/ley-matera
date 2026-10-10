@@ -827,3 +827,6 @@ function signTexture() {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+
+// (Eclipse Matero, world/eclipse/v5.js: el establo y el pajar en sus secciones iguales)
+export { buildBovedas, buildPajar };

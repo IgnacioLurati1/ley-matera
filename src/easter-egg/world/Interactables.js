@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DOORS, WALL_BUYS, PERK_SPOTS, POWER, PAP, BOX_SPOTS, BOX_START, MAP_ID, FEATURES, START_ZONE } from '../config/map';
+import { DOORS, WALL_BUYS, PERK_SPOTS, POWER, PAP, BOX_SPOTS, BOX_START, MAP_ID, FEATURES, START_ZONE, ZONES } from '../config/map';
 import { WEAPONS, BOX_POOL, GRENADE, BOWIE, weaponStats, tierOf, maxTier, PAP_COST, ELEM_INFO, boxWeight } from '../config/weapons';
 import { PERKS } from '../config/perks';
 import { LOCK_COST } from '../config/rules';
@@ -176,8 +176,16 @@ export default class Interactables {
           slide.add(lock);
           d.lockGlow = lock;
         }
+        // (la reja corre entera: sus 17-20 barrotes, una malla por material; la
+        // cerradura de gaucho life, aparte —brilla—. En el penal de Eclipse eran
+        // 68 dibujos por pase en cuatro rejas. globalThis.__mduNoRejaMerge: como antes)
+        if (!(globalThis.__mduNoMerge || globalThis.__mduNoRejaMerge)) compactGroup(slide);
         group.add(slide);
-        pieces.push({ obj: slide, side: 1, slide: width });
+        // (2026-10-08, el usuario: en el Monumento de Eclipse las rejas al abrirse
+        // atravesaban la pared —corrían de costado y asomaban arriba del parapeto—.
+        // Ahí se hunden en el piso y desaparecen. globalThis.__mduOldEclReja: como antes)
+        if (FEATURES.eclipse && ZONES[d.zones[0]]?.isla === 'monumento' && globalThis.__mduOldEclReja !== true) pieces.push({ obj: slide, sink: DOOR_H + 0.1 });
+        else pieces.push({ obj: slide, side: 1, slide: width });
       } else if (d.kind === 'cerro') {
         // el portón de la capilla al cerro: madera vieja, cintas coloradas y un candado enorme
         for (const s of [-1, 1]) {
@@ -374,6 +382,10 @@ export default class Interactables {
         if (p.drop) {
           p.obj.position.y = 1.25 - easeOut(k) * 1.2;
           p.obj.visible = k < 1;
+        } else if (p.sink) {
+          // (la reja que se hunde en el piso: abajo del todo, escondida)
+          p.obj.position.y = -p.sink * easeOut(k);
+          p.obj.visible = k < 1;
         } else if (p.slide) p.obj.position.x = p.slide * 0.96 * easeOut(k);
         else if (door.def.kind === 'door' || door.def.kind === 'gate' || door.def.kind === 'cerro') p.obj.rotation.y = p.side * -1.75 * easeOut(k);
         else if (door.def.kind === 'corn') {
@@ -563,6 +575,7 @@ export default class Interactables {
           g.audio.perkJingle(spot.perk, it.pos);
           g.weapons.drink(perk.color, () => {
             g.player.givePerk(spot.perk);
+            g.dlg?.did('perk');
             const coop = g.net?.remote.size && perk.coopDesc;
             g.hud.subtitle(`${perk.name}: ${coop ? perk.coopDesc : perk.desc}`, 3);
             if (spot.perk === 'revive' && !coop && g.player.reviveUses >= 2) {
@@ -762,6 +775,7 @@ export default class Interactables {
           g.weapons.give(pap.entry.id, pap.tier);
           this.clearPap();
           g.net?.event('pap', { s: 'idle' });
+          g.dlg?.did('pava');
           return true;
         }
         if (pap.state !== 'idle') return false;
@@ -977,6 +991,7 @@ export default class Interactables {
           // (Cajón Bendito, una empanada: sale mejorado)
           g.weapons.give(box.offer, g.emp?.upFor('box', box.offer) || 0);
           this.takeBoxWeapon();
+          g.dlg?.did('caja');
           return true;
         }
         return false;
@@ -1058,6 +1073,7 @@ export default class Interactables {
           if (sale.state === 'offer') {
             g.weapons.give(sale.offer, g.emp?.upFor('box', sale.offer) || 0);
             this.takeBoxWeapon(sale);
+            g.dlg?.did('caja');
             return true;
           }
           return false;
@@ -1274,7 +1290,7 @@ export default class Interactables {
     const tac = have ? have.tac : g.weapons.tactical?.id || null;
     // (el Mate Supremo, solo para el que ganó el super easter egg y lo tiene prendido)
     const sup = have ? !!have.supremo : supremoOn(g.settings);
-    const pool = BOX_POOL.filter((w) => inBox(w) && !owns(w.id) && !(w.id === 'pava' && tac === 'pava') && !(w.id === 'gut' && owns('gutacida')) && (!WEAPONS[w.id].egg || sup));
+    const pool = BOX_POOL.filter((w) => inBox(w) && !owns(w.id) && !(w.id === 'pava' && tac === 'pava') && !(w.id === 'gut' && owns('gutacida') && owns('gutmuerte')) && (!WEAPONS[w.id].egg || sup));
     // el easter egg puede pedir más de algún mate (el Tronador para el barbacuá)
     const weight = (w) => boxWeight(w, MAP_ID) * (g.ee?.boxBoost?.(w.id) || 1);
     let total = pool.reduce((s, w) => s + weight(w), 0);
@@ -1536,7 +1552,6 @@ export default class Interactables {
       pad.rotation.x = -Math.abs(sw) * 0.25;
       return u < 3.5;
     });
-    g.hud.subtitle(alc ? 'El Alcaide clausuró una máquina.' : 'El Capataz clausuró una máquina.', 2.5, 'boss');
     if (alc) {
       if (Math.random() < 0.6) g.say('alcaide', Math.random() < 0.5 ? 'Clausurado por orden del señor alcaide. Andá a quejarte al Cabildo.' : 'Esto queda precintado. Acá los gauchos no se sirven solos.');
     } else if (Math.random() < 0.6) g.say('capataz', Math.random() < 0.5 ? 'Clausurado. Por vago.' : 'Esta máquina queda cerrada hasta nuevo aviso.');
@@ -1839,6 +1854,7 @@ export default class Interactables {
         g.net.net.send({ t: 'revive', id: best.id });
         g.net.credit(g.net.id, 'revives');
         g.levels?.revive();
+        g.dlg?.did('levantar');
         best.downed = false;
         g.audio.powerupGrab();
       }

@@ -1,16 +1,17 @@
 import * as THREE from 'three';
 import Avatars from '../net/Avatars';
 import { cineClip, gauchoClip, poseCineClip, whenGaucho } from '../net/gauchoSkin';
-import { gilVincha } from '../net/gilLook';
+import { gilVincha, crewBandana } from '../net/gilLook';
 import { EE, ISLANDS, PLAYER_START } from '../config/maps/eclipse';
 import { ECLIPSE_DIR } from '../world/eclipseSky';
 import CineHorde from './cineHorde';
 import { makeDome, setSky, buildFacon } from './eclipseCineSets';
 import { assetUrl } from '../../lib/assets';
+import { eclSfx } from '../fx/eclipseSfx';
 
 // La entrada de Eclipse Matero: "El cielo se raja" (guion: scratchpad
 // eclipse/CINEMATICAS.md §1). La registra ui/introShots.js (SCRIPTS.eclipse)
-// y la corre ui/Intro.js. Segundos después de "El ciclo se ha roto" (el final
+// y la corre ui/Intro.js. Segundos después de "La ronda se ha roto" (el final
 // de Mate no Numa donde el Gil se niega):
 //  1. el algarrobo, el facón clavado con la cinta colorada y los cuatro (el
 //     Gil, Benito, Cirilo, Anacleto) parados en silencio;
@@ -23,7 +24,8 @@ import { assetUrl } from '../../lib/assets';
 //     sonido;
 //  5. arriba, el sol (el oro de Francisco: su sombrero se dibuja un instante en
 //     la luz) y la luna negra del Chiquitijuein chocan: empieza el eclipse;
-//  6. del piso salen, por las grietas, los primeros desgarrados de ojos violetas;
+//  6. el piso se raja y tiembla (los desgarrados ya no salen en la escena: el
+//     usuario los quiere recién cuando termina); los cuatro se sobresaltan;
 //     los cuatro se miran;
 //  7. los cuatro levantan los mates. "Esto lo rompí yo. Lo arreglo yo." El
 //     nombre del mapa y te despertás.
@@ -32,8 +34,16 @@ import { assetUrl } from '../../lib/assets';
 // entrada (sin estado): en línea, en la carga y al saltar se ve lo mismo. La
 // canción (core/music 'intro-eclipse': 32 s de silencio y la pelea) entra con
 // el choque del sol y la luna. Sin luces nuevas.
+// (2026-10-08, ITERACION-8, el usuario: "la intro arranca sin música y queda
+// raro; incluso cuando las piedras suben no hacen ruido". La canción es la
+// suya, "intro mapa" (core/music 'intro-eclipse-2'), desde el primer segundo;
+// el claro que se desprende y las islas que salen de las nubes suenan a
+// piedra: fx/eclipseSfx 'piedras-suben'. __mduOldEclIntroMus: como antes)
+const MUS8 = globalThis.__mduOldEclIntroMus !== true;
+const SONG = MUS8 ? 'intro-eclipse-2' : 'intro-eclipse';
 
-const FILES = ['cine-castillo.json', 'cine-luison.json', 'cine-esteros.json', 'cine-medias.json'];
+// (cine-penal: akimbo, defy, startle; cine-eclipse: lookBack. Ver ACTS, 2026-10-07)
+const FILES = ['cine-castillo.json', 'cine-luison.json', 'cine-esteros.json', 'cine-medias.json', 'cine-penal.json', 'cine-eclipse.json'];
 let CLIPS = null;
 let LOAD = null;
 function loadClips() {
@@ -95,12 +105,37 @@ void main() {
   gl_FragColor = vec4(c * uK * fl, 1.0);
 }`;
 
-// ---------------- el sombrero de Francisco en la luz ----------------
+// ---------------- la aureola de Francisco en la luz ----------------
+// (el usuario, 2026-10-06: "cambiaría el sombrero en el sol por la aureola,
+// que es símbolo característico de Francisco"; __mduEclIntroHat: el sombrero)
 function hatTexture() {
   const c = document.createElement('canvas');
   c.width = 256;
   c.height = 128;
   const x = c.getContext('2d');
+  if (globalThis.__mduEclIntroHat !== true) {
+    // un anillo de oro visto de costado, con resplandor (y un borde ámbar
+    // oscuro: sobre el disco del sol, solo el oro no se leía)
+    x.strokeStyle = 'rgba(90,40,0,0.85)';
+    x.lineWidth = 15;
+    x.beginPath();
+    x.ellipse(128, 64, 104, 30, 0, 0, Math.PI * 2);
+    x.stroke();
+    x.shadowColor = '#ffc860';
+    x.shadowBlur = 18;
+    x.strokeStyle = '#ffd36a';
+    x.lineWidth = 9;
+    x.beginPath();
+    x.ellipse(128, 64, 104, 30, 0, 0, Math.PI * 2);
+    x.stroke();
+    x.shadowBlur = 6;
+    x.strokeStyle = '#fff6d8';
+    x.lineWidth = 3;
+    x.beginPath();
+    x.ellipse(128, 64, 104, 30, 0, 0, Math.PI * 2);
+    x.stroke();
+    return new THREE.CanvasTexture(c);
+  }
   // (la silueta negra sola no se veía contra el cielo oscuro: lleva un borde de
   // oro con resplandor, como recortada contra el sol)
   const path = () => {
@@ -152,7 +187,8 @@ export function eclipse(g, I) {
     return Math.hypot(probe.x - x, probe.z - z) < 1e-3;
   };
   // (los cuatro, el facón, las grietas y donde se paran las cámaras bajas)
-  const LAY = [[2.7, 0], [3.5, 1.25], [3.6, -1.3], [4.3, 0.35], [1.4, 0.35], [6.6, 2.0], [5.8, -2.3], [6.4, -0.9], [5.2, 0], [5.6, 0.9], [4.9, 1.9]];
+  const FIX = globalThis.__mduNoEclIntroFix !== true;
+  const LAY = [[2.7, 0], [3.5, 1.25], [3.6, -1.3], [4.3, 0.35], [4.7, -0.15], [3.5, 1.35], [1.4, 0.35], [6.6, 2.0], [5.8, -2.3], [6.4, -0.9], [5.2, 0], [5.6, 0.9], [4.9, 1.9]];
   let dir = d0.clone();
   for (const a of [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4, Math.PI]) {
     const dd = d0.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), a);
@@ -184,7 +220,11 @@ export function eclipse(g, I) {
     return { ...c, i, a, ys: null };
   });
   // dónde se para cada uno (mirando al algarrobo) y qué hace
-  const SPOT = [P(2.7, 0), P(3.5, 1.25), P(3.6, -1.3), P(4.3, 0.35)];
+  // (el usuario, 2026-10-06: "muchos personajes le atraviesan manos": Benito y
+  // Anacleto a 1,2 m se metían las manos; las manos a la cara o al cuello de
+  // raiseM y luOldAlert, y las manos en el aire de handsOnHat, cambiadas.
+  // globalThis.__mduNoEclIntroFix: como antes)
+  const SPOT = FIX ? [P(2.7, 0), P(3.5, 1.35), P(3.6, -1.3), P(4.7, -0.15)] : [P(2.7, 0), P(3.5, 1.25), P(3.6, -1.3), P(4.3, 0.35)];
   // (el yaw de poseCineClip: hacia dónde mira, 0 es +z; como ui/introCrewB)
   const yawTo = (from, to) => Math.atan2(to.x - from.x, to.z - from.z);
   const face = SPOT.map((s) => yawTo(s, A));
@@ -192,14 +232,94 @@ export function eclipse(g, I) {
   // [segundo, clip, { loop, yaw, look, fade, mate }]
   const ACTS = [
     // el Gil: mira el facón; se planta; mira a los otros; levanta el mate
-    [[0, 'gilStand', { loop: true, look: 0.35 }], [T.react, 'brace', { loop: true, fade: 0.3 }], [42.6, 'luGilAlert', { loop: true, fade: 0.5, yaw: towards(0, 2) }], [T.raise, 'raiseV', { fade: 0.4, mate: true }]],
+    [[0, 'gilStand', { loop: true, look: 0.35 }], [T.react, FIX ? 'fists' : 'brace', { loop: true, fade: 0.3 }], [42.6, FIX ? 'fists' : 'luGilAlert', { loop: true, fade: 0.5, yaw: towards(0, 2) }], [T.raise, 'raiseV', { fade: 0.4, mate: true }]],
     // Benito: nervioso; se tira al piso; mira a todos lados; levanta el mate
-    [[0, 'nervous', { loop: true }], [T.react + 0.12, 'duck', { fade: 0.15 }], [14.6, 'cower', { loop: true, fade: 0.5 }], [42.9, 'luScaredAlert', { loop: true, fade: 0.4, yaw: towards(1, 0) }], [T.raise + 0.15, 'raiseM', { fade: 0.4, mate: true }]],
+    [[0, 'nervous', { loop: true }], [T.react + 0.12, 'duck', { fade: 0.15 }], [14.6, 'cower', { loop: true, fade: 0.5 }], ...(FIX ? [[42.9, 'nervous', { loop: true, fade: 0.5, yaw: towards(1, 0) }], [T.raise + 0.15, 'raiseC', { fade: 0.4, mate: true }]] : [[42.9, 'luScaredAlert', { loop: true, fade: 0.4, yaw: towards(1, 0) }], [T.raise + 0.15, 'raiseM', { fade: 0.4, mate: true }]])],
     // Cirilo: de brazos cruzados; se sacude el polvo; tranquilo; levanta el mate
     [[0, 'crossArms', { loop: true }], [T.react + 0.45, 'dust', { fade: 0.4 }], [15.2, 'cool', { loop: true, fade: 0.5 }], [43.3, 'luCoolAlert', { loop: true, fade: 0.5, yaw: towards(2, 0) }], [T.raise + 0.45, 'raiseC', { fade: 0.4, mate: true }]],
     // Anacleto: cansado; se agarra el sombrero; mira; levanta el mate (el último)
-    [[0, 'chestHand', { loop: true }], [T.react + 0.7, 'handsOnHat', { loop: true, fade: 0.4 }], [43.8, 'luOldAlert', { loop: true, fade: 0.6, yaw: towards(3, 1) }], [T.raise + 0.7, 'raiseO', { fade: 0.5, mate: true }]],
+    FIX
+      ? [[0, 'chestHand', { loop: true }], [T.react + 0.7, 'santiguar', { fade: 0.4 }], [T.react + 2.9, 'chestHand', { loop: true, fade: 0.5 }], [43.8, 'chestHand', { loop: true, fade: 0.6, yaw: towards(3, 1) }], [T.raise + 0.7, 'raiseO', { fade: 0.5, mate: true }]]
+      : [[0, 'chestHand', { loop: true }], [T.react + 0.7, 'handsOnHat', { loop: true, fade: 0.4 }], [43.8, 'luOldAlert', { loop: true, fade: 0.6, yaw: towards(3, 1) }], [T.raise + 0.7, 'raiseO', { fade: 0.5, mate: true }]],
   ];
+  // (2026-10-07, ITERACION-6 I1-I3, el usuario: "nuestros personajes viendo a
+  // cualquier lado (literal miran una pared), con los brazos abiertos como si
+  // les chupara todo un huevo, y el Gauchito Gil haciendo esa animación
+  // horrible de plegar el codo con el brazo estirado en lugar de comportarse
+  // como un ser humano normal". Mirado clip por clip (luz/t_clips.mjs):
+  //  · miraban al tronco del algarrobo y se los filmaba de espaldas: ahora
+  //    miran el facón (abajo), el cielo cuando se raja (arriba), las grietas
+  //    cuando se abren a sus espaldas (se dan vuelta) y al Gil al final; y las
+  //    tomas son de frente;
+  //  · los "brazos abiertos" eran nervous, chestHand, crossArms, cool y los
+  //    lu*Alert —poses de apuntar con el mate, sin el mate: los antebrazos
+  //    adelante con las palmas abiertas—: ahora parados de verdad (gilStand,
+  //    luGilTired), las manos en la cintura (akimbo), al cuello del poncho
+  //    (lookBack), rezando (pray);
+  //  · "levantar el mate" eran raiseV/C/O/M: los brazos tiesos para arriba (el
+  //    Gil, los dos). Ahora lo ofrecen al frente, con el codo doblado (offer).
+  // globalThis.__mduOldEclIntroPose: como antes)
+  const POSE2 = FIX && globalThis.__mduOldEclIntroPose !== true;
+  if (POSE2) {
+    const FAC = P(1.45, 0.25);
+    const toF = SPOT.map((sp) => yawTo(sp, FAC));
+    // (cada uno, a la grieta que le queda atrás)
+    const CR = [P(5.5, 0.9), P(4.7, 1.9), P(4.9, -1.4), P(5.8, -0.2)];
+    const toC = SPOT.map((sp, i) => yawTo(sp, CR[i]));
+    const G0 = T.ground;
+    const R0 = T.react;
+    const K0 = T.crack;
+    ACTS.length = 0;
+    ACTS.push(
+      // el Gil: mira el facón; el cielo; se planta; las grietas; a los suyos; el facón, y ofrece el mate
+      [
+        [0, 'gilStand', { loop: true, look: -0.3, yaw: toF[0] }],
+        [K0 + 0.5, 'gilStand', { loop: true, look: 0.35, fade: 0.8, yaw: toF[0] }],
+        [R0, 'flinch', { fade: 0.2, look: 0.2, yaw: toF[0] }],
+        [R0 + 1.5, 'defy', { loop: true, fade: 0.5, look: 0.15, yaw: toF[0] }],
+        [G0 + 0.8, 'startle', { fade: 0.9, yaw: toC[0], look: -0.2 }],
+        [G0 + 2.4, 'gilStand', { loop: true, fade: 0.5, yaw: toC[0], look: -0.35 }],
+        [46.6, 'gilStand', { loop: true, fade: 0.8, yaw: towards(0, 2), look: 0 }],
+        [T.raise - 1.4, 'gilStand', { loop: true, fade: 0.9, yaw: toF[0], look: -0.25 }],
+        [T.raise, 'offer', { fade: 0.5, mate: true, yaw: toF[0], look: 0.1 }],
+      ],
+      // Benito: agarrado del poncho; se tira al piso; salta con las grietas; al Gil
+      [
+        [0, 'lookBack', { loop: true, look: -0.15, yaw: toF[1] }],
+        [K0 + 0.6, 'lookBack', { loop: true, look: 0.3, fade: 0.6, yaw: toF[1] }],
+        [R0 + 0.12, 'duck', { fade: 0.15, yaw: toF[1] }],
+        [14.6, 'cower', { loop: true, fade: 0.5, yaw: toF[1] }],
+        [G0 + 0.9, 'flinch', { fade: 0.9, yaw: toC[1] }],
+        [G0 + 2.4, 'lookBack', { loop: true, fade: 0.5, yaw: toC[1], look: -0.3 }],
+        [46.9, 'lookBack', { loop: true, fade: 0.8, yaw: towards(1, 0), look: 0 }],
+        [T.raise + 0.25, 'offer', { fade: 0.5, mate: true, yaw: towards(1, 0) }],
+      ],
+      // Cirilo: las manos en la cintura; se sacude el polvo; mira la grieta; al Gil
+      [
+        [0, 'akimbo', { loop: true, look: -0.35, yaw: toF[2] }],
+        [K0 + 0.8, 'akimbo', { loop: true, look: 0.1, fade: 0.8, yaw: toF[2] }],
+        [R0 + 0.3, 'flinch', { fade: 0.25, yaw: toF[2] }],
+        [R0 + 1.8, 'dust', { fade: 0.4, yaw: toF[2] }],
+        [R0 + 3.8, 'akimbo', { loop: true, fade: 0.6, look: 0.1, yaw: toF[2] }],
+        [G0 + 1.1, 'startle', { fade: 0.9, yaw: toC[2] }],
+        [G0 + 2.7, 'akimbo', { loop: true, fade: 0.5, yaw: toC[2], look: -0.45 }],
+        [47.2, 'akimbo', { loop: true, fade: 0.8, yaw: towards(2, 0), look: -0.2 }],
+        [T.raise + 0.5, 'offer', { fade: 0.5, mate: true, yaw: towards(2, 0) }],
+      ],
+      // Anacleto: cansado; se santigua y reza; la grieta; al Gil (el último)
+      [
+        [0, 'luGilTired', { loop: true, look: -0.2, yaw: toF[3] }],
+        [K0 + 1.0, 'luGilTired', { loop: true, look: 0.35, fade: 0.8, yaw: toF[3] }],
+        [R0 + 0.5, 'flinch', { fade: 0.3, yaw: toF[3] }],
+        [R0 + 2.0, 'santiguar', { fade: 0.4, look: 0.2, yaw: toF[3] }],
+        [R0 + 4.0, 'pray', { loop: true, fade: 0.5, look: 0.2, yaw: toF[3] }],
+        [G0 + 1.3, 'startle', { fade: 0.9, yaw: toC[3] }],
+        [G0 + 2.9, 'luGilTired', { loop: true, fade: 0.5, yaw: toC[3], look: -0.45 }],
+        [47.5, 'luGilTired', { loop: true, fade: 0.8, yaw: towards(3, 1), look: 0 }],
+        [T.raise + 0.75, 'offer', { fade: 0.6, mate: true, yaw: towards(3, 0) }],
+      ],
+    );
+  }
   const poseOne = (c, t) => {
     const acts = ACTS[c.i];
     let k = 0;
@@ -212,6 +332,9 @@ export function eclipse(g, I) {
     };
     const [ta, , o = {}] = acts[k];
     const cur = at(acts[k], t);
+    // (un clip que no está en los archivos dejaba al personaje invisible: el
+    // Gil desaparecía de los 12,8 a los 42,6 s con 'brace', que no existe)
+    if (!cur.c && FIX) cur.c = clipOf('idle');
     if (!cur.c) return false;
     const yawOf = (oo) => oo.yaw ?? face[c.i];
     let yaw = yawOf(o);
@@ -252,9 +375,19 @@ export function eclipse(g, I) {
     for (const c of crew) {
       const ok = on && !!CLIPS && poseOne(c, t);
       c.a.group.visible = !!ok;
+      // (2026-10-07, la causa de los "brazos abiertos", medida: con la vida de
+      // escena —ui/cineLife— el modelo vuelve a armar los huesos desde las
+      // piezas en cada cuadro (net/gauchoSkin, updateMatrixWorld → pose), y las
+      // piezas que deja un clip tienen los brazos cruzados de lado (SWAP): las
+      // manos al cuello del poncho quedaban a 0,88 m una de otra en vez de 0,33.
+      // En las escenas de ui/cineActors no pasa (people.update marca el
+      // cuadro); acá, sin people.update, se marca a mano: la pose del clip queda)
+      if (ok && POSE2 && c.a.gs) c.a.gs.frame = c.a.g?.raf;
       if (ok) {
         a_hands(c);
         if (c.key === 'gil') gilVincha(c.a);
+        // (los compañeros, con su bandana: acá no corre people.update)
+        else if (globalThis.__mduNoBandanas !== true) crewBandana(c.a);
         if (!c.dim && c.a.gs?.mat) {
           c.dim = true;
           c.a.gs.mat.color.setScalar(0.78);
@@ -305,13 +438,18 @@ export function eclipse(g, I) {
   g.scene.add(crackG);
   // el sombrero de Francisco, recortado contra el sol un instante
   const hat = new THREE.Sprite(new THREE.SpriteMaterial({ map: hatTexture(), color: 0xffffff, transparent: true, depthWrite: false, opacity: 0, fog: false, toneMapped: false }));
-  hat.scale.set(24, 12, 1);
+  hat.scale.set(globalThis.__mduEclIntroHat === true ? 24 : 34, globalThis.__mduEclIntroHat === true ? 12 : 17, 1);
   hat.visible = false;
   g.scene.add(hat);
   // los desgarrados que salen de las grietas (títeres: ui/cineHorde)
   let horde = null;
   const rise = [];
   const makeHorde = () => {
+    // (el usuario, 2026-10-07: "terminando la cinemática spawnearon zombies en el
+    // medio de la misma, quedaba mal, que spawneen cuando termina recién": los
+    // desgarrados ya no salen en la escena; quedan las grietas, el temblor y el
+    // sobresalto de los cuatro. globalThis.__mduIntroHorde = true: como antes)
+    if (globalThis.__mduIntroHorde !== true) return;
     if (horde || !g.zombies?.meshes) return;
     horde = new CineHorde(g, 6);
     for (const [k, c] of cracks.entries()) {
@@ -382,16 +520,36 @@ export function eclipse(g, I) {
   const OUT = C.clone().addScaledVector(out, R + 30);
   const sky = (h) => C.clone().add(new THREE.Vector3(0, h, 0));
   const eclAt = (from, out2) => out2.copy(ECLIPSE_DIR).multiplyScalar(120).add(from);
-  const skyCam = A.clone().add(new THREE.Vector3(0, 2.0, 0)).addScaledVector(dir, 5);
+  // (la toma del cielo: la cámara del lado del eclipse, con el algarrobo a la
+  // espalda; a 5 m del árbol las ramas partidas tapaban el sol: el usuario,
+  // "en algún momento se tapa por un árbol", 2026-10-06)
+  const eclH = new THREE.Vector3(ECLIPSE_DIR.x, 0, ECLIPSE_DIR.z);
+  if (eclH.lengthSq() < 1e-4) eclH.copy(dir);
+  eclH.normalize();
+  // La toma del cielo se filma desde el claro, al lado de la laguna (18 m al
+  // este y 6 al sur del fogón): hacia el eclipse (noreste, 36° arriba) la mirada
+  // pasa por encima de la loma, la Barraca y el algarrobo partido, que quedan
+  // abajo en el cuadro. (Al pie del árbol, las ramas y el tronco tapaban el
+  // sol; a un costado, el techo de la Barraca cruzaba el cuadro: cuadros 28-34
+  // de cine/intro/HOJA-intro.png, 2026-10-06.)
+  const skyCam = new THREE.Vector3(Fg.x + 18, 0, Fg.z + 6);
+  skyCam.y = fy(skyCam.x, skyCam.z) + 2.2;
   const shots = [
     // 1 · el algarrobo, el facón y los cuatro, en silencio
-    { d: 6.6, fadeIn: 2.5, fog: 0.8, cam: [arr(P(6.8, 2.1, 1.75)), arr(P(6.4, 1.9, 1.7))], look: [arr(P(2.2, 0.2, 1.05)), arr(P(2.1, 0.2, 1.0))], ease: 'lin', fov: 48 },
+    // (POSE2: de frente, desde el pie del árbol, con el facón adelante: de atrás
+    // se les veía la espalda y el tronco)
+    POSE2
+      ? { d: 6.6, fadeIn: 2.5, fog: 0.8, cam: [arr(P(0.55, 1.5, 0.8)), arr(P(0.75, 1.3, 0.9))], look: [arr(P(3.3, -0.1, 1.15)), arr(P(3.3, -0.1, 1.2))], ease: 'lin', fov: 54 }
+      : { d: 6.6, fadeIn: 2.5, fog: 0.8, cam: [arr(P(6.8, 2.1, 1.75)), arr(P(6.4, 1.9, 1.7))], look: [arr(P(2.2, 0.2, 1.05)), arr(P(2.1, 0.2, 1.0))], ease: 'lin', fov: 48 },
     // 2 · el cielo se raja como un vidrio
-    { d: 5.9, cam: [arr(P(4.6, -0.6, 1.0)), arr(P(4.5, -0.6, 0.95))], look: [arr(P(0.5, 0, 9)), arr(P(0.2, 0, 15))], ease: 'out', fov: 60 },
+    // (al costado de Benito: en el medio la cámara quedaba metida en la cabeza de Anacleto)
+    { d: 5.9, cam: FIX ? [arr(P(3.0, 2.8, 1.0)), arr(P(2.9, 2.8, 0.95))] : [arr(P(4.6, -0.6, 1.0)), arr(P(4.5, -0.6, 0.95))], look: [arr(P(0.5, 0, 9)), arr(P(0.2, 0, 15))], ease: 'out', fov: 60 },
     // 3 · el claro se desprende y sube (de afuera: la cámara baja)
     { d: 4.2, fog: 0.7, cam: [[OUT.x, C.y + 8, OUT.z], [OUT.x, C.y - 6, OUT.z]], look: [arr(sky(1)), arr(sky(3))], ease: 'inout', fov: 52 },
     // 3b · los cuatro, cada uno a su manera
-    { d: 3.8, cam: [arr(P(5.9, -2.4, 1.6)), arr(P(5.6, -2.2, 1.55))], look: [arr(mid.clone().setY(mid.y + 1.0)), arr(mid.clone().setY(mid.y + 0.95))], ease: 'lin', fov: 46 },
+    POSE2
+      ? { d: 3.8, cam: [arr(P(1.15, -1.9, 1.5)), arr(P(1.35, -1.7, 1.42))], look: [arr(mid.clone().setY(mid.y + 1.1)), arr(mid.clone().setY(mid.y + 1.05))], ease: 'lin', fov: 52 }
+      : { d: 3.8, cam: [arr(P(5.9, -2.4, 1.6)), arr(P(5.6, -2.2, 1.55))], look: [arr(mid.clone().setY(mid.y + 1.0)), arr(mid.clone().setY(mid.y + 0.95))], ease: 'lin', fov: 46 },
     // 4 · alrededor salen los otros mundos de las nubes
     {
       d: 12,
@@ -417,7 +575,11 @@ export function eclipse(g, I) {
     // (alto: a ras del piso la paja del claro tapaba todo)
     { d: 10.1, cam: [arr(P(7.4, -2.5, 1.65)), arr(P(7.0, -2.2, 1.55))], look: [arr(P(4.4, 0.1, 0.45)), arr(P(3.9, 0.1, 0.75))], ease: 'lin', fov: 54 },
     // 7 · los cuatro levantan los mates (de frente)
-    { d: 4.4, cam: [arr(P(0.95, 0.35, 1.2)), arr(P(1.05, 0.3, 1.25))], look: [arr(P(3.5, 0.1, 1.45)), arr(P(3.5, 0.1, 1.55))], ease: 'lin', fov: 52 },
+    // (de costado del árbol: pegada al tronco, el tronco tapaba un tercio y se
+    // veían dos de los cuatro)
+    FIX
+      ? { d: 4.4, cam: [arr(P(0.85, 0.95, 1.25)), arr(P(1.0, 0.9, 1.3))], look: [arr(P(3.6, -0.5, 1.4)), arr(P(3.6, -0.5, 1.5))], ease: 'lin', fov: 60 }
+      : { d: 4.4, cam: [arr(P(0.95, 0.35, 1.2)), arr(P(1.05, 0.3, 1.25))], look: [arr(P(3.5, 0.1, 1.45)), arr(P(3.5, 0.1, 1.55))], ease: 'lin', fov: 52 },
     // el nombre, en negro
     { d: 1.6, black: true },
     // 8 · te despertás en el claro
@@ -449,7 +611,12 @@ export function eclipse(g, I) {
       rumble(8);
       boom(0.7);
       I.shake(0.9);
+      // (por el canal de la entrada, como los demás: se va si se saltea; el canal
+      // baja a 0,4 mientras suena la canción)
+      if (MUS8) eclSfx(g).play('piedras-suben', { gain: 1.1 / Math.max(0.3, I.bus?.gain.value ?? 1), reverb: 0.45, bus: I.bus });
     }],
+    // (las islas que salen de las nubes: el mismo, lejos y más grave)
+    [T.worlds + 0.3, () => MUS8 && eclSfx(g).play('piedras-suben', { gain: 0.45 / Math.max(0.3, I.bus?.gain.value ?? 1), reverb: 0.7, rate: 0.82, bus: I.bus })],
     [T.lift + 3.5, () => I.shake(0.5)],
     // cada mundo con su sonido: la campana del molino, el viento de La Tapera,
     // el trueno del penal, el coro de la torre, el cuerno del castillo, el clarín del Monumento
@@ -464,6 +631,13 @@ export function eclipse(g, I) {
       w.eclipse?.pulse?.(1.2);
       boom(0.9);
       I.shake(1.2);
+      // (el primer choque del sol y la luna: la onda de choque del usuario,
+      // por el canal de la entrada; ver world/eclipseSky.js)
+      if (MUS8 && globalThis.__mduOldShockSfx !== true) {
+        eclSfx(g).play('onda-choque', { gain: 0.9 / Math.max(0.3, I.bus?.gain.value ?? 1), reverb: 0.5, bus: I.bus });
+        // (y el cielo espera lo suyo antes de la próxima)
+        if (w.eclipse) w.eclipse.shockAt = g.time || 0;
+      }
     }],
     [T.ground + 0.8, () => {
       rumble(5);
@@ -521,10 +695,13 @@ export function eclipse(g, I) {
       }
     }
     // el sombrero de Francisco en el sol
-    hat.visible = t > T.sky && t < T.hit + 0.6;
+    // (el usuario, 2026-10-07: la aureola en el sol "es un espanto": ni sombrero ni aureola)
+    hat.visible = globalThis.__mduEclIntroHat === true && t > T.sky && t < T.hit + 0.6;
     if (hat.visible) {
       eclAt(g.camera.position, hat.position);
       hat.position.addScaledVector(ECLIPSE_DIR, 130);
+      // (la aureola flota arriba del sol, como la de un santo)
+      if (globalThis.__mduEclIntroHat !== true) hat.position.addScaledVector(tmpV.set(0, 1, 0).applyQuaternion(g.camera.quaternion), 14);
       hat.material.opacity = Math.sin(Math.PI * clamp01((t - T.sky - 0.3) / 2.4));
     }
     // las grietas del piso y los que salen
@@ -537,6 +714,20 @@ export function eclipse(g, I) {
     if (horde) horde.update(dt, t), horde.render();
     facon.visible = t < T.black;
     poseCrew(t, t < T.black + 0.2);
+  };
+  // la canción va pegada al segundo de la entrada: si tardó en bajar o la
+  // compu se trabó al arrancar, entraba cuando quería (el usuario, 2026-10-06);
+  // el choque del sol y la luna cae con el golpe de la pelea (a los 32 s del
+  // archivo). globalThis.__mduNoEclMusSync: como antes.
+  let syncAt = -9;
+  const syncSong = (t) => {
+    if (globalThis.__mduNoEclMusSync === true) return;
+    const M = g.music;
+    const el = M?.is(SONG) ? M.cur.song?.el : null;
+    if (!el || el.paused || el.readyState < 2 || t - syncAt < 1.5 || t > 68) return;
+    if (Math.abs(el.currentTime - t) < 0.25) return;
+    syncAt = t;
+    el.currentTime = t;
   };
   const show = (on) => {
     facon.visible = on;
@@ -554,17 +745,23 @@ export function eclipse(g, I) {
     title: 'Eclipse Matero',
     place: 'El Claro del Algarrobo · Corrientes, 1877',
     hideTeam: true,
+    song: SONG,
+    // (2026-10-09, el usuario: "la canción arranca súbitamente, hacé que sea un
+    // poquito más suave el arranque": entra en 4 s)
+    songFadeIn: MUS8 && globalThis.__mduOldEclIntroFade !== true ? 4 : 0,
     fov: 50,
     shots,
     cues,
     start() {
       makeHorde();
       wrapSky(true);
+      if (MUS8) eclSfx(g).load(['piedras-suben', 'onda-choque']);
       // (el sol y la luna todavía no se tocan: chocan a los 34 s)
       w.eclipse?.set?.(0, 0);
     },
     tick(I2, dt, t) {
       frame(t, dt);
+      syncSong(t);
     },
     stop() {
       show(false);

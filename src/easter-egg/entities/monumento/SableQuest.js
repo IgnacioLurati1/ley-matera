@@ -816,14 +816,11 @@ export default class SableQuest {
         if (m.by === myId(g) || !g.net) g.audio.powerupGrab?.();
         g.hud.toast?.(`${NAME[m.p]} del Sable Corvo`);
         this.syncHud();
-        // las tres: a dónde se llevan; si no, qué falta y dónde está
-        if (PARTS.every((k) => st.got[k])) g.hud.subtitle?.('El Sable Corvo se forja en la Llama Votiva', 4);
-        else {
-          // (la empuñadura: el granadero sale recién en la ronda 3; la vaina, en el espejo norte, el de la válvula)
-          const old = globalThis.__mduNoSableText;
-          const where = { hoja: 'la hoja (pie de la Proa)', emp: old || st.ghost ? 'la empuñadura (granadero del Parque)' : 'la empuñadura (granadero del Parque, desde la ronda 3)', vaina: old ? 'la vaina (fondo del espejo del Pasaje)' : 'la vaina (espejo norte del Pasaje)' };
-          const miss = PARTS.filter((k) => !st.got[k]).map((k) => where[k]);
-          g.hud.subtitle?.(`Falta ${miss.join(' y ')}.`, 5);
+        // qué falta (dónde está y adónde se lleva lo dice la guía: el usuario,
+        // 2026-10-08, sacó esos avisos)
+        if (!PARTS.every((k) => st.got[k])) {
+          const name = { hoja: 'la hoja', emp: 'la empuñadura', vaina: 'la vaina' };
+          g.hud.subtitle?.(`Falta ${PARTS.filter((k) => !st.got[k]).map((k) => name[k]).join(' y ')}.`, 3.5);
         }
         break;
       }
@@ -839,7 +836,6 @@ export default class SableQuest {
         this.ensureGhost();
         g.audio.bugle?.(tmpV.set(100.5, TRACK.y + 2, 30));
         // (a todos: de lejos no se enteraban de que había salido)
-        if (!globalThis.__mduNoSableText || Math.hypot(g.player.pos.x - 100.5, g.player.pos.z - 30) < 40) g.hud.subtitle?.('Un granadero fantasma galopa en el Parque.', 3.5);
         break;
       case 'fall': {
         if (st.ghost === 2) return;

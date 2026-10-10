@@ -10,6 +10,8 @@ import { dragonBreath } from '../weapons/dragonBreath';
 import { cherryShock } from '../weapons/electricCherry';
 import { killXp } from '../ui/Levels';
 import { camoFor } from '../weapons/camos';
+import { hellTracer } from '../weapons/maquinaModel';
+import { trailShot } from '../weapons/nuevosFx';
 
 // Sincronización de la partida. El anfitrión simula todo (zombies, rondas,
 // puertas, caja, clima) y manda 15 fotos por segundo con las posiciones; los
@@ -164,11 +166,13 @@ export default class Session {
     // en la torre pesa la diferencia de altura (el de otro piso queda lejos)
     const tower = !!g.world?.tower;
     const far = (p) => (levelOf(p.pos.y) === lv ? 0 : 900) + (tower ? ((p.pos.y || 0) - y) ** 2 * 6 : 0);
-    let best = g.player.canBeHit() && !g.player.maizIn && (wet || !submerged(g.player)) ? g.player : null;
+    // (ee.noTarget: el que viaja en el ascensor del Monumento, entities/MonumentoEgg.js)
+    const no = g.ee?.noTarget ? (p) => g.ee.noTarget(p, y) : null;
+    let best = g.player.canBeHit() && !g.player.maizIn && !no?.(g.player) && (wet || !submerged(g.player)) ? g.player : null;
     let bd = best ? (best.pos.x - x) ** 2 + (best.pos.z - z) ** 2 + far(best) : Infinity;
     for (const r of this.remote.values()) {
       // (unseenT: Ni Me Vieron, una empanada; maizIn: en una mata del Maizaster)
-      if (r.dead || r.downed || r.ghost || r.unseenT > g.time || r.maizIn || (!wet && submerged(r))) continue;
+      if (r.dead || r.downed || r.ghost || r.unseenT > g.time || r.maizIn || no?.(r) || (!wet && submerged(r))) continue;
       const d = (r.pos.x - x) ** 2 + (r.pos.z - z) ** 2 + far(r);
       if (d < bd) {
         bd = d;
@@ -552,6 +556,9 @@ export default class Session {
         const v = Math.hypot(r.pos.x - px, r.pos.z - pz) / dt;
         r.speed += (Math.min(9, v) - r.speed) * Math.min(1, dt * 8);
       }
+      // (cómo se ve acá alguien que su compu lleva de otra forma: el que viaja
+      // en el ascensor del Monumento, entities/monumento/Ascensor.js showRider)
+      r.fix?.(r);
     }
   }
 
@@ -850,7 +857,11 @@ export default class Session {
     // cámara, que queda más arriba; el tiro de verdad ya lo hizo él)
     const vis = this.avatars?.muzzleOf?.(m.pid, new THREE.Vector3()) || from;
     if (m.k === 'stream') g.fx.waterJet(vis, to, !!m.u);
-    else g.fx.tracer(vis, to, m.u ? 0xffa0ff : 0xfff0c8);
+    else if (m.k === 'gatling') hellTracer(g, vis, to, !!m.u);
+    // los mates nuevos (weapons/nuevosFx.js): la Llamarada en fuego, el Caótico
+    // en grieta de vacío; el cohete del Explosivo llega aparte ('cohete')
+    else if (m.k === 'llamarada' || m.k === 'caotico') trailShot(g, { trail: m.k === 'llamarada' ? 'fuego' : 'caos', upgraded: !!m.u }, vis, to);
+    else if (m.k !== 'cohete') g.fx.tracer(vis, to, m.u ? 0xffa0ff : 0xfff0c8);
     g.critters?.onNoise(from);
     g.fx.flash(vis, 0xffb060, 6, 0.05, 6);
     g.audio.shot(m.k, vis, !!m.u);
@@ -872,6 +883,10 @@ export default class Session {
       arm: info.arm,
       burn: info.burn ? 1 : 0,
       el: info.elem || undefined,
+      // (las balas del infierno de la Máquina de Muerte: el muerto queda carbonizado)
+      hl: info.hell ? 1 : undefined,
+      // (el tope por tiro contra el Gil de la Máquina de Muerte)
+      cp: info.cap || undefined,
       zp: info.zap ? 1 : undefined,
       dc: info.decap ? 1 : 0,
       // (un potenciador especial: el anfitrión le baja el daño a los jefes)
@@ -894,6 +909,8 @@ export default class Session {
       arm: m.arm,
       burn: !!m.burn,
       elem: m.el,
+      hell: !!m.hl,
+      cap: +m.cp || undefined,
       zap: !!m.zp,
       decap: !!m.dc,
       pup: m.pu,
@@ -1063,6 +1080,9 @@ export default class Session {
     // (la caja o la pared con la empanada que la mejora: Cajón Bendito, De la Pared)
     const empUp = !m.up && m.w && it ? g.emp?.upFor(it.kind === 'wallbuy' ? 'wall' : it.kind === 'box' || it.kind === 'salebox' ? 'box' : '', m.w) : 0;
     if (m.w) g.weapons.give(m.w, m.up || empUp || 0);
+    // (lo que dice el gaucho: ui/dialogos.js)
+    if (m.w && (it?.kind === 'box' || it?.kind === 'salebox')) g.dlg?.did('caja');
+    else if (m.w && it?.kind === 'pap') g.dlg?.did('pava');
     if (m.nade) {
       g.weapons.grenades = GRENADE.max;
       g.weapons.updateHud();
@@ -1071,7 +1091,10 @@ export default class Session {
     if (m.perk) {
       // (la musiquita de la máquina, como cuando se compra solo; la del anfitrión suena allá)
       if (it) g.audio.perkJingle(m.perk, it.pos);
-      g.weapons.drink(g.perkColor(m.perk), () => g.player.givePerk(m.perk));
+      g.weapons.drink(g.perkColor(m.perk), () => {
+        g.player.givePerk(m.perk);
+        g.dlg?.did('perk');
+      });
     }
     if (m.gift) g.activities.applyGift(m.gift);
     if (m.shield) g.activities.equipShield();
@@ -1148,6 +1171,10 @@ export default class Session {
       // la Bombilla Gut o la Ácida de otro jugador (se pega, llama a los muertos y revienta)
       case 'gutb':
         g.weapons?.ghostBolt(m);
+        break;
+      // el cohete del Mate Explosivo de otro jugador (vuela, humea y revienta; solo se ve)
+      case 'cohete':
+        g.weapons?.ghostRocket(m);
         break;
       // la Piedra de Molino o el Mate Dragón de otro jugador (solo se ve)
       case 'esp':
@@ -1361,8 +1388,12 @@ export default class Session {
       case 'say':
         g.say(m.s, m.x, m.k);
         break;
+      // los gauchos que hablan (ui/dialogos.js): la charla del anfitrión o la frase de un compañero
+      case 'dlg':
+        g.dlg?.onNet(m);
+        break;
       case 'sub':
-        g.hud.subtitle(m.x, m.d || 3, m.k || '');
+        if (m.x) g.hud.subtitle(m.x, m.d || 3, m.k || '');
         if (m.s) g.audio.sting();
         break;
       case 'toast':

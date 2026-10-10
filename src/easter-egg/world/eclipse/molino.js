@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ZONES } from '../../config/map';
+import { ZONES, DOORS } from '../../config/map';
 import { mesh, cylGeo, boxGeo, compactGroup } from '../props';
 import { registerMolinoProps } from '../molinoProps';
 import GeoBuilder from '../GeoBuilder';
@@ -700,7 +700,11 @@ function buildPatio(w, gb, root, r, out, orbs) {
   }
   for (const [u, v, rad, def] of [[0.25, 0.25, 0.9, { type: 'rack', rot: Math.PI / 2 }], [0.25, 0.7, 0.9, { type: 'rack', rot: Math.PI / 2 }], [0.75, 0.75, 1.4, { type: 'cart', rot: 0.4 }], [0.9, 0.2, 0.8, { type: 'sacks', rot: 0.3 }], [0.55, 0.88, 0.7, { type: 'firewood', rot: 0.2 }], [0.85, 0.45, 0.7, { type: 'bigsacks', rot: 0.4 }]]) {
     const [x, z] = zat('G2', u, v, true);
-    const p = spot(w, out, K, x, z, rad, 2.5);
+    // (mundo, it. 4) los catres y la pila de bolsas (2,75 m) con radio 0,7-0,9: la pila quedaba a 0,4 m de la
+    // puerta a la oficina del patrón. Lejos de las puertas del patio, a su medida.
+    const big = (def.type === 'rack' || def.type === 'bigsacks') && globalThis.__mduNoRackDoor !== true;
+    const doorOut = (px, pz, rr) => out(px, pz, rr) || DOORS.some((D) => D.zones.includes('G2') && D.cells.some(([cx, cz]) => Math.hypot(px - cx - 0.5, pz - cz - 0.5) < rr + 1.9));
+    const p = big ? spot(w, doorOut, K, x, z, 1.4, 4) : spot(w, out, K, x, z, rad, 2.5);
     if (p) put(w, { ...def, pos: p });
   }
   // matas secas contra el cerco

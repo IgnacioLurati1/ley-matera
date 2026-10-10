@@ -189,7 +189,7 @@ const LOD_STEP = 1;
 // `lod(cam)` (antes de dibujar, World.preRender) reparte cada mata en la de
 // su distancia. (Los números al azar salen en el mismo orden que antes, por
 // pedazo: las matas quedan iguales.)
-export function buildTussocks(root, spots, mat, { variants = 3, chunk = 21, seed = 51, leaves = 34, stems = 7 } = {}) {
+export function buildTussocks(root, spots, mat, { variants = 3, chunk = 21, seed = 51, leaves = 34, stems = 7, far = LOD_FAR } = {}) {
   const r = rng(seed);
   const geos = [];
   for (let k = 0; k < variants; k++) geos.push(LODS.map((L) => tussockGeometry(seed * 7 + k * 131, { leaves, stems, ...L })));
@@ -262,7 +262,7 @@ export function buildTussocks(root, spots, mat, { variants = 3, chunk = 21, seed
     lastAll = all;
     lastX = at.x;
     lastZ = at.z;
-    for (const S of sets) relod(S, at, all);
+    for (const S of sets) relod(S, at, all, far);
   };
   return meshes;
 }
@@ -270,7 +270,9 @@ export function buildTussocks(root, spots, mat, { variants = 3, chunk = 21, seed
 // el radio de la esfera de cada detalle (lo más lejos que llega, más una mata)
 const REACH = [LOD_NEAR + LOD_HYST + 3, LOD_MID + LOD_HYST + 3, LOD_FAR + LOD_HYST + 3];
 
-function relod(S, at, all) {
+// (far: hasta dónde se dibujan; Eclipse Matero, el claro, más lejos: ahí la
+// niebla es poca y desde la loma las del fondo aparecían y desaparecían)
+function relod(S, at, all, far = LOD_FAR) {
   const n = S.lod.length;
   const cx = at.x;
   const cz = at.z;
@@ -283,7 +285,7 @@ function relod(S, at, all) {
     else {
       // el borde de cada escalón, corrido hacia el lado de donde viene
       const e = (edge, lo) => edge + (was === 255 ? 0 : was <= lo ? LOD_HYST : -LOD_HYST);
-      L = d < e(LOD_NEAR, 0) ? 0 : d < e(LOD_MID, 1) ? 1 : d < e(LOD_FAR, 2) ? 2 : 3;
+      L = d < e(LOD_NEAR, 0) ? 0 : d < e(LOD_MID, 1) ? 1 : d < e(far, 2) ? 2 : 3;
     }
     if (L !== was) {
       S.lod[k] = L;
@@ -296,7 +298,7 @@ function relod(S, at, all) {
     if (all) B.copy(S.all);
     else {
       B.center.set(cx, S.all.center.y, cz);
-      B.radius = REACH[L];
+      B.radius = L === 2 ? far + LOD_HYST + 3 : REACH[L];
     }
   }
   if (!changed) return;

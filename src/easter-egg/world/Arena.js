@@ -681,7 +681,6 @@ export default class Arena {
     this.ward = on;
     this.wardT = 0;
     if (!g.net?.guest) g.net?.event('ward', { on: on ? 1 : 0 });
-    if (on) g.hud.subtitle(this.lines.ward, 4, 'boss');
     else if (this.phase === 'fight') {
       g.audio.chain(tmpV.set(this.A.x, 2, this.A.z));
     }

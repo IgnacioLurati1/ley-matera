@@ -414,7 +414,10 @@ export const WEAPONS = {
     mag: 40,
     reserve: 100,
     reload: 3.1,
-    damage: 100000,
+    // (cada toque del chorro, diez por segundo. Era 100000: liquidaba filas
+    // enteras al toque en cualquier ronda. Pedido del usuario 2026-10-07: mucho
+    // menos. Ahora: 2 toques en la ronda 20, 5 en la 30, 12 en la 40)
+    damage: 1500,
     headMult: 1,
     range: 11,
     sound: 'stream',
@@ -424,7 +427,7 @@ export const WEAPONS = {
     stream: { radius: 0.7 },
     box: 2,
     only: ['granja', 'penal'],
-    pap: { name: 'La Bombilla de Belcebú', mag: 60, reserve: 150, range: 15, stream: { radius: 0.95 } },
+    pap: { name: 'La Bombilla de Belcebú', damage: 4000, mag: 60, reserve: 150, range: 15, stream: { radius: 0.95 } },
   },
   pava: {
     name: 'Pava Silbadora',
@@ -536,6 +539,107 @@ export const WEAPONS = {
     box: 9,
     only: 'torre',
     pap: { name: 'Campanario del Remolino', damage: 265, mag: 100, reserve: 500, rpm: 780, elem: 'ice' },
+  },
+  // Los cuatro de la caja nuevos (el usuario, 2026-10-08). Modelos en
+  // weapons/nuevosMates.js; trazos, cohete y chispas en weapons/nuevosFx.js;
+  // tiros grabados (CC0) en core/weaponSfx.js.
+  // La escopeta automática (la Haymaker 12 de Black Ops 3): 16 cartuchos,
+  // 300 por minuto, de un tiro hasta la ronda 10 si entran todos los perdigones.
+  labrador: {
+    name: 'Mate Labrador',
+    desc: 'Calabaza de chacra con pirograbado de trigo y un barrilito de perdigones. No para de escupir plomo.',
+    kind: 'hitscan',
+    auto: true,
+    rpm: 300,
+    mag: 16,
+    reserve: 64,
+    reload: 2.4,
+    damage: 170,
+    pellets: 6,
+    headMult: 1.5,
+    spread: 0.075,
+    range: 24,
+    pen: 2,
+    sound: 'labrador',
+    recoil: 0.1,
+    box: 9,
+    pap: { name: 'Labrador de Sol a Sol', damage: 380, mag: 25, reserve: 125, rpm: 330, elem: 'fire' },
+  },
+  // El lanzacohetes de cuatro (la L4 Siege de Black Ops 3): semiautomático,
+  // cuatro cohetes y 60 de reserva. Revienta fuerte y te lastima si estás
+  // cerca, salvo con la PhD Flopper (Player.damage: explosión).
+  explosivo: {
+    name: 'Mate Explosivo',
+    desc: 'Cuatro bombillas cohete en una calabaza de pólvora. Revientan todo... a vos también si estás cerca.',
+    kind: 'projectile',
+    auto: false,
+    rpm: 150,
+    mag: 4,
+    reserve: 60,
+    reload: 3.4,
+    damage: 1500,
+    headMult: 1,
+    range: 90,
+    sound: 'cohete',
+    recoil: 0.14,
+    moveMult: 0.92,
+    projectile: { speed: 36, gravity: 1.2, radius: 3.5, damage: 1500, color: 0xffa040, size: 0.07, rocket: true, selfDamage: 60 },
+    box: 7,
+    pap: {
+      name: 'Circo Explosivo',
+      elem: 'fire',
+      damage: 3500,
+      mag: 8,
+      reserve: 80,
+      projectile: { speed: 42, gravity: 1, radius: 4.5, damage: 3500, color: 0xffd060, size: 0.08, rocket: true, selfDamage: 75 },
+    },
+  },
+  // Solo en la caja de Eclipse Matero: la ametralladora del caos (la Dingo de
+  // Black Ops 3), un poco mejor que el Camionero.
+  caotico: {
+    name: 'Mate Caótico',
+    desc: 'Calabaza partida por el desgarro, con el caos girando adentro. Escupe vacío sin parar.',
+    kind: 'hitscan',
+    auto: true,
+    rpm: 760,
+    mag: 100,
+    reserve: 480,
+    reload: 4.0,
+    damage: 145,
+    headMult: 3,
+    spread: 0.036,
+    range: 80,
+    pen: 3,
+    sound: 'caotico',
+    recoil: 0.036,
+    moveMult: 0.9,
+    trail: 'caos',
+    box: 10,
+    only: 'eclipse',
+    pap: { name: 'Lobizón del Caos', damage: 235, mag: 150, reserve: 720, rpm: 780, elem: 'electric' },
+  },
+  // Solo en la caja de Der Mateendrache: como el Imperial pero del dragón,
+  // con más daño y más balas de reserva.
+  llamarada: {
+    name: 'Llamarada Matera',
+    desc: 'Forjada en la boca del dragón: escamas de brasa, garras de hierro y cada tiro sale en llamas.',
+    kind: 'hitscan',
+    auto: true,
+    rpm: 720,
+    mag: 30,
+    reserve: 330,
+    reload: 2.7,
+    damage: 185,
+    headMult: 3.2,
+    spread: 0.025,
+    range: 80,
+    pen: 2,
+    sound: 'llamarada',
+    recoil: 0.035,
+    trail: 'fuego',
+    box: 9,
+    only: 'castillo',
+    pap: { name: 'Llamarada del Dragón', damage: 300, mag: 45, reserve: 480, rpm: 780, elem: 'fire' },
   },
   // El Mate Meme: solo en el Challenge de la torre (la caja y la pared de la
   // casita escondida; `only: 'reto'` no es ningún mapa, así que en los demás no
@@ -697,8 +801,10 @@ export const WEAPONS = {
     kind: 'bolt',
     auto: false,
     rpm: 105,
-    mag: 5,
-    reserve: 60,
+    // (un frasco por carga; la mejorada, tres. Y un cuarto menos de recámara:
+    // pedido del usuario 2026-10-07)
+    mag: 1,
+    reserve: 45,
     reload: 2.9,
     damage: 6000,
     headMult: 1,
@@ -709,7 +815,50 @@ export const WEAPONS = {
     special: true,
     // (como el Magmagat: el frasco pegado llama a los muertos hasta que revienta)
     bolt: { speed: 36, fuse: 2.2, radius: 3.2, damage: 9000, count: 3, spread: 0.07, acid: true, lure: true },
-    pap: { name: 'Bombilla Ácida Corrosiva', mag: 8, reserve: 90, bolt: { speed: 40, fuse: 2.4, radius: 3.8, damage: 22000, count: 4, spread: 0.08, acid: true, lure: true } },
+    pap: { name: 'Bombilla Ácida Corrosiva', mag: 3, reserve: 68, bolt: { speed: 40, fuse: 2.4, radius: 3.8, damage: 22000, count: 4, spread: 0.08, acid: true, lure: true } },
+  },
+  // La otra versión de la Bombilla Gut: hecha Gatling del infierno (tambor de
+  // seis caños, manivela y cinta de balas al rojo). No sale de la caja: se arma
+  // con su búsqueda (entities/penalMaquina.js) y no le sirve al easter egg (no
+  // es ácido: al Alcaide no le derrite el llavero). Medio pasada hasta la ronda
+  // 30; sin mejorar se queda corta por la 30-35 (~14 tiros por muerto) y
+  // mejorada por la 40-45. rapid: fogonazo suave; hell: balas del infierno
+  // (trazo de fuego, chispas, el muerto queda carbonizado; sin quemadura que
+  // siga pegando); spinUp: lo que tarda el tambor en tomar vuelta antes del
+  // primer tiro (con el clic derecho se lo hace girar antes y tira al toque).
+  // (2026-10-07, el usuario: cadencia baja y poca precisión: de 1000 a 1800
+  // por minuto, dispersión 0,04 → 0,016 y casi sin subir la mira)
+  gutmuerte: {
+    name: 'Máquina de Muerte',
+    desc: 'La Bombilla Gut hecha Gatling del infierno. Clic derecho: hacé girar el tambor y tirá al toque.',
+    kind: 'hitscan',
+    auto: true,
+    rpm: 1800,
+    mag: 240,
+    reserve: 720,
+    reload: 4.2,
+    damage: 520,
+    headMult: 1.5,
+    spread: 0.016,
+    range: 60,
+    pen: 2,
+    sound: 'gatling',
+    recoil: 0.005,
+    moveMult: 0.88,
+    noAds: true,
+    rapid: true,
+    hell: true,
+    spinUp: 0.35,
+    // contra los jefes pega más que contra un muerto (x1,5): la Ácida limpia
+    // hordas, la Máquina es la de los jefes (el usuario, 2026-10-07; era 0,4).
+    // Al Gil, ~15% más que la Ácida del mismo nivel y no más (que no lo
+    // desintegre): bossCap es el tope por tiro contra él (Zombies.damage,
+    // info.cap). Tirándole 8 s parado: la Ácida ~5500 por segundo (mejorada
+    // ~23300, con los charcos), esta ~6500 (mejorada ~27000)
+    bossMult: 1.5,
+    bossCap: 360,
+    only: 'penal',
+    pap: { name: 'Máquina de Muerte Segura', damage: 1250, mag: 320, reserve: 1280, rpm: 2000, pen: 3, spinUp: 0.22, bossCap: 1400 },
   },
   // La torre: el Rayo Matero Mark III (el Ray Gun Mark 3 de Gorod Krovi), un
   // par de mates gemelos del remolino. Clic izquierdo: un rayo que atraviesa
@@ -1055,6 +1204,12 @@ export const WEAPONS = {
   //  · mag/reserve: los tiros del derecho (el cargador se llena solo de la
   //    reserva cuando vuelve vacío; la Carga no gasta). Mata de un tajo hasta
   //    la ronda oneHit con un golpe de verdad, no infinito (el usuario, 2026-10-05)
+  //  · el nerf (el usuario, 2026-10-07): de un tajo hasta la ronda 14 y el tiro
+  //    (throw.oneHit) hasta la 20; el de San Lorenzo hasta la 24 y su tiro
+  //    hasta la 30. Después, de a
+  //    dos golpes las 10 rondas que siguen, de a tres las otras 10, y así
+  //    (weapons/Sable.js dmg). La Carga sigue matando siempre a los comunes.
+  //    Antes: 40 y 45.
   sable: {
     name: 'Sable Corvo',
     desc: 'Izquierdo: tajos. Derecho: tiralo, vuelve solo.',
@@ -1072,16 +1227,16 @@ export const WEAPONS = {
     special: true,
     wonder: true,
     noAds: true,
-    slash: { range: 3.6, cos: 0.25, targets: 5, oneHit: 40, boss: 0.03, bossMin: 1800 },
-    throw: { reach: 13, side: 3.6, time: 1.35, radius: 1.25, cd: 3, boss: 0.06, bossMin: 3000 },
+    slash: { range: 3.6, cos: 0.25, targets: 5, oneHit: 14, boss: 0.03, bossMin: 1800 },
+    throw: { reach: 13, side: 3.6, time: 1.35, radius: 1.25, cd: 3, oneHit: 20, boss: 0.06, bossMin: 3000 },
     pap: {
       name: 'Sable de San Lorenzo',
       desc: 'Cada tajo larga una medialuna. Con la carga llena, mantené el derecho.',
       rpm: 150,
       mag: 8,
       reserve: 48,
-      slash: { range: 3.9, cos: 0.18, targets: 6, oneHit: 45, boss: 0.04, bossMin: 2600 },
-      throw: { reach: 16, side: 4.4, time: 1.45, radius: 1.6, cd: 2.6, boss: 0.08, bossMin: 4500 },
+      slash: { range: 3.9, cos: 0.18, targets: 6, oneHit: 24, boss: 0.04, bossMin: 2600 },
+      throw: { reach: 16, side: 4.4, time: 1.45, radius: 1.6, cd: 2.6, oneHit: 30, boss: 0.08, bossMin: 4500 },
       wave: { range: 12, speed: 30, half: 2.3, boss: 0.012 },
       carga: { kills: 25, len: 38, half: 4.2, speed: 17, hold: 0.45, boss: 0.3, bossMin: 12000 },
     },
@@ -1143,21 +1298,38 @@ export const WEAPONS = {
     throw: { reach: 18, side: 4.8, time: 1.5, radius: 1.9, cd: 0.75, frac: 1, boss: 0.09, bossMin: 5000, pull: { radius: 4.2, speed: 7.5 }, burst: { radius: 4, frac: 1.1, boss: 0.035, bossMin: 2200, push: 9 } },
     dash: { len: 8, time: 0.2, cd: 1.8, half: 1.6, frac: 1.25, boss: 0.06, bossMin: 4000, crack: { life: 2.6, frac: 0.6 }, burst: { radius: 4, frac: 1.2, boss: 0.035, bossMin: 2200, push: 10 } },
     spin: { time: 1, radius: 3.2, push: 9, dmg: 0.45 },
-    furia: { kills: 30, time: 20, rate: 1.35, dmg: 1.5, move: 1.25, heal: 15, beam: { range: 32, width: 0.7, tick: 0.1, boss: 8000, cap: 1200, ws: 0.85 }, wave: { speed: 22, range: 12, frac: 1, boss: 0.012, bossMin: 700 } },
-    exec: { time: 20, dashCd: 0, furia: 2, cloud: { radius: 3.4, frac: 1.3 }, wave: { speed: 26, range: 14, frac: 50, boss: 0.02, bossMin: 1500 } },
+    furia: { kills: 30, time: 20, rate: 1.35, dmg: 1.5, move: 1.25, heal: 15, beam: { range: 36, width: 1.2, tick: 0.1, boss: 11000, cap: 1600, ws: 1 }, wave: { speed: 22, range: 12, frac: 1, boss: 0.012, bossMin: 700 } },
+    // la ejecutora (el Cazador del Caos con la guadaña en la mano). v4: cada
+    // tajo larga una onda de ruptura que ejecuta en línea (más larga y ancha),
+    // abre el agujero negro, la Furia se llena sola (fill bajas por segundo) y
+    // los ejecutados revientan en la nube
+    exec: { time: 20, dashCd: 0, furia: 2, fill: 1.5, hole: true, cloud: { radius: 4.5, frac: 1.5 }, wave: { speed: 30, range: 22, frac: 50, boss: 0.03, bossMin: 2500, wide: 1.6 } },
     pap: {
       name: 'Desgarrador del Eclipse',
       desc: 'Rompe el espacio: se los traga. Furia llena: H.',
       rpm: 180,
       mag: 10,
       reserve: 90,
-      slash: { range: 5, cos: 0.08, targets: 12, oneHit: 80, boss: 0.065, bossMin: 4500 },
-      finisher: { range: 6, cos: -0.6, targets: 20, oneHit: 80, boss: 0.1, bossMin: 7000, wave: { radius: 7, frac: 1, boss: 0.03, bossMin: 2400, push: 12 }, rupture: { at: 2.2, kill: 6.5, radius: 10, push: 13, reel: 1.1, boss: 0.035, bossMin: 3000, bubble: { radius: 8, time: 2.2, slow: 0.16 } } },
+      // (v4: el tajo de un golpe hasta la ronda 80 y el remate hasta la 110; a
+      // los jefes 8 y 10 % por golpe, nunca de uno)
+      slash: { range: 5, cos: 0.08, targets: 12, oneHit: 80, boss: 0.08, bossMin: 5000 },
+      finisher: { range: 6, cos: -0.6, targets: 20, oneHit: 110, boss: 0.1, bossMin: 7000, wave: { radius: 7, frac: 1, boss: 0.03, bossMin: 2400, push: 12 }, rupture: { at: 2.2, kill: 6.5, radius: 10, push: 13, reel: 1.1, boss: 0.035, bossMin: 3000, bubble: { radius: 8, time: 2.2, slow: 0.16 } } },
       rift: { life: 3.2, tick: 0.18, again: 0.35, frac: 1.3, boss: 0.012, bossMin: 900, swallow: true },
-      throw: { reach: 20, side: 5.2, time: 1.6, radius: 2.1, cd: 0.7, frac: 1.3, boss: 0.1, bossMin: 6000, pull: { radius: 4.6, speed: 8 }, burst: { radius: 4.4, frac: 1.3, boss: 0.04, bossMin: 2600, push: 10 }, trio: { lag: 0.08 }, well: { at: 0.6, radius: 8.5, time: 1.5, pull: 11, core: 3.4, boss: 0.05, bossMin: 4000 } },
+      // (v4) las dos de los costados orbitan el pozo mientras dura (orbit: vueltas por segundo en radianes)
+      throw: { reach: 20, side: 5.2, time: 1.6, radius: 2.1, cd: 0.7, frac: 1.3, boss: 0.09, bossMin: 6000, pull: { radius: 4.6, speed: 8 }, burst: { radius: 4.4, frac: 1.3, boss: 0.04, bossMin: 2600, push: 10 }, trio: { lag: 0.08, orbit: 4.2 }, well: { at: 0.6, radius: 8.5, time: 1.5, pull: 11, core: 3.4, boss: 0.05, bossMin: 4000 } },
       dash: { len: 9.5, time: 0.2, cd: 1.4, half: 1.9, frac: 1.6, boss: 0.07, bossMin: 5000, crack: { life: 6, frac: 2, w: 0.36, fault: true }, burst: { radius: 4.6, frac: 1.4, boss: 0.04, bossMin: 2600, push: 11 } },
       spin: { time: 0.95, radius: 4.2, push: 11, dmg: 0.7 },
-      furia: { kills: 30, time: 22, rate: 1.45, dmg: 2, move: 1.3, heal: 20, beam: { range: 40, width: 1.3, tick: 0.08, boss: 12000, cap: 1800, ws: 1.6 }, wave: { speed: 26, range: 16, frac: 1.5, boss: 0.016, bossMin: 1000 }, rain: { every: 1.1, n: 4, radius: 16, frac: 3, boss: 0.025, bossMin: 2500 }, dust: true },
+      // (v4) la Furia divina: el Eclipse. 20 s, la lluvia más tupida y todo lo
+      // que entra a aura.radius m muere de a poco (aura.ticks golpes, uno cada
+      // aura.every s; a los jefes, aura.boss por golpe)
+      furia: { kills: 30, time: 20, rate: 1.45, dmg: 2, move: 1.3, heal: 20, beam: { range: 46, width: 1.8, tick: 0.08, boss: 16000, cap: 2400, ws: 1.35 }, wave: { speed: 26, range: 16, frac: 1.5, boss: 0.016, bossMin: 1000 }, rain: { every: 0.55, n: 6, radius: 18, frac: 3, boss: 0.025, bossMin: 2500 }, dust: true, eclipse: true, aura: { radius: 12, every: 0.45, ticks: 3, frac: 0.34, boss: 0.006, bossMin: 500 } },
+      // (v4) el agujero negro de cada tajo (radio, segundos: se traga a los que mata)
+      hole: { R: 0.26, life: 0.95 },
+      // (v4) mantener el clic: el golpe cargado. hold: cuánto mantenido después
+      // de un tajo para empezar a cargar; min / full: segundos; cd: espera. La
+      // ruptura grande: traga en kill m, tumba en radius m, frena el tiempo en
+      // la burbuja; a los jefes boss de su vida (nunca de uno)
+      charge: { hold: 0.3, min: 0.35, full: 1.1, cd: 3, rupture: { at: 4, kill: 9, radius: 13, push: 15, reel: 1.4, boss: 0.09, bossMin: 9000, bubble: { radius: 10, time: 3.2, slow: 0.06 } } },
     },
   },  // El Cazador del Caos (el potenciador de Eclipse Matero: entities/Powerups
   // PERSONAL.caos; antes daba el farol del penal): una bruma violeta que gira
@@ -1182,12 +1354,19 @@ export const WEAPONS = {
     range: 7,
     sound: 'silent',
     recoil: 0,
-    moveMult: 1,
+    // (v4: corre más con el Cazador en la mano)
+    moveMult: 1.3,
     special: true,
     temp: true,
     bossMult: 0.3,
     mist: { range: 7.5, cos: 0.78, time: 1.5, kill: 0.3, cd: 1.1, boss: 0.05 },
-    suck: { radius: 6, targets: 14, time: 0.8, cd: 2.2, heal: 8, boss: 0.05, bossMin: 2000 },
+    // (v4) la succión: un agujero negro adelante (at m) que arrastra todo lo de radius m
+    suck: { radius: 14, targets: 30, time: 0.8, cd: 2.4, heal: 8, boss: 0.06, bossMin: 3000, at: 3, pull: 16 },
+    // (v4) el izquierdo: un rayo de vacío que salta de muerto en muerto (jumps
+    // saltos de hasta hop m) y los parte; cada muerto revienta en esquirlas
+    // que lastiman a los de al lado (shards: radio, parte de la vida)
+    chain: { range: 22, jumps: 6, hop: 7, cd: 0.42, boss: 0.035, bossMin: 1800 },
+    shards: { radius: 3, frac: 0.7 },
   },
 };
 
@@ -1203,7 +1382,7 @@ export const BOX_POOL = Object.entries(WEAPONS)
 // (de ~28-36% a ~14-20% de fuertes; los de pared, de ~32% a ~45%; los wonder
 // casi igual). Pedido del usuario 2026-09-27.
 const BOX_TUNED = ['molino', 'granja', 'penal'];
-const BOX_STRONG = ['imperial', 'camionero', 'torpedo', 'asta', 'mate47', 'gut'];
+const BOX_STRONG = ['imperial', 'camionero', 'torpedo', 'asta', 'mate47', 'gut', 'labrador'];
 // Los especiales de la caja salen un poco más (de ~2% a ~3,4% cada uno), y en
 // el molino el Tronador bastante más (~5,8%). Pedido del usuario 2026-09-30.
 const WONDER_K = 1.75;

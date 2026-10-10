@@ -1,0 +1,36 @@
+/* El logo de Luta Studios (ui/StudioLogo.js): dos lienzos que dibuja otro
+   hilo (ui/studioLogoWorker.js). Acá solo va dónde se ponen; nada se anima
+   con CSS (las animaciones de la página se re-sincronizan con una hora vieja
+   cuando el hilo del juego se destraba, y el logo saltaba para atrás). */
+.sl-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483002;
+  overflow: hidden;
+  /* tapa de negro hasta el primer cuadro; después el negro es del lienzo de
+     fondo, que al final se desvanece y deja ver la pantalla de carga */
+  background: #000;
+  pointer-events: none;
+  contain: strict;
+}
+.sl-root.is-on {
+  background: transparent;
+}
+.sl-root canvas {
+  position: absolute;
+  display: block;
+}
+/* el fondo: un degradé chico, estirado a toda la pantalla */
+.sl-back {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Mientras el logo tapa la carga, el grano de película del juego (.mdu-grain,
+   un ruido de SVG) no se dibuja: pintarlo por primera vez ocupa la placa
+   ~45 ms y el logo pegaba un saltito. Aparece cuando el logo se fue
+   (index.js saca is-logo). */
+.mdu-root.is-logo .mdu-grain {
+  display: none;
+}

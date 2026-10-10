@@ -1175,8 +1175,6 @@ export default class Surubi {
       if (cross(LAND + 0.45) || cross(LAND + 0.8)) this.thud(z.pos, 0.5);
       if (cross(LAND + 1.3)) {
         g.audio.growl?.(tmpV.set(z.pos.x, (z.baseY || 0) + 2.5, z.pos.z), 'boss');
-        // (con la pava ya lo dijo la pesca: world/papLlama.js)
-        if (!this.hasPava) g.hud.subtitle?.('¡El Surubí del Paraná!', 3, 'boss');
       }
     } else if (st === 'chase') {
       const hp = z.hopPh ?? b / HOP_T;

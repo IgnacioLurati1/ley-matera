@@ -289,13 +289,12 @@ export default class Cueva {
       const it = g.interact.list.find((x) => x.kind === 'door' && x.door?.index === this.door);
       if (it && !it.door.open) g.interact.openDoor(it.door);
       E.step = 5;
-      announce(g, 'La pared de hielo se derritió. Abajo duerme el Mateendrache.', 5, true);
+      announce(g, '', 5, true);
       E.say('fierro', LINES.cueva, 2);
       E.netSync();
     } else if (m.op === 'light' && this.ph === 0) {
       this.ph = 1;
       this.temp = 20;
-      announce(g, 'Se prendió el fogón. Ojo con el agua, entre 78 y 82 grados. El hielo la baja.', 5);
       E.say('fierro', LINES.fogon);
       E.netSync();
     } else if (m.op === 'temp' && this.ph === 1) {
@@ -443,7 +442,7 @@ export default class Cueva {
       }
       if (this.okT >= OK_SECS) {
         this.ph = 2;
-        announce(g, 'El agua está a punto. Ahora, el Zonda... que la pava vuele hasta el mate.', 5, true);
+        announce(g, '', 5, true);
         this.egg.say('fierro', LINES.punto);
         this.egg.netSync();
       }
@@ -496,7 +495,7 @@ export default class Cueva {
       H.pava.rotation.set(0, 0, 0);
       this.pouring = null;
       this.mateObj.water.visible = true;
-      if (isHost(g)) announce(g, 'El mate está cebado. Falta el que se lo toma... despiértenlo con Illapa.', 5, true);
+      if (isHost(g)) announce(g, '', 5, true);
     }
   }
 
@@ -520,7 +519,7 @@ export default class Cueva {
       if (!W.said) {
         W.said = true;
         this.mateObj.water.visible = false;
-        if (isHost(g)) announce(g, 'El Mateendrache se tomó el mate... pero sigue encadenado. Rompan las cuatro cadenas con tiros cargados.', 6, true);
+        if (isHost(g)) announce(g, '', 6, true);
       }
       if (W.t > 10) this.waking = null;
     }

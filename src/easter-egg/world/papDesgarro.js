@@ -1,14 +1,20 @@
 import * as THREE from 'three';
 import { EE, ZONES } from '../config/map';
-import { ISLANDS, PAP } from '../config/maps/eclipse';
+import { ISLANDS, PAP, PORTALS } from '../config/maps/eclipse';
+import { assetUrl } from '../../lib/assets';
+import PapGrietas from './papGrietas';
 
 // El paso previo del Pack-a-Pava en Eclipse Matero. El Pack-a-Pava está en La
 // Disformidad: otra dimensión, oscura y violeta, con susurros y muertos
 // deformes, a la que solo se llega por el portal sellado del claro
 // (world/eclipsePortals.js, EE.desgarroPortal). Tres actos:
-//  I.  "Las tres cicatrices" (en el claro, con la luz): tres cicatrices del
-//      desgarro flotan en el aire; se cierran a tiros (o explosiones), más
-//      golpes a más ronda. Cerradas las tres, el portal sellado se abre.
+//  I.  "Las cuatro grietas" (2026-10-10, world/papGrietas.js): una grieta en el
+//      Molino, otra en La Tapera, otra en el Penal y otra en la Torre. Cada una
+//      lleva a un jirón de la dimensión oscura donde se aguanta un encierro de
+//      30 s; al salir se cose y suelta un objeto. Los cuatro objetos van a los
+//      pilares del Nudo y el portal sellado se abre.
+//      (Antes, y con globalThis.__mduOldPapGrietas === true al cargar: "las tres
+//      cicatrices" del claro, que se cerraban a tiros con la luz prendida.)
 //  II. "Los cuatro ojos" (en la Disformidad): alrededor del Pack-a-Pava hay
 //      cuatro ojos cerrados. Cada uno se abre con el caos de los muertos que
 //      caen a su lado (bajas a menos de 7 m; escala con los jugadores).
@@ -30,13 +36,16 @@ const SCARS = [
 const HITS_BASE = 6;
 const R = 0.9;
 // los ojos: alrededor de la máquina, cuántas bajas abre cada uno (por jugador)
-const EYES = [[-7, 0, -5], [7, 0, -5], [-7, 0, 6], [7, 0, 6]];
+// (adelante de la máquina, que está en el borde norte de la isla: atrás es vacío)
+const EYES = [[-7, 0, 2], [7, 0, 2], [-5, 0, 9], [5, 0, 9]];
 const EYE_KILLS = 6;
 const EYE_R = 7;
 // el ritual: segundos y el círculo que se achica
 const RIT_SECS = 60;
 const RIT_R0 = 9;
 const RIT_R1 = 3.6;
+// los susurros en un jirón de las grietas: más bajo (world/eclipseAtmos `rift`)
+const RIFT_GAIN = 0.45;
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 
@@ -122,8 +131,9 @@ export default class PapDesgarro {
     g.scene.add(this.root);
     this.time = { value: 0 };
     const mat = (frag, seed) => new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: frag, uniforms: { uTime: this.time, uK: { value: 0 }, uFlash: { value: 0 }, uSeed: { value: seed } }, side: THREE.DoubleSide, ...PREMUL });
-    // I. las cicatrices del claro
-    this.scars = SCARS.map(([dx, dy, dz], i) => {
+    // I. las cuatro grietas (world/papGrietas.js); con __mduOldPapGrietas, las cicatrices del claro
+    this.gr = globalThis.__mduOldPapGrietas === true ? null : new PapGrietas(this);
+    this.scars = (this.gr ? [] : SCARS).map(([dx, dy, dz], i) => {
       const x = C[0] + dx;
       const z = C[1] + dz;
       const y = w.floorAt(x, z) + dy;
@@ -159,8 +169,34 @@ export default class PapDesgarro {
     this.ritT = 0;
     this.ritK = 0;
     this.hintT = 0;
+    // (qa-flujo) la boca de este lado de la grieta sellada: al acercarse, qué hacer
+    const RP = PORTALS.find((x) => x.id === EE.desgarroPortal);
+    this.riftAt = RP ? new THREE.Vector3(RP.a.pos[0], 0, RP.a.pos[1]) : null;
+    this.nearRift = false;
     this.whisper = null;
     this.bakeWhisper();
+    this.loadWhispers();
+  }
+
+  // (2026-10-07, ITERACION-6 D1, el usuario: "la dimensión oscura no da
+  // prácticamente miedo y los susurros brillan por su ausencia, buscá mejores
+  // sonidos". Los de antes eran ruido filtrado. Ahora voces de verdad: dos
+  // grabaciones de voz susurrada de dominio público (CC0, Wikimedia Commons:
+  // Thorsten Müller y Mx. Granger) armadas en un lazo de 40 s de muchas voces,
+  // diez voces sueltas y una al oído (scratchpad gen_susurros/gen.py).
+  // globalThis.__mduOldDimWhisper: los sintetizados de antes)
+  loadWhispers() {
+    const a = this.g.audio;
+    if (!a?.ctx || globalThis.__mduOldDimWhisper === true) return;
+    this.wbuf = { voz: [] };
+    const get = (name) =>
+      fetch(assetUrl(`/assets/sotano/sfx/${name}.mp3`))
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+        .then((ab) => a.ctx.decodeAudioData(ab))
+        .catch(() => null);
+    get('dim-susurros').then((b) => b && (this.wbuf.bed = b));
+    get('dim-oido').then((b) => b && (this.wbuf.oido = b));
+    for (let k = 1; k <= 10; k++) get(`dim-voz-${k}`).then((b) => b && this.wbuf.voz.push(b));
   }
 
   // ---------------- lo que se escucha: los susurros de la Disformidad ----------------
@@ -180,13 +216,48 @@ export default class PapDesgarro {
 
   whispers(on) {
     const a = this.g.audio;
+    // (al entrar o salir de un jirón de las grietas el lazo vuelve a arrancar con su volumen)
+    const rift = on && this.g.weather?.atmos?.rift ? 1 : 0;
+    if (on && this.whisper && rift !== (this.whisperRift || 0)) {
+      this.whisper.stop?.(1.2);
+      this.whisper = null;
+    }
+    if (on) this.whisperRift = rift;
     if (on && !this.whisper) {
+      const ab = this.g.weather?.atmos?.abyss || 0;
+      // (2026-10-10, el usuario, de los jirones de las grietas: "sonarán los
+      // sonidos de la disformidad pero más bajito")
+      const low = this.whisperRift ? RIFT_GAIN : 1;
+      // (las voces grabadas, si ya bajaron: el lazo de 40 s, desde un lugar al azar)
+      const bed = this.wbuf?.bed;
+      if (bed && a.guns?.loopBuf) {
+        this.whisper = a.guns.loopBuf(bed, null, { gain: (ab > 0.5 ? 0.6 : 0.38) * low, reverb: 0.25, ref: 4, fadeIn: 2.5, from: 0, to: bed.duration, offset: Math.random() * bed.duration });
+        this.watchWhisper();
+        return;
+      }
       const buf = a?.ctx && a.bakedBuf?.('dim-susurro');
-      if (buf && a.guns?.loopBuf) this.whisper = a.guns.loopBuf(buf, null, { gain: 0.9, reverb: 0.5, ref: 4, fadeIn: 1.2, from: 0, to: buf.duration });
+      // (más fuerte en La Disformidad de afuera: mundo, it. 4)
+      if (buf && a.guns?.loopBuf) this.whisper = a.guns.loopBuf(buf, null, { gain: (ab > 0.5 ? 1.6 : 0.9) * low, reverb: 0.5, ref: 4, fadeIn: 1.2, from: 0, to: buf.duration });
+      this.watchWhisper();
     } else if (!on && this.whisper) {
       this.whisper.stop?.();
       this.whisper = null;
     }
+  }
+
+  // (2026-10-09, el usuario: "los susurros están bugueados, volvés al menú y
+  // siguen sonando": el lazo se apaga desde update(), y en el menú update ya
+  // no corre. Un vigía aparte: fuera de la partida, se calla.
+  // globalThis.__mduOldDimWhisper: sin vigía, como antes)
+  watchWhisper() {
+    if (!this.whisper || this.whisperWatch || globalThis.__mduOldDimWhisper === true) return;
+    const g = this.g;
+    this.whisperWatch = setInterval(() => {
+      if (this.whisper && (g.state === 'playing' || g.state === 'paused')) return;
+      clearInterval(this.whisperWatch);
+      this.whisperWatch = null;
+      if (this.whisper) this.whispers(false);
+    }, 400);
   }
 
   need() {
@@ -202,8 +273,23 @@ export default class PapDesgarro {
     return EYE_KILLS * this.nPlayers();
   }
 
+  // (el acto I hecho: las cuatro grietas —o, como antes, las tres cicatrices—)
   allScars() {
-    return this.scars.every((s) => s.closed);
+    return this.gr ? this.gr.done() : this.scars.every((s) => s.closed);
+  }
+
+  // Qué falta del acto I y dónde (lo dice Fierro y el aviso de la guadaña).
+  hintI() {
+    if (!this.gr) return this.g.world.power ? 'Tres cicatrices flotan en el claro: cerralas a tiros. Abren el portal negro del Nudo.' : 'Para la Disformidad, primero la luz: el tablero del galpón del Molino.';
+    return this.gr.hint();
+  }
+
+  // (los atajos de prueba, core/music.js) el acto I hecho de una
+  skipI() {
+    if (this.gr) {
+      this.gr.complete();
+      if (!this.g.net?.guest) this.g.ee?.portals?.unlock(EE.desgarroPortal);
+    } else for (const sc of this.scars) this.applyHit(sc.i, this.need(), true);
   }
 
   allEyes() {
@@ -213,7 +299,7 @@ export default class PapDesgarro {
   // ---------------- el cartel y el uso (en el Pack-a-Pava) ----------------
   prompt() {
     if (this.q.done) return null;
-    if (!this.allScars()) return { text: this.g.world.power ? 'Cerrá las tres cicatrices del claro' : 'Necesita electricidad', noCost: true, info: true };
+    if (!this.allScars()) return { text: !this.g.world.power ? 'Necesita electricidad' : this.gr ? `Faltan los pilares del Nudo: ${this.gr.placedN()} de 4` : 'Cerrá las tres cicatrices del claro', noCost: true, info: true };
     if (!this.allEyes()) return { text: `Abrí los cuatro ojos: ${this.eyes.filter((e) => e.open).length} de 4`, noCost: true, info: true };
     if (this.rit === 1) return null;
     return { text: 'empezar el ritual', noCost: true, hold: true };
@@ -278,7 +364,7 @@ export default class PapDesgarro {
       this.g.fx.sparkle?.(s.center, [1, 0.8, 1], 14, 0.7);
       this.g.audio?.door?.(s.center, true);
       const left = this.scars.filter((x) => !x.closed).length;
-      this.g.hud?.subtitle?.(left ? `Una cicatriz cerrada. Faltan ${left}.` : 'Las tres cicatrices cerradas. El desgarro sellado se abre: la Disformidad.', 3.5);
+      this.g.hud?.subtitle?.(left ? `Una cicatriz cerrada. Faltan ${left}.` : 'Las tres cicatrices cerradas. El portal negro del Nudo se abre.', 3.5);
       // el portal sellado se abre (lo manda el anfitrión)
       if (!left) this.g.ee?.portals?.unlock(EE.desgarroPortal);
     }
@@ -339,11 +425,23 @@ export default class PapDesgarro {
     this.rit = 2;
     this.ring.visible = false;
     const g = this.g;
+    // (mundo, it. 4) el final: seis rayos juntos sobre la máquina y un fogonazo
+    if (globalThis.__mduNoRitualBolts !== true) {
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        g.fx.lightning?.(new THREE.Vector3(this.pap.x + Math.cos(a) * 7, this.pap.y + 26, this.pap.z + Math.sin(a) * 7), this.pap.clone().setY(this.pap.y + 1.5), 0xd090ff, 0.6);
+      }
+      g.post?.flash?.(0.35);
+    }
     g.fx.sparkle?.(this.pap.clone().add(new THREE.Vector3(0, 1.5, 0)), [1, 0.6, 1], 40, 1.4);
     g.fx.addShake?.(0.6);
     g.world.eclipse?.pulse?.();
-    g.hud?.subtitle?.('El Pack-a-Pava despierta.', 3.5);
+    // (qa-flujo) si el filo espera, decir dónde se templa
+    const G = g.ee?.steps?.guadana?.st;
+    g.hud?.subtitle?.(G && G.hoja && G.asta && !G.forged ? 'El Pack-a-Pava despierta. Templá el filo a su lado.' : 'El Pack-a-Pava despierta.', 4);
     if (!g.net?.guest && !this.q.done) this.q.finish();
+    // (mundo, it. 4) el atajo de vuelta del altar al Nudo (lo manda el anfitrión)
+    if (!g.net?.guest && EE.atajoPortal) g.ee?.portals?.unlock(EE.atajoPortal);
   }
 
   update(dt) {
@@ -351,6 +449,14 @@ export default class PapDesgarro {
     this.time.value += dt;
     if (this.hintT > 0) this.hintT -= dt;
     const need = this.need();
+    this.gr?.update(dt);
+    // (qa-flujo) "Sellado" solo no decía nada: al llegar a la grieta, cómo se abre
+    if (this.riftAt && g.state === 'playing' && !this.allScars()) {
+      const P = g.player.pos;
+      const near = Math.hypot(P.x - this.riftAt.x, P.z - this.riftAt.z) < 7;
+      if (near && !this.nearRift) g.hud?.subtitle?.(this.gr ? `Sellado. Los pilares piden lo suyo: ${this.gr.placedN()} de 4.` : g.world.power ? 'Sellado. Tres cicatrices flotan en el claro: cerralas a tiros.' : 'Sellado. Primero la luz: el galpón del Molino.', 4);
+      this.nearRift = near;
+    }
     for (const s of this.scars) {
       if (s.flash > 0) s.flash = Math.max(0, s.flash - dt * 4);
       s.mat.uniforms.uFlash.value = s.flash;
@@ -367,6 +473,41 @@ export default class PapDesgarro {
     const dim = g.weather?.atmos?.dim || 0;
     if (g.state === 'playing') this.whispers(dim > 0.5);
     else this.whispers(false);
+    // (mundo, it. 4) en La Disformidad de afuera, además, voces sueltas alrededor:
+    // cada 1,2-2,6 s un pedazo del susurro desde un lugar distinto, a 3-9 m
+    const ab = g.weather?.atmos?.abyss || 0;
+    if (ab > 0.5 && g.state === 'playing' && globalThis.__mduNoAbyssVoices !== true) {
+      this.voiceT = (this.voiceT ?? 1) - dt;
+      if (this.voiceT <= 0) {
+        this.voiceT = 1.2 + Math.random() * 1.4;
+        const a = g.audio;
+        const P = g.player?.pos;
+        const V = this.wbuf?.voz;
+        // (una voz grabada, entera, desde un lugar distinto cada vez)
+        if (V?.length && P && a?.ctx) {
+          const ang = Math.random() * Math.PI * 2;
+          const r = 2.5 + Math.random() * 6;
+          tmpV.set(P.x + Math.cos(ang) * r, P.y + 0.6 + Math.random() * 2.2, P.z + Math.sin(ang) * r);
+          a.playBuffer(V[Math.floor(Math.random() * V.length)], { pos: tmpV.clone(), gain: (0.9 + Math.random() * 0.5) * (g.weather?.atmos?.rift ? RIFT_GAIN : 1), reverb: 0.45, ref: 2.5, rate: 0.85 + Math.random() * 0.25 });
+        }
+        // y de vez en cuando una al oído: pegada a la cabeza, de un costado
+        this.earT = (this.earT ?? 14 + Math.random() * 10) - (1.2 + Math.random() * 1.4);
+        if (this.earT <= 0 && this.wbuf?.oido && P && a?.ctx && !g.weather?.atmos?.rift) {
+          this.earT = 22 + Math.random() * 20;
+          const cam = g.camera;
+          const side = Math.random() < 0.5 ? -1 : 1;
+          tmpV.set(side, 0, 0.15).applyQuaternion(cam.quaternion).multiplyScalar(0.55).add(cam.position);
+          a.playBuffer(this.wbuf.oido, { pos: tmpV.clone(), gain: 0.75, reverb: 0.08, ref: 0.6, rate: 0.9 + Math.random() * 0.12 });
+        }
+        const buf = !V?.length && a?.ctx && a.bakedBuf?.('dim-susurro');
+        if (buf && P) {
+          const ang = Math.random() * Math.PI * 2;
+          const r = 3 + Math.random() * 6;
+          tmpV.set(P.x + Math.cos(ang) * r, P.y + 0.5 + Math.random() * 2.5, P.z + Math.sin(ang) * r);
+          a.playBuffer(buf, { pos: tmpV.clone(), gain: 1.3 + Math.random() * 0.6, reverb: 0.6, ref: 3, offset: Math.random() * 4, rate: 0.85 + Math.random() * 0.3 });
+        }
+      }
+    }
     if (this.rit === 1) {
       this.ritT += dt;
       const r = RIT_R0 + (RIT_R1 - RIT_R0) * Math.min(1, this.ritT / RIT_SECS);
@@ -383,12 +524,26 @@ export default class PapDesgarro {
         g.world.eclipse?.pulse?.();
         g.fx.addShake?.(0.2);
       }
+      // (mundo, it. 4: el ritual, allá en el altar, con todo: rayos violetas que caen
+      // del cielo de la dimensión sobre los ojos y la máquina, cada vez más seguido)
+      if (globalThis.__mduNoRitualBolts !== true) {
+        this.boltT = (this.boltT ?? 0) - dt;
+        if (this.boltT <= 0) {
+          this.boltT = 1.6 - 1.1 * this.ritK + Math.random() * 0.5;
+          const e = this.eyes[Math.floor(Math.random() * (this.eyes.length + 1))];
+          const to = e ? e.center : this.pap;
+          tmpV.set(to.x + (Math.random() - 0.5) * 6, to.y + 22, to.z + (Math.random() - 0.5) * 6);
+          g.fx.lightning?.(tmpV.clone(), to.clone().setY(to.y + 0.2), 0xb070ff, 0.35);
+          g.fx.sparkle?.(to.clone().setY(to.y + 0.5), [0.8, 0.4, 1], 10, 0.8);
+        }
+      }
       if (this.ritK >= 1 && !g.net?.guest) this.endRitual();
     }
   }
 
   // (al terminar: ya lo hizo endRitual; para el que entra tarde, deja todo abierto)
   complete() {
+    this.gr?.complete();
     for (const s of this.scars) s.closed = true;
     for (const e of this.eyes) e.open = true;
     this.rit = 2;
@@ -396,10 +551,13 @@ export default class PapDesgarro {
   }
 
   state() {
-    return { sc: this.scars.map((s) => (s.closed ? -1 : s.hits)), ey: this.eyes.map((e) => (e.open ? -1 : e.kills)), rit: this.rit };
+    const s = { sc: this.scars.map((sc) => (sc.closed ? -1 : sc.hits)), ey: this.eyes.map((e) => (e.open ? -1 : e.kills)), rit: this.rit };
+    if (this.gr) s.gr = this.gr.state();
+    return s;
   }
 
   apply(m, quiet = false) {
+    if (m.gr != null) this.gr?.apply(m, quiet);
     if (m.sc != null && typeof m.sc === 'number') this.applyHit(m.sc, m.h ?? 0, !!m.c);
     if (Array.isArray(m.sc)) m.sc.forEach((h, i) => this.applyHit(i, h < 0 ? this.need() : h, h < 0));
     if (m.eye != null) this.applyEye(m.eye, m.k ?? 0, !!m.o);
@@ -409,12 +567,14 @@ export default class PapDesgarro {
   }
 
   onGuest(m) {
+    if (m.gr != null) this.gr?.onGuest(m);
     if (m.sc != null && typeof m.sc === 'number' && this.g.world.power) this.damage(m.sc, m.n || 1);
     if (m.rit === 1 && this.allScars() && this.allEyes() && !this.rit) this.startRitual();
   }
 
   dispose() {
     this.whispers(false);
+    this.gr?.dispose();
     this.root.removeFromParent();
   }
 }

@@ -1,6 +1,7 @@
 import { BASE_NAMES, MAP_SETS, paintBase, putPre, putWearField } from './textures';
 import { PERKS } from '../config/perks';
 import { CASTLE_PAINT } from '../world/castleTextures';
+import { MONU_PAINT } from '../world/monumentoTextures';
 
 // Las texturas de core/textures pintadas en varios hilos (core/textureWorker.js)
 // mientras carga lo demás: en el hilo principal eran ~3 s de pantalla quieta.
@@ -17,8 +18,9 @@ import { CASTLE_PAINT } from '../world/castleTextures';
 const HEAVY = ['plasterWhite', 'concreteWall', 'plasterOffice', 'plasterGreen', 'brickSoot', 'plasterBlue', 'dirtDark', 'dirt', 'ground', 'brick', 'concrete', 'stoneWall', 'cellWall', 'whitewash', 'adobe'];
 // qué juegos de cada mapa usa cada uno (World.js: penalTextures, farmTextures,
 // castleTextures)
-const NEEDS = { penal: ['penal'], torre: ['penal', 'farm'], castillo: ['penal', 'castle'], esteros: ['penal'], monumento: ['penal'], granja: ['farm'], eclipse: ['penal', 'farm', 'castle'] };
-const SETS = { ...MAP_SETS, castle: Object.keys(CASTLE_PAINT) };
+const NEEDS = { penal: ['penal'], torre: ['penal', 'farm'], castillo: ['penal', 'castle'], esteros: ['penal'], monumento: ['penal', 'monu'], granja: ['farm'], eclipse: ['penal', 'farm', 'castle', 'monu'] };
+// (las del Monumento: world/monumentoTextures MONU_PAINT; __mduNoMonuWorker: no)
+const SETS = { ...MAP_SETS, castle: Object.keys(CASTLE_PAINT), ...(globalThis.__mduNoMonuWorker === true ? {} : { monu: Object.keys(MONU_PAINT) }) };
 
 // reparte en ronda, las pesadas primero
 function deal(names, lists) {
@@ -87,7 +89,7 @@ export function paintInWorkers(mapId, { relief = true, timeout = 12000 } = {}) {
         m.bmp.close();
         if (m.rel) {
           c.relief = m.rel;
-          if (!m.rel.pre) c.relief.repaint = () => paintBase(m.name) || CASTLE_PAINT[m.name]?.();
+          if (!m.rel.pre) c.relief.repaint = () => paintBase(m.name) || CASTLE_PAINT[m.name]?.() || MONU_PAINT[m.name]?.();
         }
         if (base.has(m.name)) out[m.name] = c;
         else putPre(m.name, c);

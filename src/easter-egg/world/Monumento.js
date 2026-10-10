@@ -702,3 +702,6 @@ function addSolids(w) {
   B(85.75, -2.0, 29.05, 88.65, 9.6, 31.95);
   for (const z of [24.2, 36.8]) w.addBox([84.6, -2.6, z - 0.9, 86.4, 1.6, z + 0.9], { kind: 'prop' });
 }
+
+// (Eclipse Matero, world/eclipse/v5.js: el Pasaje, el Parque y la explanada en sus secciones iguales)
+export { buildPasaje, buildParque, buildExplanada, buildExplanadaBordes, buildCriptaBordes };

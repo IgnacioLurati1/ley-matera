@@ -166,12 +166,13 @@ const FX = {
 // especial de Mate of the Dead). El Porongo del Caballero sí, pero recién
 // cuando lo tiene (el super easter egg; en desarrollo también con la prueba
 // de Alt+O, core/eggs isKnight): hasta ahí, en la armería es un lugar secreto.
-const NO_CAMO = new Set(['meme', 'gut']);
+const NO_CAMO = new Set(['meme', 'gut', 'gutmuerte']);
 export const KNIGHT = 'caballero';
 export const knightEarned = () => isKnight();
 export function camoable(id) {
   // (la guadaña de Eclipse Matero no se lista en la armería mientras el mapa está en obra)
-  if (id === 'desgarrador' && globalThis.__mduEclipse !== true) return false;
+  // (ni el Mate Caótico, que sale solo en la caja de ese mapa)
+  if ((id === 'desgarrador' || id === 'caotico') && globalThis.__mduEclipse !== true) return false;
   const w = WEAPONS[id];
   return !!w && !w.special && !w.temp && w.kind !== 'tactical' && !NO_CAMO.has(id);
 }

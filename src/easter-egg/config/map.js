@@ -29,9 +29,8 @@ export const MAP_LIST = [
   // el mapa bonus
   { id: 'monumento', name: 'Monumento al Mate', sub: 'El Monumento a la Bandera, de noche, a orillas del Paraná', bonus: true },
   // el mapa final (en obra: ver ECLIPSE arriba)
-  // (`final`: el final canónico va aparte de la ronda. Su easter egg se anota y
-  // tiene su logro, pero no cuenta para el super easter egg: el que ya es
-  // Caballero de la Luz con los seis no pierde nada. Decisión del usuario.)
+  // (`final`: el final canónico va aparte de la ronda. Su easter egg, como el
+  // del Monumento, cuenta para el super easter egg: core/eggs.js.)
   ...(ECLIPSE ? [{ id: 'eclipse', name: 'Eclipse Matero', sub: 'Todos los mundos de la ronda, rotos bajo un mismo eclipse', final: true }] : []),
 ];
 

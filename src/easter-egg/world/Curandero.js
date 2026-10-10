@@ -243,7 +243,7 @@ export default class Curandero {
     g.fx.soul(z.pos, this.calObj.top);
     if (this.calSouls >= this.calNeed()) {
       this.cal = 'full';
-      g.ee?.announce?.('La calabaza de la Salamanca se llenó de almas. Agárrenla, en el rincón de la capilla.', 4, true);
+      g.ee?.announce?.('', 4, true);
     }
     g.net?.event('ee', { lm: this.netState(), lsoul: [+z.pos.x.toFixed(1), +z.pos.z.toFixed(1)] });
   }
@@ -283,7 +283,7 @@ export default class Curandero {
     this.fin = { z, id: z.id };
     this.bomb = 'guard';
     this.dressFinado(z);
-    g.ee?.announce?.('Se oye silbar una bombilla entre los muertos... salió el Finado.', 4.5, true);
+    g.ee?.announce?.('', 4.5, true);
     this.sync();
   }
 
@@ -347,7 +347,6 @@ export default class Curandero {
     this.bombAt.copy(at);
     this.bombIt.pos.set(at.x, at.y + 0.5, at.z);
     g.fx.sparkle(tmpV.copy(at).setY(at.y + 0.3), [0.7, 1, 0.6], 14, 0.4);
-    g.hud.subtitle('El Finado cayó y soltó la bombilla.', 3);
   }
 
   startYerba() {
@@ -355,7 +354,7 @@ export default class Curandero {
     this.yer = 'enc';
     this.yerT = 0;
     this.encG.start();
-    g.ee?.announce?.(`¡El acopio se cerró! Aguanten ${YER.dur} segundos con la yerba de luna llena.`, 4, true);
+    g.ee?.announce?.('', 4, true);
     this.sync();
   }
 
@@ -568,7 +567,7 @@ export default class Curandero {
         if (this.yerT >= YER.dur) {
           this.yer = 'idle';
           this.takePart('yerba');
-          g.ee?.announce?.('¡Aguantaron! La yerba de luna llena es de ustedes.', 4, true);
+          g.ee?.announce?.('', 4, true);
           this.sync();
         } else if (Math.floor(this.yerT / 10) !== Math.floor((this.yerT - dt) / 10)) this.sync();
       }

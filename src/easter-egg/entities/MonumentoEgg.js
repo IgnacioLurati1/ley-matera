@@ -5,7 +5,7 @@ import { markEgg } from '../core/eggs';
 import Surubi from './monumento/Surubi';
 import SurubiOld from './monumento/surubiOld';
 import SableQuest from './monumento/SableQuest';
-import Ascensor from './monumento/Ascensor';
+import Ascensor, { nivel } from './monumento/Ascensor';
 import Tirolesa from './monumento/Tirolesa';
 import Bandera from './monumento/Bandera';
 import Patio2043 from './monumento/Patio2043';
@@ -22,6 +22,8 @@ import Armada from './monumento/Armada';
 // En línea lo lleva el anfitrión (fullState / applyRemote; los pedidos de
 // los invitados llegan por onGuest).
 
+const HOLD = { active: true };
+
 export default class MonumentoEgg {
   constructor(game) {
     this.g = game;
@@ -36,6 +38,8 @@ export default class MonumentoEgg {
     this.sable = new SableQuest(this);
     // el ascensor de la Torre, de la Cripta al Mirador (entities/monumento/Ascensor.js)
     this.asc = new Ascensor(this);
+    // (Zombies.chase: al que viaja en el ascensor no lo alcanzan, como al de la telesilla del penal)
+    this.lift = { riding: (p) => this.asc.riding(p) };
     // y la tirolesa, del Mirador al Parque (entities/monumento/Tirolesa.js)
     this.tiro = new Tirolesa(this);
     // la costurera, las telas y el mástil (entities/monumento/Bandera.js)
@@ -59,6 +63,26 @@ export default class MonumentoEgg {
   bossAt(p, opts = {}) {
     if (opts.kind && opts.kind !== 'surubi') return null;
     return this.g.surubi?.spotNear(p)?.at || null;
+  }
+
+  // A quién no buscan los muertos (Game.nearestPlayer, net/Session nearest): al
+  // que viaja en el ascensor y al que está en el otro nivel (al Mirador solo se
+  // llega en ascensor: iban igual y se quedaban contra las paredes de abajo).
+  // y: la altura del muerto. (globalThis.__mduNoAscZ: como antes)
+  noTarget(p, y) {
+    if (globalThis.__mduNoAscZ === true) return false;
+    return this.asc.riding(p) || nivel(p.pos.y) !== nivel(y);
+  }
+
+  // (Zombies.spawn: con la Bandera en camino al mástil o subiendo, los que
+  // salen corren como mínimo, como en las otras actividades de aguantar)
+  get defense() {
+    return this.bnd?.pressing ? HOLD : null;
+  }
+
+  // A quién no se lastima (Player.damage, en la compu de cada uno): al que viaja.
+  safe(p) {
+    return globalThis.__mduNoAscZ !== true && this.asc.riding(p);
   }
 
   announce(text, secs = 3) {

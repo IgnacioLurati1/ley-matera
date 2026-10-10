@@ -300,7 +300,6 @@ export default class Altares {
             w.updateHud();
           }
           this.given.add(A.el);
-          g.hud.subtitle(`${this.mateName(A)}. Uno solo a la vez: para agarrar otro, dejalo en su altar.`, 4);
         } else if ((has.up | 0) < A.up) w.give(id, A.up);
         else this.given.add(A.el);
       } else if (has) {
@@ -318,7 +317,7 @@ export default class Altares {
     if (!pos || g.world.zoneAt(pos.x, pos.z, pos.y) !== A.zone) return false;
     this.temper = this.makeTemper(A.el, owner, 0);
     const who = owner === myId(g) ? 'Vos' : g.net?.nameOf(owner) || 'Alguien';
-    announce(g, `${who} sopló el erke del ${ELEM_NAME[A.el]}. ${TEMPER_SECS} s de temple, sin salir de ${ZONES[A.zone]?.name || 'ahí'}.`, 5, true);
+    announce(g, '', 5, true);
     this.egg.say('fierro', TEMPER_LINES[A.el]);
     this.egg.netSync();
     return true;
@@ -364,7 +363,7 @@ export default class Altares {
       this.tempered(A);
       toastAll(g, `${weaponStats(MATE_OF[A.el], 1).name}: ¡el mate quedó templado!`);
       this.egg.onTempered?.(A.el);
-    } else announce(g, `El temple del ${ELEM_NAME[A.el]} se cortó. El mate sigue en su altar y se puede volver a soplar el erke.`, 4);
+    } else announce(g, `El temple del ${ELEM_NAME[A.el]} se cortó.`, 3);
     this.egg.netSync();
     this.reconcile();
   }
@@ -554,7 +553,6 @@ export default class Altares {
     let changed = false;
     for (const A of this.list) {
       if (A.state === 'taken' && !ids.has(A.holder)) {
-        announce(g, `El ${ELEM_NAME[A.el]} volvió solo a su altar.`, 3);
         A.state = 'ready';
         A.holder = -1;
         A.ammo = null;

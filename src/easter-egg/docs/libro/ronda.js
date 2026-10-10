@@ -7,9 +7,14 @@
 
 export const TITLE = 'La Ronda Eterna';
 
+// (at: con cuántos easter eggs hechos se abre el capítulo, además de su
+// `need`: haciéndolos en orden —molino, La Tapera, el penal— todos quedaban
+// sellados, porque los primeros piden el castillo o la torre; el usuario,
+// 2026-10-07. El IX, el del Monumento, y el XI, solo con su `need`.)
 export const CHAPTERS = [
   {
     n: 1,
+    at: 1,
     title: "Negro",
     need: ['castillo'],
     text: [
@@ -35,6 +40,7 @@ export const CHAPTERS = [
   },
   {
     n: 2,
+    at: 1,
     title: "Hambre",
     need: ['castillo'],
     text: [
@@ -67,6 +73,7 @@ export const CHAPTERS = [
   },
   {
     n: 3,
+    at: 2,
     title: "El yerbatero",
     need: ['torre'],
     text: [
@@ -94,6 +101,7 @@ export const CHAPTERS = [
   },
   {
     n: 4,
+    at: 3,
     title: "Antonio",
     need: ['esteros', 'penal'],
     text: [
@@ -129,11 +137,12 @@ export const CHAPTERS = [
       "En lo que no coinciden es en qué.",
       "Unos dicen que era una hoja arrancada del libro de los jesuitas, doblada en cuatro, escondida contra el pecho. Otros dicen que era una cinta colorada atada al cabo del facón. Las dos versiones se cuentan con la misma seguridad, y ninguna corrige a la otra, como pasa con los siete días y los cien inviernos. Lo que sea, la voz no lo vio. Y nadie sabe qué decía esa hoja, si fue una hoja. Ni por qué un hombre que acababa de entregar todo lo que tenía decidió que eso, justo eso, no lo iba a entregar nunca.",
       "Esa noche, en el castillo de la cordillera, los cuatro mates dormidos se apagaron un poco. Y después, muy despacio, como una flor que perdió su sol, se dieron vuelta para otro lado.",
-      "El ciclo continuó.",
+      "La ronda continuó.",
     ],
   },
   {
     n: 5,
+    at: 3,
     title: "Sin nombre",
     need: ['molino', 'esteros', 'castillo'],
     text: [
@@ -166,6 +175,7 @@ export const CHAPTERS = [
   },
   {
     n: 6,
+    at: 4,
     title: "Tres piezas",
     need: ['granja', 'penal', 'esteros'],
     text: [
@@ -202,6 +212,7 @@ export const CHAPTERS = [
   },
   {
     n: 7,
+    at: 4,
     title: "El ojo",
     need: ['torre'],
     text: [
@@ -238,6 +249,7 @@ export const CHAPTERS = [
   },
   {
     n: 8,
+    at: 5,
     title: "Cordillera",
     need: ['castillo', 'torre'],
     text: [
@@ -301,6 +313,7 @@ export const CHAPTERS = [
   },
   {
     n: 10,
+    at: 6,
     title: "Séptima vuelta",
     need: ['molino', 'granja', 'penal', 'esteros', 'torre', 'castillo'],
     text: [
@@ -317,7 +330,7 @@ export const CHAPTERS = [
       "Seis veces.",
       "La sospecha es que la rueda no se detiene porque nunca giran los cuatro que tenían que girar. Que los de reemplazo pueden ganar, pero no pueden terminar. Que la única forma de que el Chiquitijuein deje de volver es que, alguna vez, en alguna vuelta, el Gil diga que no.",
       "Nadie sabe si es cierto.",
-      "En algunos fogones se cuenta que una vez pasó. Que en alguna vuelta el Gil le apuntó al árbol con el facón, que sus tres compañeros se le pusieron al lado, y que la voz se fue con un trueno gritando *¡Nada termina nunca!* Y que alguien vio escrita, después, otra frase distinta de la de siempre: *El ciclo se ha roto.*",
+      "En algunos fogones se cuenta que una vez pasó. Que en alguna vuelta el Gil le apuntó al árbol con el facón, que sus tres compañeros se le pusieron al lado, y que la voz se fue con un trueno gritando *¡Nada termina nunca!* Y que alguien vio escrita, después, otra frase distinta de la de siempre: *La ronda se ha roto.*",
       "Pero el que cuenta eso nunca estuvo ahí. Y si de verdad pasó, nadie sabe qué vino después. Si la luz encontró a sus cuatro. Si el mate de piedra siguió cerrado. Si cuatro gauchos sin nombre se despertaron igual en un patio de Misiones, o si nunca nadie los arrastró hasta un galpón, y vivieron una vida entera con su nombre, sin saber que se salvaron de algo. Si la voz tenía razón, y nada termina nunca. Nadie volvió de esa vuelta para contarla.",
       "Si es que esa vuelta existió.",
       "---",
@@ -367,9 +380,14 @@ export const CHAPTERS = [
       "Lo roto se cosió. Las islas bajaron y se fundieron, los cielos se volvieron uno, el sol salió de atrás de la luna y el oro de Francisco se hizo sol de verdad.",
       "Y en un fogón, de noche, al lado de uno de esos santuarios, cuatro gauchos toman mate en ronda. Uno ceba. Uno cuenta algo con las manos. Uno se ríe. Uno mira el santuario y levanta el mate. Fueron caballeros. Ahora toman mate. Es lo mismo.",
       "---",
-      "Todo en esta vida tiene una razón de ser.",
-      "El primer mate se lo dejó sobre el pecho el hombre de la linterna. Eso dicen. Lo que no dicen es que ese hombre cambia. Que alguien tiene que cargar a los dormidos hasta el primer mate, siempre. Y que a Francisco, antes de Francisco, lo llamaban de otra manera.",
-      "Mientras alguien le cebe un mate a otro, la luz no se apaga.",
+      "Entonces llegó uno caminando desde lo oscuro, y al entrar en la luz del fuego tenía una linterna de fierro en la mano y los ojos de oro.",
+      "*Les debo la última parte. La que nunca conté.*",
+      "*El primer mate de todos lo cebé yo. A una cosa chiquita que bajó de las nubes. Tenía frío. No sabía lo que era.*",
+      "*Se esconde en la memoria, dicen. Y el único que se acuerda de todo... soy yo.*",
+      "*Por eso cargo a los dormidos. Por eso no me puedo morir.*",
+      "Apagó la linterna. En lo oscuro le quedaron los ojos, y ya no eran de oro: eran dos brasas.",
+      "*Si un día me olvido de ustedes... vuelve.*",
+      "Esta parte ya pasó.",
     ],
   }] : []),
 ];

@@ -102,12 +102,6 @@ const INV = [
 ];
 // pasos que cuentan para que baje el sol (de 1 a la noche cerrada)
 const STEPS = 10;
-// Cómo arranca cada ritual (lo que hay que hacer y dónde).
-const RITUAL_TEXT = {
-  velas: (n) => `Ritual de las velas. Liquidá muertos adentro del círculo (${n} almas) y cuidá los cuatro velones: si apagan uno, mantené F al lado para prenderlo.`,
-  luz: (n) => `Ritual de la luz. El círculo se muda entre los silos: seguí la luz y liquidá muertos adentro (${n} almas).`,
-  almas: (n) => `Ritual de las almas sueltas. Cada muerto que cae en el pajar deja su alma flotando: pasá por encima antes de que se apague (${n} almas).`,
-};
 // el alma suelta del pajar: cuánto dura y de qué distancia se agarra
 const WISP_LIFE = 6;
 const WISP_R = 1.2;
@@ -686,14 +680,7 @@ export default class FarmEgg {
         // (después de la forja sale ya convertida)
         g.weapons.give('hoz', this.papDone ? 1 : 0);
         g.audio.powerupGrab();
-        g.hud.subtitle(
-          this.papDone
-            ? 'Tu Hoz de la Muerte.'
-            : this.bloodOk
-              ? 'La hoz: clic izquierdo para cortar. Ya tomó sangre: llevala al Pack-a-Pava del establo.'
-              : 'La hoz: clic izquierdo para cortar. La hoja está seca: liquidá muertos con ella para que tome sangre y después llevala al Pack-a-Pava del establo.',
-          5,
-        );
+        if (!this.papDone) g.hud.subtitle('La hoz: clic izquierdo para cortar.', 4);
         return true;
       },
     });
@@ -842,7 +829,9 @@ export default class FarmEgg {
 
   announce(text, secs = 3, sting = false) {
     const g = this.g;
-    g.hud.subtitle(text, secs);
+    // (texto vacío: solo el sting. El usuario, 2026-10-08, sacó los avisos de
+    // lo que se ve o ya dice la guía)
+    if (text) g.hud.subtitle(text, secs);
     if (sting) g.audio.sting();
     g.net?.event('sub', { x: text, d: secs, s: sting ? 1 : 0 });
   }
@@ -872,7 +861,7 @@ export default class FarmEgg {
       R.r = def.spotR;
       this.placeLuz(R);
     }
-    this.announce(RITUAL_TEXT[R.kind](R.need), 5, true);
+    this.announce('', 5, true);
     this.voice(VOICE.ritual, 0.5);
     this.voice(VOICE[R.kind], 6);
     this.g.audio.bossArrive();
@@ -887,7 +876,7 @@ export default class FarmEgg {
     this.papRitual = 'on';
     this.papBy = by;
     this.ritual = { id: 'pap', kind: 'forja', prog: 0, souls: 0, need: 0, pos: new THREE.Vector3(P.pos[0], 0, P.pos[1]), r: P.r, spawnT: 1.5, level: 3, crowSent: false, idleT: 4, syncT: 0 };
-    this.announce('La forja. Quedate adentro del círculo del Pack-a-Pava mientras la máquina forja la hoz: si no hay nadie, se frena.', 5, true);
+    this.announce('', 5, true);
     this.voice(VOICE.pap, 0.5);
     this.g.audio.bossArrive();
     this.netSync();
@@ -941,7 +930,7 @@ export default class FarmEgg {
     } else {
       this.pieces[R.id] = 'ready';
       g.fx.sparkle(this.altars[R.id].pos, [1, 0.6, 0.3], 30, 0.5);
-      this.announce(`El ritual terminó. ${EE.rituals.find((r) => r.id === R.id).name} de la hoz quedó libre en la piedra.`, 3.5, true);
+      this.announce('', 3.5, true);
     }
     g.zombies.setEyeColor(0xffc23a);
     this.netSync();
@@ -974,7 +963,6 @@ export default class FarmEgg {
     if (this.blood >= this.bloodNeed) {
       this.bloodOk = true;
       this.toastAll('La hoja tomó sangre');
-      this.announce('La hoja tomó sangre. Ahora sí: llevá la hoz al Pack-a-Pava del establo.', 4.5);
       this.voice(VOICE.blood, 1);
     }
     this.netSync();
@@ -1044,7 +1032,6 @@ export default class FarmEgg {
       this.voice(VOICE.velasOut, 0.5);
     } else if (!R.saidVela) {
       R.saidVela = true;
-      this.announce('¡Apagaron un velón! Mantené F al lado para volver a prenderlo.', 3.5);
     }
     this.netSync();
   }
@@ -1072,7 +1059,6 @@ export default class FarmEgg {
     R.relightT = Math.max(0, R.relightT - dt);
     if (R.relightT > 0) return;
     for (const c of this.candles) this.fixVela(c.i);
-    this.announce('La Entidad volvió a prender los velones. Que no se apaguen de nuevo.', 3);
   }
 
   // ---------------- el círculo que se muda (ritual del Mango) ----------------
@@ -1082,7 +1068,6 @@ export default class FarmEgg {
     if (R.moveT <= 3 && R.next < 0) {
       R.next = (R.spot + 1 + Math.floor(Math.random() * (def.spots.length - 1))) % def.spots.length;
       this.placeLuz(R);
-      this.announce('El círculo se va a mudar: seguí la luz.', 2.5);
       this.netSync();
     }
     if (R.moveT <= 0 && R.next >= 0) {
@@ -1185,7 +1170,7 @@ export default class FarmEgg {
       c.z.maxHp *= FORGE_CROW_HP;
       c.z.hp = c.z.maxHp;
     }
-    this.announce('¡El Cuervo viene por la hoz! Si se posa en el techo del establo, salí y bajalo a los tiros.', 5, true);
+    this.announce('', 5, true);
     this.voice(VOICE.crow, 2.5);
   }
 
@@ -1201,7 +1186,7 @@ export default class FarmEgg {
     const g = this.g;
     R.prog = Math.max(0, R.prog - FORGE_HIT);
     g.audio.boardTear(tmpV.set(this.roof.x, this.roof.y, this.roof.z));
-    this.announce('¡El Cuervo está en el techo del establo arrancando la chapa! Salí y bajalo: la forja va para atrás.', 3.5, !R.saidRoof);
+    this.announce('', 3.5, !R.saidRoof);
     R.saidRoof = true;
     this.netSync();
   }
@@ -1301,7 +1286,6 @@ export default class FarmEgg {
   spreadYerba() {
     this.dryState = 'spread';
     this.g.audio.boardRepair(this.deckPos);
-    this.announce('La yerba quedó tendida en el catre. Prendan el fuego en la boca de abajo.', 3.5);
     this.voice(VOICE.spread, 0.8);
     this.netSync();
   }
@@ -1314,7 +1298,7 @@ export default class FarmEgg {
     this.dryR = { spawnT: 2, level: 4 };
     g.fx.fire(tmpV.copy(this.mouthPos).setY(0.4), 1.2, 6);
     g.audio.bossArrive();
-    this.announce(`Sapecado. Quedate arriba del barbacuá hasta que se seque (${EE.barbacua.secs} s) y apagá las llamaradas.`, 4.5, true);
+    this.announce('', 4.5, true);
     this.voice(VOICE.lit, 1);
     this.netSync();
   }
@@ -1340,7 +1324,6 @@ export default class FarmEgg {
     this.flare = { t: 8, hp: 1 };
     this.flarePos.set(x, D.y + 0.6, z);
     this.g.audio.fireWhoosh?.(this.flarePos);
-    this.announce('¡Una llamarada en el catre! Apagala (mantener F) o se quema la yerba.', 3);
     this.netSync();
   }
 
@@ -1467,7 +1450,7 @@ export default class FarmEgg {
     if (it && !it.door.open) {
       g.interact.openDoor(it.door);
       g.fx.addShake(0.3);
-      this.announce('El maizal se abrió hacia el prado (al fondo del corral).', 4, true);
+      this.announce('', 4, true);
     }
   }
 

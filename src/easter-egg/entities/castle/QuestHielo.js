@@ -160,7 +160,6 @@ export default class QuestHielo {
     this.carrier = id;
     const who = id === myId(g) ? 'Llevás' : `${g.net?.nameOf(id) || 'Alguien'} lleva`;
     // (decía que se derretía pero no adónde llevarlo: ahora el destino y el camino)
-    announce(g, `${who} el corazón del glaciar: al altar de la gruta del glaciar, abajo de todo (cocina, bodega, mazmorras). Se derrite cerca del fuego; en la nieve se vuelve a congelar.`, 7);
     if (!this.toldCarry) {
       this.toldCarry = true;
       this.egg.say('fierro', LINES.llevar);
@@ -216,7 +215,7 @@ export default class QuestHielo {
     this.ph = 1;
     this.melt = 1;
     this.heartPos.copy(this.blockPos).setY(this.blockPos.y + 0.9);
-    announce(this.g, 'Se rompió el bloque. El corazón del glaciar quedó suelto.', 4, true);
+    announce(this.g, '', 4, true);
     this.egg.say('fierro', LINES.bloque);
     this.egg.netSync();
   }
@@ -245,7 +244,7 @@ export default class QuestHielo {
     this.carrier = -1;
     this.round = 0;
     this.newRound();
-    announce(this.g, 'El corazón despertó a los penitentes. Tírenles en el orden en que se prenden.', 5, true);
+    announce(this.g, '', 5, true);
     this.egg.say('fierro', LINES.penitentes);
     this.egg.netSync();
     return true;
@@ -306,7 +305,7 @@ export default class QuestHielo {
         this.finish();
         return;
       }
-      announce(g, `Los penitentes aceptaron (${this.round} de ${ROUNDS.length}). Otra vuelta, más larga.`, 3);
+      announce(g, `Los penitentes aceptaron (${this.round} de ${ROUNDS.length}).`, 3);
       this.gap = true;
       g.later(1.4, () => {
         if (this.ph !== 3) return;
@@ -473,7 +472,6 @@ export default class QuestHielo {
       if (p) this.heartPos.copy(p.pos).setY(g.world.floorAt(p.pos.x, p.pos.z, p.pos.y + 0.5) + 0.5);
       this.carrier = -1;
       this.ph = 1;
-      announce(g, 'Se cayó el corazón del glaciar. ¡Levántenlo antes de que se derrita!', 3);
       this.egg.netSync();
     }
     let at = this.heartPos;
@@ -490,7 +488,7 @@ export default class QuestHielo {
       this.ph = 1;
       this.carrier = -1;
       this.heartPos.copy(this.blockPos).setY(this.blockPos.y + 0.9);
-      announce(g, 'El corazón del glaciar se derritió... y volvió a armarse en la cumbre.', 4, true);
+      announce(g, '', 4, true);
       this.egg.say('fierro', LINES.derretido);
       this.egg.netSync();
       return;

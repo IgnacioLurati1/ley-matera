@@ -13,6 +13,7 @@ import Thriller from './esteros/Thriller';
 import { TRACKS, LUISON_FROM } from '../core/music';
 import { devKeys } from '../core/devKeys';
 import { LUISON_PREP } from '../core/audio';
+import { gilVincha } from '../net/gilLook';
 
 // Lo que suena antes que llegue el Luisón, en segundos de canción desde que
 // arranca (LUISON_FROM) hasta el golpe en que aparece: [cuándo, cuál lobo
@@ -262,6 +263,8 @@ export default class EsterosEgg {
     hole.scale.set(0.16, 0.46, 0.26);
     hole.position.set(x + 0.47, y + 1.25, z);
     this.root.add(hole);
+    // (el final donde el tronco se parte lo saca: ui/esterosQuiebre.js)
+    this.hueco = hole;
     // un brillo frío adentro del hueco (lo ve cualquiera: es el árbol, no la voz)
     this.huecoGlow = glow(g.textures, 0x9ad8c8, 0.9, 0.3);
     this.huecoGlow.position.copy(this.huecoPos).setX(x + 0.28);
@@ -316,7 +319,7 @@ export default class EsterosEgg {
       if (this.saber.done()) {
         this.step = 2;
         this.voice('poder');
-        this.announce('El saber está en el hueco. Ahora la voz pide poder: una pava en el fondo de la Laguna del Irupé.', 5, true);
+        this.announce('', 5, true);
       } else for (const k of held) this.voice(k);
       this.netSync();
       return true;
@@ -348,7 +351,7 @@ export default class EsterosEgg {
     if (!isHost(this.g) || this.step !== 3) return;
     if (on) {
       this.voice('creciente');
-      this.announce('¡El agua sube! Hiérvanla con los Liquidificadores: cada muerto cocinado es un alma.', 6, true);
+      this.announce('', 6, true);
     } else if (this.poder.souls < this.poder.need()) {
       this.voice('otra');
       this.announce(`El agua bajó con ${this.poder.souls} de ${this.poder.need()} almas. La voz la va a subir otra vez.`, 5);
@@ -360,7 +363,7 @@ export default class EsterosEgg {
     this.step = 4;
     this.ofrenda.ready();
     this.voice('orbe');
-    this.announce('Las almas se juntaron en una luz, en medio de la Laguna del Irupé. Solo Gil puede llevarla.', 5, true);
+    this.announce('', 5, true);
     this.netSync();
   }
 
@@ -714,6 +717,9 @@ export default class EsterosEgg {
       else if (g.net) this.keepRoles();
     }
     if (g.net && g.net.avatars.list.size !== this.painted) this.paintRoles();
+    // (2026-10-10: el Gil, con su vincha; sus compañeros, con la bandana de su
+    // poncho: net/gilLook.js, net/Avatars.update)
+    if (g.net && this.gil != null && this.gil !== this.myId() && globalThis.__mduNoBandanas !== true) gilVincha(g.net.avatars.list.get(this.gil));
     if (!isHost(g)) return;
     // (anfitrión) la voz llama a Gil desde la segunda ronda, cada tanto
     if (this.step === 0 && g.rounds.round >= 2) {
@@ -782,7 +788,7 @@ export default class EsterosEgg {
   // (Game.win) En línea, el final del invitado puede ir unos cuadros atrás del
   // del anfitrión: si le llega la victoria con la escena todavía puesta, se
   // termina acá (con la partida en pausa quedaba trabado para siempre en el
-  // último cartel, "El ciclo continúa", tapando la tabla del final).
+  // último cartel, "La ronda continúa", tapando la tabla del final).
   onWin() {
     const c = this.scene?.cine;
     if (c && !c.done && globalThis.__mduNoWinCut !== true) c.finish();

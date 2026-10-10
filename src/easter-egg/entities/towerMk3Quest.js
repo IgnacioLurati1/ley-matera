@@ -228,7 +228,7 @@ export default class TowerMk3Quest {
       use: () => {
         if (this.cal !== 'shelf') return false;
         this.cal = 'held';
-        this.tell('Mate de calabaza', 'Ponelo en el pararrayos de la cima');
+        this.tell('Mate de calabaza');
         this.sync();
         return true;
       },
@@ -242,7 +242,7 @@ export default class TowerMk3Quest {
       use: () => {
         if (this.por !== 'shelf') return false;
         this.por = 'held';
-        this.tell('Porongo del remolino', 'Tiralo al remolino desde un arco');
+        this.tell('Porongo del remolino');
         this.sync();
         return true;
       },
@@ -275,7 +275,7 @@ export default class TowerMk3Quest {
         if (this.por !== 'back') return false;
         this.por = 'held2';
         this.orbit = null;
-        this.tell('Mate del Remolino', 'Llevalo al pararrayos de la cima');
+        this.tell('Mate del Remolino');
         this.sync();
         return true;
       },
@@ -330,12 +330,12 @@ export default class TowerMk3Quest {
     });
   }
 
-  // Un aviso corto: qué es y adónde va.
-  tell(name, where) {
+  // Un aviso corto: qué es (adónde va lo dice la guía; el usuario,
+  // 2026-10-08, sacó esos avisos).
+  tell(name) {
     const g = this.g;
     g.hud.toast(name);
     g.audio.sting();
-    this.ee.announce(where, 4);
     g.net?.event('toast', { x: name });
   }
 

@@ -30,7 +30,9 @@ import { reelStep, reelPose } from './zombieReel';
 // Zombies por rondas: aparición (ventanas y tierra), IA, animación procedural,
 // render instanciado (una llamada de dibujo por tipo de parte) y daño.
 
-const MAX = 40;
+// (Eclipse Matero: San Lorenzo pide muchos más —el usuario, 2026-10-07: "tendrían
+// que salir como 5 veces más zombies"—: el depósito, 64. __mduNoEclPool: 40)
+let MAX = 40;
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 const blobM = new THREE.Matrix4();
 // la pose a medio ritmo (render): con el cuadro por debajo de HALF_MS
@@ -252,6 +254,7 @@ function rim(mat) {
 
 export default class Zombies {
   constructor(game) {
+    MAX = FEATURES.eclipse && globalThis.__mduNoEclPool !== true ? 64 : 40;
     this.g = game;
     // cómo se visten los de este mapa: telas, prendas propias y el color de los ojos
     const L = (this.look = zombieLook(MAP_ID));
@@ -1193,10 +1196,10 @@ export default class Zombies {
       g.audio.bossSfx(z.kind);
       g.audio.thunder?.(at);
     }
-    if (z.kind === 'luison' || z.kind === 'surubi') {
-      // (sin cartel de llegada: el Luisón, el Sargento, el Alcaide y el Capataz se anuncian con su sonido)
-    } else if (z.kind === 'caballero') {
-      g.hud.subtitle('¡Un Caballero Negro! La rodela lo cubre de frente... por la espalda, o contra la pared.', 4.5, 'boss');
+    // (sin cartel de llegada: cada uno se anuncia con su sonido; el Caballero
+    // Negro, el Luisón y el Surubí no dicen nada)
+    if (z.kind === 'luison' || z.kind === 'surubi' || z.kind === 'caballero') {
+      // nada
     } else if (z.kind === 'sargento') {
       g.later(1.6, () => g.say('sargento', SARGENTO[Math.floor(Math.random() * SARGENTO.length)]));
     } else if (z.kind === 'alcaide') {
@@ -1585,12 +1588,14 @@ export default class Zombies {
     // campo de flujo hacia el señuelo más cercano, si hay
     this.lure = g.lures.length ? g.lures[0] : null;
     if (this.lure) this.navLure.update(this.lure.pos.x, this.lure.pos.z, false, this.lure.pos.y);
-    // desde la 3 el último corre siempre (en el Challenge, los dos últimos desde la 4);
-    // de la 4 a la 7 los que caminan se largan a correr a medida que caen los números
+    // desde la 2 el último corre siempre (en el Challenge, los dos últimos desde la 4);
+    // de la 3 a la 6 los que caminan se largan a correr a medida que caen los números;
+    // desde la 10 los dos últimos van rapidísimos (no en el Challenge)
     const R = g.rounds;
     const challenge = !!g.ee?.tuneZombie;
     const left = R.remainingTotal();
-    const lastAlive = challenge ? left <= 2 && R.round >= 4 : left <= 1 && R.round >= 3;
+    const lastAlive = challenge ? left <= 2 && R.round >= 4 : left <= 1 && R.round >= 2;
+    const lastSprint = !challenge && left <= 2 && R.round >= 10;
     const share = challenge || !R.total ? 0 : runShare(R.round, 1 - left / R.total);
     // lo hondo cuesta más en el campo de flujo (y la inundación lo cambia)
     updateNavCost(g);
@@ -1609,7 +1614,10 @@ export default class Zombies {
         z.venia = false;
         z.P.shRy = 0;
       }
-      if (!z.dead && !slow && z.speedType === 'walk' && (lastAlive || (z.runU != null && z.runU < share))) {
+      if (!z.dead && !slow && lastSprint && z.speedType !== 'sprint' && !z.boss && !z.dog && !z.horse) {
+        z.speedType = 'sprint';
+        z.speed = SPEEDS.sprint * (0.92 + Math.random() * 0.16);
+      } else if (!z.dead && !slow && z.speedType === 'walk' && (lastAlive || (z.runU != null && z.runU < share))) {
         z.speedType = 'run';
         z.speed = SPEEDS.run * (0.92 + Math.random() * 0.16);
       }
@@ -1868,7 +1876,15 @@ export default class Zombies {
       case 'flung': {
         z.vel.y -= 14 * dt;
         z.pos.addScaledVector(z.vel, dt);
-        const floorY = z.baseY || 0;
+        let floorY = z.baseY || 0;
+        // (Eclipse Matero, 2026-10-07, el usuario: "los zombies que mata Cabral
+        // quedan volando quietos": caían hasta la altura del piso donde
+        // murieron, y el que salía volando por la barranca quedaba en el aire
+        // sobre la playa. El piso de donde está ahora. __mduOldFlungFloor: como antes)
+        if (FEATURES.eclipse && globalThis.__mduOldFlungFloor !== true && g.world.floorAt) {
+          floorY = g.world.floorAt(z.pos.x, z.pos.z, Math.max(z.pos.y, floorY) + 0.3);
+          z.baseY = floorY;
+        }
         P.rootY = z.pos.y - floorY;
         P.rootPitch += dt * 9;
         P.rootRoll += dt * 4;
@@ -2057,6 +2073,16 @@ export default class Zombies {
       z.sideT = 0.6 + Math.random() * 0.4;
       z.stuckK = 0.35;
     }
+  }
+
+  // Los que no sangran (las palomas del Monumento: plumas). rig.noBlood
+  dry(z) {
+    return !!z.dog && !!this.rigOf(z).noBlood && globalThis.__mduNoPluma !== true;
+  }
+
+  bleed(z, p, dir, n) {
+    if (this.dry(z)) this.g.fx.dust(p, { x: dir.x * 0.5, y: 0.5, z: dir.z * 0.5 }, [0.86, 0.86, 0.83], Math.ceil(n / 2));
+    else this.g.fx.blood(p, dir, n);
   }
 
   setState(z, s) {
@@ -2624,8 +2650,6 @@ export default class Zombies {
           g.audio.bossSlam(tmpV.set(z.pos.x, (z.baseY || 0) + 1, z.pos.z));
           g.fx.sparks(tmpV.set(z.pos.x + fx * 0.6, (z.baseY || 0) + 2, z.pos.z + fz * 0.6), 1.5, { x: -fx, y: 1, z: -fz });
           g.fx.addShake(0.4);
-          g.hud.subtitle('¡Se dio contra la pared! Está atontado: dale ahora.', 2.5);
-          g.net?.event('sub', { x: '¡Se dio contra la pared! Está atontado: dale ahora.', d: 2.5 });
         } else if (z.kind === 'luison' && z.stateT > POUNCE) {
           this.pounceLand(z);
           this.setState(z, 'chase');
@@ -3853,7 +3877,7 @@ export default class Zombies {
     // de invitado, el daño lo aplica el anfitrión: acá solo se ve la sangre
     if (g.net?.guest) {
       if (info.point && !z.jinete && !['freeze', 'chain', 'blast', 'luz'].includes(info.type)) {
-        g.fx.blood(info.point, info.dir ? tmpV2.copy(info.dir).multiplyScalar(0.6) : { x: 0, y: 0.5, z: 0 }, info.zone === 'head' ? 14 : 8);
+        this.bleed(z, info.point, info.dir ? tmpV2.copy(info.dir).multiplyScalar(0.6) : { x: 0, y: 0.5, z: 0 }, info.zone === 'head' ? 14 : 8);
       }
       g.net.reportHit(z, amount, info);
       return true;
@@ -3888,7 +3912,6 @@ export default class Zombies {
           const hp = tmpV.setFromMatrixPosition(z.mats[13]);
           g.fx.sparks(hp, 2, { x: 0, y: 1, z: 0 });
           g.audio.chain(hp);
-          g.hud.subtitle('¡Le volaste el sombrero!', 2);
         }
         return true;
       }
@@ -3914,7 +3937,7 @@ export default class Zombies {
     if (dmg <= 0) return false;
     z.hp -= dmg;
     if (info.point && type !== 'freeze' && type !== 'chain' && type !== 'blast') {
-      g.fx.blood(info.point, info.dir ? tmpV2.copy(info.dir).multiplyScalar(0.6) : { x: 0, y: 0.5, z: 0 }, info.zone === 'head' ? 14 : 8);
+      this.bleed(z, info.point, info.dir ? tmpV2.copy(info.dir).multiplyScalar(0.6) : { x: 0, y: 0.5, z: 0 }, info.zone === 'head' ? 14 : 8);
     }
     if (z.hp > 0) {
       this.lastPoints = type === 'burn' ? 0 : POINTS.hit;
@@ -4023,7 +4046,7 @@ export default class Zombies {
       if (this.rigOf(z).voice) this.rigOf(z).voice(z, 'die');
       else if (this.isHorse(z)) g.audio.neigh(tmpV.set(z.pos.x, (z.baseY || 0) + 1.5, z.pos.z), 1.3);
       else g.audio.yelp(tmpV.set(z.pos.x, (z.baseY || 0) + 0.6, z.pos.z));
-      if (info.point) g.fx.blood(info.point, info.dir || { x: 0, y: 0.5, z: 0 }, 14);
+      if (info.point) this.bleed(z, info.point, info.dir || { x: 0, y: 0.5, z: 0 }, 14);
     } else if (iced) {
       z.state = 'frozen';
       z.stateT = 0;
@@ -4129,7 +4152,10 @@ export default class Zombies {
         const hp = new THREE.Vector3().setFromMatrixPosition(z.mats[2]);
         z.hidden |= HIDE_HEAD;
         g.fx.blood(hp, { x: 0, y: 1.2, z: 0 }, 26, 1.4);
-        g.fx.decal(1, { x: hp.x + (Math.random() - 0.5), y: 0.02, z: hp.z + (Math.random() - 0.5) }, { x: 0, y: 1, z: 0 }, 1.2);
+        // (a la altura de su piso: con y fijo en 0, en la Proa del Monumento
+        // —piso a -2,6— la mancha quedaba flotando en el aire)
+        // (las balas del infierno carbonizan: sin charco; y el calco era el tirón de cada muerte)
+        if (!info.hell) g.fx.decal(1, { x: hp.x + (Math.random() - 0.5), y: (z.baseY || 0) + 0.02, z: hp.z + (Math.random() - 0.5) }, { x: 0, y: 1, z: 0 }, 1.2);
         if (Math.random() < 0.6) g.fx.gib(hp, new THREE.Vector3((info.dir?.x || 0) * 4 + (Math.random() - 0.5) * 2, 3 + Math.random() * 2, (info.dir?.z || 0) * 4 + (Math.random() - 0.5) * 2));
         g.audio.squish(hp);
       } else if (type === 'explosive' && !z.boss && Math.random() < 0.5) {
@@ -4143,13 +4169,14 @@ export default class Zombies {
       if (z.crawler) {
         z.P.rootPitch = 1.45;
       }
-      if (type === 'trapfire') {
+      // (trapfire: la trampa; hell: las balas del infierno de la Máquina de Muerte)
+      if (type === 'trapfire' || info.hell) {
         this.paint(z, 0x2a1a10);
         g.fx.fire(tmpV.set(z.pos.x, (z.baseY || 0) + 0.8, z.pos.z), 0.5, 8);
       }
     }
     // (el derretido deja su charco de barro, no sangre)
-    if (type !== 'melt' && type !== 'luz') g.fx.decal(1, { x: z.pos.x + (Math.random() - 0.5) * 0.6, y: (z.baseY || 0) + 0.02, z: z.pos.z + (Math.random() - 0.5) * 0.6 }, { x: 0, y: 1, z: 0 }, 0.8 + Math.random() * 0.6);
+    if (type !== 'melt' && type !== 'luz' && !info.hell && !this.dry(z)) g.fx.decal(1, { x: z.pos.x + (Math.random() - 0.5) * 0.6, y: (z.baseY || 0) + 0.02, z: z.pos.z + (Math.random() - 0.5) * 0.6 }, { x: 0, y: 1, z: 0 }, 0.8 + Math.random() * 0.6);
     if (type !== 'freeze' && type !== 'yerba' && type !== 'luz') g.audio.growl(neck.clone(), 'death');
     // el easter egg se entera de cualquier jefe que cae (el Sargento suelta la llave del Coronel)
     // (lo que suelta queda donde se llega caminando: no afuera del mapa ni del

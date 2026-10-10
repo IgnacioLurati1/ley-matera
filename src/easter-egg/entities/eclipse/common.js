@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ZONES } from '../../config/map';
+import { ART, buildMark } from './stepArt';
 
 // Lo que comparten los pasos del easter egg de Eclipse Matero ("El Primer
 // Mate", entities/EclipseEgg.js): quién es quién en la red, marcas en el
@@ -29,11 +30,24 @@ export class Marker {
   constructor(g, pos, col = 0xa070ff, r = 0.7) {
     this.g = g;
     this.root = new THREE.Group();
+    this.root.name = 'eclipse:marca';
     this.root.position.copy(pos);
     this.col = col;
     this.k = 0;
     this.want = 0;
     this.beat = 0;
+    // (2026-10-08: el círculo de signos, la columna que se apaga para arriba y
+    // las motas: entities/eclipse/stepArt.js buildMark. __mduOldEclProps: el anillo y el cilindro)
+    if (ART) {
+      const A = buildMark(g, col, r);
+      this.ring = A.ring;
+      this.pillar = A.pillar;
+      this.motes = A.motes;
+      this.root.add(A.ring, A.pillar, A.motes);
+      this.root.visible = false;
+      g.scene.add(this.root);
+      return;
+    }
     const ring = new THREE.Mesh(new THREE.RingGeometry(r * 0.72, r, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
     ring.position.y = 0.03;
     // (la columna: baja y fina, que no atraviese los techos ni tape lo de atrás)
@@ -63,9 +77,16 @@ export class Marker {
     this.k += (this.want - this.k) * Math.min(1, dt * 3);
     if (this.beat > 0) this.beat = Math.max(0, this.beat - dt * 1.6);
     const b = 0.75 + 0.25 * Math.sin(t * 2.4) + this.beat * 1.2;
-    this.ring.material.opacity = this.k * 0.55 * b;
-    this.pillar.material.opacity = this.k * 0.085 * b;
-    this.ring.rotation.y = t * 0.3;
+    if (this.motes) {
+      this.ring.material.opacity = this.k * 0.7 * b;
+      this.pillar.material.opacity = this.k * 0.06 * b;
+      this.ring.rotation.y = t * 0.12;
+      this.motes.userData.tick(dt, t, this.k);
+    } else {
+      this.ring.material.opacity = this.k * 0.55 * b;
+      this.pillar.material.opacity = this.k * 0.085 * b;
+      this.ring.rotation.y = t * 0.3;
+    }
     this.root.scale.setScalar(1 + this.beat * 0.25);
     if (this.k < 0.01 && this.want === 0) this.root.visible = false;
   }
@@ -76,6 +97,10 @@ export class Marker {
     this.ring.material.dispose();
     this.pillar.geometry.dispose();
     this.pillar.material.dispose();
+    if (this.motes) {
+      this.motes.geometry.dispose();
+      this.motes.material.dispose();
+    }
   }
 }
 
@@ -94,6 +119,11 @@ export class Pickup {
     this.light = new THREE.PointLight(col, 0, 5, 2);
     this.light.position.copy(pos).add(new THREE.Vector3(0, 0.5, 0));
     g.scene.add(this.light);
+    // (y va con las de evento, World.adoptLight: apagada no cuenta. Si no, las
+    // 13 del mapa entraban en cada material: sombreadores el doble de largos y
+    // cambiar la calidad en plena partida congelaba 10-56 s; agente rend.
+    // globalThis.__mduNoEclPickAdopt: como antes)
+    if (globalThis.__mduNoEclPickAdopt !== true) g.world?.adoptLight?.(this.light, 1);
     this.on = false;
     this.taken = false;
     this.onTake = null;
@@ -125,7 +155,9 @@ export class Pickup {
   update(dt, t) {
     if (!this.on) return;
     this.obj.position.y = this.base.y + 0.9 + Math.sin(t * 1.7) * 0.12;
-    this.obj.rotation.y = t * 0.9;
+    this.obj.rotation.y = t * (ART ? 0.55 : 0.9);
+    // (lo que se mueve adentro del objeto: la llamita, el vapor, las motas)
+    this.obj.userData.tick?.(dt, t);
   }
 
   dispose() {
@@ -169,6 +201,8 @@ export class QStep {
     this.st = { on: 0, done: 0 };
     this.live = [];
     this.marks = [];
+    // lo que se ve del paso y se anima (stepArt: velas, cadenas, altares...)
+    this.arts = [];
   }
 
   get host() {
@@ -216,11 +250,13 @@ export class QStep {
   update(dt, t) {
     for (const m of this.marks) m.update(dt, t);
     for (const o of this.live) o.update(dt, t);
+    for (const a of this.arts) a.tick?.(dt, t);
   }
 
   dispose() {
     for (const m of this.marks) m.dispose();
     for (const o of this.live) o.dispose?.();
+    for (const a of this.arts) a.root?.removeFromParent();
   }
 }
 

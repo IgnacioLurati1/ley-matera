@@ -15,6 +15,7 @@ import { prefetchTrack } from '../core/music';
 import { speechPlan, voiceLength } from '../core/voice';
 import { cineClip, poseCineClip, gauchoClip, cineSnap, headProp, FACE_EYES } from '../net/gauchoSkin';
 import { assetUrl } from '../../lib/assets';
+import { gilVincha } from '../net/gilLook';
 
 // "Mate no Numa": la llegada del Luisón (EsterosEgg.startLuison). Gil deja la
 // luz de los ahogados en el hueco del Algarrobo de los Colgados y arranca la
@@ -566,6 +567,8 @@ export default class LuisonArrival extends CastleCine {
   buildCrew() {
     const g = this.g;
     this.npc = new Avatars(g, null);
+    // (2026-10-10: las bandanas de los compañeros del Gil y su vincha, net/gilLook.js)
+    this.npc.bandanas = true;
     this.npc.root.visible = false;
     this.people = {};
     this.crew = [];
@@ -577,6 +580,7 @@ export default class LuisonArrival extends CastleCine {
       this.npc.add(r);
       const a = this.npc.list.get(C.id);
       a.M.poncho.color.set(C.color).multiplyScalar(1.7);
+      if (C.key === 'gil' && globalThis.__mduNoBandanas !== true) gilVincha(a);
       // (el mate de siempre no: cada uno con su arma)
       a.hand.children[0].visible = false;
       if (C.weapon !== 'facon') this.npc.setGun(a, C.weapon, 0, null);

@@ -1,9 +1,16 @@
 import * as THREE from 'three';
 import { PLAYER } from '../config/rules';
-import { PLAYER_START } from '../config/map';
+import { PLAYER_START, FEATURES } from '../config/map';
+
+// (el penal en línea: cada uno arranca en su catre del pabellón, el lugar de su
+// carácter en la entrada —ui/introShots penal crewUp—; todos en el mismo punto,
+// los cuerpos dormidos del gaucho life quedaban uno arriba del otro: "el jugador
+// rojo aparece encima de otro", el usuario 2026-10-06. __mduNoPenalSpots: como antes)
+export const PENAL_SPOTS = [[0, 0], [0.3, 2.3], [1.8, -1.5], [3.15, 0.6]];
 import { dragonBreath, DRAGON_CD, DRAGON_GAP } from '../weapons/dragonBreath';
-import { playerWater, swimMove, wadeSlow, SWIM } from './swim';
+import { playerWater, swimMove, wadeSlow, SWIM, climbStep } from './swim';
 import { tryWish, wishActive, wishBlocked, WISH_SPEED } from './dyingWish';
+import { cupulaDmg } from '../world/shieldNudo';
 
 const specTarget = new THREE.Vector3();
 const specFwd = new THREE.Vector3();
@@ -24,12 +31,21 @@ export default class Player {
   reset() {
     const s = PLAYER_START;
     this.pos.set(s.x, 0, s.z);
+    const nid = this.g?.net?.id || 0;
+    if (FEATURES.penal && nid > 0 && globalThis.__mduNoPenalSpots !== true) {
+      const [dx, dz] = PENAL_SPOTS[nid % PENAL_SPOTS.length];
+      this.pos.x += dx;
+      this.pos.z += dz;
+    }
     this.vel.set(0, 0, 0);
     this.yaw = s.yaw;
     this.pitch = 0;
     this.eye = PLAYER.eye;
     this.health = PLAYER.health;
     this.maxHealth = PLAYER.health;
+    // el chambergo del matrero (Eclipse, entities/eclipse/Sombrero.js): vida de más que
+    // no se pierde al caer ni al volver, y se suma al Juggernog (setHat)
+    this.hatHp = 0;
     this.lastHit = -99;
     this.alive = true;
     this.downed = false;
@@ -98,16 +114,25 @@ export default class Player {
   givePerk(id) {
     this.perks.add(id);
     if (id === 'jugg') {
-      this.maxHealth = PLAYER.juggHealth;
+      this.maxHealth = PLAYER.juggHealth + (this.hatHp || 0);
       this.health = this.maxHealth;
     }
     this.g.hud.setPerks([...this.perks]);
   }
 
+  // El chambergo del matrero: hp de vida de más (0 lo saca). Queda para toda la partida.
+  setHat(hp) {
+    const d = hp - (this.hatHp || 0);
+    if (!d) return;
+    this.hatHp = hp;
+    this.maxHealth += d;
+    this.health = Math.max(1, Math.min(this.maxHealth, this.health + d));
+  }
+
   loseAllPerks() {
     const hadMule = this.perks.has('mule');
     this.perks.clear();
-    this.maxHealth = PLAYER.health;
+    this.maxHealth = PLAYER.health + (this.hatHp || 0);
     this.health = Math.min(this.health, this.maxHealth);
     this.g.hud.setPerks([]);
     if (hadMule) this.g.weapons.trimSlots();
@@ -117,10 +142,15 @@ export default class Player {
   damage(amount, from, explosion = false, src = null) {
     const g = this.g;
     if (!this.canBeHit() || g.godMode) return;
+    // (ee.safe: el que viaja en el ascensor del Monumento, desde que lo llama:
+    // el zarpazo que ya venía bajando no le llega; entities/MonumentoEgg.js)
+    if (g.ee?.safe?.(this)) return;
     // Dying Wish (la Extremaunión): mientras dura la adrenalina no lastima nada
     if (wishActive(this)) return wishBlocked(this);
     // PhD Flopper (la Flopa Hermanos): las explosiones no le hacen nada
     if (explosion && this.perks.has('phd')) return;
+    // el Escudo de la Cúpula (Eclipse): la embestida de un jinete pega menos (world/shieldNudo)
+    if (src?.jinete) amount = cupulaDmg(g, amount, src);
     // el escudo de la espalda frena lo que viene de atrás; puesto adelante
     // (Z: weapons/shieldHand), solo lo de adelante
     if (this.shield && from && !explosion) {
@@ -231,8 +261,8 @@ export default class Player {
     this.health = this.maxHealth;
     this.eye = PLAYER.eye;
     this.perks.clear();
-    this.maxHealth = PLAYER.health;
-    this.health = PLAYER.health;
+    this.maxHealth = PLAYER.health + (this.hatHp || 0);
+    this.health = this.maxHealth;
     g.hud.setPerks([]);
     g.weapons.reset();
     const near = g.net?.nearest(this.pos.x, this.pos.z, this.pos.y);
@@ -380,7 +410,10 @@ export default class Player {
       wx /= len;
       wz /= len;
     }
-    if (this.swim >= 2) swimMove(this, dt, input, W, wx, wz, f);
+    // (trepando a la orilla de a poco, entities/swim climbStep: Eclipse)
+    if (this.climbing && climbStep(this, dt)) {
+      /* la trepada mueve al jugador */
+    } else if (this.swim >= 2) swimMove(this, dt, input, W, wx, wz, f);
     else {
       const accel = this.onGround ? 14 : 3;
       this.vel.x += (wx * speed - this.vel.x) * Math.min(1, dt * accel);

@@ -26,15 +26,16 @@ const write = (k, v) => {
   }
 };
 
-// Los mapas con el easter egg completado (en el orden del juego). Los mapas
-// bonus (el Monumento) no cuentan para el super easter egg, y el final
-// canónico (Eclipse Matero, `final`) tampoco: va aparte de la ronda.
+// Los mapas con el easter egg completado (en el orden del juego). Para el
+// super easter egg cuentan todos los mapas de la lista: también el bonus (el
+// Monumento) y el final (Eclipse Matero, que se lista solo con el mapa
+// prendido: config/map.js). Decisión del usuario (2026-10-09).
 export function eggsDone() {
   const d = read(KEY) || {};
-  return MAP_LIST.filter((m) => !m.bonus && !m.final && d[m.id]).map((m) => m.id);
+  return MAP_LIST.filter((m) => d[m.id]).map((m) => m.id);
 }
 
-export const eggsTotal = () => MAP_LIST.filter((m) => !m.bonus && !m.final).length;
+export const eggsTotal = () => MAP_LIST.length;
 
 // Todos los mapas con el easter egg completado, bonus incluidos (el libro,
 // ui/BookReader.js, abre un capítulo por cada uno).
@@ -70,5 +71,5 @@ export const startMate = () => (isKnight() ? 'caballero' : 'porongo');
 // El Mate Supremo (weapons/Supremo.js): sale en la caja para el que ganó el
 // super easter egg, salvo que lo apague en Opciones (settings.supremo).
 export const supremoOn = (settings) => isKnight() && settings?.supremo !== false;
-// La pregunta de la primera partida con los seis (ui/SupremoAsk.js).
+// La pregunta de la primera partida con todos (ui/SupremoAsk.js).
 export const supremoAsk = (settings) => isKnight() && !settings?.supremoAsked;

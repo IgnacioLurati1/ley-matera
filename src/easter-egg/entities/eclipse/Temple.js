@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { QStep, Marker, HoldZone, glowOrb, players, playerAt, dist2, myId, islaAt } from './common';
+import { LIGHTS, ZONES } from '../../config/maps/eclipse';
+import { QStep, Marker, HoldZone, glowOrb, players, playerAt, dist2, myId } from './common';
+import { ART, buildBrasero, buildStuck, buildSpiritFlame } from './stepArt';
 import { unlock as unlockLogro } from '../../core/logros';
 
 // "El Temple de los Cuatro Filos": la mejora del Desgarrador (obligatoria para
@@ -20,17 +22,30 @@ import { unlock as unlockLogro } from '../../core/logros';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const KILLS_EACH = 40;
-const BRASERO = V(152.5, 56, 40.5);
+// (qa-flujo, v5: a 32,5 caía sobre la escalera del gran salón, enterrado y sin
+// modelo; ahora en el piso del patio, a la derecha de la escalera)
+const BRASERO = V(161.5, 56, 35.5);
 const FUEGO_SECS = 70;
 const FUEGO_N = 12;
 const LLAMA_FROM = V(275.5, 52, 76.5);
 const ALGARROBO = V(162.5, 33, 150.5);
-const MARCAS = [V(163.5, 4, 311.5), V(170.5, 4, 311.5), V(166.5, 4, 316.5), V(163.5, 4, 321.5), V(170.5, 4, 321.5)];
+// (el tronco ocupa 3 x 3 m: se llega tocándolo de cualquier lado)
+const ALGARROBO_R = 3.2;
+// (qa-flujo, v5: las dos de abajo estaban en 321,5, afuera de las rejas del
+// patio, y las de arriba a 1 m de la boca del portal 3: yendo de una a la otra
+// el portal te mandaba al claro. Ahora todas a más de 2,9 m de las tres bocas
+// del patio: 3 (166,5; 312,5), 5 (162,5; 317,5) y 6 (172,5; 316,5))
+const MARCAS = [V(163, 4, 310), V(170, 4, 310), V(166.5, 4, 316.8), V(165.5, 4, 319.2), V(169, 4, 319)];
+// el rayo arranca con alguien en el patio de recreo (no en todo el penal)
+const RAYO_ZONE = 'pH';
 const RAYO_WAIT = 2.6;
-const RAYO_WIN = 0.45;
+// (0,45 era imposible: el bot de qa-flujo llegó a 4 de 5; 0,6 hasta que el usuario diga)
+const RAYO_WIN = 0.6;
 const MUELA = V(29.5, 38, 95.5);
 const HIELO_SECS = 75;
-const NUDO = V(152.5, 68, 104.5);
+// (el nudo: la luz 'nudo' de La Disformidad, en el medio de la zona U; layout v5)
+const _LN = LIGHTS.find((l) => l.tag === 'nudo');
+const NUDO = _LN ? V(_LN.pos[0], ZONES.U.y, _LN.pos[2]) : V(152.5, 68, 104.5);
 const TEMPLE_SECS = 80;
 const UPGRADE_COST = 5000;
 const NAMES = ['', 'El despertar', 'El filo del que ataca primero', 'El filo del que tiene miedo', 'El filo del que espera', 'El filo del que aguanta', 'El temple'];
@@ -43,21 +58,62 @@ export default class Temple extends QStep {
     this.st = { on: 0, done: 0, stage: 0, kills: 0, fuego: 0, fkills: 0, carrier: -1, rayo: 0, hielo: 0, hielen: -1, forja: 0 };
     this.mB = new Marker(g, BRASERO, 0xff7030, 0.7);
     this.mL = new Marker(g, LLAMA_FROM, 0xa0ffd0, 0.6);
-    this.mAl = new Marker(g, ALGARROBO, 0xa0ffd0, 0.9);
+    // (el anillo alrededor del tronco, no adentro)
+    this.mAl = new Marker(g, ALGARROBO, 0xa0ffd0, 2.3);
     this.mR = MARCAS.map((p) => new Marker(g, p, 0xffe060, 0.75));
-    this.mM = new Marker(g, MUELA, 0x80c0ff, 0.7);
+    // (la pileta de la muela mide 4 m: el anillo alrededor, no abajo de la piedra)
+    this.mM = new Marker(g, MUELA, 0x80c0ff, 2.7);
     this.mN = new Marker(g, NUDO, 0xd080ff, 1.1);
     this.marks.push(this.mB, this.mL, this.mAl, ...this.mR, this.mM, this.mN);
     this.hF = new HoldZone(g, BRASERO, 1e9, FUEGO_SECS);
     this.hH = new HoldZone(g, MUELA, 14, HIELO_SECS);
     this.hT = new HoldZone(g, NUDO, 9, TEMPLE_SECS);
-    this.flame = glowOrb(0xa0ffd0, 0.14);
+    // (stepArt) la llama del desgarro: fría, verde agua, con su estela; y la
+    // misma esperando arriba de la marca de la cima hasta que alguien la toma
+    this.flame = ART ? buildSpiritFlame(g) : glowOrb(0xa0ffd0, 0.14);
     this.flame.visible = false;
     g.scene.add(this.flame);
-    this.stuck = glowOrb(0x80c0ff, 0.12);
+    if (ART) {
+      this.flameSrc = buildSpiritFlame(g);
+      this.flameSrc.position.copy(LLAMA_FROM).add(V(0, 1.3, 0));
+      this.flameSrc.visible = false;
+      g.scene.add(this.flameSrc);
+    }
+    // (stepArt) la guadaña clavada de punta en la muela, con la escarcha
+    this.stuck = ART ? buildStuck(g) : glowOrb(0x80c0ff, 0.12);
     this.stuck.visible = false;
-    this.stuck.position.copy(MUELA).add(V(0, 1.2, 0));
+    this.stuck.position.copy(MUELA).add(V(0, ART ? 0 : 1.2, 0));
     g.scene.add(this.stuck);
+    // (qa-flujo) el brasero de la fragua: el patio de armas no trae uno propio
+    // (sin w.eclipseArt.braseroFire). Pie, taza de fierro y brasas que se
+    // prenden con el fuego de la etapa 2 (sin luz nueva: fx.fire, como la Llama)
+    if (!g.world.eclipseArt?.braseroFire && ART) {
+      // (stepArt) trípode de patas curvas, taza remachada y brasas de verdad
+      const B = buildBrasero(g);
+      this.coalM = B.coalM;
+      B.root.position.copy(BRASERO);
+      g.scene.add(B.root);
+      this.braseroObj = B.root;
+      this.braseroFireT = 0;
+    } else if (!g.world.eclipseArt?.braseroFire) {
+      const iron = new THREE.MeshStandardMaterial({ color: 0x2a2624, roughness: 0.6, metalness: 0.7 });
+      this.coalM = new THREE.MeshStandardMaterial({ color: 0x1a0f0a, roughness: 0.9, emissive: 0xff5a18, emissiveIntensity: 0 });
+      const grp = new THREE.Group();
+      const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 0.08, 14), iron);
+      foot.position.y = 0.04;
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.78, 8), iron);
+      leg.position.y = 0.47;
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.24, 0.3, 16, 1, true), iron);
+      bowl.material.side = THREE.DoubleSide;
+      bowl.position.y = 0.98;
+      const coals = new THREE.Mesh(new THREE.CircleGeometry(0.4, 16).rotateX(-Math.PI / 2), this.coalM);
+      coals.position.y = 1.06;
+      grp.add(foot, leg, bowl, coals);
+      grp.position.copy(BRASERO);
+      g.scene.add(grp);
+      this.braseroObj = grp;
+      this.braseroFireT = 0;
+    }
     this.rayoT = 0;
     this.rayoI = -1;
     this.hp0 = null;
@@ -85,7 +141,8 @@ export default class Temple extends QStep {
       g.interact.add({
         kind: 'eclipse-muela',
         pos: MUELA.clone().add(V(0, 1, 0)),
-        radius: 2.2,
+        // (qa-flujo: con 2,2 no se llegaba; la pileta tiene caja de 4,2 x 4 m)
+        radius: 3.3,
         prompt: () => {
           if (this.st.stage !== 5) return null;
           if (!this.st.hielo) return holding() ? { text: 'clavar la guadaña en la muela', noCost: true, hold: true } : { text: 'Necesita el Desgarrador en la mano', noCost: true, info: true };
@@ -219,11 +276,13 @@ export default class Temple extends QStep {
         g.hud.subtitle(m.why === 'corte' ? 'Cortaste: la llama vuelve a la cima.' : 'Te pegaron: la llama vuelve a la cima.', 3.5);
         break;
       case 'rayo':
+        m.had = S.rayo > 0;
         S.rayo = m.ok ? S.rayo + 1 : 0;
         if (m.ok) {
           g.fx.sparkle(MARCAS[this.rayoI >= 0 ? this.rayoI : 0].clone().add(V(0, 1, 0)), [1, 0.95, 0.5], 16, 0.8);
           g.hud.subtitle(`${S.rayo} de 5.`, 1.5);
-        } else g.hud.subtitle('A destiempo. De nuevo.', 2);
+        } else if (!m.miss) g.hud.subtitle('A destiempo. De nuevo.', 2);
+        else if (S.rayo === 0 && m.had) g.hud.subtitle('Se pasó el rayo. De nuevo.', 2);
         this.rayoI = -1;
         this.rayoT = 0;
         if (this.host && S.rayo >= 5) this.send({ a: 'stage', n: 5 });
@@ -295,11 +354,11 @@ export default class Temple extends QStep {
     return [
       '',
       `Matá ${KILLS_EACH} muertos por jugador con el Desgarrador.`,
-      'Castillo, patio de armas: el brasero.',
-      'La cima de la Torre: la llama del desgarro, al algarrobo.',
-      'Penal, patio: rematá el combo donde cae el rayo.',
+      'Castillo, patio de armas: encendé el brasero.',
+      'Cima de la Torre: llevá la llama del desgarro al algarrobo del claro.',
+      'Penal, patio de recreo: rematá el combo donde cae el rayo.',
       'Molino, galpón: clavá la guadaña en la muela.',
-      'El Desgarro: el nudo, con el eclipse total.',
+      this.ee.totality ? 'El Nudo: clavá la guadaña al pie del cristal grande.' : 'Falta el eclipse total: el cañón de la cima de la Torre.',
     ][n];
   }
 
@@ -322,7 +381,19 @@ export default class Temple extends QStep {
     // 2. el brasero se apaga
     if (S.stage === 2 && S.fuego === 1) {
       if (this.hF.update(dt) && this.host) this.send({ a: 'apaga' });
+      // (el fuego del brasero propio, mientras arde)
+      if (this.braseroObj && (this.braseroFireT -= dt) <= 0) {
+        this.braseroFireT = 0.12;
+        g.fx.fire?.(BRASERO.clone().add(V(0, ART ? 1.15 : 1.1, 0)), 0.45, 1);
+      }
     }
+    if (ART) {
+      if (this.flame.visible) this.flame.userData.tick?.(dt, t);
+      if (this.stuck.visible) this.stuck.userData.tick?.(dt, t);
+      this.flameSrc.visible = S.stage === 3 && S.carrier < 0;
+      if (this.flameSrc.visible) this.flameSrc.userData.tick?.(dt, t);
+    }
+    if (this.coalM) this.coalM.emissiveIntensity = S.stage === 2 && S.fuego === 1 ? 1.4 + 0.4 * Math.sin(t * 7) : 0;
     // 3. la llama en la mano del que la lleva
     if (S.stage === 3 && S.carrier >= 0) {
       const p = playerAt(g, S.carrier);
@@ -334,7 +405,7 @@ export default class Temple extends QStep {
         if (g.player.health < (this.hp0 ?? 0) - 0.5 || g.player.downed) this.send({ a: 'drop', why: 'golpe' });
         else this.hp0 = g.player.health;
       }
-      if (this.host && p && dist2(p, ALGARROBO) < 2.5 && Math.abs(p.y - ALGARROBO.y) < 3) {
+      if (this.host && p && dist2(p, ALGARROBO) < ALGARROBO_R && Math.abs(p.y - ALGARROBO.y) < 3) {
         this.flame.visible = false;
         this.send({ a: 'stage', n: 4 });
       }
@@ -342,7 +413,7 @@ export default class Temple extends QStep {
     // 4. los rayos (cada compu el mismo reloj; el anfitrión elige la marca)
     if (S.stage === 4) {
       if (this.rayoI < 0) {
-        if (this.host && players(g).some((p) => !p.downed && islaAt(g, p.pos) === 'penal')) {
+        if (this.host && players(g).some((p) => !p.downed && g.world.zoneAt(p.pos.x, p.pos.z, p.pos.y) === RAYO_ZONE)) {
           this.rayoI = Math.floor(Math.random() * MARCAS.length);
           this.rayoT = 0;
           g.net?.event('pee', { k: 'eq', s: 'temple', a: 'marca', i: this.rayoI });
@@ -359,7 +430,8 @@ export default class Temple extends QStep {
         if (this.rayoT > RAYO_WAIT + RAYO_WIN + 0.3) {
           this.mR[this.rayoI].set(false);
           this.rayoI = -1;
-          if (this.host) this.send({ a: 'rayo', ok: 0 });
+          // (nadie tajeó: se pierde la racha, sin el "a destiempo" si no había)
+          if (this.host) this.send({ a: 'rayo', ok: 0, miss: 1 });
         }
       }
     }
@@ -398,6 +470,8 @@ export default class Temple extends QStep {
   dispose() {
     super.dispose();
     this.flame.removeFromParent();
+    this.flameSrc?.removeFromParent();
     this.stuck.removeFromParent();
+    this.braseroObj?.removeFromParent();
   }
 }

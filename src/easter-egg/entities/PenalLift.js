@@ -621,7 +621,7 @@ export default class PenalLift {
     if (this.powered) return;
     this.powered = true;
     this.powerFx();
-    this.egg.announce(`¡La telesilla tiene corriente! Del muelle al cerro, $${COST} el viaje.`, 5, true);
+    this.egg.announce('', 5, true);
     this.sync();
   }
 

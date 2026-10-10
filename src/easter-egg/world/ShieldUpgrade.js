@@ -5,6 +5,7 @@ import { leanGroup } from './staticLean';
 import { shieldModel } from './shieldModels';
 import { upgradeShield } from './shieldUpModels';
 import { buildGorriti, updateGorriti, gorritiKillFx } from './shieldGorriti';
+import { buildNudo, updateNudo, nudoKill, nudoKillFx } from './shieldNudo';
 import { sfxClang, sfxGrind, sfxSizzle, sfxQuench, sfxClack, sfxSteam, sfxFlame, sfxUpgrade } from './shieldSfx';
 import '../ui/shieldUp.css';
 
@@ -25,7 +26,9 @@ import '../ui/shieldUp.css';
 //  · gorriti (monumento): el escudo en las manos del canónigo Gorriti (Pasaje
 //    Juramento); 8 muertos a escudazos cerca antes de la tercera campanada
 //    de la Catedral (world/shieldGorriti).
-// Lo que hace el mejorado (prop): push, zap, chain, bite, steam, blazon, rebote.
+//  · nudo (eclipse): el escudo en el altar de El Nudo; los muertos cerca del
+//    mate encendido de cada caballero le prenden su piedra (world/shieldNudo).
+// Lo que hace el mejorado (prop): push, zap, chain, bite, steam, blazon, rebote, cupula.
 // En línea decide el anfitrión (pedidos 'sup' y eventos 'sup' de net/Session).
 
 const tmpV = new THREE.Vector3();
@@ -40,6 +43,7 @@ const DESC = {
   steam: 'Larga vapor cuando le pegan',
   blazon: 'Cinco golpes cargan una llamarada',
   rebote: 'Le devuelve el golpe al que le pega',
+  cupula: 'Los jinetes pegan menos',
 };
 
 // materiales propios de la mejora (uno por sesión)
@@ -99,6 +103,7 @@ export default class ShieldUpgrade {
     else if (k === 'skull') this.buildSkull();
     else if (k === 'pava') this.buildPava();
     else if (k === 'gorriti') buildGorriti(this);
+    else if (k === 'nudo') buildNudo(this);
   }
 
   get kind() {
@@ -177,7 +182,7 @@ export default class ShieldUpgrade {
     switch (m.k) {
       case 'place': {
         if (this.done || st.stage !== 'idle' || !this.hasShield(from)) return;
-        const stage = { press: 'work', fence: 'hung', temper: 'hung', skull: 'hunt', gorriti: 'hunt', pava: 'boil' }[this.kind];
+        const stage = { press: 'work', fence: 'hung', temper: 'hung', skull: 'hunt', gorriti: 'hunt', nudo: 'hunt', pava: 'boil' }[this.kind];
         if (!stage) return;
         if (this.kind === 'press' && !g.world.power) return;
         this.tell({ k: 'st', stage, p: 0, n: 0, h: 0, c: 0, jam: false, by: from, ev: 'place' });
@@ -732,7 +737,6 @@ export default class ShieldUpgrade {
     if (!s) return;
     s.hot = { kind, until: g.time + (this.U.secs || 40), strikes: 0 };
     s.heat = 1;
-    g.hud.subtitle(kind === 'temper' ? '¡Al rojo! Al agua del Muelle.' : '¡Al rojo! Al yunque de la Herrería.', 3.5);
   }
 
   dunk() {
@@ -1100,6 +1104,8 @@ export default class ShieldUpgrade {
   onKill(z, info = {}) {
     if (!this.U || !this.isHost()) return;
     const st = this.st;
+    // Eclipse: cualquier muerto cerca del mate encendido (world/shieldNudo)
+    if (this.kind === 'nudo') return nudoKill(this, z);
     if (this.kind === 'fence' && st.stage === 'hung' && info.type === 'chain') {
       const trap = this.trap();
       if (!trap) return;
@@ -1139,6 +1145,7 @@ export default class ShieldUpgrade {
       this.flying.push({ obj, from, t: 0 });
       g.fx.sparkle(from, [0.4, 1, 0.55], 4, 0.3);
     } else if (this.kind === 'gorriti') gorritiKillFx(this, from);
+    else if (this.kind === 'nudo') nudoKillFx(this, from);
   }
 
   // ---------------- lo que hace el escudo mejorado ----------------
@@ -1441,6 +1448,7 @@ export default class ShieldUpgrade {
     else if (k === 'pava') this.updatePava(dt);
     else if (k === 'forge') this.updateForge(dt);
     else if (k === 'gorriti') updateGorriti(this, dt);
+    else if (k === 'nudo') updateNudo(this, dt);
     this.updateHot(dt);
     this.updateEffects(dt);
   }

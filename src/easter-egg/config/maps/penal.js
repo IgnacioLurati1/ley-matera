@@ -330,7 +330,10 @@ export const PROPS = [
   { type: 'cajones', pos: [42.2, 78.5], rot: -0.3 },
   { type: 'celdaK', pos: [19.0, 51.5], rot: Math.PI / 2, w: 4, d: 4 },
   { type: 'celdaK', pos: [19.0, 71.0], rot: Math.PI / 2, w: 4, d: 4, open: 1 },
-  { type: 'celdaK', pos: [26.5, 64.0], rot: -Math.PI / 2, w: 7, d: 5, open: 1 },
+  // (la del encierro: la reja va centrada en la celda (z 61 a 68) y el hueco
+  // de la puerta cae justo en la fila 64 de la grilla, con 1,5 m: antes quedaba
+  // a caballo de dos filas y los muertos iban derecho contra los barrotes)
+  { type: 'celdaK', pos: [26.5, 64.5], rot: -Math.PI / 2, w: 7, d: 5, open: 1, door: 1.5, swing: -2.9 },
   { type: 'grilletes', pos: [21.05, 55], rot: Math.PI / 2 },
   { type: 'grilletes', pos: [21.05, 65], rot: Math.PI / 2 },
   { type: 'grilletes', pos: [21.05, 77.5], rot: Math.PI / 2 },

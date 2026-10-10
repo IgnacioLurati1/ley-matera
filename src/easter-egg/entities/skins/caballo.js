@@ -233,7 +233,10 @@ export class Caballo {
       const st = f > 1.25;
       if (st) this.state = 'tendido';
       // (sigue de largo un poco con lo que venía)
-      const slide = Math.max(0, (this.fallSpeed || 0) * (1 - a * 0.7)) * dt;
+      // (sesión 1f, el usuario: "el caballo muerto sigue cabalgando acostado":
+      // seguía deslizándose al 30% de su velocidad para siempre. Solo mientras
+      // cae. __mduOldHorseSlide: como antes)
+      const slide = Math.max(0, (this.fallSpeed || 0) * (1 - a * 0.7) * (globalThis.__mduOldHorseSlide === true ? 1 : 1 - eb)) * dt;
       this.pos.x += Math.sin(this.yaw) * slide;
       this.pos.z += Math.cos(this.yaw) * slide;
       const dip = Math.sin(Math.PI * Math.min(1, a * 1.1)) * (1 - eb);
@@ -254,8 +257,10 @@ export class Caballo {
         L[k].out = 0;
       }
       const tt = this.t;
-      // tendido: respira, alguna patada floja
-      if (st) {
+      // tendido: respira, alguna patada floja. (Sesión 1f, el usuario: "los
+      // caballos muertos siguen moviéndose": después de unos segundos, quieto
+      // del todo. __mduOldHorseKick: sigue respirando y pateando, como antes)
+      if (st && (f < 3.5 || globalThis.__mduOldHorseKick === true)) {
         y += 0.008 * Math.sin(tt * 1.2);
         L[0].bend += 0.15 * Math.max(0, Math.sin(tt * 0.7)) ** 6;
       }

@@ -650,7 +650,6 @@ export default class Cerro extends Arena {
       for (const z of g.zombies.pool) if (z.active && !z.dead) g.zombies.kill(z, { type: 'nuke', noPoints: true });
       g.say('gil', '¿Se creen que este cerro es mi cárcel? Vengan... les voy a mostrar dónde guardo a los que no suelto.', 'boss');
     }
-    g.hud.subtitle('¡El Gauchito Gil los arrastra con sus cadenas!', 3, 'boss');
     g.later(1.7, () => this.stage === 'shift' && this.black(1, 0.4));
     g.later(2.2, () => this.enterCarcel());
   }
@@ -700,7 +699,6 @@ export default class Cerro extends Arena {
     }
     this.weatherNow('carcel');
     g.hud.location('La Cárcel de las Almas', 'Donde el Gauchito guarda lo que no suelta');
-    g.hud.subtitle('¡El Gauchito Gil se revela: es el carcelero de las almas!', 4, 'boss');
     g.renderer.shadowMap.needsUpdate = true;
     g.later(0.3, () => this.black(0, 0.8));
     g.later(0.5, () => {

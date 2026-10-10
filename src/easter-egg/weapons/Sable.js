@@ -13,8 +13,8 @@ import Carga from './sableCarga';
 //  · Izquierdo (mantenido sigue): tres tajos en combo, a la izquierda, a la
 //    derecha y uno fuerte de arriba en diagonal. Cada uno corta a varios del
 //    arco, con su golpe que frena la mano un instante (hit-stop), sangre,
-//    chispas y estela. De un tajo hasta la ronda `oneHit`; después, de a dos
-//    y tres. El de San Lorenzo además larga una medialuna celeste y blanca
+//    chispas y estela. De un tajo hasta la ronda `oneHit`; después, de a dos,
+//    de a tres y así (cada 10 rondas uno más). El de San Lorenzo además larga una medialuna celeste y blanca
 //    (~12 m) que corta a todos los de la línea.
 //  · Derecho: lo tira. Vuela girando en una vuelta de boomerang, corta a todo
 //    lo que cruza y vuelve a la mano (contra una pared, rebota y vuelve).
@@ -522,16 +522,20 @@ export default class Sable {
     g.ee?.onSableCut?.(eye, fwd, S.range + 0.8);
   }
 
-  // Cuánto le pega a uno: de un tajo hasta la ronda oneHit; después de a dos
-  // (12 rondas más) y de a tres. A los jefes, una parte de su vida.
+  // Cuánto le pega a uno: de un tajo hasta la ronda oneHit (la del golpe, B,
+  // si trae la suya: el tiro del de San Lorenzo; si no, la de los tajos);
+  // después de a dos golpes las 10 rondas que siguen, de a tres las otras 10,
+  // y así sigue subiendo. A los jefes, una parte de su vida.
   dmg(z, S, B) {
     const g = this.g;
     if (big(z)) return Math.max(B.bossMin, (z.maxHp || bossHealth(g.rounds?.round || 1)) * B.boss);
     const r = g.rounds?.round || 1;
+    const one = B.oneHit ?? S.oneHit;
+    const hp = Math.max(zombieHealth(r), z.maxHp || 0);
     // (de un tajo: lo que tiene, con margen; ya no infinito, el usuario
     // 2026-10-05. Infinita queda solo la Carga, a los comunes)
-    if (r <= S.oneHit) return globalThis.__mduNoSableDmg ? 1e9 : Math.max(zombieHealth(r), z.maxHp || 0) * 1.1;
-    return zombieHealth(r) / (r <= S.oneHit + 12 ? 1.9 : 2.8);
+    if (r <= one) return globalThis.__mduNoSableDmg ? 1e9 : hp * 1.1;
+    return hp / (1.9 + Math.floor((r - one - 1) / 10));
   }
 
   // El golpe (y la cuenta de la carga del de San Lorenzo).

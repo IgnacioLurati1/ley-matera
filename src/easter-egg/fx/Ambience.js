@@ -98,7 +98,10 @@ export default class Ambience {
         this.cones.setMatrixAt(cone.i, m4.makeTranslation(cone.pos));
         this.cones.setColorAt(cone.i, zero);
       }
-      this.lamps.push({ e, halo, cone, candle, col: new THREE.Color(e.def.color) });
+      // (Eclipse: la luz sin farol -`noHalo`, los candiles que solo alumbran- no
+      // dibuja el halo: quedaba un brillo volando en medio del cuarto. mundo, it. 4)
+      const bare = !!(FEATURES.eclipse && e.def.noHalo && globalThis.__mduNoEclBareHalo !== true);
+      this.lamps.push({ e, halo, cone, candle, bare, col: new THREE.Color(e.def.color) });
     }
     if (!lamps.length) this.halos.setColorAt(0, zero);
     if (!nCone) this.cones.setColorAt(0, zero);
@@ -138,6 +141,9 @@ export default class Ambience {
         const c = bw.center.clone().addScaledVector(n, 0.42).setY(bw.fy + (SILL + HEAD) / 2);
         items.push({ c, n, w: 0.92, h: HEAD - SILL, dir, fy: bw.fy, win: bw });
       }
+      // Eclipse Matero: los vitrales y el rosetón de la capilla copiada del
+      // castillo (los arma world/eclipseGfx.js en w.shaftItems; __mduNoEclVitral: sin ellos)
+      if (FEATURES.eclipse && globalThis.__mduNoEclVitral !== true) items.push(...(game.world.shaftItems || []));
       if (items.length) {
         this.beams = windowBeams(items);
         this.root.add(this.beams.root);
@@ -165,6 +171,18 @@ export default class Ambience {
     this.center = new THREE.Vector3();
   }
 
+  // El halo o el cono de una lámpara: su color y, si cambió, si se ve.
+  lampItem(im, it, l, c) {
+    im.setColorAt(it.i, c.copy(l.col).multiplyScalar(it.material.opacity));
+    if (it.visible === it.shown) return false;
+    it.shown = it.visible;
+    const m4 = (this.tmpM ||= new THREE.Matrix4());
+    const sc = it.visible ? it.size || 1 : 0;
+    im.setMatrixAt(it.i, m4.makeScale(sc, sc, sc).setPosition(it.pos));
+    im.instanceMatrix.needsUpdate = true;
+    return true;
+  }
+
   update(dt) {
     const g = this.g;
     // (Personalizada: Game.tier('amb'))
@@ -177,19 +195,10 @@ export default class Ambience {
     let moved = false;
     for (const l of this.lamps) {
       const k = Math.min(1, l.e.light.intensity / (l.e.base || 1));
-      l.halo.material.opacity = (l.candle ? 0.45 : 0.55) * k;
+      l.halo.material.opacity = l.bare ? 0 : (l.candle ? 0.45 : 0.55) * k;
       if (l.cone) l.cone.material.opacity = 0.05 * k;
-      for (const [im, it] of [[this.halos, l.halo], [this.cones, l.cone]]) {
-        if (!it) continue;
-        im.setColorAt(it.i, c.copy(l.col).multiplyScalar(it.material.opacity));
-        if (it.visible === it.shown) continue;
-        it.shown = it.visible;
-        const m4 = (this.tmpM ||= new THREE.Matrix4());
-        const sc = it.visible ? it.size || 1 : 0;
-        im.setMatrixAt(it.i, m4.makeScale(sc, sc, sc).setPosition(it.pos));
-        im.instanceMatrix.needsUpdate = true;
-        moved = true;
-      }
+      if (l.halo && this.lampItem(this.halos, l.halo, l, c)) moved = true;
+      if (l.cone && this.lampItem(this.cones, l.cone, l, c)) moved = true;
     }
     if (moved) for (const im of [this.halos, this.cones]) im.computeBoundingSphere();
     this.halos.instanceColor.needsUpdate = true;

@@ -20,7 +20,13 @@ import SliceWalk from './sliceWalk';
 // los otros mapas quedaba peor que antes: las luces de Épica (que se calculan
 // sin MSAA) dejaban dientes en los bordes, y sin el grano de siempre se veía
 // el ruido de las sombras. Ahí sigue todo como era (SMAA, grano 0,06).
-const grassy = () => !!FEATURES.esteros;
+// (Eclipse Matero, 2026-10-07, ITERACION-6 M2, el usuario: "sigue titilando
+// los bordes" del pasto. Medido: en Eclipse el suavizado temporal nunca
+// arrancaba —esto era solo el estero— y el pasto corrido para él (W4,
+// __mduNoEclGrassJit) quedaba sin efecto: los bordes de las cañas y matas,
+// recortados, serruchados y titilando. Ahora como en el estero.
+// globalThis.__mduNoEclGrassAA: como antes)
+const grassy = () => !!FEATURES.esteros || (!!FEATURES.eclipse && globalThis.__mduNoEclGrassAA !== true);
 // lo de fx/Epic (LEVELS) que un mapa puede cambiarle a su calidad (Game.mapGfx)
 const LEVEL_KEYS = ['live', 'soft', 'ao', 'light', 'vol', 'gres', 'lamps', 'bounce'];
 
@@ -81,6 +87,13 @@ const GradeShader = {
     uFuria: { value: 0 },
     // el rasgón de la ruptura del Desgarrador del Eclipse (fuerza, ángulo, semilla)
     uRip: { value: new THREE.Vector3() },
+    // (v4) el Eclipse: la Furia divina del Desgarrador del Eclipse (weapons/Desgarrador.js eclK)
+    uEclipse: { value: 0 },
+    uKeepNeon: { value: 1 },
+    uSoftF: { value: 1 },
+    // (furia11) la pantalla que se tensa mientras la guadaña concentra la Furia
+    // (weapons/Desgarrador.js tens: 0..1 juntando; negativa, el tirón al desatarse)
+    uTens: { value: 0 },
     uUnderCol: { value: new THREE.Color(0.06, 0.07, 0.05) },
     // (a la mitad: con la cámara en movimiento el grano hacía titilar el pasto)
     uGrain: { value: 0.03 },
@@ -97,6 +110,7 @@ const GradeShader = {
   fragmentShader: `
     uniform sampler2D tDiffuse; uniform float uTime, uHurt, uHit, uDown, uFlash, uGrain, uCrit, uPulse, uVida, uUnder, uWish, uWishBeat, uFuria; uniform vec2 uRes, uHitDir; uniform vec3 uUnderCol; uniform float uSat, uCon; uniform vec3 uShTint, uHiTint, uGain, uLift;
     uniform vec3 uRip;
+    uniform float uEclipse, uKeepNeon, uSoftF, uTens;
     varying vec2 vUv;
     float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main(){
@@ -106,9 +120,11 @@ const GradeShader = {
       // aberración cromática sutil en los bordes
       float beat = uCrit * uPulse;
       float wb = uWish * uWishBeat;
-      float ca = 0.0018 + uHurt * 0.004 + uHit * 0.01 + beat * 0.007 + uWish * 0.004 + wb * 0.009;
+      float ca = 0.0018 + uHurt * 0.004 + uHit * 0.01 + beat * 0.007 + uWish * 0.004 + wb * 0.009 + abs(uTens) * 0.005;
       // el latido "empuja" la imagen hacia afuera
-      uv = 0.5 + c * (1.0 - beat * 0.012 - wb * 0.022);
+      // (furia11: concentrando la Furia, los bordes se van hacia el medio —más
+      // cuanto más afuera—; al desatarse, uTens negativa, el tirón para afuera)
+      uv = 0.5 + c * (1.0 - beat * 0.012 - wb * 0.022 - uTens * (0.01 + 0.07 * r2));
       // gaucho life: la imagen ondula como vista a través del agua
       uv += uVida * vec2(sin(uv.y * 24.0 + uTime * 2.3), cos(uv.x * 20.0 + uTime * 1.9)) * 0.0022;
       // abajo del agua: la imagen ondula despacio
@@ -178,12 +194,70 @@ const GradeShader = {
       }
       // la Furia Cósmica: lo oscuro se va al morado, lo claro a violeta neón y
       // los bordes laten violeta
+      // (guadana5: "cuando se entra en modo furia no se ve nada por el efecto
+      // en la pantalla": con uSoftF, apenas un tinte y la viñeta en los bordes;
+      // el medio limpio. uSoftF 0 = como antes)
       if (uFuria > 0.001) {
         float lf = dot(col, vec3(0.299, 0.587, 0.114));
         vec3 neon = mix(vec3(0.14, 0.02, 0.28), vec3(1.0, 0.72, 1.15), lf);
-        col = mix(col, col * 0.55 + neon * 0.6, uFuria * 0.55);
+        float fe = mix(1.0, smoothstep(0.07, 0.4, r2), uSoftF);
+        float fk = uFuria * mix(1.0, 0.45, uSoftF);
+        col = mix(col, col * 0.55 + neon * 0.6, fk * 0.55 * fe);
         float fb = 0.5 + 0.5 * sin(uTime * 9.0);
-        col += vec3(0.5, 0.1, 0.85) * smoothstep(0.08, 0.5, r2) * uFuria * (0.4 + 0.35 * fb);
+        col += vec3(0.5, 0.1, 0.85) * smoothstep(0.1, 0.55, r2) * fk * (0.4 + 0.35 * fb);
+      }
+      // el Eclipse (la Furia divina del Desgarrador del Eclipse): la pantalla se
+      // oscurece y la cruzan grietas de oro que laten (en los bordes: el medio libre)
+      if (uEclipse > 0.001) {
+        float lum = dot(col, vec3(0.299, 0.587, 0.114));
+        // (guadana5: lo claro y saturado -la hoja, el rayo de vacío- no se lava
+        // a gris; uKeepNeon 0 = como antes)
+        float sat = max(col.r, max(col.g, col.b)) - min(col.r, min(col.g, col.b));
+        float keep = uKeepNeon * smoothstep(0.25, 0.7, sat) * smoothstep(0.3, 0.8, lum);
+        float ee = mix(1.0, smoothstep(0.06, 0.42, r2), uSoftF);
+        float ek = uEclipse * mix(1.0, 0.7, uSoftF);
+        col = mix(col, vec3(lum) * vec3(0.78, 0.7, 0.95), 0.35 * ek * ee * (1.0 - keep));
+        col *= 1.0 - 0.36 * ek * ee;
+        // grietas que salen de los bordes hacia el medio (dos capas de rayos
+        // quebrados, más cortas las de la segunda), como un vidrio partido
+        vec2 cc = (vUv - 0.5) * vec2(uRes.x / max(uRes.y, 1.0), 1.0);
+        float rr = length(cc);
+        float ang = atan(cc.y, cc.x) + 3.14159;
+        float crack = 0.0;
+        float halo = 0.0;
+        for (int L = 0; L < 2; L++) {
+          float N = L == 0 ? 15.0 : 26.0;
+          float sec = 6.2831 / N;
+          float id = floor(ang / sec);
+          float h = hash(vec2(id, 3.7 + float(L) * 11.0));
+          float on = step(L == 0 ? 0.35 : 0.7, h);
+          float mid = (id + 0.25 + 0.5 * h) * sec;
+          float jr = rr * 10.0 + h * 7.0;
+          float j0 = hash(vec2(id + floor(jr), 5.3 + float(L)));
+          float j1 = hash(vec2(id + floor(jr) + 1.0, 5.3 + float(L)));
+          float wob = (mix(j0, j1, fract(jr)) - 0.5) * 0.042 / max(rr, 0.1);
+          float da = abs(ang - mid - wob) * rr;
+          float r0 = (L == 0 ? 0.34 : 0.46) + 0.12 * hash(vec2(id, 9.1 + float(L))) + 0.1 * uSoftF;
+          float grow = smoothstep(r0, r0 + 0.06, rr);
+          float w = L == 0 ? 0.0022 : 0.0014;
+          crack = max(crack, (1.0 - smoothstep(w * 0.4, w, da)) * on * grow);
+          halo = max(halo, (1.0 - smoothstep(w, w * 7.0, da)) * on * grow);
+        }
+        float pul = 0.65 + 0.35 * sin(uTime * 3.0 - rr * 14.0);
+        col += vec3(1.0, 0.66, 0.2) * (crack * 1.1 + halo * 0.22) * uEclipse * pul * mix(1.0, 0.55, uSoftF);
+      }
+      // (furia11) concentrando la Furia: los bordes se cierran y los cruzan
+      // rayas violetas que corren hacia el medio (el medio queda limpio)
+      if (uTens > 0.001) {
+        vec2 tc = (vUv - 0.5) * vec2(uRes.x / max(uRes.y, 1.0), 1.0);
+        float tr = length(tc);
+        float tf = atan(tc.y, tc.x) * 22.3;
+        float th = hash(vec2(floor(tf), 7.3));
+        float tl = 1.0 - smoothstep(0.06, 0.3, abs(fract(tf) - 0.5));
+        float tp = fract(th * 9.0 + uTime * (1.3 + th * 1.5) + tr * (1.2 + th));
+        float ts = smoothstep(0.0, 0.08, tp) * (1.0 - smoothstep(0.1, 0.62, tp));
+        col *= 1.0 - 0.4 * uTens * smoothstep(0.1, 0.5, r2);
+        col += vec3(0.6, 0.28, 1.0) * tl * ts * smoothstep(0.3, 0.8, tr) * step(0.6, th) * uTens * 0.6;
       }
       // el rasgón: adentro, el vacío con estrellas; el borde, violeta
       if (uRip.x > 0.001) {
@@ -389,7 +463,8 @@ export default class PostFX {
     // (MSAA solo donde hay pasto alto, salvo que el mapa lo pida: las gradas
     // del Monumento, finitas y paralelas, titilaban corriendo con el SMAA solo)
     if (aa === 'msaa' && !tall && m?.aa !== 'msaa') aa = 'smaa';
-    this.grade.uniforms.uGrain.value = (tall ? 0.03 : 0.06) * (c?.grain ?? 1);
+    // (el grano, como siempre: el de Eclipse no cambia)
+    this.grade.uniforms.uGrain.value = (FEATURES.esteros ? 0.03 : 0.06) * (c?.grain ?? 1);
     const smaa = aa === 'smaa' || aa === 'msaa';
     this.fxaa.enabled = aa === 'fxaa';
     this.smaa.enabled = smaa;
@@ -447,8 +522,11 @@ export default class PostFX {
 
   render(dt, t, { hurt = 0, hit = 0, hitX = 0, hitY = 0, down = 0, crit = 0, pulse = 0, vida = 0 } = {}) {
     const u = this.grade.uniforms;
-    const G = (globalThis.__mduNoMapGrade !== true && MAP_GRADE[MAP_ID]) || GRADE_BASE;
-    if (G !== this.gradeOf) {
+    // (Eclipse Matero: el color de la isla en la que está la cámara, mezclado;
+    // world/eclipseMood.js lo cambia en cada cuadro)
+    const EM = MAP_ID === 'eclipse' && globalThis.__mduNoMapGrade !== true ? this.game?.eclMood?.grade : null;
+    const G = EM || (globalThis.__mduNoMapGrade !== true && MAP_GRADE[MAP_ID]) || GRADE_BASE;
+    if (G !== this.gradeOf || EM) {
       this.gradeOf = G;
       u.uSat.value = G.sat;
       u.uCon.value = G.con;
@@ -470,10 +548,18 @@ export default class PostFX {
     const P = this.game?.player;
     u.uWish.value = (this.game?.state !== 'title' && P?.wishFx) || 0;
     u.uWishBeat.value = P?.wishBeat || 0;
+    // (guadana5: la Furia y el Eclipse, solo en los bordes; el rasgón, a la mitad.
+    // globalThis.__mduNoFuriaSoft: como antes)
+    const softF = globalThis.__mduNoFuriaSoft === true ? 0 : 1;
+    u.uSoftF.value = softF;
     u.uFuria.value = (globalThis.__mduNoFuriaTint !== true && this.game?.state !== 'title' && this.game?.weapons?.cosmic?.tint) || 0;
     // (globalThis.__mduNoRip: sin el rasgón)
     const cz = this.game?.weapons?.cosmic;
-    u.uRip.value.set(globalThis.__mduNoRip !== true && this.game?.state !== 'title' ? cz?.rip || 0 : 0, cz?.ripA || 0, cz?.ripSeed || 0);
+    u.uRip.value.set(globalThis.__mduNoRip !== true && this.game?.state !== 'title' ? (cz?.rip || 0) * (softF ? 0.5 : 1) : 0, cz?.ripA || 0, cz?.ripSeed || 0);
+    u.uKeepNeon.value = globalThis.__mduNoEclKeepNeon === true ? 0 : 1;
+    u.uEclipse.value = globalThis.__mduNoEclTint !== true && this.game?.state !== 'title' ? cz?.eclK || 0 : 0;
+    // (furia11; globalThis.__mduNoFuriaTens: sin la tensión de la pantalla)
+    u.uTens.value = globalThis.__mduNoFuriaTens !== true && this.game?.state !== 'title' ? cz?.tens || 0 : 0;
     u.uTime.value = t;
     u.uHurt.value += (hurt - u.uHurt.value) * Math.min(1, dt * 6);
     u.uDown.value += (down - u.uDown.value) * Math.min(1, dt * 3);

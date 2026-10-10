@@ -28,7 +28,7 @@ const ridge = (n) => 1 - Math.abs(2 * n - 1);
 // Rayones: segmentos rectos y cortos, al azar (con semilla), en uv. `ang`:
 // hacia dónde van (en radianes) y cuánto se abren. Devuelve f(u, v) → 0-1
 // (1 sobre el rayón), con la vuelta en u.
-function scratches(seed, n, { len = [0.03, 0.12], ang = [0, Math.PI], width = 0.0025 } = {}) {
+export function scratches(seed, n, { len = [0.03, 0.12], ang = [0, Math.PI], width = 0.0025 } = {}) {
   const S = [];
   for (let i = 0; i < n; i++) {
     const cx = hash(i, 1, seed);
@@ -58,7 +58,7 @@ function scratches(seed, n, { len = [0.03, 0.12], ang = [0, Math.PI], width = 0.
 
 // Pinta un juego: fn(u, v, x, y) → { c: [r, g, b] (0-255, opcional), h (alto
 // 0-1), r (rugosidad relativa) }. Devuelve { map, normal, orm }.
-function bakeSet(w, h, fn, { color = false, scale = 1, ao = 1 } = {}) {
+export function bakeSet(w, h, fn, { color = false, scale = 1, ao = 1 } = {}) {
   const n = w * h;
   const H = new Float32Array(n);
   const R = new Float32Array(n);

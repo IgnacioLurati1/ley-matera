@@ -5,6 +5,8 @@ import { ghostMaterial, GHOST_TIME } from '../../fx/ghostMat';
 import { carvedText, banderaTexture } from '../../world/monumentoTextures';
 import { toTexture } from '../../core/textures';
 import { players, playerById, myId, isHost, isDown } from '../castle/common';
+import Navigation from '../../world/Navigation';
+import { SPEEDS } from '../../config/rules';
 
 // "La Primera Bandera" (el easter egg del Monumento, entities/MonumentoEgg.js):
 //  1. Con la Llama prendida y el Sable Corvo forjado aparece el ánima de
@@ -18,12 +20,25 @@ import { players, playerById, myId, isHost, isDown } from '../castle/common';
 //  4. La Bandera la lleva uno (no puede tirar; G la deja) hasta el mástil de
 //     la barranca, en el Parque. Ahí se ata y se iza: mientras sube, hay que
 //     aguantar alrededor. Arriba: la cinemática de Belgrano (MonumentoEgg).
+//     Con más presión (el usuario, 2026-10-07): desde que la Bandera sale de
+//     la costurera salen más muertos y corren todos; y mientras sube, tres de
+//     cada cinco van derecho al mástil a tirar de la driza: cada tirón la baja
+//     (hay que voltearlos antes de que lleguen). Zombies los manda por
+//     g.defense (entities/monumento/Armada.js active / goal / zombieHit).
+//     globalThis.__mduNoBanderaHorda: como antes.
 // Lo decide el anfitrión y viaja por 'pee' (k: 'bnd').
 
 const SEW_T = 60;
 const SEW_R = 11;
 const HOIST_T = 25;
 const HOIST_R = 11;
+// lo que baja la Bandera con cada tirón de un muerto (con un jugador; con más, menos)
+const TUG = 0.025;
+// el que va al mástil, a esta distancia de un jugador prefiere al jugador (y lo sigue hasta esta otra)
+const AGGRO_IN = 2.6;
+const AGGRO_OUT = 4.2;
+// a qué distancia del mástil se paran a tirar
+const MAST_R = 1.15;
 const MAST_H = 9.5;
 const CELESTE = 0x74acdf;
 // la tela celeste: atada al parante del medio de la cara este del Mirador, afuera
@@ -453,6 +468,7 @@ export default class Bandera {
   apply(m) {
     const g = this.g;
     const st = this.st;
+    const t0 = g.time || 0;
     const say = (t, s = 3.5) => g.hud.subtitle?.(t, s);
     switch (m.a) {
       case 'on':
@@ -461,7 +477,6 @@ export default class Bandera {
         this.cos.visible = true;
         g.fx.flash(tmpV.set(EE.costurera[0], this.cosY + 1.5, EE.costurera[1]), 0x8ac8ff, 30, 0.6, 12);
         g.fx.sparkle(tmpV, [0.6, 0.85, 1], 30, 1);
-        say('El ánima de María Catalina, la costurera, apareció en el Pasaje.', 4.5);
         break;
       case 'cutC':
         if (st.cel) return;
@@ -489,14 +504,12 @@ export default class Bandera {
         }
         g.audio.powerupGrab?.();
         g.hud.toast?.(m.w === 'cel' ? 'La tela celeste' : 'La tela blanca');
-        if (st.cel === 2 && st.bla === 2) say('Las dos telas: a la costurera, en el Pasaje', 4);
         break;
       case 'sew':
         if (st.sew) return;
         st.sew = 1;
         st.sp = 0;
         this.lap.grp.visible = true;
-        say('Cose un minuto. Quédense cerca de ella.', 4);
         if (isHost(g)) {
           // (se viene la manada: si era el descanso, arranca la ronda)
           if (g.rounds.state !== 'active') g.rounds.breakT = Math.min(g.rounds.breakT ?? 0, 0.5);
@@ -512,11 +525,12 @@ export default class Bandera {
         st.flag = 'cos';
         g.fx.flash(tmpV.set(EE.costurera[0], this.cosY + 1.5, EE.costurera[1]), 0xcfe6ff, 40, 0.8, 14);
         g.hud.achievement?.('La Primera Bandera', 'Cosida en el Pasaje');
-        say('La Bandera está lista. Al mástil de la barranca, en el Parque.', 4.5);
         break;
       case 'take':
         // (la escuadra realista sube sí o sí mientras se la lleva al mástil)
         if (st.flag === 'cos' && isHost(g)) this.ee.armada?.forFlag?.();
+        // (y la manada: la primera vez que sale de la costurera)
+        if (isHost(g) && this.horda()) this.rush(st.flag === 'cos' ? 8 : 0);
         st.flag = 'held';
         st.carrier = m.id;
         this.carry.set('bandera', m.id);
@@ -534,14 +548,26 @@ export default class Bandera {
         st.raising = 1;
         st.hoist = 0;
         this.carry.set(null, null);
-        say('Se iza. Aguanten alrededor del mástil.', 4);
         if (isHost(g)) {
-          if (g.rounds.state !== 'active') g.rounds.breakT = Math.min(g.rounds.breakT ?? 0, 0.5);
-          g.rounds.requeue?.(10);
+          if (this.horda()) this.rush(14);
+          else {
+            if (g.rounds.state !== 'active') g.rounds.breakT = Math.min(g.rounds.breakT ?? 0, 0.5);
+            g.rounds.requeue?.(10);
+          }
         }
         break;
       case 'hoist':
         st.hoist = m.v;
+        break;
+      case 'tug':
+        // un muerto tiró de la driza: la Bandera baja un poco
+        st.hoist = m.v;
+        this.tugT = 0.45;
+        this.sfxTug();
+        if (t0 > (this.tugSay || 0)) {
+          this.tugSay = t0 + 7;
+          say('¡Tiran de la driza!', 2.2);
+        }
         break;
       case 'up':
         st.hoist = 1;
@@ -627,8 +653,28 @@ export default class Bandera {
       const [x, z] = EE.mastil;
       // (en el mástil, grande: se ve desde la costanera y desde el Patio)
       F.scale.setScalar(1.7);
-      F.position.set(x + 0.08, this.mast.y + 2.6 + st.hoist * (MAST_H - 1.5), z);
-      F.rotation.set(0, Math.PI / 2 + Math.sin(t * 0.6) * 0.3, 0);
+      // (el tirón: un sacudón para abajo)
+      this.tugT = Math.max(0, (this.tugT || 0) - dt);
+      const tug = this.tugT > 0 ? Math.sin((this.tugT / 0.45) * Math.PI) : 0;
+      F.position.set(x + 0.08, this.mast.y + 2.6 + st.hoist * (MAST_H - 1.5) - tug * 0.16, z);
+      F.rotation.set(0, Math.PI / 2 + Math.sin(t * 0.6) * 0.3 + tug * Math.sin(t * 40) * 0.12, 0);
+    }
+    // la manada del paso de la Bandera: salen más seguido y más a la vez
+    if (host && this.owed && g.rounds.state === 'active') {
+      g.rounds.requeue?.(this.owed);
+      this.owed = 0;
+    }
+    if (host && this.pressing) {
+      const R = g.rounds;
+      R.capBonus = Math.max(R.capBonus || 0, 6);
+      if (R.delay > 0 && R.spawnT > R.delay * 0.5) R.spawnT = R.delay * 0.5;
+      if (!st.raising) {
+        this.extraT += dt;
+        if (this.extraT > 6) {
+          this.extraT = 0;
+          this.queue(3);
+        }
+      }
     }
     // el que lleva la Bandera, si cae, la suelta
     if (host && st.flag === 'held') {
@@ -641,9 +687,10 @@ export default class Bandera {
       const near = players(g).some((p) => !p.downed && Math.hypot(p.pos.x - x, p.pos.z - z) < HOIST_R);
       if (near) st.hoist = Math.min(1, st.hoist + dt / HOIST_T);
       this.extraT += dt;
-      if (this.extraT > 8) {
+      if (this.extraT > (this.horda() ? 5 : 8)) {
         this.extraT = 0;
-        g.rounds.requeue?.(3);
+        if (this.horda()) this.queue(4);
+        else g.rounds.requeue?.(3);
       }
       this.syncT = (this.syncT || 0) - dt;
       if (this.syncT <= 0) {
@@ -654,6 +701,109 @@ export default class Bandera {
     }
     this.carry.update(dt, t);
     this.syncHud();
+  }
+
+  // ---------------- la manada del paso de la Bandera ----------------
+  horda() {
+    return globalThis.__mduNoBanderaHorda !== true;
+  }
+
+  // ¿Está la Bandera en camino al mástil o subiendo? (los que salen, corren:
+  // MonumentoEgg.defense; y salen más: update)
+  get pressing() {
+    const st = this.st;
+    return this.horda() && !st.done && (st.flag === 'held' || st.flag === 'floor' || st.flag === 'mast');
+  }
+
+  // ¿Sube? (los muertos van al mástil: Armada.active, por g.defense)
+  get tugging() {
+    return this.horda() && !!this.st.raising && !this.st.done;
+  }
+
+  // Se viene la manada (anfitrión): arranca la ronda si era el descanso, suma
+  // n a la cola y los que ya andaban caminando se largan a correr.
+  rush(n) {
+    const g = this.g;
+    const R = g.rounds;
+    if (R.state !== 'active') R.breakT = Math.min(R.breakT ?? 0, 0.5);
+    this.queue(n);
+    for (const z of g.zombies.pool) {
+      if (!z.active || z.dead || z.dog || z.boss || z.speedType !== 'walk') continue;
+      z.speedType = 'run';
+      z.speed = SPEEDS.run * (0.92 + Math.random() * 0.16);
+      z.runU = null;
+    }
+  }
+
+  // n muertos más a la cola. En el descanso se guardan para cuando arranque
+  // la ronda (nextRound pone la cola de cero y se perdían).
+  queue(n) {
+    if (!n) return;
+    const R = this.g.rounds;
+    if (R.state === 'active') R.requeue?.(n);
+    else this.owed = (this.owed || 0) + n;
+  }
+
+  // Adónde va un muerto mientras la Bandera sube (Zombies.chase, por
+  // Armada.goal): tres de cada cinco, al pie del mástil a tirar de la driza,
+  // salvo que tengan a un jugador encima. null: a los jugadores, como siempre.
+  goal(z, target, distP) {
+    if (z.dog || z.boss || z.id % 5 >= 3) return null;
+    if (z.bnId !== z.id) {
+      z.bnId = z.id;
+      z.bnAggro = false;
+    }
+    const close = !!target && distP < (z.bnAggro ? AGGRO_OUT : AGGRO_IN) && Math.abs((target.pos.y || 0) - (z.baseY || 0)) < 1.6;
+    z.bnAggro = close;
+    if (close) return null;
+    const [mx, mz] = EE.mastil;
+    const ap = this.approaches();
+    const [ax, az] = ap[z.id % ap.length];
+    const G = (this.goalObj ||= {});
+    G.x = ax;
+    G.z = az;
+    // (se paran en su lugar alrededor de la base; el golpe sale a tiro de la driza)
+    G.d = Math.min(Math.hypot(ax - z.pos.x, az - z.pos.z) + 0.6, Math.hypot(mx - z.pos.x, mz - z.pos.z) - 0.55);
+    G.face = Math.atan2(mx - ax, mz - az);
+    this.mastNav ||= new Navigation(this.g.world);
+    this.mastNav.update(mx, mz);
+    G.nav = this.mastNav;
+    return G;
+  }
+
+  // Los lugares alrededor de la base del mástil donde se puede parar alguien.
+  approaches() {
+    if (this.aps) return this.aps;
+    const [mx, mz] = EE.mastil;
+    const nav = this.g.nav;
+    this.aps = [];
+    for (let k = 0; k < 10; k++) {
+      const a = (k / 10) * Math.PI * 2 + 0.3;
+      const x = mx + Math.cos(a) * MAST_R;
+      const z = mz + Math.sin(a) * MAST_R;
+      if (!nav.blocked(Math.floor(x), Math.floor(z))) this.aps.push([x, z]);
+    }
+    if (!this.aps.length) this.aps.push([mx - MAST_R, mz]);
+    return this.aps;
+  }
+
+  // Un manotazo a la driza (anfitrión): la Bandera baja.
+  zombieHit() {
+    const st = this.st;
+    if (!this.tugging) return;
+    const n = Math.max(1, players(this.g).length);
+    this.send({ a: 'tug', v: +Math.max(0, st.hoist - TUG / (1 + (n - 1) * 0.35)).toFixed(3) });
+  }
+
+  // la driza que corre de golpe por la roldana y el paño que chicotea
+  sfxTug() {
+    const A = this.g.audio;
+    if (!A?.ctx) return;
+    const [x, z] = EE.mastil;
+    const o = A.out({ pos: tmpV.set(x, this.mast.y + 2.5, z), gain: 0.9, reverb: 0.35, ref: 7 });
+    A.noise(o, { t: A.now, dur: 0.22, type: 'bandpass', freq: 1300, freqEnd: 600, q: 2.5, gain: 0.3, attack: 0.005 });
+    A.noise(o, { t: A.now + 0.05, dur: 0.3, type: 'lowpass', freq: 500, freqEnd: 160, gain: 0.35, attack: 0.01 });
+    A.tone(o, { t: A.now, dur: 0.16, type: 'triangle', freq: 150, freqEnd: 80, gain: 0.25 });
   }
 
   syncHud() {

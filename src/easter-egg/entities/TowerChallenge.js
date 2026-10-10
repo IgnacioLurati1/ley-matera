@@ -522,7 +522,7 @@ export default class TowerChallenge {
     g.rounds.bossPending = false;
     this.ev.bossLeft = 0;
     this.openStair();
-    this.announce('¡Se abrió el cielo! Pero salen los guardianes: uno de cada minijefe, y los siguen escalera arriba. ¡Suban todos!', 5.5, true);
+    this.announce('', 5.5, true);
   }
 
   // (anfitrión, cada cuadro) Los guardianes de a uno; el Cuervo con el primero.
@@ -562,7 +562,7 @@ export default class TowerChallenge {
     if (left !== this.guardLeft) {
       // (cayó uno: cuántos faltan)
       if (left > 0 && left < this.guardLeft) this.announce(`Quedan ${left} ${left > 1 ? 'guardianes' : 'guardián'} del cielo.`, 2.5);
-      else if (!left) this.announce('¡Cayeron todos los guardianes del cielo!', 3, true);
+      else if (!left) this.announce('', 3, true);
       this.guardLeft = left;
       this.netSync();
     }
@@ -684,7 +684,6 @@ export default class TowerChallenge {
     g.audio.thunder?.(null, true);
     g.hud.toast?.('¡Baja la escalera al cielo!');
     g.hud.achievement('Buyable Ending', 'Pagaron la escalera al cielo');
-    g.hud.subtitle('¡Se abrió el cielo! Suban la escalera de oro... todos juntos.', 5, 'boss');
     if (!g.net?.guest) this.netSync();
   }
 
@@ -980,7 +979,9 @@ export default class TowerChallenge {
   }
   announce(text, secs = 3, sting = false) {
     const g = this.g;
-    g.hud.subtitle(text, secs);
+    // (texto vacío: solo el sting. El usuario, 2026-10-08, sacó los avisos de
+    // lo que se ve o ya dice la guía)
+    if (text) g.hud.subtitle(text, secs);
     if (sting) g.audio.sting();
     g.net?.event('sub', { x: text, d: secs, s: sting ? 1 : 0 });
   }

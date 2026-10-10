@@ -24,12 +24,6 @@ import { skinBoneAt } from './bossSkin';
 
 export const STAKE_ID = 0xfffc;
 const PLAGUE_EYE = [0xff7a1a, 0x8ad8ff, 0xf4f8ff, 0x9aff3a];
-const PLAGUE_LINE = [
-  'El Caballero de la Sequía deja el pasto ardiendo por donde pisa: no lo sigan de cerca.',
-  'El Caballero de la Helada entumece al que se le acerca: péguenle de lejos.',
-  'El Caballero del Granizo marca círculos en el piso: cuando revientan, afuera.',
-  'El Caballero de la Langosta larga una manga que persigue a uno: corré, que te tapa la vista.',
-];
 const CHAIN_RANGE = 14;
 const CHAIN_DMG = 30;
 const RIFLE_DMG = 45;
@@ -669,7 +663,6 @@ export default class BossMoves {
   // ---------------- los Caballeros de las plagas ----------------
   // (anfitrión) Salió uno: se le prenden los ojos del color de su plaga.
   onPlague(z) {
-    this.shout(PLAGUE_LINE[z.plague] || '', 4.5);
     this.send({ k: 'plague', p: z.plague });
     z.plagueT = 0;
   }
@@ -915,8 +908,6 @@ export default class BossMoves {
     g.audio.chain(at);
     const mine = m.id === this.me();
     const coop = this.standing().some((p) => p !== g.player);
-    if (mine) g.hud.subtitle(coop ? '¡Te encadenó! No podés tirar: que un compañero rompa la estaca que tenés atrás.' : '¡Te encadenó! Date vuelta y rompé a tiros la estaca que tenés atrás.', 3.5, 'boss');
-    else g.hud.subtitle(`¡Gil encadenó a ${g.net?.nameOf(m.id) || 'un compañero'}! Rompan a tiros la estaca que tiene atrás.`, 3.5, 'boss');
   }
 
   // (anfitrión) Se suelta: rota la estaca, o pasó el rato, o cayó.

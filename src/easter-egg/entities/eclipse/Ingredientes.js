@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ZONES, EE } from '../../config/map';
 import { ISLANDS } from '../../config/maps/eclipse';
 import { QStep, Marker, Pickup, HoldZone, glowMate, glowOrb, players, playerAt, dist2, islaAt, myId } from './common';
+import { ART, buildCandle, buildWisp, buildBrasa, buildYerbaMadre, buildYerbaAtado, buildCadenas, buildBombilla, buildAltar, buildDeshielo, buildPava, buildCava, buildCalabaza, buildSableFloat } from './stepArt';
 
 // Los siete pasos de las islas de "El Primer Mate" (entities/EclipseEgg.js):
 // cada uno deja un ingrediente del mate o abre algo. En cualquier orden.
@@ -32,13 +33,34 @@ export class Brasa extends QStep {
     this.velas = VELAS.map(([x, z]) => {
       const m = new Marker(g, V(x, y, z), 0xffb060, 0.35);
       m.set(false);
-      this.marks.push(m);
+      // (con las velas de verdad la marca solo anota cuál está prendida: no se ve)
+      if (!ART) this.marks.push(m);
       return m;
     });
+    // (stepArt) las siete velas: seis candeleros de pie y la mesa del altar
+    // (la séptima, donde aparece la Brasa)
+    this.candles = ART
+      ? VELAS.map(([x, z], i) => {
+          const c = buildCandle(g, { altar: i === VELAS.length - 1, seed: i + 1 });
+          c.root.position.set(x, y, z);
+          // (la mesa del altar de frente a la capilla: el largo contra la pared)
+          if (i === VELAS.length - 1) c.root.rotation.y = Math.PI / 2;
+          g.scene.add(c.root);
+          this.arts.push(c);
+          return c;
+        })
+      : null;
     // las ánimas sueltas, volando hacia alguien
     this.orbs = [];
     this.orbGeo = glowOrb(0x9fd8ff, 0.12);
-    this.pick = new Pickup(g, glowOrb(0xff8030, 0.16), V(33.2, y, 108.5), { text: 'agarrar la Brasa' });
+    // (stepArt) el ánima que lleva cada uno, girando a su lado
+    this.carried = new Map();
+    this.pick = new Pickup(g, ART ? buildBrasa(g) : glowOrb(0xff8030, 0.16), V(33.2, y, 108.5), { text: 'agarrar la Brasa' });
+    // (sobre la mesa del altar, no adentro)
+    if (ART) {
+      this.pick.base.y += 0.42;
+      this.pick.obj.scale.setScalar(1.45);
+    }
     this.pick.onTake = () => this.send({ a: 'take', id: myId(g) });
     this.live.push(this.pick);
     this.mine = 0;
@@ -67,19 +89,34 @@ export class Brasa extends QStep {
   apply(m) {
     const g = this.g;
     if (m.a === 'orb') {
+      if (ART) {
+        const w = buildWisp(g);
+        w.root.position.set(m.x, m.y, m.z);
+        g.scene.add(w.root);
+        this.orbs.push({ o: w.root, wisp: w, to: m.to, t: 0 });
+        return;
+      }
       const o = this.orbGeo.clone();
       o.position.set(m.x, m.y, m.z);
       g.scene.add(o);
       this.orbs.push({ o, to: m.to, t: 0 });
     } else if (m.a === 'carry') {
       this.st.carry[m.id] = 1;
+      if (ART && !this.carried.has(m.id)) {
+        const w = buildWisp(g);
+        g.scene.add(w.root);
+        this.carried.set(m.id, w);
+      }
       if (m.id === myId(g)) g.hud.subtitle('Un ánima. Llevala a una vela apagada de la capilla.', 3.5);
     } else if (m.a === 'lit') {
       this.st.lit = m.n;
       delete this.st.carry[m.id];
+      this.carried.get(m.id)?.dispose();
+      this.carried.delete(m.id);
       const v = this.velas[m.i];
       v.set(true);
       v.pulse();
+      this.candles?.[m.i].lit(true);
       g.fx.sparkle(v.root.position.clone().add(V(0, 0.6, 0)), [1, 0.7, 0.35], 10, 0.4);
       g.audio?.purchase?.();
       if (this.st.lit >= VELAS.length) {
@@ -95,6 +132,7 @@ export class Brasa extends QStep {
 
   refresh() {
     for (let i = 0; i < this.velas.length; i++) this.velas[i].set(i < this.st.lit);
+    if (this.candles) for (let i = 0; i < this.candles.length; i++) this.candles[i].lit(!!this.velas[i].want, true);
     this.pick.show(this.st.lit >= VELAS.length && !this.st.done);
   }
 
@@ -107,17 +145,32 @@ export class Brasa extends QStep {
       ob.t += dt;
       const p = playerAt(g, ob.to);
       if (!p || ob.t > 12) {
-        ob.o.removeFromParent();
+        if (ob.wisp) ob.wisp.dispose();
+        else ob.o.removeFromParent();
         this.orbs.splice(i, 1);
         continue;
       }
       const tgt = V(p.x, p.y + 1.3, p.z);
       ob.o.position.lerp(tgt, Math.min(1, dt * 2.2));
+      ob.wisp?.tick(dt, t);
       if (ob.o.position.distanceTo(tgt) < 0.5) {
-        ob.o.removeFromParent();
+        if (ob.wisp) ob.wisp.dispose();
+        else ob.o.removeFromParent();
         this.orbs.splice(i, 1);
         if (this.host) this.send({ a: 'carry', id: ob.to });
       }
+    }
+    // el ánima que lleva cada uno gira a su lado, a la altura del hombro
+    for (const [id, w] of this.carried) {
+      const p = playerAt(g, id);
+      if (!p || !this.st.carry[id] || this.st.done) {
+        w.dispose();
+        this.carried.delete(id);
+        continue;
+      }
+      const a = t * 2.1 + id;
+      w.root.position.set(p.x + Math.cos(a) * 0.65, p.y + 1.45 + Math.sin(t * 3) * 0.08, p.z + Math.sin(a) * 0.65);
+      w.tick(dt, t);
     }
     if (!this.host || this.st.done) return;
     // el que lleva un ánima prende la vela que toca
@@ -136,7 +189,12 @@ export class Brasa extends QStep {
 
   dispose() {
     super.dispose();
-    for (const ob of this.orbs) ob.o.removeFromParent();
+    for (const ob of this.orbs) {
+      if (ob.wisp) ob.wisp.dispose();
+      else ob.o.removeFromParent();
+    }
+    for (const w of this.carried.values()) w.dispose();
+    this.carried.clear();
   }
 }
 
@@ -168,11 +226,21 @@ export class Yerba extends QStep {
     trunk.position.y = 0.3;
     grp.add(trunk);
     grp.position.copy(YERBA);
-    g.scene.add(grp);
     this.plant = grp;
     this.leafM = leafM;
+    // (stepArt) la Yerba Madre de verdad: tronco, ramas, copa lustrosa y
+    // luciérnagas; los tajos le sacan la copa y queda el tocón
+    if (ART) {
+      const Y = buildYerbaMadre(g);
+      Y.root.position.copy(YERBA);
+      g.scene.add(Y.root);
+      this.ym = Y;
+      this.plant = Y.crown;
+      this.leafM = Y.leafM;
+      this.arts.push({ root: Y.root, tick: (dt, t) => Y.tick(dt, t, this.st.phase === 1 ? 0.35 + 0.65 * this.hold.k : this.st.phase === 2 ? 1 : 0) });
+    } else g.scene.add(grp);
     this.hold = new HoldZone(g, YERBA, 7, YERBA_HOLD);
-    this.pick = new Pickup(g, glowMate(0x60ff90), YERBA.clone(), { text: 'agarrar la Yerba' });
+    this.pick = new Pickup(g, ART ? buildYerbaAtado(g) : glowMate(0x60ff90), YERBA.clone(), { text: 'agarrar la Yerba' });
     this.pick.onTake = () => this.send({ a: 'take', id: myId(g) });
     this.live.push(this.pick);
     this.it = g.interact.add({
@@ -203,6 +271,7 @@ export class Yerba extends QStep {
     } else if (m.a === 'cut') {
       this.st.cuts = m.n;
       this.mark.pulse();
+      this.ym?.cut(this.st.cuts);
       g.fx.sparkle(YERBA.clone().add(V(0, 0.8, 0)), [0.5, 1, 0.6], 12, 0.5);
       if (this.st.cuts >= 3) {
         this.st.phase = 3;
@@ -219,6 +288,7 @@ export class Yerba extends QStep {
 
   refresh() {
     this.plant.visible = this.st.phase < 3;
+    this.ym?.cut(this.st.cuts);
     this.pick.show(this.st.phase === 3 && !this.st.done);
     this.mark.set(!this.st.done);
   }
@@ -266,7 +336,19 @@ export class Bombilla extends QStep {
     this.mark = new Marker(g, CELDA, 0xc0c0ff, 0.8);
     this.mark.set(true);
     this.marks.push(this.mark);
-    this.pick = new Pickup(g, glowMate(0xc0c0ff), CELDA.clone(), { text: 'agarrar la Bombilla' });
+    let bo = null;
+    if (ART) {
+      // (stepArt) la Bombilla en el aire, atada por tres cadenas al piso de la celda
+      this.cad = buildCadenas(g, CELDA);
+      this.arts.push(this.cad);
+      // (la columna de la marca tapaba la Bombilla: el círculo y las motas alcanzan)
+      this.mark.pillar.visible = false;
+      bo = buildBombilla(g);
+      bo.scale.setScalar(1.3);
+    }
+    this.pick = new Pickup(g, bo || glowMate(0xc0c0ff), CELDA.clone(), { text: 'agarrar la Bombilla' });
+    // (a la altura en que la tenían las cadenas)
+    if (ART) this.pick.base.y += 0.03;
     this.pick.onTake = () => this.send({ a: 'take', id: myId(g) });
     this.live.push(this.pick);
     this.it = g.interact.add({
@@ -308,6 +390,8 @@ export class Bombilla extends QStep {
       this.st.cuts = m.n;
       this.mark.pulse();
       g.fx.sparkle(CELDA.clone().add(V(0, 0.8, 0)), [0.8, 0.8, 1], 8, 0.4);
+      this.cad?.setCut(this.st.cuts);
+      this.cad?.setFree(this.st.cuts >= 3);
       if (this.st.cuts >= 3) this.pick.show(true);
     } else if (m.a === 'take') {
       this.pick.take();
@@ -320,6 +404,8 @@ export class Bombilla extends QStep {
   refresh() {
     this.pick.show(this.st.cuts >= 3 && !this.st.done);
     this.mark.set(!this.st.done);
+    this.cad?.setCut(this.st.cuts);
+    this.cad?.setFree(this.st.cuts >= 3);
   }
 }
 
@@ -363,7 +449,18 @@ export class Agua extends QStep {
     });
     this.fm = new Marker(g, FUENTE, 0x80d0ff, 1.1);
     this.marks.push(this.fm);
-    this.pick = new Pickup(g, glowMate(0x80d0ff), AGUA_AT.clone(), { text: 'agarrar el Agua', radius: 2 });
+    // (stepArt) los cuatro altares del caballero de cada naturaleza y la
+    // fuente que se deshiela (la pileta del dragón: config eclipse fuenteDragon)
+    if (ART) {
+      this.altArt = ALTARES.map((a, i) => {
+        const A = buildAltar(g, a, i + 1);
+        this.arts.push(A);
+        return A;
+      });
+      this.thaw = buildDeshielo(g, V(158, FUENTE.y, 39.2), 2.1);
+      this.arts.push(this.thaw);
+    }
+    this.pick = new Pickup(g, ART ? buildPava(g) : glowMate(0x80d0ff), AGUA_AT.clone(), { text: 'agarrar el Agua', radius: 2 });
     this.pick.onTake = () => this.send({ a: 'take', id: myId(g) });
     this.live.push(this.pick);
   }
@@ -374,12 +471,15 @@ export class Agua extends QStep {
       this.st.cur = m.i;
       this.alt[m.i].hold.k = 0;
       this.alt[m.i].m.pulse();
+      this.altArt?.[m.i].set(1);
       g.hud.subtitle(`Juraste como ${ALTARES[m.i].name}. Aguantá al pie del altar.`, 4);
       this.ee.horde?.(JURA_HOLD);
     } else if (m.a === 'sworn') {
       this.st.sworn |= 1 << m.i;
       this.st.cur = -1;
       this.alt[m.i].m.set(false);
+      this.altArt?.[m.i].set(2);
+      if (this.st.sworn === 15) this.thaw?.set(true);
       g.fx.sparkle(ALTARES[m.i].pos.clone().add(V(0, 1.2, 0)), [1, 0.9, 0.6], 14, 0.6);
       g.audio?.purchase?.();
       if (this.st.sworn === 15) {
@@ -397,6 +497,8 @@ export class Agua extends QStep {
 
   refresh() {
     for (let i = 0; i < 4; i++) this.alt[i].m.set(!(this.st.sworn & (1 << i)));
+    if (this.altArt) for (let i = 0; i < 4; i++) this.altArt[i].set(this.st.sworn & (1 << i) ? 2 : this.st.cur === i ? 1 : 0);
+    this.thaw?.set(this.st.sworn === 15, true);
     this.fm.set(this.st.sworn === 15 && !this.st.done);
     this.pick.show(this.st.sworn === 15 && !this.st.done);
   }
@@ -428,7 +530,16 @@ export class Calabaza extends QStep {
       return m;
     });
     this.marks2[0].set(true);
-    this.pick = new Pickup(g, glowMate(0xffd080), CAVAS[2].clone(), { text: 'agarrar la Calabaza' });
+    // (stepArt) los montículos de barro del fondo; el que toca larga burbujas
+    if (ART) {
+      this.cavArt = CAVAS.map((p, i) => {
+        const C = buildCava(g, p, i + 1);
+        this.arts.push(C);
+        return C;
+      });
+      this.cavArt[0].setActive(true);
+    }
+    this.pick = new Pickup(g, ART ? buildCalabaza(g) : glowMate(0xffd080), CAVAS[2].clone(), { text: 'agarrar la Calabaza' });
     this.pick.onTake = () => this.send({ a: 'take', id: myId(g) });
     this.live.push(this.pick);
     this.its = CAVAS.map((p, i) =>
@@ -453,6 +564,8 @@ export class Calabaza extends QStep {
     if (m.a === 'dig') {
       this.st.dug = m.i + 1;
       this.marks2[m.i].set(false);
+      this.cavArt?.[m.i].dig(true);
+      this.cavArt?.[this.st.dug]?.setActive(true);
       g.fx.sparkle(CAVAS[m.i].clone().add(V(0, 0.5, 0)), [0.8, 0.6, 0.3], 10, 0.6);
       if (this.st.dug < 3) {
         this.marks2[this.st.dug].set(true);
@@ -470,6 +583,12 @@ export class Calabaza extends QStep {
 
   refresh() {
     for (let i = 0; i < 3; i++) this.marks2[i].set(i === this.st.dug && !this.st.done);
+    if (this.cavArt) {
+      for (let i = 0; i < 3; i++) {
+        this.cavArt[i].dig(i < this.st.dug);
+        this.cavArt[i].setActive(i === this.st.dug && !this.st.done);
+      }
+    }
     this.pick.show(this.st.dug >= 3 && !this.st.done);
   }
 }
@@ -541,7 +660,8 @@ export class SableGil extends QStep {
     this.mark = new Marker(g, LLAMA, 0xffc060, 0.9);
     this.mark.set(true);
     this.marks.push(this.mark);
-    this.pick = new Pickup(g, glowOrb(0xdfe8ff, 0.14), LLAMA.clone().add(V(0, 1.3, 0)), { text: 'recibir el Sable', radius: 2.4 });
+    this.pick = new Pickup(g, ART ? buildSableFloat(g) : glowOrb(0xdfe8ff, 0.14), LLAMA.clone().add(V(0, 1.3, 0)), { text: 'recibir el Sable', radius: 2.4 });
+    if (ART) this.pick.obj.scale.setScalar(1.25);
     this.pick.onTake = () => (this.ee.isGil() ? this.send({ a: 'take', id: myId(g) }) : g.hud.subtitle('El Sable es para el Gil.', 2.5));
     this.live.push(this.pick);
     this.it = g.interact.add({
@@ -558,6 +678,9 @@ export class SableGil extends QStep {
       },
     });
     this.fireT = 0;
+    // (stepArt) el Sable flota al costado de la Llama, del lado de cada uno
+    // (adentro del fuego no se veía: el resplandor lo tapaba)
+    this.sableDir = new THREE.Vector3(1, 0, 0);
     // la llama del pebetero (world/eclipse/monumento.js) empieza apagada
     if (g.world.eclipseArt?.llamaFire) g.world.eclipseArt.llamaFire.visible = false;
   }
@@ -568,10 +691,16 @@ export class SableGil extends QStep {
       this.st.lit = 1;
       if (g.world.eclipseArt?.llamaFire) g.world.eclipseArt.llamaFire.visible = true;
       this.mark.pulse();
-      g.hud.subtitle('La Llama abre un desgarro. Del otro lado, cuatro gauchos conocidos.', 4.5);
-      this.ee.scenes?.sable?.(() => this.pick.show(true)) || this.pick.show(true);
+      if (globalThis.__mduOldEclSable === true) g.hud.subtitle('La Llama abre un desgarro. Del otro lado, cuatro gauchos conocidos.', 4.5);
+      // (qa-flujo) cuando el Sable queda para agarrar, decirlo: si no, el que mira la escena no sabe que es para él
+      const offer = () => {
+        this.pick.show(true);
+        g.hud.subtitle(this.ee.isGil() ? 'Te alcanzan el Sable: recibilo (F).' : 'Le alcanzan el Sable al Gil.', 3.5);
+      };
+      this.ee.scenes?.sable?.(offer) || offer();
     } else if (m.a === 'take') {
       this.pick.take();
+      if (globalThis.__mduOldEclSable !== true) g.hud.subtitle(this.ee.isGil() ? 'Volviste con el Sable de San Martín.' : 'El Gil volvió con el Sable de San Martín.', 3.5);
       this.st.done = 1;
       this.mark.set(false);
       this.ee.got('sable', m.id);
@@ -586,6 +715,18 @@ export class SableGil extends QStep {
 
   update(dt, t) {
     super.update(dt, t);
+    if (ART && this.pick.on) {
+      const P = this.g.player.pos;
+      const d = new THREE.Vector3(P.x - LLAMA.x, 0, P.z - LLAMA.z);
+      if (d.lengthSq() > 0.01) this.sableDir.lerp(d.normalize(), Math.min(1, dt * 1.5)).normalize();
+      this.pick.base.set(LLAMA.x + this.sableDir.x * 2, LLAMA.y + 0.85, LLAMA.z + this.sableDir.z * 2);
+      this.pick.obj.position.x = this.pick.base.x;
+      this.pick.obj.position.z = this.pick.base.z;
+      // (de plano hacia el que mira, apenas meciéndose: de canto era una raya)
+      this.pick.obj.rotation.y = Math.atan2(this.sableDir.x, this.sableDir.z) + Math.sin(t * 0.8) * 0.3;
+      // (el cartel de agarrarlo, donde está)
+      if (this.pick.it?.pos) this.pick.it.pos.set(this.pick.base.x, LLAMA.y + 1.3, this.pick.base.z);
+    }
     if (this.st.lit && !this.g.world.eclipseArt?.llamaFire && (this.fireT -= dt) <= 0) {
       this.fireT = 0.12;
       this.g.fx.fire?.(LLAMA.clone().add(V(0, 0.4, 0)), 0.5, 1);

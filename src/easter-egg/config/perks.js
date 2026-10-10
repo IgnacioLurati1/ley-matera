@@ -285,4 +285,34 @@ PERKS.stamin = {
   },
 };
 
+// Solo en Eclipse Matero (y solo con el mapa prendido: globalThis.__mduEclipse;
+// sin eso este perk no existe): el Catalizador Caótico
+// (entities/eclipse/catalizador.js). La Disformidad no te hace nada, la Furia
+// de la guadaña se prende con menos bajas, los jinetes del caos pegan la mitad
+// y la embestida de la guadaña vuelve antes. Su máquina está en La Disformidad,
+// al lado de donde se llega: el premio por animarse a entrar.
+// La yerba: CBSé, la de las hierbas serranas ("CaoSé": con hierbas del otro lado).
+if (globalThis.__mduEclipse === true) {
+  PERKS.catal = {
+    name: 'Catalizador Caótico',
+    cost: 5000,
+    color: '#4a1a86',
+    glyph: '◐',
+    desc: 'La Disformidad no te toca, la Furia se prende antes, los jinetes pegan la mitad y la embestida vuelve antes.',
+    label: {
+      brand: 'CaoSé',
+      tagline: 'CON HIERBAS DEL OTRO LADO\nECLIPSE TOTAL · DESDE 1877',
+      bg: '#120a1e',
+      band: '#e2b54a',
+      bandText: '#1a0b2e',
+      accent: '#a45cff',
+      leaf: 'rgba(164,92,255,0.16)',
+      text: '#f1e6ff',
+      brandColor: '#f0c75a',
+      brandSize: 92,
+      stroke: 'rgba(90,30,170,0.95)',
+    },
+  };
+}
+
 export const PERK_ORDER = ['jugg', 'revive', 'speed', 'doubletap', 'mule', 'deadshot', 'stamin'];

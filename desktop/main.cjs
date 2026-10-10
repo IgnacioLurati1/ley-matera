@@ -20,6 +20,10 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+// el recolector de basura a mano (globalThis.gc): el juego lo pasa una vez al
+// terminar la cinemática de entrada, así la basura de la carga no se limpia
+// en plena partida (src/easter-egg/core/memSettle.js)
+app.commandLine.appendSwitch('js-flags', '--expose-gc');
 // Vsync siempre prendido, como en el navegador (el usuario, 2026-10-03: sin
 // él, con muchos fps, el juego se sentía trabado; con él va parejo). Sin tope
 // de FPS: manda el refresco del monitor.

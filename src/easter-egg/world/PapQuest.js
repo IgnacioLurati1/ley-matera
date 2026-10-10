@@ -378,7 +378,7 @@ export default class PapQuest {
     g.fx.steam(p.center, 10, 0.2);
     g.fx.sparks(p.center, 1, { x: 0, y: 1, z: 0 });
     const n = this.pavitas.filter((q) => q.state !== 'up').length;
-    g.hud.subtitle(n < 3 ? `Pavita ${n}/3: el Pack-a-Pava junta presión.` : 'Tercera pavita: ¡el Pack-a-Pava ya silba!', 3);
+    g.hud.subtitle(`Pavita ${n}/3`, 2.5);
   }
 
   clang(pos, k) {
@@ -728,7 +728,6 @@ export default class PapQuest {
       });
     }
     g.fx.sparkle(at, [0.9, 0.95, 1], 16, 0.4);
-    g.hud.subtitle('¡Agarraste a la Colorada! Soltó la tapa. Llevásela al Pack-a-Pava.', 4);
   }
 
   cluck(pos, scared) {
@@ -840,7 +839,6 @@ export default class PapQuest {
     this.keys = id >= 0 ? 'guard' : 'none';
     this.ring.visible = false;
     if (this.guard) this.dressGuard(this.guard);
-    if (id >= 0 && !this.announced && !quiet) g.hud.subtitle('Se oye un manojo de llaves entre los muertos: un guardia del penal anda suelto.', 4);
     if (id >= 0) this.announced = true;
   }
 
@@ -878,7 +876,6 @@ export default class PapQuest {
     if (quiet) return;
     this.jingle(at);
     g.fx.sparkle(tmpV.copy(at).setY(at.y + 0.3), [1, 0.8, 0.3], 14, 0.4);
-    g.hud.subtitle('El guardia soltó el manojo de llaves.', 3);
   }
 
   takeKeys(quiet = false) {
@@ -889,7 +886,6 @@ export default class PapQuest {
     this.beam.visible = false;
     if (quiet) return;
     this.jingle(this.keysAt);
-    this.g.hud.subtitle('Tienen las llaves del Pack-a-Pava: vayan a abrir los candados.', 3.5);
   }
 
   dropChains(quiet) {

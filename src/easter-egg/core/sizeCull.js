@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FEATURES } from '../config/map';
 
 // Lo que no hace falta dibujar, decidido solo para las cámaras (main, reflejo):
 // las sombras usan su propio frustum y no se tocan, y tampoco se toca .visible
@@ -39,6 +40,16 @@ import * as THREE from 'three';
 // reflejo no se ven, y cada una era una llamada más de dibujo
 // (globalThis.__mduNoGbCull para comparar).
 
+// 4. Lo plano de una sola cara que mira para arriba (pisos sueltos, tarimas,
+//    calcos, marcas del piso), con la cámara más abajo que la malla: se ve de
+//    atrás, three no pinta nada y el dibujo se mandaba igual. En Eclipse, desde
+//    una isla baja, eran los pisos y las marcas de todas las de arriba (20-30
+//    por cuadro); el espejo del agua (su cámara va por debajo) los ve siempre
+//    así. Se mira la geometría de verdad (todos los triángulos horizontales y
+//    con la cara para arriba, no las normales), en cada dibujo la matriz (si la
+//    giran o la espejan, se dibuja) y con margen. Mismo resultado, sin cambio de
+//    imagen. globalThis.__mduNoUpCull: como antes.
+
 const MIN_PX = 3.5; // radio en px de pantalla (≈ 7 px de ancho)
 const GB_PX = 8; // en el G-buffer (≈ 16 px de ancho)
 // y si el G-buffer es solo para la oclusión (Alta y Media: sin reflejos ni haces
@@ -77,7 +88,7 @@ const _v = new THREE.Vector3();
 const _m = new THREE.Matrix4();
 const _box = new THREE.Box3();
 // cuántas se dejaron de dibujar (para las pruebas)
-export const sizeCullStats = { culled: 0, rooms: 0, fog: 0 };
+export const sizeCullStats = { culled: 0, rooms: 0, fog: 0, up: 0 };
 
 // (en una sola pasada: transparente y de doble cara, three la dibujaba en dos
 // —atrás y adelante— y en cada una volvía a buscar el programa: 32 búsquedas
@@ -103,8 +114,163 @@ function spot(m, ...rest) {
   return setFrom.call(this, m, ...rest);
 }
 
+// Eclipse Matero (grafica-v3): mirando de una isla baja a las altas entran en
+// cámara las piezas chicas de todas las islas (la niebla es finita a
+// propósito). De más de ECL_FAR m, las de menos de ECL_FAR_PX de radio no se
+// dibujan. globalThis.__mduNoEclGbFar: como antes (también lo del G-buffer).
+const ECL_FAR2 = 55 * 55;
+const ECL_FAR_PX = 10;
+let ECL_ON = false;
+// Eclipse: lo de las islas de lejos (world/eclipseLejos.js). Si devuelve true,
+// la pieza no se dibuja con esta cámara (la reemplaza la malla junta de su isla).
+let farHook = null;
+export function setFarHook(fn) {
+  farHook = fn;
+}
+// La cámara que está dibujando si `frustum` es el de las cámaras y se recorta
+// (jugando, con la cámara en los ojos); si no (sombras, cinemáticas), null.
+export function camFrustumIs(frustum) {
+  return frustum === MAIN && cam !== null ? cam : null;
+}
+// px de pantalla por radián de esa cámara (0 si todavía no dibujó)
+export function pxScale(camera) {
+  return kOf.get(camera) || 0;
+}
+// ---- lo plano que mira para arriba (4) ----
+const UP_COS = 1 - 1e-8;
+const UP_MAX = 600000; // índices: más grande que esto no se mira
+// ¿Todos los triángulos de la malla son paralelos entre sí y con la cara del
+// mismo lado? Devuelve la normal, el punto más bajo a lo largo de ella y lo más
+// lejos que llega un vértice; null si no.
+function scanUp(o) {
+  const geo = o.geometry;
+  const p = geo?.attributes?.position;
+  if (!p || p.isInterleavedBufferAttribute || p.count < 3 || geo.morphAttributes?.position) return null;
+  const idx = geo.index;
+  const n = idx ? idx.count : p.count;
+  if (n < 3 || n > UP_MAX) return null;
+  const a = p.array;
+  const st = p.itemSize;
+  const ia = idx ? idx.array : null;
+  let nx = 0;
+  let ny = 0;
+  let nz = 0;
+  let has = false;
+  let min = Infinity;
+  let far2 = 0;
+  for (let t = 0; t + 2 < n; t += 3) {
+    const i0 = (ia ? ia[t] : t) * st;
+    const i1 = (ia ? ia[t + 1] : t + 1) * st;
+    const i2 = (ia ? ia[t + 2] : t + 2) * st;
+    const ax = a[i0];
+    const ay = a[i0 + 1];
+    const az = a[i0 + 2];
+    const ux = a[i1] - ax;
+    const uy = a[i1 + 1] - ay;
+    const uz = a[i1 + 2] - az;
+    const vx = a[i2] - ax;
+    const vy = a[i2 + 1] - ay;
+    const vz = a[i2 + 2] - az;
+    const cx = uy * vz - uz * vy;
+    const cy = uz * vx - ux * vz;
+    const cz = ux * vy - uy * vx;
+    const l = Math.hypot(cx, cy, cz);
+    // (un triángulo sin área no pinta nada: no cuenta)
+    if (!(l > 1e-12)) continue;
+    if (!has) {
+      nx = cx / l;
+      ny = cy / l;
+      nz = cz / l;
+      has = true;
+    } else if (!((cx * nx + cy * ny + cz * nz) / l > UP_COS)) return null;
+    for (let q = 0; q < 3; q++) {
+      const i = q === 0 ? i0 : q === 1 ? i1 : i2;
+      const d = a[i] * nx + a[i + 1] * ny + a[i + 2] * nz;
+      if (d < min) min = d;
+      const r2 = a[i] * a[i] + a[i + 1] * a[i + 1] + a[i + 2] * a[i + 2];
+      if (r2 > far2) far2 = r2;
+    }
+  }
+  if (!has) return null;
+  return { x: nx, y: ny, z: nz, min, far: Math.sqrt(far2), g: geo, pv: p.version, iv: idx ? idx.version : -1, k: 0 };
+}
+// (para fx/Water.js: lo mismo por geometría, guardado; y si una matriz deja esa
+// normal mirando para arriba sin espejar)
+const flatMemo = new WeakMap();
+export function flatOf(o) {
+  const geo = o.geometry;
+  const p = geo?.attributes?.position;
+  if (!p) return null;
+  const M = flatMemo.get(geo);
+  if (M !== undefined && M.pv === p.version && M.iv === (geo.index ? geo.index.version : -1)) return M.U;
+  const U = scanUp(o);
+  flatMemo.set(geo, { U, pv: p.version, iv: geo.index ? geo.index.version : -1 });
+  return U;
+}
+export function upRow(e, U) {
+  const s = Math.hypot(e[1], e[5], e[9]);
+  if (!(e[1] * U.x + e[5] * U.y + e[9] * U.z > UP_COS * s)) return false;
+  return e[0] * (e[5] * e[10] - e[9] * e[6]) - e[4] * (e[1] * e[10] - e[9] * e[2]) + e[8] * (e[1] * e[6] - e[5] * e[2]) > 0;
+}
+// ¿Puede entrar? (malla común, de una cara, sin shader propio ni nada que corra al dibujarse)
+function upFits(o) {
+  if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.isBatchedMesh || !o.frustumCulled) return false;
+  const own = (k) => Object.prototype.hasOwnProperty.call(o, k);
+  if (own('onBeforeRender') || own('onAfterRender')) return false;
+  if (own('intersectsFrustum') && o.intersectsFrustum !== test) return false;
+  const m = o.material;
+  if (!m || Array.isArray(m) || m.side !== THREE.FrontSide || m.isShaderMaterial || m.isRawShaderMaterial || m.displacementMap) return false;
+  return m.onBeforeRender === THREE.Material.prototype.onBeforeRender;
+}
+// Anota la malla si es plana y mira para un solo lado (world/eclipseLejos.js la
+// usa para las partes que arma después). Devuelve si quedó anotada.
+export function markUp(o) {
+  o.__scUp = undefined;
+  if (!upFits(o)) return false;
+  const U = scanUp(o);
+  if (U === null) return false;
+  o.__scUp = U;
+  return true;
+}
+// ¿Esta cámara la ve de atrás (está más abajo que toda la malla, que mira para arriba)?
+export function upHidden(o, c) {
+  let U = o.__scUp;
+  if (U === undefined || globalThis.__mduNoUpCull === true) return false;
+  const m = o.material;
+  if (m.side !== THREE.FrontSide) return false;
+  const geo = o.geometry;
+  const p = geo.attributes.position;
+  if (geo !== U.g || p === undefined || p.version !== U.pv || (geo.index ? geo.index.version : -1) !== U.iv) {
+    // (le cambiaron la geometría: se mira de nuevo; si cambia seguido, se deja)
+    const k = U.k + 1;
+    U = k > 3 ? null : scanUp(o);
+    if (U === null) {
+      o.__scUp = undefined;
+      return false;
+    }
+    U.k = k;
+    o.__scUp = U;
+  }
+  const e = o.matrixWorld.elements;
+  // la fila de la altura tiene que ser la normal de la malla (queda mirando
+  // para arriba), sin espejar
+  const s = Math.hypot(e[1], e[5], e[9]);
+  if (!(e[1] * U.x + e[5] * U.y + e[9] * U.z > UP_COS * s)) return false;
+  if (!(e[0] * (e[5] * e[10] - e[9] * e[6]) - e[4] * (e[1] * e[10] - e[9] * e[2]) + e[8] * (e[1] * e[6] - e[5] * e[2]) > 0)) return false;
+  const ce = c.matrixWorld.elements;
+  // (margen: 5 cm, el error de la cuenta y 2 mm por metro de distancia)
+  const dx = ce[12] - e[12];
+  const dz = ce[14] - e[14];
+  return ce[13] < s * U.min + e[13] - 0.05 - 2e-4 * s * U.far - 0.002 * (Math.abs(dx) + Math.abs(dz) + s * U.far);
+}
+
 function test(frustum) {
   if (frustum === MAIN && cam !== null) {
+    if (farHook !== null && farHook(this, cam)) return false;
+    if (this.__scUp !== undefined && upHidden(this, cam)) {
+      sizeCullStats.up++;
+      return false;
+    }
     const R = this.__scRoom;
     const room = R !== undefined && (R.off || (R.fog && (globalThis.__mduNoFogFar === true ? this.__scFog : this.__scFogW) === true && globalThis.__mduNoFogRooms !== true)) && globalThis.__mduNoRooms !== true;
     const small = this.__scSmall === true && globalThis.__mduNoSizeCull !== true;
@@ -121,7 +287,10 @@ function test(frustum) {
         const dy = _v.y - c[13];
         const dz = _v.z - c[14];
         const r = this.__scR * k;
-        if (r * r < px * px * (dx * dx + dy * dy + dz * dz)) {
+        const d2 = dx * dx + dy * dy + dz * dz;
+        // (Eclipse: las piezas chicas de las otras islas, de lejos, con un umbral más alto)
+        const pp = ECL_ON && d2 > ECL_FAR2 && px < ECL_FAR_PX && globalThis.__mduNoEclGbFar !== true ? ECL_FAR_PX : px;
+        if (r * r < pp * pp * d2) {
           sizeCullStats.culled++;
           return false;
         }
@@ -343,6 +512,7 @@ function mergeBoxes(geos) {
 // rooms: [{ key, boxes: [[x0, y0, z0, x1, y1, z1], ...] }] (los cuartos con techo)
 export function sizeCull(renderer, scene, when, opts = {}) {
   on = when;
+  ECL_ON = !!FEATURES?.eclipse;
   install(renderer);
   mainCam = opts.camera || null;
   fogScene = scene;
@@ -375,6 +545,8 @@ export function sizeCull(renderer, scene, when, opts = {}) {
       o.__scFR = o.geometry.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis();
       o.__scFogW = fogged(o, true);
     }
+    // (lo plano que mira para arriba: de cualquier tamaño)
+    if (o.isMesh && markUp(o) && o.intersectsFrustum !== test) o.intersectsFrustum = test;
     for (const c of o.children) walk(c);
   };
   walk(scene);
@@ -405,7 +577,24 @@ export function gbBegin(camera, aoOnly) {
   gbPx = p;
   return true;
 }
+// Eclipse Matero (grafica-v3): desde las islas bajas, mirando a las altas, en
+// cámara entran todas las islas (la niebla es finita a propósito: se tienen
+// que ver de lejos) y el G-buffer las dibujaba enteras otra vez. Más allá de
+// esto la oclusión y los reflejos no se ven. globalThis.__mduNoEclGbFar: como antes.
+const ECL_GB_FAR = 70;
 export function gbDrop(o) {
+  if (FEATURES.eclipse && o.__scFR !== undefined && globalThis.__mduNoEclGbFar !== true) {
+    _v.copy(o.geometry.boundingSphere.center).applyMatrix4(o.matrixWorld);
+    const c = gbCam.matrixWorld.elements;
+    const dx = _v.x - c[12];
+    const dy = _v.y - c[13];
+    const dz = _v.z - c[14];
+    const d = ECL_GB_FAR + o.__scFR;
+    if (dx * dx + dy * dy + dz * dz > d * d) {
+      sizeCullStats.fog++;
+      return true;
+    }
+  }
   // 4. lo que la niebla tapa del todo (más de FOG_HIDE) tampoco: en el color ya
   // es niebla pareja, y en el G-buffer solo sumaba dibujos (la oclusión de
   // lejos no se ve, la bruma de la luna corta a 45 m y los reflejos de lejos
@@ -438,4 +627,14 @@ export function gbDrop(o) {
 // Para las pruebas: cómo está cada cuarto.
 export function roomsState() {
   return rooms.map((R) => ({ key: R.key, off: R.off, occ: R.occ, age: Math.round(now - R.seen), pending: R.q !== null }));
+}
+
+// ¿Se ve algo del cuarto `key` desde la cámara de los ojos? (la consulta de
+// oclusión no lo dio tapado y la niebla no lo tapa). null: no hay ese cuarto o
+// están apagados. Lo usa world/eclipse/v5.js zoneCuller: lo de adentro de una
+// sala se dibuja también mirándola por una puerta desde lejos (agente rend).
+export function roomOpen(key) {
+  if (globalThis.__mduNoRooms === true) return null;
+  for (const R of rooms) if (R.key === key) return !R.hidden && !R.fog;
+  return null;
 }

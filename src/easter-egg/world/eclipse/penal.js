@@ -6,6 +6,7 @@ import GeoBuilder from '../GeoBuilder';
 import { rng } from '../../core/noise';
 import { ANCHORS } from '../../entities/eclipse/Ingredientes';
 import { winMats } from './molino';
+import { breakTower } from './penalCaos';
 import { keepOut, addFixed, zbox, tpShift, grime, orbiters, fragment, wallCrack, curbs, curbMats, cliffRocks, CLIFFS, crackMat, portalOrbs, FLOOR, OUT, WALL, WIN, buildArch, OWN_MATS, detailCuller } from './centro';
 
 // El Penal de la Isla del Ceibo (isla "penal" de Eclipse Matero, layout v4): el
@@ -229,6 +230,8 @@ function buildTorreSuelta(w, r, orbs) {
     res.obj.position.set(-0.3, 0, 0.2);
     res.obj.rotation.y = 0.6;
     g.add(res.obj);
+    // (arte6: partida, más volcada y con la garita suelta; __mduNoPenalCaos: como estaba)
+    breakTower(res.obj, g, M);
   }
   // un pedazo del muro con el alambre de púas, colgando del canto
   g.add(mesh(boxGeo(3.2, 1.6, 0.5), M.stoneDark, F.hx * 0.2, -0.6, F.hz + 0.6, 0.5, 0.1, 0.15));

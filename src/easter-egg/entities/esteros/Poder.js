@@ -121,7 +121,6 @@ export default class Poder {
       use: () => {
         if (!on() || this.pava !== 'lagoon') return false;
         this.pava = 'held';
-        announce(g, 'Una pava negra, helada aunque estuvo en el barro. Las brasas del obraje, en la locomóvil.', 5);
         this.changed();
         return true;
       },
@@ -142,7 +141,6 @@ export default class Poder {
         if (!on() || this.pava !== 'held' || !g.world.power) return false;
         this.pava = 'brasas';
         g.fx.sparkle(new THREE.Vector3(bx, this.floor(bx, bz) + 1.2, bz), [1, 0.5, 0.15], 30, 1.4);
-        announce(g, 'La pava se calentó y no hierve: está vacía. Le falta agua de luna, donde la luna pega en el agua, junto a la pasarela.', 6);
         this.changed();
         return true;
       },
@@ -160,7 +158,6 @@ export default class Poder {
         if (!on() || this.pava !== 'brasas') return false;
         this.pava = 'luna';
         g.fx.sparkle(new THREE.Vector3(lx, 0.4, lz), [0.7, 0.85, 1], 40, 1.8);
-        announce(g, 'El agua de luna chilla en la pava caliente. Al altar de la iglesia, en la Reducción.', 5);
         this.changed();
         return true;
       },
@@ -211,7 +208,7 @@ export default class Poder {
     this.pava = 'ritual';
     this.ritualT = 0;
     this.enc.start();
-    announce(g, `¡La iglesia se cerró! La pava hierve en el altar: aguanten ${RITUAL} segundos.`, 5, true);
+    announce(g, '', 5, true);
     this.changed();
   }
 

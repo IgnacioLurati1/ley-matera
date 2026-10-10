@@ -73,6 +73,12 @@ const LINE = 'San Martín lo va a necesitar.';
 const GIL_ID = 900;
 const PONCHO_GIL = 0xb01c14;
 const DUR = 19.9;
+// La despedida con más aire (el usuario, 2026-10-07: las tomas del final iban
+// apuradas, y la de Belgrano saludando al Gil duraba 1 s): cuánto más dura la
+// toma del sable en alto y cuánto más la de Belgrano; lo que sigue se corre.
+// (globalThis.__mduNoGilPausa: como antes)
+const LIFT_X = 0.5;
+const NOD_X = 1.9;
 // el desgarro: alto, ancho (medio, en el medio) y el plano del halo
 const RIFT_H = 2.7;
 const RIFT_W = 0.6;
@@ -105,7 +111,7 @@ const mL = new THREE.Matrix4();
 const mW = new THREE.Matrix4();
 // El sable con el punto sa de la hoja en A y la línea hacia sb pasando por B,
 // el plano de la hoja lo más para arriba posible.
-function sableTwo(A, sa, B, sb, out) {
+export function sableTwo(A, sa, B, sb, out) {
   center(sa, pa);
   center(sb, pb);
   e1.subVectors(pb, pa).normalize();
@@ -122,7 +128,7 @@ function sableTwo(A, sa, B, sb, out) {
 }
 const lA = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() };
 const lB = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() };
-function mixM(A, B, k, out) {
+export function mixM(A, B, k, out) {
   A.decompose(lA.p, lA.q, lA.s);
   B.decompose(lB.p, lB.q, lB.s);
   return out.compose(lA.p.lerp(lB.p, k), lA.q.slerp(lB.q, k), ONE);
@@ -131,7 +137,7 @@ function mixM(A, B, k, out) {
 // La mano de un gaucho (gauchoSkin): el centro de la manopla, la normal de la
 // palma y el giro desde el reposo (el hueso por su inversa de reposo).
 const HQ = new WeakMap();
-function hand(a, side, out) {
+export function hand(a, side, out) {
   const G = a.gs;
   const B = G.bones[side + 'Hand'];
   let h = HQ.get(B);
@@ -244,6 +250,11 @@ void main() {
   vec3 c = vec3(0.5, 0.1, 0.8) * g * g * (uOpen * 0.55 + uFlash * 0.8);
   gl_FragColor = vec4(c, 1.0);
 }`;
+
+// (las medidas del pase, para ui/eclipseSableTrip: el mismo pase del otro lado)
+export const SB = { DIST, TRANSFER, REL_T, GR_T, V_GROUND, S_VL, S_VR, S_GL, SUP, GRIP_IN, GRIP_S, LINE, PONCHO_GIL, RIFT_VERT, RIFT_FRAG, GLOW_FRAG, FLOOR_FRAG, RIFT_H };
+export { loadSableClips };
+export const sableClips = () => CLIPS;
 
 export function sableBeatOn(cine) {
   // (el Gil viene a buscar el sable; el usuario la quiso en el juego antes de
@@ -383,6 +394,10 @@ export default class SableBeat {
     const act = (r, clip, o = {}) => (late) => r && C.act(r, clip, { ...o, t: (o.t || 0) + (o.keep ? 0 : late) });
     const pd = (k) => PERSONA_T[k]?.delay || 0;
     const portalAt = new THREE.Vector3(P.x, P.y, P.z - 1.2);
+    const slow = globalThis.__mduNoGilPausa !== true;
+    // (x1: lo que se corre la toma de Belgrano; x2: todo lo de después)
+    const x1 = slow ? LIFT_X : 0;
+    const x2 = slow ? LIFT_X + NOD_X : 0;
 
     // 1. se raja el aire (la cámara, del lado del río, entre los troncos)
     ev(0, () => {
@@ -502,48 +517,50 @@ export default class SableBeat {
     ev(TK + 3.7, () => this.stepBack(b.valiente, 0.6, 1.0, 'fistUp'));
     // 7. lo alza: todos (de atrás de la fila, el mástil a la derecha)
     ev(13.4, () => {
-      cine.shot(1.7, (u, lt, pos, look) => {
+      cine.shot(1.7 + x1, (u, lt, pos, look) => {
         const k = smooth(u);
         pos.set(lerp(102.3, 102.2, k), my + lerp(1.45, 1.5, k), lerp(29.6, 29.5, k));
         look.set(100.35, my + lerp(1.7, 1.95, k), 28.1);
       });
     });
-    ev(15.1, () => {
-      cine.shot(1.0, (u, lt, pos, look) => {
-        pos.set(lerp(101.0, 101.05, u), my + 1.45, lerp(28.7, 28.75, u));
+    // Belgrano lo saluda: una inclinación de cabeza lenta, con la cámara que se le acerca
+    ev(15.1 + x1, () => {
+      cine.shot(1.0 + (slow ? NOD_X : 0), (u, lt, pos, look) => {
+        const k = slow ? smooth(u) : u;
+        pos.set(lerp(101.0, slow ? 101.3 : 101.05, k), my + 1.45, lerp(28.7, slow ? 29.0 : 28.75, k));
         look.set(103.0, my + 1.55, 30.75);
       });
     });
-    ev(15.15, () => (this.nodAt = cine.t));
+    ev(15.15 + x1 + (slow ? 0.45 : 0), () => (this.nodAt = cine.t));
     ev(15.0, (late) => {
       b.canchero.mate = false;
       C.act(b.canchero, 'cool', { loop: true, fade: 0.5, t: late });
     });
     ev(14.3, () => cine.quiet());
     // 8. se da vuelta y se vuelve por el desgarro (de atrás de los cuatro)
-    ev(TK + 6.85, () => {
+    ev(TK + 6.85 + x2, () => {
       const pts = [new THREE.Vector3(G.x + 0.48, 0, G.z - 0.3), new THREE.Vector3(G.x + 0.28, 0, G.z - 1.05), new THREE.Vector3(P.x + 0.02, 0, P.z + 0.55), new THREE.Vector3(P.x, 0, P.z), new THREE.Vector3(P.x, 0, P.z - 0.8)];
       C.walkPath(gil, pts, 1.15, 'gilWalkSable', { loop: true });
       C.act(gil, 'gilWalkSable', { loop: true, fade: 0.6, rate: 0 });
     });
-    ev(16.0, () => {
+    ev(16.0 + x2, () => {
       cine.shot(3.9, (u, lt, pos, look) => {
         const k = smooth(u);
         pos.set(lerp(101.35, 101.2, k), my + lerp(1.55, 1.5, k), lerp(29.45, 29.2, k));
         look.set(100.2, my + 1.15, lerp(26.6, 26.0, k));
       });
     });
-    ev(16.6, act(b.valiente, 'chestHand', { loop: true, fade: 0.6 }));
-    ev(17.1, act(b.miedoso, 'wave', { fade: 0.6 }));
-    ev(17.3, (late) => {
+    ev(16.6 + x2, act(b.valiente, 'chestHand', { loop: true, fade: 0.6 }));
+    ev(17.1 + x2, act(b.miedoso, 'wave', { fade: 0.6 }));
+    ev(17.3 + x2, (late) => {
       b.canchero.mate = true;
       C.act(b.canchero, 'cebar', { loop: true, fade: 0.5, t: late });
     });
-    ev(19.0, act(b.miedoso, 'pray', { loop: true, look: 0.15, fade: 0.6 }));
+    ev(19.0 + x2, act(b.miedoso, 'pray', { loop: true, look: 0.15, fade: 0.6 }));
     // el Viejo se levanta despacio (como en el paso 5)
-    ev(19.4, act(b.viejo, 'kneelDown', { t: 1.0, rate: -0.7, fade: 0.3, keep: true }));
+    ev(19.4 + x2, act(b.viejo, 'kneelDown', { t: 1.0, rate: -0.7, fade: 0.3, keep: true }));
     this.events.sort((x, y) => x.t - y.t);
-    return DUR;
+    return DUR + x2;
   }
 
   // El cuerpo terminó un clip que lo corre (la cadera): queda ahí (como EsterosEnding settle).
@@ -641,7 +658,11 @@ export default class SableBeat {
     if (this.backs?.some((x) => x.done)) this.backs = this.backs.filter((x) => !x.done);
     // Belgrano asiente cuando el Gil alza el sable
     const bel = cine.bel;
-    if (bel) bel.nod = this.nodAt != null ? 0.32 * Math.sin(Math.PI * Math.min(1, Math.max(0, (cine.t - this.nodAt) / 1.3))) : 0;
+    // (despacio: baja la cabeza, la sostiene y vuelve; antes, un cabeceo de 1,3 s)
+    if (bel && globalThis.__mduNoGilPausa !== true) {
+      const k = this.nodAt != null ? Math.min(1, Math.max(0, (cine.t - this.nodAt) / 2.1)) : 0;
+      bel.nod = 0.36 * smoothW(k, 0, 0.32) * (1 - smoothW(k, 0.68, 1));
+    } else if (bel) bel.nod = this.nodAt != null ? 0.32 * Math.sin(Math.PI * Math.min(1, Math.max(0, (cine.t - this.nodAt) / 1.3))) : 0;
     // el Gil entra al desgarro: del otro lado ya no está
     const gil = this.gil;
     if (!gil.dead && bt > 12 && gil.pos.z < this.P.z - 0.45) {

@@ -493,7 +493,11 @@ class BookReader {
     const free = meas[1].querySelector('.bk-flow');
     const open = eggSet();
     const pages = [{ kind: 'endpaper' }, { kind: 'title' }, { kind: 'toc' }];
-    const chapters = this.data.CHAPTERS.map((c) => ({ ...c, open: c.need.every((m) => open.has(m)) }));
+    // (también por cantidad: `at` easter eggs hechos, sin contar Eclipse;
+    // globalThis.__mduOldBookNeed: solo los que pide cada capítulo)
+    const done = [...open].filter((m) => m !== 'eclipse').length;
+    const byCount = (c) => globalThis.__mduOldBookNeed !== true && c.at > 0 && done >= c.at;
+    const chapters = this.data.CHAPTERS.map((c) => ({ ...c, open: c.need.every((m) => open.has(m)) || byCount(c) }));
     const lineCount = (h) => Math.round(h / lh);
     const height = () => flow.getBoundingClientRect().height;
     for (const c of chapters) {

@@ -77,7 +77,7 @@ export default class Vanguardia {
     this.nextT = 5;
     this.showChiqui(true);
     g.net?.event('ee', { vg: 'chiqui', on: 1, line: 0 });
-    announce(g, 'La vanguardia del Chiquitijuein. Cuatro Caballeros Negros vienen por el dragón.', 5, true);
+    announce(g, '', 5, true);
     this.egg.say('fierro', LINES.vanguardia, 2);
   }
 

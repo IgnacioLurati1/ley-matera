@@ -29,6 +29,14 @@ import Night from '../fx/Night';
 import { ARENA } from './Arena';
 import { cullFarTiles } from './foliageTiles';
 import { windy } from '../fx/grassPush';
+// (2026-10-09, el usuario: "en La Tapera, bajale el brillo a ver el sol de
+// frente, te deja ciego". El sol del atardecer —el de los mapas con día: solo
+// la granja— era el brillo del sprite más el centro del cielo, los dos encima
+// del bloom: una mancha blanca. Más tenues los dos. __mduOldSunGlare: como antes)
+const SUN9 = globalThis.__mduOldSunGlare !== true;
+const SUN9_K = +(globalThis.__mduSunK ?? 0.5);
+const SUN9_CORE = +(globalThis.__mduSunCore ?? 1.15);
+const SUN9_S = +(globalThis.__mduSunS ?? 26);
 
 export const CELL = { OUT: 0, FLOOR: 1, WALL: 2, DOOR: 3, WINDOW: 4 };
 // Qué es cada celda de borde: pared, alambrado (se ve y se tira por encima) o maíz.
@@ -356,9 +364,18 @@ export default class World {
     }
     // el castillo: granito, nieve, lajas, hielo y pizarra (world/castleTextures.js)
     // (Eclipse Matero junta los tres juegos: cada isla usa los materiales de su mapa)
+    // (en Eclipse, el calcáreo de los otros mapas —la capilla del penal y la del
+    // castillo, los pisos de la torre— no es el mármol de la Cripta que le pone
+    // monumentoMaterials: vuelve el de siempre. __mduNoEclCalcareo: como antes)
+    const calcareo = FEATURES.eclipse && globalThis.__mduNoEclCalcareo !== true ? M.calcareo : null;
+    // (y la piedra de siempre con otro nombre, para las secciones que la piden en su
+    // LOOK: los calabozos del penal; stoneWall/stoneStep quedan como están)
+    const stoneBase = FEATURES.eclipse ? { stoneWallBase: M.stoneWall, stoneStepBase: M.stoneStep } : null;
     if (FEATURES.castle || FEATURES.eclipse) castleMaterials(T, M, std);
     if (FEATURES.esteros || FEATURES.eclipse) esterosMaterials(T, M, std);
     if (FEATURES.monumento || FEATURES.eclipse) monumentoMaterials(T, M, std);
+    if (calcareo) M.calcareo = calcareo;
+    if (stoneBase) Object.assign(M, stoneBase);
     this.M = M;
   }
 
@@ -577,7 +594,9 @@ export default class World {
           }
           for (const c of [i, j]) {
             for (const b of this.cellBoxes[c]) {
-              if (!b.active || !b.solid || b.kind === 'ground' || b.kind === 'window') continue;
+              // (navFree: una hoja que se abre y se cierra sola, la puerta del
+              // ascensor del Monumento: el camino pasa igual; la frena su dueño)
+              if (!b.active || !b.solid || b.navFree || b.kind === 'ground' || b.kind === 'window') continue;
               if (b.y1 <= fy + 0.15 || b.y0 >= fy + 1.7) continue;
               const a0 = dx ? b.x0 : b.z0;
               const a1 = dx ? b.x1 : b.z1;
@@ -810,7 +829,8 @@ export default class World {
     };
     // (el castillo usa también algunos del penal: celdas, grilletes, la cocina)
     if (FEATURES.penal || FEATURES.tower || FEATURES.castle || FEATURES.esteros || FEATURES.eclipse) registerPenalProps();
-    if (FEATURES.cemetery) registerMolinoProps();
+    // (Eclipse trae el acopio, la sala de máquinas, la oficina y el cementerio del molino, iguales)
+    if (FEATURES.cemetery || FEATURES.eclipse) registerMolinoProps();
     if (FEATURES.castle || FEATURES.eclipse) registerCastleProps();
     PROPS.forEach((d, i) => {
       const def = this.levels && d.y == null ? { ...d, y: this.floorAt(d.pos[0], d.pos[1]) } : d;
@@ -841,6 +861,8 @@ export default class World {
         else if (d.name === 'spin') (this.dynamic.spins ||= []).push(d);
         // la roldana, la soga y el balde del aljibe (los mueve el easter egg del molino)
         else if (d.name === 'wellRig') (this.dynamic.wells ||= []).push(d);
+        // el algarrobo de los colgados (lo parte el final del estero: ui/esterosQuiebre.js)
+        else if (d.name === 'algarrobo') this.dynamic.algarrobo = d;
         else this.dynamic.lamps.push(d);
       }
       res.obj.traverse((o) => {
@@ -946,10 +968,11 @@ export default class World {
         uHorizon: { value: new THREE.Vector3(...(SKY.colors?.horizon || [0.1, 0.07, 0.09])) },
         uZenith: { value: new THREE.Vector3(...(SKY.colors?.zenith || [0.012, 0.018, 0.04])) },
         uGlow: { value: new THREE.Vector3(...(SKY.colors?.glow || [0.16, 0.04, 0.02])) },
+        uSunCore: { value: SUN9 ? SUN9_CORE : 2.5 },
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
       fragmentShader: `
-        varying vec3 vDir; uniform float uTime, uCloud, uFlash, uBlood, uFogAmt, uDay; uniform vec3 uFogColor, uSun, uHorizon, uZenith, uGlow;
+        varying vec3 vDir; uniform float uTime, uCloud, uFlash, uBlood, uFogAmt, uDay, uSunCore; uniform vec3 uFogColor, uSun, uHorizon, uZenith, uGlow;
         float hash(vec3 p){ p = fract(p*0.3183099+.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
         float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float vnoise(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); f = f*f*(3.0-2.0*f);
@@ -965,7 +988,7 @@ export default class World {
           // atardecer: cielo anaranjado abajo, violeta arriba y el sol ya bajo
           float sd = max(dot(vDir, uSun), 0.0);
           vec3 dusk = mix(vec3(0.95, 0.42, 0.16), vec3(0.2, 0.16, 0.36), smoothstep(-0.02, 0.5, h));
-          dusk += vec3(1.0, 0.55, 0.22) * pow(sd, 6.0) * 0.55 + vec3(1.0, 0.8, 0.5) * pow(sd, 90.0) * 2.5;
+          dusk += vec3(1.0, 0.55, 0.22) * pow(sd, 6.0) * 0.55 + vec3(1.0, 0.8, 0.5) * pow(sd, 90.0) * uSunCore;
           dusk = mix(dusk, vec3(0.12, 0.06, 0.05), smoothstep(0.0, -0.25, h));
           col = mix(col, dusk, uDay);
           vec3 cell = floor(vDir * 180.0);
@@ -1009,8 +1032,8 @@ export default class World {
     // el sol del atardecer (solo en los mapas que tienen día)
     if (SKY.daylight) {
       this.sunDir = new THREE.Vector3(...(SKY.sun || [-0.86, 0.1, -0.5])).normalize();
-      const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.T.dot, color: 0xffc27a, fog: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending }));
-      sun.scale.set(34, 34, 1);
+      const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.T.dot, color: 0xffc27a, fog: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending, opacity: SUN9 ? SUN9_K : 1 }));
+      sun.scale.set(SUN9 ? SUN9_S : 34, SUN9 ? SUN9_S : 34, 1);
       sun.position.copy(this.sunDir).multiplyScalar(250).add(mapCenter());
       this.root.add(sun);
       this.sunSprite = sun;
@@ -1329,7 +1352,7 @@ export default class World {
       sunDir.y = -0.08 + d * 0.2;
       sunDir.normalize();
       this.sunSprite.position.copy(sunDir).multiplyScalar(250).add(mapCenter());
-      this.sunSprite.material.opacity = Math.min(1, d * 1.5);
+      this.sunSprite.material.opacity = Math.min(1, d * 1.5) * (SUN9 ? SUN9_K : 1);
       this.moonSprite.material.opacity = 1 - Math.min(1, d * 1.4);
       this.moonHalo.visible = d < 0.6;
       // la luz grande (y su sombra) se mueve a saltos, de vez en cuando

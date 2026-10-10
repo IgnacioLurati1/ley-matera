@@ -398,13 +398,14 @@ const BUILDERS = {
     return { obj: g, boxes: [] };
   },
   // Celda de calabozo: la reja al frente (con la puerta) y la paja adentro.
+  // door: el ancho del hueco de la puerta; swing: cuánto quedó abierta la hoja.
   celdaK(M, o, r) {
     const g = new THREE.Group();
     const w = o.w || 6;
     const d = o.d || 6;
     const H = 3.2;
     const f = d / 2;
-    const door = 1.1;
+    const door = o.door || 1.1;
     bars(g, M, -w / 2 + 0.05, -door / 2, f, H, 0.16);
     bars(g, M, door / 2, w / 2 - 0.05, f, H, 0.16);
     if (!o.open) bars(g, M, -door / 2, door / 2, f, H - 0.3, 0.16);
@@ -412,7 +413,7 @@ const BUILDERS = {
       // la puerta quedó abierta hacia afuera
       const dg = new THREE.Group();
       dg.position.set(door / 2, 0, f);
-      dg.rotation.y = -1.9;
+      dg.rotation.y = o.swing ?? -1.9;
       bars(dg, M, -door, 0, 0, H - 0.3, 0.16);
       g.add(dg);
     }

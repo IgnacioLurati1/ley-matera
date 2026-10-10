@@ -254,7 +254,6 @@ export default class GauchoLife {
     this.reset();
     this.enter({ free: true });
     // (las teclas ya están en el cartel del gaucho life: acá solo para qué sirve)
-    this.g.hud.subtitle('Gaucho life: tu rayo prende las máquinas.', 4);
   }
 
   // Cada 5 rondas se recupera una carga.
@@ -317,7 +316,7 @@ export default class GauchoLife {
     g.hud.setDowned(null);
     // (lo que quedó escrito de antes de salir del cuerpo: acá no se toca nada)
     g.hud.setHint(null);
-    if (!free) g.hud.subtitle(downed ? 'Caíste... pero tu alma sigue: volvé a tu cuerpo para levantarte.' : 'Gaucho life: los muertos no te ven.', 4);
+    if (!free && downed) g.hud.subtitle('Caíste... pero tu alma sigue: volvé a tu cuerpo para levantarte.', 4);
     this.hud();
   }
 
@@ -410,7 +409,6 @@ export default class GauchoLife {
     this.energy -= dt / ENERGY_SECS;
     if (this.energy <= 0) {
       this.energy = 0;
-      g.hud.subtitle('Se te acabó la energía: tu alma vuelve al cuerpo.', 3);
       this.leave();
       return;
     }

@@ -329,6 +329,15 @@ export const SPEAKERS = {
   sanmartin: { f0: 96, rate: 1.0, range: 1.1, jitter: 0.01, shimmer: 0.04, breath: 0.12, vib: { rate: 5, depth: 0.02 }, tilt: 0.4, shift: 0.92, drive: 1.3, oq: 0.6, pauseK: 1.1, level: 0.95 },
   cabral: { f0: 104, rate: 0.8, range: 0.9, jitter: 0.03, shimmer: 0.09, breath: 0.42, whisper: 0.35, vib: { rate: 6, depth: 0.04 }, tilt: 0.5, shift: 0.96, oq: 0.55, pauseK: 1.5, drawl: 1.2, level: 0.8 },
 };
+// (2026-10-09, el usuario, por el final de Eclipse: "no se entiende quién dice
+// qué... todos tienen la misma voz". Fierro (102 Hz), San Martín (96) y el Gil
+// (70) eran tres graves parecidos. Fierro queda; San Martín, más agudo, firme y
+// cortado —de mando—; el Gil, más grave, lento y con más pecho.
+// globalThis.__mduOldVoces10: como antes)
+if (globalThis.__mduOldVoces10 !== true) {
+  Object.assign(SPEAKERS.sanmartin, { f0: 138, rate: 1.1, range: 0.75, tilt: 0.3, shift: 1.05, drive: 1.6, pauseK: 0.9 });
+  Object.assign(SPEAKERS.gil, { f0: 60, rate: 0.72, shift: 0.8, sub: 0.46, drawl: 1.25 });
+}
 
 const VOWELS_RE = /[aeiouáéíóúü]/;
 const STRIP = { á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ü: 'u' };
@@ -462,9 +471,26 @@ function consonant(c, next, prev, last) {
 // Las palabras de una frase van encadenadas (sin silencios entre una y otra);
 // la frase se estira al final y cierra con la voz que se apaga (un poco de
 // carraspera y de aire) y, después de un punto, a veces se toma aire.
+// Los números, en palabras (hasta 9999): el murmullo arma sílabas con letras y
+// los dígitos se los salteaba (2026-10-09, el usuario: Martín Fierro "quiere
+// decir un número —1813— y no puede"). "1813" → "mil ochocientos trece".
+// globalThis.__mduOldVoiceNum: como antes
+const UNI = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte', 'veintiuno', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
+const DEC = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+const CEN = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+function numWords(n) {
+  if (n < 30) return UNI[n];
+  if (n < 100) return DEC[Math.floor(n / 10)] + (n % 10 ? ' y ' + UNI[n % 10] : '');
+  if (n === 100) return 'cien';
+  if (n < 1000) return CEN[Math.floor(n / 100)] + (n % 100 ? ' ' + numWords(n % 100) : '');
+  const m = Math.floor(n / 1000);
+  return (m === 1 ? 'mil' : numWords(m) + ' mil') + (n % 1000 ? ' ' + numWords(n % 1000) : '');
+}
+const sayNumbers = (t) => (globalThis.__mduOldVoiceNum === true ? t : t.replace(/\d{1,4}/g, (d) => numWords(+d)));
+
 export function speechSegments(text, S, r = Math.random) {
   const segs = [];
-  const clean = text.toLowerCase().replace(/[¡¿"«»()]/g, '');
+  const clean = sayNumbers(text).toLowerCase().replace(/[¡¿"«»()]/g, '');
   const phrases = clean.split(/([,.;:!?…]+)/);
   const base = S.f0;
   // cuánto se mueve la melodía (acentos, caída de la frase, exclamaciones)

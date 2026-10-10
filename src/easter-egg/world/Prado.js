@@ -811,7 +811,6 @@ export default class Prado extends Arena {
         A.noise(o, { dur: GRASS.grow + GRASS.spread, type: 'bandpass', freq: 900, freqEnd: 3200, q: 0.6, gain: 0.7, attack: 0.6 });
       }
       if (!g.net?.guest) g.later(0.4, () => g.say(...this.lines.grass, 'boss'));
-      g.later(3.2, () => (G.state === 'grow' || G.state === 'on') && g.hud.subtitle('Cortá con la hoz', 2.5));
     } else if (state === 'wither' && A?.ctx) {
       const o = A.out({ pos: at, gain: 0.7, reverb: 0.3, ref: 12 });
       A.noise(o, { dur: GRASS.wither, type: 'highpass', freq: 2400, freqEnd: 900, q: 0.5, gain: 0.5, attack: 0.2 });

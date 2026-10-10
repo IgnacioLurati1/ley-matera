@@ -64,6 +64,7 @@ const SPECIAL = {
     { id: 'temple', name: 'Cuatro filos', desc: 'Templaste el Desgarrador del Eclipse.', icon: 'egg', tier: 'oro', secret: true, title: 'Desgarrador del Eclipse' },
     { id: 'cabral', name: 'Muero contento', desc: 'Viste caer a Cabral en San Lorenzo.', icon: 'book', tier: 'plata', secret: true },
     { id: 'lector11', name: 'La parte que faltaba', desc: 'Leíste el último capítulo de La Ronda Eterna.', icon: 'book', tier: 'plata', secret: true, title: 'El de la linterna' },
+    { id: 'mates7', name: 'La ronda completa', desc: 'Juntaste los siete mates perdidos de las islas.', icon: 'egg', tier: 'plata', secret: true },
   ],
   castillo: [
     { id: 'cronista', name: 'Cronista del Castillo', desc: 'Leíste las crónicas de la Gran Guerra.', icon: 'book', tier: 'plata', secret: true, title: 'Cronista del Castillo' },

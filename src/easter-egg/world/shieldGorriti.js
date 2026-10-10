@@ -129,7 +129,6 @@ export function updateGorriti(su, dt) {
     if (st.stage === 'hunt' && !su.done) {
       G.t = 0;
       campanada(g, 1);
-      if (st.by === su.myId() || Math.hypot(g.player.pos.x - su.huntPos.x, g.player.pos.z - su.huntPos.z) < 14) g.hud.subtitle(`${need} escudazos acá antes de la tercera campanada`, 4);
     } else if (G.stage === 'hunt' && st.stage === 'idle' && !su.done) {
       campanada(g, 1.2);
       su.station.obj.visible = false;

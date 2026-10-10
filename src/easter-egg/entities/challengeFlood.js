@@ -147,7 +147,6 @@ export default class ChallengeFlood {
     if (!this.on || this.draining) return;
     this.draining = true;
     this.water.setLevel(this.fy - UNDER, DOWN);
-    this.g.hud.subtitle('Baja el agua... por ahora.', 3);
     this.sndDrain();
   }
 

@@ -143,16 +143,30 @@ export default class Lobby {
       if (a === 'enter') {
         const code = this.el.querySelector('[data-code]').value.trim().toUpperCase();
         if (!code) return;
-        this.status('Conectando...');
-        this.net = new Net({ role: 'guest', signal: g.signal, name: this.name });
-        this.net.onStatus = (t) => this.status(t);
-        this.net.onPlayers = (list) => this.renderPlayers(list);
-        await this.net.joinRoom(code);
-        g.attachNet(this.net);
-        this.section('room');
-        this.el.querySelector('[data-codeout]').textContent = code;
-        this.syncMap();
-        this.status('Listo. Esperando que el anfitrión arranque...');
+        // (sesión 1f, el usuario: "la primera vez que te unís a una sala se unen
+        // dos personas a la vez". La primera búsqueda tarda —se piden los
+        // servidores de puente y se abre el canal—: un segundo clic en Entrar
+        // armaba otra conexión con otra tarjeta, el anfitrión le abría lugar a
+        // las dos y la primera también llegaba a conectar. Ahora un solo intento
+        // a la vez, y el anterior se cierra. globalThis.__mduNoJoinGuard: como antes)
+        const guard = globalThis.__mduNoJoinGuard !== true;
+        if (guard && this.joining) return;
+        this.joining = true;
+        try {
+          if (guard && this.net && !this.net.host && this.net !== g.net) this.net.close();
+          this.status('Conectando...');
+          this.net = new Net({ role: 'guest', signal: g.signal, name: this.name });
+          this.net.onStatus = (t) => this.status(t);
+          this.net.onPlayers = (list) => this.renderPlayers(list);
+          await this.net.joinRoom(code);
+          g.attachNet(this.net);
+          this.section('room');
+          this.el.querySelector('[data-codeout]').textContent = code;
+          this.syncMap();
+          this.status('Listo. Esperando que el anfitrión arranque...');
+        } finally {
+          this.joining = false;
+        }
         return;
       }
       if (a === 'copy') {

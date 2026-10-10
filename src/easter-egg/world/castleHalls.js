@@ -169,7 +169,8 @@ function shield(M, kind) {
   return g;
 }
 
-export function buildHalls(w) {
+// (hall: false = solo la sala del trono; lo usa Eclipse, world/eclipse/v5.js)
+export function buildHalls(w, { hall = true } = {}) {
   const M = w.M;
   const gb = new GeoBuilder();
   const coffer = new THREE.MeshStandardMaterial({ map: cofferTex(), roughness: 0.8 });
@@ -263,27 +264,29 @@ export function buildHalls(w) {
     s.rotation.y = ry;
     g.add(s);
   }
-  // ---------------- el Gran Salón: las cerchas ----------------
-  const tie = D.fy + 6.2;
-  const mid = (D.z0 + D.z1) / 2;
-  const apex = D.ceil - 0.55;
-  for (const x of D.trusses) {
-    // el tirante y las ménsulas de piedra que lo reciben
-    gb.box('beam', x - 0.15, tie, D.z0, x + 0.15, tie + 0.36, D.z1, 1);
-    for (const z of [D.z0, D.z1 - 0.55]) {
-      gb.box('castleStone', x - 0.24, tie - 0.6, z, x + 0.24, tie, z + 0.55, 1);
-      gb.box('stoneStep', x - 0.28, tie - 0.72, z - (z === D.z0 ? 0 : 0.03), x + 0.28, tie - 0.6, z + 0.58, 1);
+  if (hall) {
+    // ---------------- el Gran Salón: las cerchas ----------------
+    const tie = D.fy + 6.2;
+    const mid = (D.z0 + D.z1) / 2;
+    const apex = D.ceil - 0.55;
+    for (const x of D.trusses) {
+      // el tirante y las ménsulas de piedra que lo reciben
+      gb.box('beam', x - 0.15, tie, D.z0, x + 0.15, tie + 0.36, D.z1, 1);
+      for (const z of [D.z0, D.z1 - 0.55]) {
+        gb.box('castleStone', x - 0.24, tie - 0.6, z, x + 0.24, tie, z + 0.55, 1);
+        gb.box('stoneStep', x - 0.28, tie - 0.72, z - (z === D.z0 ? 0 : 0.03), x + 0.28, tie - 0.6, z + 0.58, 1);
+      }
+      // el pendolón y los pares hasta la cumbrera
+      gb.box('beam', x - 0.13, tie + 0.36, mid - 0.13, x + 0.13, apex + 0.3, mid + 0.13, 1);
+      bar(gb, 'beam', x, [D.z0 + 0.3, tie + 0.36], [mid, apex], 0.12);
+      bar(gb, 'beam', x, [D.z1 - 0.3, tie + 0.36], [mid, apex], 0.12);
+      // los jabalcones (del pie del pendolón a la mitad de cada par)
+      const q = (za) => [za + (mid - za) * 0.5, tie + 0.36 + (apex - tie - 0.36) * 0.5];
+      bar(gb, 'beam', x, [mid - 0.1, tie + 0.6], q(D.z0 + 0.3), 0.08);
+      bar(gb, 'beam', x, [mid + 0.1, tie + 0.6], q(D.z1 - 0.3), 0.08);
+      // herrajes: una planchuela en cada unión
+      gb.box('iron', x - 0.16, tie + 0.3, mid - 0.2, x + 0.16, tie + 0.62, mid + 0.2, 1);
     }
-    // el pendolón y los pares hasta la cumbrera
-    gb.box('beam', x - 0.13, tie + 0.36, mid - 0.13, x + 0.13, apex + 0.3, mid + 0.13, 1);
-    bar(gb, 'beam', x, [D.z0 + 0.3, tie + 0.36], [mid, apex], 0.12);
-    bar(gb, 'beam', x, [D.z1 - 0.3, tie + 0.36], [mid, apex], 0.12);
-    // los jabalcones (del pie del pendolón a la mitad de cada par)
-    const q = (za) => [za + (mid - za) * 0.5, tie + 0.36 + (apex - tie - 0.36) * 0.5];
-    bar(gb, 'beam', x, [mid - 0.1, tie + 0.6], q(D.z0 + 0.3), 0.08);
-    bar(gb, 'beam', x, [mid + 0.1, tie + 0.6], q(D.z1 - 0.3), 0.08);
-    // herrajes: una planchuela en cada unión
-    gb.box('iron', x - 0.16, tie + 0.3, mid - 0.2, x + 0.16, tie + 0.62, mid + 0.2, 1);
   }
   const mesh = gb.build(mats);
   w.root.add(mesh);

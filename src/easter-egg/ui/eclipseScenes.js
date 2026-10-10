@@ -1,4 +1,6 @@
 import EclipseSable from './eclipseCineSable';
+import EclipseSableTrip, { sableTripOn } from './eclipseSableTrip';
+import { myId } from '../entities/eclipse/common';
 import EclipseEnding, { loadFinClips } from './EclipseEnding';
 
 // Las escenas de Eclipse Matero que corren dentro de la partida (las arma el
@@ -41,7 +43,30 @@ export function makeEclipseScenes(ee) {
     return true;
   };
   return {
-    sable: (cb) => !!sable?.play(cb),
+    // (sesión 1f: el Gil cruza al Monumento y vuelve con el Sable —ui/eclipseSableTrip—;
+    // __mduOldEclSable: los cuatro salen a Eclipse y se lo alcanzan, como antes)
+    sable: (cb) => {
+      if (!sableTripOn() || !sable || ee.scene) return !!sable?.play(cb);
+      const g = ee.g;
+      let cine;
+      try {
+        cine = new EclipseSableTrip(ee, sable);
+      } catch (err) {
+        console.error(err);
+        return !!sable.play(cb);
+      }
+      ee.scene = { update: (dt) => cine.update(dt), kind: 'eclipse-sable', cine };
+      cine.play(() => {
+        if (ee.scene?.cine === cine) ee.scene = null;
+        const st = ee.steps?.sable;
+        if (!st || st.st.done) return;
+        // el Sable es del Gil: lo trae en la mano. (Si el Gil no está en esta
+        // compu, llega su 'take'; si no llega —se fue—, queda en la Llama.)
+        if (ee.isGil()) st.send({ a: 'take', id: myId(g) });
+        else g.later(4, () => !st.st.done && cb?.());
+      });
+      return true;
+    },
     ending: globalThis.__mduNoEclipseFin === true ? null : ending,
     // (Alt+I: el final, desde el campo de San Lorenzo si la arena se puede poner)
     debugEnding: () => {

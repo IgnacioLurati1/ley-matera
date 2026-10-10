@@ -806,7 +806,6 @@ export default class Matorral {
       this.U.front.value = this.maxD;
       this.U.ember.value = 0.16;
       this.warnT = 0;
-      g.hud.subtitle('¡Se prende fuego el matorral!', 3);
       g.audio.explosion?.(tmpV.set(this.door.x, 1, this.door.z), 0.15);
     } else if (s === 'ash') {
       this.front = -Infinity;

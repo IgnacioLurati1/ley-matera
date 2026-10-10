@@ -378,7 +378,6 @@ export default class FarmDefense {
       // sin agua: avisa una vez por vaciada
       if (!t.said) {
         t.said = true;
-        this.ee.announce('Una torre de mate se quedó sin agua. Cebala (mantené F al lado del brocal).', 3.5);
       }
       return;
     }
@@ -554,14 +553,14 @@ export default class FarmDefense {
     this.dirty = true;
     this.brokeFx(p);
     const lostPlant = !this.ee.harvested[p.i];
-    this.ee.announce(lostPlant ? `Rompieron ${p.name}: la planta tarda ${REGROW} rondas en volver a crecer.` : `Rompieron ${p.name}.`, 3.5, true);
+    this.ee.announce(`Rompieron ${p.name}.`, 3.5, true);
     if (lostPlant && g.world.power && !this.saidLost) {
       this.saidLost = true;
       this.ee.voice(LINES.lost, 1.2);
     }
     if (this.plots.every((q) => this.isDown(q)) && !this.saidAll) {
       this.saidAll = true;
-      g.later(2, () => this.ee.announce('Se perdió el yerbal entero. Ahora vienen por ustedes.', 3.5, true));
+      g.later(2, () => this.ee.announce('', 3.5, true));
     }
     this.sync(true);
   }
@@ -671,7 +670,7 @@ export default class FarmDefense {
   regrown(p) {
     const g = this.g;
     const plant = this.ee.needed(this.ee.plants[p.i]);
-    this.ee.announce(plant && this.ee.papDone ? `Volvió a crecer ${p.name}: la planta ya se puede cortar.` : `Volvió a crecer ${p.name}.`, 3.5);
+    this.ee.announce(`Volvió a crecer ${p.name}.`, 3.5);
     g.fx.sparkle(tmpA.set(p.x, p.y + 0.6, p.z), [0.5, 1, 0.5], 16, 0.8);
     if (plant && this.ee.papDone && g.world.power) this.ee.voice(LINES.regrow, 1);
   }
@@ -712,8 +711,7 @@ export default class FarmDefense {
     const gate = g.interact.list.find((x) => x.kind === 'door' && x.door.def.id === this.D.gate);
     const opened = gate && !gate.door.open;
     if (opened) g.later(1.5, () => g.interact.openDoor(gate.door));
-    this.ee.announce(`¡Defensa del yerbal! La horda y el Cuervo vienen por las parcelas.${opened ? ' La tranquera del patio se abrió sola.' : ''}`, 5, true);
-    g.later(3.5, () => this.ee.announce('De los brocales suben las torres de mate. Tiran solas, pero hay que cebarlas (mantené F).', 4));
+    this.ee.announce('', 5, true);
     if (g.world.power) this.ee.voice(this.round > this.every ? LINES.again : LINES.start, 2);
     g.audio.bossArrive();
     this.music();

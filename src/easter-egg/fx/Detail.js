@@ -372,11 +372,24 @@ const KINDS = {
 // repeat también cuentan). Se rearma si aparecen texturas nuevas.
 let names = new WeakMap();
 let seen = 0;
+let missT = null;
+let miss = new WeakMap();
 function nameOf(map, T) {
   const img = map.image;
   if (!img || typeof img !== 'object') return undefined;
   let n = names.get(img);
   if (n === undefined && T) {
+    // (mirar si T creció pide un arreglo con todos sus nombres, y por acá pasa
+    // en cada vuelta cada textura que no es del mundo: la que ya se buscó y no
+    // estaba se vuelve a buscar recién a los 2 s. Una que nunca se buscó, o
+    // con otro T, siempre. globalThis.__mduNameScan: siempre, como antes)
+    const now = performance.now();
+    if (missT !== T) {
+      missT = T;
+      miss = new WeakMap();
+    }
+    const m0 = miss.get(img);
+    if (m0 !== undefined && now - m0 < 2000 && globalThis.__mduNameScan !== true) return n;
     const keys = Object.keys(T);
     if (keys.length !== seen) {
       seen = keys.length;
@@ -384,6 +397,7 @@ function nameOf(map, T) {
       for (const k of keys) if (T[k]?.isTexture && T[k].image && typeof T[k].image === 'object') names.set(T[k].image, k);
     }
     n = names.get(img);
+    if (n === undefined) miss.set(img, now);
   }
   return n;
 }

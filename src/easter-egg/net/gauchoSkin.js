@@ -219,7 +219,9 @@ function material(a) {
   // poncho que se hamaca; jugando quedan en 0
   // (uFill: luz de relleno solo para este gaucho, desde la cámara: las escenas
   // de noche, ui/cineActors fill; jugando, 0)
-  const life = { uJaw: { value: 0 }, uLid: { value: 0 }, uSway: { value: new THREE.Vector3() }, uLidCol: { value: T.lidCol }, uEyeGlow: { value: new THREE.Color(0, 0, 0) }, uFill: { value: new THREE.Color(0, 0, 0) } };
+  // (uBandGold: lo colorado de la textura —la cinta del sombrero— del color
+  // del poncho; el hombre dorado del final de Eclipse, ui/EclipseEnding goldLook)
+  const life = { uJaw: { value: 0 }, uLid: { value: 0 }, uSway: { value: new THREE.Vector3() }, uLidCol: { value: T.lidCol }, uEyeGlow: { value: new THREE.Color(0, 0, 0) }, uFill: { value: new THREE.Color(0, 0, 0) }, uBandGold: { value: 0 } };
   m.userData.life = life;
   const F = T.face;
   const f = (x) => x.toFixed(2);
@@ -241,12 +243,14 @@ function material(a) {
 	}`,
       )
       .replace('#include <skinning_vertex>', `#include <skinning_vertex>\n\ttransformed += uSway * (poncho * smoothstep(${f(F.swayTop)}, ${f(F.swayBot)}, position.y));`);
-    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform vec3 uPonTint;\nuniform float uPonRef;\nuniform float uLid;\nuniform float uJaw;\nuniform vec3 uLidCol;\nuniform vec3 uEyeGlow;\nuniform vec3 uFill;\nvarying float vPoncho;\nvarying vec3 vBind;\nvoid main() {').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += uEyeGlow * eyeGlow;\n\ttotalEmissiveRadiance += diffuseColor.rgb * uFill * (0.3 + 0.7 * max(dot(normal, normalize(vViewPosition)), 0.0));').replace(
+    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform vec3 uPonTint;\nuniform float uBandGold;\nuniform float uPonRef;\nuniform float uLid;\nuniform float uJaw;\nuniform vec3 uLidCol;\nuniform vec3 uEyeGlow;\nuniform vec3 uFill;\nvarying float vPoncho;\nvarying vec3 vBind;\nvoid main() {').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += uEyeGlow * eyeGlow;\n\ttotalEmissiveRadiance += diffuseColor.rgb * uFill * (0.3 + 0.7 * max(dot(normal, normalize(vViewPosition)), 0.0));').replace(
       '#include <map_fragment>',
       `#include <map_fragment>
 	if (vPoncho > 0.5) {
 		float pl = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
 		diffuseColor.rgb = uPonTint * (pl / uPonRef);
+	} else if (uBandGold > 0.5 && diffuseColor.g < diffuseColor.r * 0.25 && diffuseColor.b < diffuseColor.r * 0.25 && diffuseColor.r > 0.02) {
+		diffuseColor.rgb = uPonTint * (diffuseColor.r * 0.45 / uPonRef);
 	}
 	// los ojos pintados del modelo (cada uno en su lugar): el párpado baja
 	// desde arriba y, con uEyeGlow, lo oscuro del ojo brilla (los ojos de oro)
@@ -533,7 +537,8 @@ const HANDS_CLIP = [
   [6, 'RightForeArm', 'RightHand'],
 ];
 // las armas de dos manos (con las de una, el mate o la pistola: quieto sin arma larga)
-export const TWO_HAND = new Set(['madera', 'plastico', 'vidrio', 'lata', 'algarrobo', 'imperial', 'camionero', 'torpedo', 'asta', 'mate47', 'campanario', 'bombillon', 'tronador', 'diablo', 'liquidificador', 'wunder', 'terere', 'rayo', 'silicona', 'cocido', 'bombillazo', 'dragon', 'supremo']);
+// (desgarrador: la guadaña de Eclipse, de dos manos; solo existe con el mapa escondido)
+export const TWO_HAND = new Set(['madera', 'plastico', 'vidrio', 'lata', 'algarrobo', 'imperial', 'camionero', 'torpedo', 'asta', 'mate47', 'campanario', 'bombillon', 'tronador', 'diablo', 'liquidificador', 'wunder', 'terere', 'rayo', 'silicona', 'cocido', 'bombillazo', 'dragon', 'supremo', 'desgarrador', 'gutmuerte', 'labrador', 'explosivo', 'caotico', 'llamarada']);
 // lo que hace (Session.act): clip y cuánto dura en el juego (s; d: lo manda el que lo hace)
 const ACTS = { drink: ['drink', 2.3], stab: ['stab', 0.8], throw: ['throw', 1.0], reload: ['reload', 2] };
 // la parte de arriba (para lo que hace) y cuánto sigue a la mirada (arriba o abajo)
@@ -644,6 +649,10 @@ function prepClips(J) {
     // (anim-online: el termo de cebar va en la mano izquierda, desde su reposo)
     iLook: ['neck', 'Head'].map((n) => names.indexOf(n)),
     handRest: tb.LeftHand.getWorldQuaternion(new THREE.Quaternion()),
+    // (entities/eclipse/personClip: los clips en otros cuerpos de Meshy, con el
+    // mismo esqueleto: el reposo de cada hueso y el largo de la pierna)
+    restW: names.map((n) => tb[n].getWorldQuaternion(new THREE.Quaternion())),
+    legLen: tb.LeftUpLeg.getWorldPosition(new THREE.Vector3()).distanceTo(tb.LeftLeg.getWorldPosition(new THREE.Vector3())) + tb.LeftLeg.getWorldPosition(new THREE.Vector3()).distanceTo(tb.LeftFoot.getWorldPosition(new THREE.Vector3())),
   };
   tmpW = names.map(() => new THREE.Quaternion());
   refA = names.map(() => new THREE.Quaternion());
@@ -866,7 +875,10 @@ function play(G, dt, g) {
   // de pie: hacia dónde mira, arriba o abajo (el lomo, el cuello y la cabeza; los
   // brazos con el arma, más)
   const upright = !r.downed && !r.dead && !r.corpse && !r.ghost && !((r.swim || 0) >= 2) && top.key !== 'kneel';
-  G.pitch += ((upright ? Math.max(-1.1, Math.min(1.1, r.pitch || 0)) : 0) - G.pitch) * Math.min(1, dt * 10);
+  // (furia11: r.desgLift, el compañero que concentra la Furia de la guadaña la
+  // levanta hacia el eclipse —brazos y mirada, como si mirara más arriba—;
+  // weapons/Desgarrador.js poseAvatar lo pone y lo saca)
+  G.pitch += ((upright ? Math.max(-1.1, Math.min(1.1, (r.pitch || 0) + (r.desgLift || 0))) : 0) - G.pitch) * Math.min(1, dt * 10);
   qY.setFromAxisAngle(UP_C, yaw);
   vr.set(1, 0, 0).applyQuaternion(qY);
   // (con el mate de una mano la derecha lo apunta igual que un arma larga; la
@@ -1325,6 +1337,11 @@ export const cineClip = (c) => ({ ...c, q: Float32Array.from(c.q), hips: Float32
 // Un clip de los de siempre (clips.json: 'tread', 'crawl', 'idle'...) para las
 // cinemáticas; null si todavía no bajaron.
 export const gauchoClip = (name) => (clipsReady() ? CL.clips[name] || null : null);
+// (entities/eclipse/personClip) los huesos, los padres y el reposo de los
+// clips, y un cuadro de un clip (W: el giro de cada hueso en el espacio del
+// modelo; H: la cadera, desde su reposo)
+export const gauchoRig = () => (clipsReady() ? CL : null);
+export const sampleClip = (c, t, loop, W, H) => sample(c, t, loop, W, H);
 
 const qT = new THREE.Quaternion();
 const qLk = new THREE.Quaternion();

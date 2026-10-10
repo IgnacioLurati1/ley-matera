@@ -84,18 +84,106 @@ export function flattenProps(w, opts = {}) {
     mesh.receiveShadow = true;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
-    // lo que el juego le cambia a un material después: a sus vértices
-    mesh.onBeforeRender = () => {
+    // lo que el juego le cambia a un material después: a sus vértices.
+    // (sesión 1f, el usuario: "FPS malos en todos lados": en Eclipse un material
+    // que late cada pocos cuadros hacía subir los 4 atributos enteros —8 MB, ~1,4
+    // MB por cuadro, el 31% del tiempo de la CPU—. Ahora solo su tramo.
+    // __mduNoFlatRange: entero, como antes)
+    const ranged = globalThis.__mduNoFlatRange !== true;
+    // (sesión 1f: en Eclipse un material de acá adentro cambiaba en CADA cuadro
+    // —un brillo que late—: subir sus vértices a la placa en cada pasada la
+    // frenaba entera: 72 → 152 fps sin eso. Lo que cambia seguido —4 veces en
+    // 3 s— sale a su propia malla con su material de verdad (cambia por
+    // uniforms, sin subir nada). __mduNoFlatLive: como antes)
+    const live = globalThis.__mduNoFlatLive !== true;
+    mesh.onBeforeRender = (renderer, scene, camera) => {
       let dirty = false;
+      const now = performance.now();
       for (const p of parts) {
+        if (p.out) continue;
+        // (su programa ya compilado aparte: recién ahí sale, sin trabar un cuadro)
+        if (p.ready) {
+          commitSplit(mesh, p);
+          continue;
+        }
         if (!changed(p)) continue;
+        if (live && !p.pending) {
+          if (p.t0 == null || now - p.t0 > 3000) {
+            p.t0 = now;
+            p.hits = 0;
+          }
+          if (++p.hits >= 4) prepareSplit(mesh, p, renderer, scene, camera);
+        }
         write(p, col, pbr, emi, refl);
         dirty = true;
+        if (ranged) for (const a of [col, pbr, emi, refl]) a.addUpdateRange(p.start * a.itemSize, p.count * a.itemSize);
       }
       if (dirty) for (const a of [col, pbr, emi, refl]) a.needsUpdate = true;
     };
     w.root.add(mesh);
   }
+}
+
+// Lo de un material que cambia seguido, fuera de la malla junta: una malla
+// propia con sus triángulos y su material (en el mismo lugar), y en la junta
+// esos vértices aplastados en un punto (triángulos vacíos). Una sola subida.
+function prepareSplit(mesh, p, renderer, scene, camera) {
+  const geo = mesh.geometry;
+  const pos = geo.attributes.position;
+  const nrm = geo.attributes.normal;
+  if (!pos?.array || pos.isInterleavedBufferAttribute || !mesh.parent) return false;
+  p.pending = true;
+  const a = p.start;
+  const n = p.count;
+  const sub = new THREE.BufferGeometry();
+  sub.setAttribute('position', new THREE.BufferAttribute(pos.array.slice(a * 3, (a + n) * 3), 3));
+  if (nrm?.array) sub.setAttribute('normal', new THREE.BufferAttribute(nrm.array.slice(a * 3, (a + n) * 3), 3));
+  if (geo.index) {
+    const I = geo.index.array;
+    const keep = [];
+    for (let i = 0; i < I.length; i += 3) if (I[i] >= a && I[i] < a + n) keep.push(I[i] - a, I[i + 1] - a, I[i + 2] - a);
+    sub.setIndex(keep);
+  }
+  sub.computeBoundingSphere();
+  const m = new THREE.Mesh(sub, p.m);
+  m.name = 'flatLive';
+  m.castShadow = mesh.castShadow;
+  m.receiveShadow = mesh.receiveShadow;
+  m.matrixAutoUpdate = false;
+  m.matrix.copy(mesh.matrix);
+  m.matrixWorld.copy(mesh.matrixWorld);
+  const done = () => (p.ready = m);
+  try {
+    if (renderer?.compileAsync) renderer.compileAsync(m, camera, scene).then(done, done);
+    else done();
+  } catch {
+    done();
+  }
+  return true;
+}
+
+function commitSplit(mesh, p) {
+  const m = p.ready;
+  p.ready = null;
+  if (!mesh.parent) return;
+  mesh.parent.add(m);
+  const pos = mesh.geometry.attributes.position;
+  const a = p.start;
+  const n = p.count;
+  const P = pos.array;
+  const x = P[a * 3];
+  const y = P[a * 3 + 1];
+  const z = P[a * 3 + 2];
+  for (let i = a; i < a + n; i++) {
+    P[i * 3] = x;
+    P[i * 3 + 1] = y;
+    P[i * 3 + 2] = z;
+  }
+  pos.addUpdateRange(a * 3, n * 3);
+  pos.needsUpdate = true;
+  p.out = m;
+  if (import.meta.env?.DEV) (globalThis.__flatSplit ||= []).push({ name: p.m.name, color: p.m.color.getHexString(), emissive: p.m.emissive.getHexString(), verts: n });
+  return true;
 }
 
 const snapOf = (m) => [m.color.r, m.color.g, m.color.b, m.emissive.r, m.emissive.g, m.emissive.b, m.emissiveIntensity, m.roughness, m.metalness];

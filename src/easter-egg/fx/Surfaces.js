@@ -315,12 +315,15 @@ function enhance(m) {
   const map = m.map;
   if (!map) return;
   const nt = !m.normalMap && map.image?.relief ? normalFor(map) : null;
-  const tile = tilingFor(map, T);
+  // (una textura que reemplaza a otra —las de piso en alta de Eclipse,
+  // world/eclipseGfxTex— lleva el suavizado y el grano de la original)
+  const as = map.userData?.tileAs || map;
+  const tile = tilingFor(as, T);
   const depth = nt ? map.image.relief.depth || 0 : 0;
   const orm = nt && !m.aoMap ? ormFor(map) : null;
   const rt = orm && orm.userData.mean != null && m.isMeshStandardMaterial && !m.roughnessMap;
   // grano fino de cerca (fx/Detail, de 4d)
-  const det = detailFor(map, T);
+  const det = detailFor(as, T);
   if (!nt && !tile && !det) return;
   const s = { q: Q, nt: !!nt, ao: !!orm, rt, roughness: m.roughness, bumpMap: m.bumpMap, bumpScale: m.bumpScale, obc: m.onBeforeCompile, key: m.customProgramCacheKey };
   saved.set(m, s);

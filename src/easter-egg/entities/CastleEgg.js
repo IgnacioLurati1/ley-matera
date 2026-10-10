@@ -313,7 +313,6 @@ export default class CastleEgg {
   }
 
   templeHint() {
-    announce(this.g, 'Los mates de la luz se templan en su altar. Se sopla el erke y el que sopló aguanta el encierro.', 5);
     this.say('fierro', FIERRO.temple, 1);
   }
 
@@ -336,7 +335,7 @@ export default class CastleEgg {
     const g = this.g;
     this.step = 8;
     this.dragon.setMode('cumbre');
-    announce(g, 'Cayó la vanguardia. El dragón bajó a la cumbre de los caballeros. Vayan a jurar.', 5, true);
+    announce(g, '', 5, true);
     this.say('fierro', FIERRO.cumbre, 2);
     this.netSync();
   }

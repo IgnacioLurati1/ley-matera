@@ -1,19 +1,19 @@
-// "Eclipse Matero", el mapa final, está en obra y escondido: todo lo suyo pide
+// "Eclipse Matero", el mapa final. Todo lo suyo pide
 // globalThis.__mduEclipse === true (config/map.js, los controles, la armería,
-// la escena nueva del Monumento...). Las pruebas lo prenden antes de cargar.
+// la escena nueva del Monumento, el capítulo 11 del libro...).
 //
-// Para probarlo a mano en el servidor de desarrollo: Alt+E en el título
-// (Game.onKey) guarda esta marca y recarga la página. Este módulo se importa
-// PRIMERO (index.js), así el switch ya está puesto cuando los demás lo leen.
-// Fuera del servidor de desarrollo (el sitio publicado, el ejecutable) la
-// marca no se mira: ahí Eclipse no existe.
+// Habilitado para todos desde el 2026-10-10 (el usuario: "Habilitá eclipse
+// también"): la marca queda puesta siempre, en el sitio publicado y en el
+// ejecutable. Este módulo se importa PRIMERO (index.js), así el switch ya está
+// puesto cuando los demás lo leen.
+// globalThis.__mduNoEclipse === true (puesto antes de cargar el juego): sin el
+// mapa, como estaba mientras se armaba.
+//
+// (ECLIPSE_KEY: la marca vieja del servidor de desarrollo, Alt+E en el título;
+// ya no decide nada.)
 
 export const ECLIPSE_KEY = 'lm-zombies-eclipse';
 
-try {
-  if (import.meta.env.DEV && localStorage.getItem(ECLIPSE_KEY) === '1') globalThis.__mduEclipse = true;
-} catch {
-  // (sin localStorage: queda apagado)
-}
+if (globalThis.__mduNoEclipse !== true) globalThis.__mduEclipse = true;
 
 export const eclipseOn = () => globalThis.__mduEclipse === true;

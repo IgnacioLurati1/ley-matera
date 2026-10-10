@@ -44,17 +44,18 @@ export function spawnDelay(round) {
 }
 
 // Velocidad (2026-09-27, pedido del usuario; el Challenge de la torre sigue con
-// rollSpeedClassic): de la 1 a la 3 caminan (cada ronda un poco más ligero,
-// walkPace); de la 4 a la 7 salen caminando y se largan a correr a medida que
-// caen los números (runShare: cada ronda, más); desde la 8 corren todos y de a
-// poco se suman los rapidísimos. Desde la 3, el último corre siempre (Zombies).
+// rollSpeedClassic; 2026-10-08: todo una ronda antes): la 1 y la 2 caminan (cada
+// ronda un poco más ligero, walkPace); de la 3 a la 6 salen caminando y se largan
+// a correr a medida que caen los números (runShare: cada ronda, más); desde la 7
+// corren todos y de a poco se suman los rapidísimos. Desde la 2, el último corre
+// siempre; desde la 10, los dos últimos van rapidísimos (Zombies).
 export function rollSpeed(round, rand = Math.random) {
-  if (round < 8) return 'walk';
+  if (round < 7) return 'walk';
   return rand() < sprintShare(round) ? 'sprint' : 'run';
 }
 
-// La parte de rapidísimos: desde la 9, un 10% más por ronda (tope 80%).
-export const sprintShare = (round) => (round < 8 ? 0 : Math.min(0.8, (round - 8) * 0.1));
+// La parte de rapidísimos: desde la 8, un 10% más por ronda (tope 80% en la 15).
+export const sprintShare = (round) => (round < 7 ? 0 : Math.min(0.8, (round - 7) * 0.1));
 
 // En las actividades del easter egg donde hay que aguantar (encierros,
 // rituales, la defensa del yerbal...): como mínimo corren, y los rapidísimos
@@ -66,12 +67,13 @@ export function rollSpeedHold(round, rand = Math.random) {
 // El paso de los que caminan: x0,94 en la 1, +0,05 por ronda hasta la 7.
 export const walkPace = (round) => 0.94 + Math.min(Math.max(round, 1) - 1, 6) * 0.05;
 
-// De la 4 a la 7: la parte de los muertos que ya corre con la ronda en q
-// (0 al arrancar, 1 con el último); arranca a subir con el 10% caído.
-const RUN_TOP = { 4: 0.35, 5: 0.55, 6: 0.75, 7: 0.9 };
+// De la 3 a la 6: la parte de los muertos que ya corre con la ronda en q
+// (0 al arrancar, 1 con el último); sube desde el primero caído y llega al
+// tope con el 70% caído.
+const RUN_TOP = { 3: 0.3, 4: 0.5, 5: 0.7, 6: 0.85 };
 export function runShare(round, q) {
   const top = RUN_TOP[round];
-  return top ? top * Math.min(1, Math.max(0, (q - 0.1) / 0.7)) : 0;
+  return top ? top * Math.min(1, Math.max(0, q / 0.7)) : 0;
 }
 
 // La de antes (la usa el Challenge): cada zombie tira un número en [ronda*8, ronda*8+35].

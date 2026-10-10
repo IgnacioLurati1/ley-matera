@@ -60,11 +60,18 @@ function buildBasamento(w, gb, extra) {
   // el nicho de la Madre Patria: un arco de medio punto de 0,85 de hondo
   niche(gb, B.x0, 28.4, 32.6, yA + 0.3, 5.6, 0.85);
   // el pedestal y la Madre Patria (bronce, de espaldas a la Torre, mirando al Patio)
-  bbox(gb, 'travertino', B.x0 + 0.05, yA, 29.2, B.x0 + 0.85, yA + 0.6, 31.8, { b: 0.03, top: 'travStep' });
+  // (2026-10-09, el usuario: "la estatua del frente del Monumento está
+  // bugueada, está adentro de la pared": en la isla de Eclipse —la Torre va
+  // sin su atrio— la pared del borde del Patio tapa el nicho y la estatua
+  // quedaba atrás, con las manos asomando. Ahí no se arma acá: la pone
+  // world/eclipse/monumento.js delante de la pared, bajo el arco.
+  // globalThis.__mduOldEclMadre: en el nicho, como antes)
+  const madre = !(w.transplanted && globalThis.__mduOldEclMadre !== true);
+  if (madre) bbox(gb, 'travertino', B.x0 + 0.05, yA, 29.2, B.x0 + 0.85, yA + 0.6, 31.8, { b: 0.03, top: 'travStep' });
   // (las estatuas de afuera, con su material que se prende con los reflectores: world/monumentoLuces.js)
   const LB = globalThis.__mduNoTorreLuz === true ? M.bronze : M.bronzeLit;
   const LM = globalThis.__mduNoTorreLuz === true ? M.marble : M.marbleLit;
-  extra.push(...statue('madre', LB, B.x0 + 0.45, yA + 0.6, 30.5, -Math.PI / 2, 1.3));
+  if (madre) extra.push(...statue('madre', LB, B.x0 + 0.45, yA + 0.6, 30.5, -Math.PI / 2, 1.3));
   // el reflector del piso del atrio que la alumbra (se prende con la luz:
   // config LIGHTS), una caja de bronce con el vidrio mirando al nicho
   bbox(gb, 'bronzeDark', 64.08, yA, 30.22, 64.42, yA + 0.08, 30.78, { b: 0.01 });

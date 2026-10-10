@@ -216,7 +216,7 @@ export default class PapLlama {
     this.torch.at = 'stand';
     this.torch.pos.copy(this.standPos);
     this.torch.fuel = 1;
-    announce(g, 'La mecha prendió la antorcha. Llevala a la Llama Votiva, en el Propileo.', 4.5, true);
+    announce(g, '', 4.5, true);
     this.sync({ cn: 1 });
   }
 
@@ -471,7 +471,7 @@ export default class PapLlama {
     // muerde algo enorme: el Surubí (si está), si no, la pava sale sola
     if (g.surubi?.emergeWithPava) {
       this.st = 3;
-      announce(g, globalThis.__mduNoLlamaText ? '¡Algo enorme muerde! ¡El Surubí del Paraná!' : '¡El Surubí tiene la pava! Lastimalo y la suelta.', 4, true);
+      announce(g, '', 4, true);
       g.surubi.emergeWithPava(() => this.pavaOut());
     } else this.pavaOut();
     this.sync();
@@ -485,7 +485,7 @@ export default class PapLlama {
     this.pava.at = 'floor';
     this.pava.pos.set(cx - 1.4, g.world.floorAt(cx - 1.4, cz), cz + 0.6);
     g.water?.splash?.(cx + 2, cz, 2);
-    announce(g, globalThis.__mduNoPavaRun ? 'La pava de la Llama. Llevala al Propileo (pesa).' : 'La pava de la Llama. Llevala a la Llama del Propileo.', 4, true);
+    announce(g, '', 4, true);
     this.sync();
   }
 
@@ -529,7 +529,7 @@ export default class PapLlama {
       this.st = 2;
       this.torch.at = 'none';
       this.torch.carrier = -1;
-      announce(g, globalThis.__mduNoLlamaText ? '¡La Llama Votiva arde! Arriba no hay pava: se la llevó el río.' : '¡La Llama Votiva arde! Falta la pava: se pesca con la caña del muelle.', 4.5, true);
+      announce(g, '', 4.5, true);
       this.sync();
     }
     g.fx.flash(this.q.pap.group.position.clone().setY(LLAMA_Y + 2), 0xffa040, 40, 0.5, 20);

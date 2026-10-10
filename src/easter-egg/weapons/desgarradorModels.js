@@ -463,7 +463,9 @@ const HOT = new THREE.Color(1, 0.86, 0.6);
 const PINK = new THREE.Color(1, 0.38, 0.78);
 const PINKG = new THREE.Color(1, 0.62, 0.8);
 const WHITE = new THREE.Color(1, 0.95, 1);
-export function tintMats(M, mode, k = 1, beat = 0, breath = 0.5) {
+// (furia11) under 'divine': de la quieta divina de la del Eclipse hacia `mode`
+// sin salto (concentrando la Furia: lo divino se va en 1 - k mientras entra el neón).
+export function tintMats(M, mode, k = 1, beat = 0, breath = 0.5, under = null) {
   const B = M.base;
   // el filo y la corona respiran siempre (lento)
   const br = 0.78 + 0.36 * breath;
@@ -481,15 +483,18 @@ export function tintMats(M, mode, k = 1, beat = 0, breath = 0.5) {
   if (mode === 'base' || k <= 0) return;
   // (v3) la del Eclipse quieta: la corona y el halo prendidos, el cosmos más
   // vivo y el filo de oro que late (poder divino también en la mano)
-  if (mode === 'divine') {
+  if (mode === 'divine' || under === 'divine') {
     const d = 0.75 + 0.5 * breath;
-    M.coronaGold.color.multiplyScalar(1.35 * d);
-    M.halo.color.multiplyScalar(1.7 * d);
-    M.edgeGold.color.multiplyScalar(1.1 + 0.25 * beat);
-    M.nebula.color.multiplyScalar(1.15);
-    M.stars.color.multiplyScalar(1.3);
-    M.shaftUp.emissiveIntensity += 0.6 * d;
-    return;
+    // (cuánto de lo divino: entero, o lo que queda debajo del otro tinte)
+    const wd = mode === 'divine' ? 1 : Math.max(0, 1 - k);
+    const dv = (x) => 1 + (x - 1) * wd;
+    M.coronaGold.color.multiplyScalar(dv(1.35 * d));
+    M.halo.color.multiplyScalar(dv(1.7 * d));
+    M.edgeGold.color.multiplyScalar(dv(1.1 + 0.25 * beat));
+    M.nebula.color.multiplyScalar(dv(1.15));
+    M.stars.color.multiplyScalar(dv(1.3));
+    M.shaftUp.emissiveIntensity += 0.6 * d * wd;
+    if (mode === 'divine') return;
   }
   if (mode === 'flare') {
     const f = 1 + 1.1 * k;
@@ -501,13 +506,20 @@ export function tintMats(M, mode, k = 1, beat = 0, breath = 0.5) {
   const C = mode === 'exec' ? PINK : NEON;
   const G = mode === 'exec' ? PINKG : HOT;
   const g = 1 + beat * 0.4;
-  M.nebula.color.lerp(_c.copy(C).multiplyScalar(1.45 * g), k);
-  M.stars.color.lerp(_c.copy(C).multiplyScalar(1.8 * g), k);
-  M.edge.color.lerp(_c.copy(C).multiplyScalar(2.6 * g), k);
-  M.edgeGold.color.lerp(_c.copy(G).multiplyScalar(1.9 * g), k);
-  M.corona.color.lerp(_c.copy(C).multiplyScalar(2.4 * g), k);
-  M.coronaGold.color.lerp(_c.copy(G).multiplyScalar(2.1 * g), k);
-  M.halo.color.lerp(_c.copy(NEON).multiplyScalar(0.45 * g), k);
+  // (guadana5: con la Furia la hoja entera se lavaba en una mancha blanca con
+  // el bloom: el cuerpo queda oscuro y profundo, el neón va en el filo.
+  // globalThis.__mduDesgOldFuriaTint: como antes)
+  const OLDF = globalThis.__mduDesgOldFuriaTint === true;
+  M.nebula.color.lerp(_c.copy(C).multiplyScalar((OLDF ? 1.45 : 0.75) * g), k);
+  M.stars.color.lerp(_c.copy(C).multiplyScalar((OLDF ? 1.8 : 1.5) * g), k);
+  // (guadana5: el filo menos encendido: con el resplandor, la hoja era una
+  // mancha de luz delante de la cara)
+  const eK = OLDF ? 1 : 0.62;
+  M.edge.color.lerp(_c.copy(C).multiplyScalar(2.6 * g * eK), k);
+  M.edgeGold.color.lerp(_c.copy(G).multiplyScalar(1.9 * g * eK), k);
+  M.corona.color.lerp(_c.copy(C).multiplyScalar(2.4 * g * eK), k);
+  M.coronaGold.color.lerp(_c.copy(G).multiplyScalar(2.1 * g * eK), k);
+  M.halo.color.lerp(_c.copy(NEON).multiplyScalar((OLDF ? 0.45 : 0.18) * g), k);
   M.shards.color.lerp(_c.copy(WHITE).multiplyScalar(1.4 * g), k);
   M.shaft.emissiveIntensity += k * (1.8 + beat);
   M.shaftUp.emissiveIntensity += k * (2.2 + beat);
@@ -602,7 +614,8 @@ const _n = new THREE.Vector3();
 // Mueve las esquirlas (siempre) y, si bolts, rehace los rayos cada tanto.
 export function animScythe(time, dt, bolts = false) {
   const F = fxSets();
-  for (const S of F.shards) {
+  // (guadana5: las esquirlas ya no se ven: no se mueven)
+  for (const S of globalThis.__mduDesgOldBubbles === true ? F.shards : []) {
     const L = CURVES[S.up].main;
     const P = S.g.attributes.position.array;
     for (let i = 0; i < S.list.length; i++) {
@@ -787,7 +800,11 @@ export function buildScythe(up = 0, M = cosmicMats('vm')) {
   add(G.cosmos, M.stars, 3);
   if (G.halo) add(G.halo, M.halo, 4);
   const F = fxSets();
-  add(F.shards[up].g, M.shards).frustumCulled = false;
+  // (guadana5: las esquirlas que flotaban alrededor de la hoja eran las
+  // "burbujitas totalmente de más": escondidas. globalThis.__mduDesgOldBubbles: vuelven)
+  const shardM = add(F.shards[up].g, M.shards);
+  shardM.frustumCulled = false;
+  shardM.visible = globalThis.__mduDesgOldBubbles === true;
   const bolts = add(F.bolts[up].g, M.bolts, 5);
   bolts.frustumCulled = false;
   bolts.visible = false;
@@ -815,7 +832,33 @@ export function desgarradorModel(up = 0, M = null) {
   const s = buildScythe(up, M || cosmicMats('world'));
   s.group.userData.cosmic = { tip: s.tip, mid: s.mid, bolts: s.bolts };
   s.group.name = up ? 'desgarradorEclipse' : 'desgarradorCosmico';
+  // (v4) la del Eclipse de tamaño real (el muñeco de un compañero, la caja):
+  // los aros de eclipse que giran en la cabeza, para que de lejos se lea otra
+  // cosa que la común (globalThis.__mduNoDesgOrb: sin ellos)
+  if (up && globalThis.__mduNoDesgOrb !== true) s.group.add(worldOrb());
   return s.group;
+}
+let WORB = null;
+function worldOrb() {
+  if (!WORB) {
+    const add = (c) => new THREE.MeshBasicMaterial({ color: c, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false });
+    WORB = { gold: add(new THREE.Color(1, 0.72, 0.3).multiplyScalar(1.5)), violet: add(new THREE.Color(0.6, 0.25, 1).multiplyScalar(1.3)), g1: new THREE.TorusGeometry(0.2, 0.007, 6, 56), g2: new THREE.TorusGeometry(0.165, 0.005, 6, 48) };
+  }
+  const o = new THREE.Group();
+  o.position.set(0, TOP_Y + 0.02, 0);
+  const a = new THREE.Mesh(WORB.g1, WORB.gold);
+  const b = new THREE.Mesh(WORB.g2, WORB.violet);
+  a.renderOrder = b.renderOrder = 5;
+  o.add(a, b);
+  // (gira sola al dibujarse)
+  a.onBeforeRender = () => {
+    const t = performance.now() / 1000;
+    a.rotation.set(1.1 + Math.sin(t * 0.7) * 0.2, t * 1.4, 0);
+    b.rotation.set(-0.6, -t * 2.1, 0.4);
+    a.updateMatrixWorld();
+    b.updateMatrixWorld();
+  };
+  return o;
 }
 
 // La de la caja misteriosa (world/Interactables boxModel la agranda x2,6 y la

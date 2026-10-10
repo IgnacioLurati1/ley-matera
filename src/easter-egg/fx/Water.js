@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ZONES } from '../config/map';
 import SliceWalk from './sliceWalk';
+import { pxScale, flatOf, upRow } from '../core/sizeCull';
 
 // El agua de los mapas que la tienen (el río del penal, los esteros): una sola
 // superficie a la altura `level` que sigue a la cámara. Lo que tiene:
@@ -91,6 +92,82 @@ const tmpM = new THREE.Matrix4();
 const tmpR = { x0: 0, x1: 0, y0: 0, y1: 0 };
 // objetos de la escena que revisa cullList por cuadro (fx/sliceWalk.js)
 const CULL_N = 300;
+
+// Lo instanciado que en pantalla mide menos de MIRROR_TINY px de radio (la
+// copia más cercana a la cámara): escombros que flotan, flores, piedras que
+// orbitan de las otras islas. En el espejo —a media resolución y movido por las
+// olas— no se distingue y cada malla era un dibujo. Se guarda dónde está cada
+// copia y se vuelve a mirar si cambian. Solo Eclipse (cambia algo la imagen: unos
+// puntos). globalThis.__mduNoMirrorTiny: como antes.
+const MIRROR_TINY = 4;
+const instMemo = new WeakMap();
+function tinyInst(o, cp, k) {
+  if (!(k > 0) || !o.count) return false;
+  const geo = o.geometry;
+  if (!geo?.attributes?.position) return false;
+  let I = instMemo.get(o);
+  if (!I || I.v !== o.instanceMatrix.version || I.n !== o.count) {
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    const g0 = geo.boundingSphere.center;
+    const a = o.instanceMatrix.array;
+    const m = o.matrixWorld.elements;
+    const c = I?.c?.length === o.count * 3 ? I.c : new Float32Array(o.count * 3);
+    let s2 = 0;
+    for (let j = 0; j < o.count; j++) {
+      const b = j * 16;
+      s2 = Math.max(s2, a[b] * a[b] + a[b + 1] * a[b + 1] + a[b + 2] * a[b + 2], a[b + 4] * a[b + 4] + a[b + 5] * a[b + 5] + a[b + 6] * a[b + 6], a[b + 8] * a[b + 8] + a[b + 9] * a[b + 9] + a[b + 10] * a[b + 10]);
+      const x = a[b] * g0.x + a[b + 4] * g0.y + a[b + 8] * g0.z + a[b + 12];
+      const y = a[b + 1] * g0.x + a[b + 5] * g0.y + a[b + 9] * g0.z + a[b + 13];
+      const z = a[b + 2] * g0.x + a[b + 6] * g0.y + a[b + 10] * g0.z + a[b + 14];
+      c[j * 3] = m[0] * x + m[4] * y + m[8] * z + m[12];
+      c[j * 3 + 1] = m[1] * x + m[5] * y + m[9] * z + m[13];
+      c[j * 3 + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+    }
+    I = { v: o.instanceMatrix.version, n: o.count, c, r: geo.boundingSphere.radius * Math.sqrt(s2) * o.matrixWorld.getMaxScaleOnAxis() };
+    instMemo.set(o, I);
+  }
+  // (con que una copia mida más, se dibuja)
+  const lim = (I.r * k) / MIRROR_TINY;
+  const lim2 = lim * lim;
+  const c = I.c;
+  for (let j = 0; j < I.n; j++) {
+    const dx = c[j * 3] - cp.x;
+    const dy = c[j * 3 + 1] - cp.y;
+    const dz = c[j * 3 + 2] - cp.z;
+    if (dx * dx + dy * dy + dz * dz < lim2) return false;
+  }
+  return true;
+}
+
+// ¿Todo lo de la malla es plano y mira para arriba, de una sola cara? (desde
+// abajo del agua se ve de atrás: three no lo pinta). Por la geometría de verdad
+// (core/sizeCull flatOf: todos los triángulos paralelos y del mismo lado) y la
+// matriz de la malla (y la de cada copia, si es instanciada). Se guarda y se
+// vuelve a mirar si cambia la geometría, la matriz o las copias.
+const upMemo = new WeakMap();
+const upM = new THREE.Matrix4();
+const upI = new THREE.Matrix4();
+function faceUp(o) {
+  const m = o.material;
+  if (!m || Array.isArray(m) || m.side !== THREE.FrontSide || m.isShaderMaterial || m.isRawShaderMaterial || m.displacementMap) return false;
+  if (o.isSkinnedMesh || o.isBatchedMesh) return false;
+  const U = flatOf(o);
+  if (U === null) return false;
+  const e = o.matrixWorld.elements;
+  const iv = o.isInstancedMesh ? o.instanceMatrix.version : 0;
+  const n = o.isInstancedMesh ? o.count : 0;
+  const M = upMemo.get(o);
+  if (M && M.U === U && M.iv === iv && M.n === n && M.e.every((v, i) => v === e[i])) return M.up;
+  let up = true;
+  if (o.isInstancedMesh) {
+    for (let j = 0; j < n && up; j++) {
+      o.getMatrixAt(j, upI);
+      up = upRow(upM.multiplyMatrices(o.matrixWorld, upI).elements, U);
+    }
+  } else up = upRow(e, U);
+  upMemo.set(o, { U, iv, n, e: Array.from(e), up });
+  return up;
+}
 // las matas bajas del pasto (cuadros instanciados con material userData.foliage)
 // van en el espejo solo hasta tantos metros del borde del cuadro: más lejos su
 // reflejo queda detrás de la orilla o es una raya en el agua movida, y en el
@@ -1236,8 +1313,25 @@ export default class Water {
       // (medio cuadro de margen: el que llegaría tarde va en este)
       // (con la cámara quieta y el agua a la vista en pocas franjas, la mitad de
       // seguido: stripSlow)
-      const every = globalThis.__mduRefl12 === true ? 12 : (REFL_MS - dt * 500) * (this.stripSlow(camera) ? 2 : 1);
+      // (Eclipse, agente rend 2026-10-06: "los reflejos van con lag al
+      // moverte". Con más de ~60 cuadros por segundo el espejo se rehacía cada
+      // dos o tres, y partido en dos mitades de cuadros distintos: el reflejo
+      // quedaba de una cámara 1-3 cuadros vieja. Con la cámara en movimiento va
+      // entero, en cada cuadro y sin el recorte del cuadro anterior; quieta,
+      // como siempre. globalThis.__mduNoEclReflLive: como antes)
+      // (2026-10-09, el usuario: "lo que titila es la cinemática inicial" de Mate
+      // no Numa. La cámara de la entrada nunca para: el espejo se rehacía cada
+      // 4 cuadros —partido en dos— y en cada uno el reflejo del pajonal lejano
+      // cambiaba de golpe; en el medio quedaba quieto: 45 saltos por segundo.
+      // En la partida se veía bien y así queda —sin el costo—; en las
+      // entradas, como en Eclipse: entero y en cada cuadro mientras la cámara
+      // se mueve. globalThis.__mduOldIntroRefl: como antes)
+      const cineLive = !!this.g.intro?.active && globalThis.__mduOldIntroRefl !== true;
+      const live = (this.g.mapId === 'eclipse' || cineLive) && globalThis.__mduNoEclReflLive !== true && this.camMoved(camera);
+      const every = live ? 0 : globalThis.__mduRefl12 === true ? 12 : (REFL_MS - dt * 500) * (this.stripSlow(camera) ? 2 : 1);
       let on = true;
+      if (live && this.job?.on) this.job.on = false;
+      this.noCut = live;
       // (la segunda mitad del espejo partido; partido solo si el anterior está
       // y sobran cuadros: con menos de ~90 por segundo, entero como siempre)
       if (this.job?.on && u.uPlanar.value === 1) this.reflect(renderer, scene, null, 2);
@@ -1248,7 +1342,7 @@ export default class Water {
           this.stripMark(camera);
           // (de a tajadas por cuadro; la primera vez, entera)
           this.cullList(scene, tmpC, this.hide ? CULL_N : Infinity);
-          const split = u.uPlanar.value === 1 && dt < REFL_MS / 2000 && globalThis.__mduNoReflSplit !== true;
+          const split = !live && u.uPlanar.value === 1 && dt < REFL_MS / 2000 && globalThis.__mduNoReflSplit !== true;
           this.reflect(renderer, scene, rc, split ? 1 : 0);
         } else on = false;
       }
@@ -1558,12 +1652,19 @@ export default class Water {
         return;
       }
       if (!o.isMesh) return;
+      // (lo plano que mira para arriba y es de una cara —pisos, charcos, calcos
+      // de sangre, marcas— la cámara del espejo, abajo del agua, lo ve de atrás:
+      // no se ve nunca y se dibujaba igual. globalThis.__mduNoMirrorUp: como antes)
+      if (globalThis.__mduNoMirrorUp !== true && faceUp(o)) {
+        N.push(o);
+        return;
+      }
       if (o.isInstancedMesh) {
         if (o.material?.userData?.foliage && globalThis.__mduAllMirror !== true) {
           if (!o.boundingSphere) o.computeBoundingSphere();
           const s = tmpSph.copy(o.boundingSphere).applyMatrix4(o.matrixWorld);
           if (s.center.distanceTo(cp) - s.radius > MIRROR_FOL) N.push(o);
-        }
+        } else if (this.g.mapId === 'eclipse' && globalThis.__mduNoMirrorTiny !== true && tinyInst(o, cp, pxScale(this.g.camera))) N.push(o);
         return;
       }
       const geo = o.geometry;
@@ -1620,7 +1721,18 @@ export default class Water {
     mc.updateMatrixWorld();
     mc.projectionMatrix.copy(camera.projectionMatrix);
     const rc = globalThis.__mduNoReflRect === true ? RECT_FULL : this.waterRect(mc, tmpC);
-    return rc && this.stripCut(rc, camera);
+    return rc && (this.noCut ? rc : this.stripCut(rc, camera));
+  }
+
+  // ¿Se movió o giró la cámara desde el cuadro anterior? (el espejo vivo de Eclipse)
+  camMoved(camera) {
+    const p = tmpA.setFromMatrixPosition(camera.matrixWorld);
+    const d = tmpB.set(0, 0, -1).transformDirection(camera.matrixWorld);
+    const L = (this.camLast ||= { p: new THREE.Vector3(1e9, 0, 0), d: new THREE.Vector3() });
+    const moved = p.distanceToSquared(L.p) > 1e-4 || d.dot(L.d) < 0.99999;
+    L.p.copy(p);
+    L.d.copy(d);
+    return moved;
   }
 
   // Los casilleros de agua [x, z, hondura con el nivel de siempre] (la más
@@ -1812,6 +1924,21 @@ export default class Water {
       if (!o.visible) continue;
       o.visible = false;
       off.push(o);
+    }
+    // (2026-10-09, la entrada de Mate no Numa titilaba: con el espejo apagado el
+    // agua quedaba lisa; lo que titilaba era el pajonal reflejado —miles de
+    // cañas finas sin la niebla ni el suavizado de la imagen— que desde la
+    // cámara baja de la entrada era un ruido de puntitos. En las entradas el
+    // pajonal y las matas no van al espejo: se reflejan la canoa, los árboles,
+    // los irupés y el cielo. En la partida, como siempre.
+    // globalThis.__mduOldIntroRefl: como antes)
+    if (this.g.intro?.active && globalThis.__mduOldIntroRefl !== true) {
+      const w = this.g.world;
+      for (const o of [w?.pajonal, ...(Array.isArray(w?.tussocks) ? w.tussocks : [w?.tussocks])]) {
+        if (!o?.isObject3D || !o.visible) continue;
+        o.visible = false;
+        off.push(o);
+      }
     }
     // (las sombras las hace el mundo: antes de él, un needsUpdate pendiente
     // se gastaba acá)

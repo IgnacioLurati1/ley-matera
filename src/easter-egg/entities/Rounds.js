@@ -86,7 +86,6 @@ export default class Rounds {
   floodEnd() {
     const g = this.g;
     g.water?.setLevel(WATER_Y ?? 0, 8);
-    g.hud.subtitle('Baja el agua... por ahora.', 3);
     g.ee?.onFlood?.(false);
   }
 
@@ -328,8 +327,6 @@ export default class Rounds {
       this.dogs = false;
       g.powerups.drop(this.lastDogPos || g.player.pos.clone(), true, 'maxammo');
       g.weather?.set('clear', false);
-      const bye = { horse: 'La tropilla se perdió en el maizal... por ahora.', puma: 'Los pumas se volvieron a la montaña... por ahora.', paloma: 'Las palomas volvieron a la Torre... por ahora.' };
-      g.hud.subtitle(bye[FEATURES.special] || 'La manada se volvió al estero... por ahora.', 3);
     }
     this.state = 'break';
     g.defense?.onRoundEnd();

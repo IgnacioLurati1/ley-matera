@@ -30,14 +30,6 @@ const WATCH_MAX = 50; // si nadie lo ve, igual se va
 const WATCH_SEEN = 0.2; // cuánto lo tienen que mirar para que se esconda (s)
 const WATCH_ANG = 0.12; // la mirada: qué tan derecho (rad)
 const WATCH_NEAR = 5; // más cerca que esto, se esconde aunque no lo miren
-const NAMES = {
-  maxammo: 'la munición máxima',
-  insta: 'la muerte instantánea',
-  double: 'los puntos dobles',
-  nuke: 'el Kaboom',
-  carpenter: 'el carpintero',
-  firesale: 'la liquidación',
-};
 
 const tmpV = new THREE.Vector3();
 const tmpE = new THREE.Vector3();
@@ -278,8 +270,6 @@ export default class Pombero {
     this.item = item;
     this.setState('appear');
     this.appearFx();
-    g.hud.subtitle('Se oye un silbido... ¡el Pombero viene por el potenciador!', 3.5);
-    g.net?.event('sub', { x: 'Se oye un silbido... ¡el Pombero viene por el potenciador!', d: 3.5 });
     return true;
   }
 
@@ -581,10 +571,7 @@ export default class Pombero {
     this.carry = { id: it.id, type: it.type, mesh: it.mesh };
     this.item = null;
     g.audio.laugh?.(tmpV.set(this.z.pos.x, 1, this.z.pos.z));
-    const text = `¡El Pombero se lleva ${NAMES[it.type] || 'el potenciador'}! Liquidalo antes de que se escape.`;
-    g.hud.subtitle(text, 3.5);
     g.net?.event('pomb', { a: 'grab', id: it.id, type: it.type });
-    g.net?.event('sub', { x: text, d: 3.5 });
     this.flee();
   }
 
@@ -607,11 +594,6 @@ export default class Pombero {
   vanish() {
     const g = this.g;
     this.appearFx();
-    if (this.carry) {
-      const text = `El Pombero se escapó con ${NAMES[this.carry.type] || 'el potenciador'}.`;
-      g.hud.subtitle(text, 3);
-      g.net?.event('sub', { x: text, d: 3 });
-    }
     g.net?.event('pomb', { a: 'gone' });
     this.hide();
   }
@@ -686,12 +668,6 @@ export default class Pombero {
       const { id, type: pup } = this.carry;
       this.dropCarry();
       g.powerups.apply(pup, id);
-      const text = `¡Le sacaste ${NAMES[pup] || 'el potenciador'} al Pombero!`;
-      g.hud.subtitle(text, 3);
-      g.net?.event('sub', { x: text, d: 3 });
-    } else {
-      g.hud.subtitle('¡Liquidaste al Pombero!', 2.5);
-      g.net?.event('sub', { x: '¡Liquidaste al Pombero!', d: 2.5 });
     }
   }
 

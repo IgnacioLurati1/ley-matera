@@ -18,6 +18,14 @@ import { ELEV } from '../../world/monumentoTorre';
 // - La primera vez que llega arriba se abre la zona del Mirador (I).
 // En línea lo decide el anfitrión y viaja por 'pee' (k: 'asc'), como el resto
 // del easter egg (entities/MonumentoEgg.js).
+// - Los muertos (el usuario, 2026-10-07): con la puerta cerrada no la cruzan
+//   (blockDoors), al que viaja no lo buscan ni le pegan (riding; lo miran
+//   MonumentoEgg.noTarget y .lift), y los que quedan en el otro nivel sin nadie
+//   a quien alcanzar vuelven a la cola de la ronda (strays): antes entraban a
+//   la cabina y se quedaban contra las paredes.
+// - En línea, a los compañeros que viajan cada compu los lleva (showRider): el
+//   que viaja con ellos los ve quietos en su cabina; el de afuera ve la silueta
+//   subir o bajar por el fuste. Antes quedaban parados y saltaban a la otra punta.
 
 const COST = 250;
 const CLOSE_T = 1.0;
@@ -30,6 +38,9 @@ const FLOORS = ['C', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '1
 const tmpV = new THREE.Vector3();
 
 const isHost = (g) => !g.net || g.net.host;
+// En qué nivel está algo a la altura y: 0, todo lo de abajo; 1, el Mirador
+// (solo se llega en ascensor); 2, el patio de la 2043 (por el portal).
+export const nivel = (y) => (y > 100 ? 2 : y > 40 ? 1 : 0);
 // el avance del viaje: arranca y frena suave
 const ease = (k) => (k < 0.5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k));
 
@@ -143,7 +154,11 @@ export default class Ascensor {
       const into = -face;
       const S = { k, D, y: D.y, face, into, open: k === 'low' ? 1 : 0, front: new THREE.Vector3(D.x + face * 0.85, D.y, D.z) };
       // las puertas cerradas frenan (en el vano)
-      S.doorBox = g.world.addBox([Math.min(D.x, D.x + into * 0.12), D.y, D.z - D.hw, Math.max(D.x, D.x + into * 0.12), D.y + ELEV.top, D.z + D.hw], { kind: 'prop', shoot: true });
+      // (navFree: no cortan el camino de los muertos. La hoja queda justo en la
+      // raya de la celda y, si el camino se rehacía con la puerta cerrada, la
+      // cabina quedaba aislada: parado adentro de la del Mirador los muertos
+      // salían abajo, por las ventanas del Patio. Cerrada, los frena blockDoors)
+      S.doorBox = g.world.addBox([Math.min(D.x, D.x + into * 0.12), D.y, D.z - D.hw, Math.max(D.x, D.x + into * 0.12), D.y + ELEV.top, D.z + D.hw], { kind: 'prop', shoot: true, navFree: globalThis.__mduNoAscZ !== true });
       this.stops[k] = S;
       this.buildCab(S);
     }
@@ -317,7 +332,8 @@ export default class Ascensor {
 
   // ---------------- el viaje ----------------
   go(from, to) {
-    this.ride = { from, to, t: 0, me: false };
+    this.endRiders();
+    this.ride = { from, to, t: 0, me: false, co: new Map() };
     this.st.at = to;
     this.sfxDoors(this.stops[from]);
   }
@@ -325,7 +341,6 @@ export default class Ascensor {
   update(dt) {
     const g = this.g;
     this.cool = Math.max(0, this.cool - dt);
-    if (isHost(g)) this.strays(dt);
     const R = this.ride;
     for (const S of Object.values(this.stops)) {
       // las hojas: abiertas en la parada donde está la cabina (si no viaja)
@@ -344,6 +359,8 @@ export default class Ascensor {
       S.btn.emissiveIntensity = lit;
       S.btnIn.emissiveIntensity = lit;
     }
+    if (isHost(g) && globalThis.__mduNoAscZ !== true) this.blockDoors();
+    if (isHost(g)) this.strays(dt);
     if (!R) return;
     R.t += dt;
     const P = g.player;
@@ -361,6 +378,15 @@ export default class Ascensor {
         R.yaw0 = P.yaw;
         P.ride = () => this.hold();
         this.sfxRide(R.to === 'high');
+      }
+      // los compañeros que quedaron adentro: cada compu los lleva (showRider)
+      if (g.net && A !== B && globalThis.__mduNoAscNet !== true) {
+        this.fixFn ||= (x) => this.showRider(x);
+        for (const r of g.net.remote.values()) {
+          if (r.dead || r.downed || !this.inside(A, r.pos)) continue;
+          R.co.set(r, { u: (r.pos.x - A.D.x) * A.into, v: (r.pos.z - A.D.z) * A.into, yaw: r.yaw });
+          r.fix = this.fixFn;
+        }
       }
     }
     // el viaje: el indicador cuenta los pisos y la mirilla corre (todas las cabinas)
@@ -400,8 +426,75 @@ export default class Ascensor {
     if (R.t >= CLOSE_T + RIDE_T + OPEN_T) {
       if (R.me && P.ride) P.ride = null;
       for (const S of Object.values(this.stops)) for (const t of S.shaft) t.offset.y = 0;
+      this.endRiders();
       this.ride = null;
       this.cool = COOL;
+    }
+  }
+
+  // ¿Ese jugador (el local o uno de la red, el objeto) va en el ascensor?
+  // Desde que se empiezan a cerrar las puertas (el que está adentro) hasta
+  // que se abren en la otra punta.
+  riding(p) {
+    const R = this.ride;
+    if (!R || !p || R.from === R.to) return false;
+    if (R.t >= CLOSE_T + RIDE_T + OPEN_T * 0.6) return false;
+    if (R.t < CLOSE_T || !R.checked) return this.inside(this.stops[R.from], p.pos);
+    return p === this.g.player ? !!R.me : R.co.has(p);
+  }
+
+  // Un compañero que viaja, como se ve en esta compu (lo llama net/Session
+  // interpolate con lo que mandó la suya ya puesto en r.pos y r.yaw; su compu lo
+  // tiene quieto en la cabina de salida y, a la mitad, en la de llegada, dado vuelta).
+  showRider(r) {
+    const R = this.ride;
+    const c = R?.co.get(r);
+    if (!c || R.t >= CLOSE_T + RIDE_T + OPEN_T * 0.6) {
+      r.fix = null;
+      return;
+    }
+    const A = this.stops[R.from];
+    const B = this.stops[R.to];
+    const p = ease(Math.min(1, Math.max(0, (R.t - CLOSE_T) / RIDE_T)));
+    // (su mirada, sin la media vuelta de la mitad; mientras llega esa foto, la última)
+    const f = (r.pos.y - A.y) / (B.y - A.y);
+    if (f < 0.02) c.yaw = r.yaw;
+    else if (f > 0.98) c.yaw = r.yaw - Math.PI;
+    if (R.me) {
+      // viajo con él: en mi cabina, en su lugar
+      const S = this.stops[R.cab];
+      r.pos.set(S.D.x + S.into * c.u, S.y, S.D.z + S.into * c.v);
+      r.yaw = c.yaw + (S === B ? Math.PI : 0);
+    } else {
+      // de afuera: sube (o baja) por adentro del fuste, y se va dando vuelta
+      const ax = A.D.x + A.into * c.u;
+      const az = A.D.z + A.into * c.v;
+      const bx = B.D.x + B.into * c.u;
+      const bz = B.D.z + B.into * c.v;
+      r.pos.set(ax + (bx - ax) * p, A.y + (B.y - A.y) * p, az + (bz - az) * p);
+      const k = Math.min(1, Math.max(0, (p - 0.35) / 0.3));
+      r.yaw = c.yaw + Math.PI * k * k * (3 - 2 * k);
+    }
+    r.speed = 0;
+  }
+
+  endRiders() {
+    for (const r of this.ride?.co?.keys() || []) if (r.fix === this.fixFn) r.fix = null;
+  }
+
+  // Con la puerta cerrada no pasa nadie: al muerto que cruza el vano (las
+  // hojas son finas y las atravesaba) se lo deja del lado de afuera.
+  blockDoors() {
+    const pool = this.g.zombies.pool;
+    for (const S of Object.values(this.stops)) {
+      if (S.open >= 0.6) continue;
+      const D = S.D;
+      for (const z of pool) {
+        if (!z.active || z.dead) continue;
+        if (Math.abs((z.baseY ?? z.pos.y) - S.y) > 1.5 || Math.abs(z.pos.z - D.z) > D.hw + 0.3) continue;
+        const u = (z.pos.x - D.x) * S.into;
+        if (u > -0.36 && u < ELEV.dep + 0.3) z.pos.x = D.x - S.into * 0.36;
+      }
     }
   }
 
@@ -425,8 +518,35 @@ export default class Ascensor {
 
   // Los muertos que quedaron en el Mirador sin nadie arriba (se bajaron en
   // el ascensor o por la tirolesa): no tienen por dónde bajar, así que a los
-  // pocos segundos vuelven a la cola de la ronda.
+  // pocos segundos vuelven a la cola de la ronda. Y al revés: los de abajo
+  // con todos arriba (se quedaban contra las paredes del pie de la Torre).
+  // El que viaja cuenta en los dos niveles hasta que llega.
   strays(dt) {
+    const g = this.g;
+    if (globalThis.__mduNoAscZ === true) return this.straysOld(dt);
+    // (en qué niveles hay alguien: bits)
+    let at = 0;
+    const see = (p) => {
+      at |= this.riding(p) ? 3 : 1 << nivel(p.pos.y);
+    };
+    if (g.player.alive) see(g.player);
+    if (g.net) for (const r of g.net.remote.values()) if (!r.dead) see(r);
+    // (sin nadie vivo no se toca nada: la partida se está terminando)
+    if (!at) return;
+    for (const z of g.zombies.pool) {
+      if (!z.active || z.dead) continue;
+      const high = (z.baseY ?? z.pos.y) >= 40;
+      const t = at & (high ? 2 : 1) ? 0 : (this.mirT.get(z) || 0) + dt;
+      this.mirT.set(z, t);
+      if (t > (high ? 6 : 3.5)) {
+        this.mirT.delete(z);
+        g.zombies.free(z);
+        g.rounds.requeue?.(1);
+      }
+    }
+  }
+
+  straysOld(dt) {
     const g = this.g;
     const up = players(g).some((p) => p.pos.y > 40);
     for (const z of g.zombies.pool) {
@@ -494,6 +614,7 @@ export default class Ascensor {
   }
 
   dispose() {
+    this.endRiders();
     if (this.ride?.me && this.g.player.ride) this.g.player.ride = null;
     this.root.removeFromParent();
   }

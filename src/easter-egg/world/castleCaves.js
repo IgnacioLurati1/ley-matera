@@ -1169,3 +1169,6 @@ function bones(C) {
   }
   return out;
 }
+
+// (Eclipse Matero, world/eclipse/v5.js: la gruta del glaciar en su sección igual)
+export { buildCave };

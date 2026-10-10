@@ -9,6 +9,7 @@ import { LIGHTS, PORTALS } from '../../config/maps/eclipse';
 import { ANCHORS } from '../../entities/eclipse/Ingredientes';
 import { islandCells, rimWall, bake, mergedMesh } from './desgarro';
 import { fragment, orbiters, grime, portalOrbs, keepOut, tpShift } from './centro';
+import { statue } from '../monumentoStatues';
 
 // El Monumento de Eclipse Matero (layout v4). El Patio Cívico con las gradas
 // (mA) y el Propileo (mB) vienen TRANSPLANTADOS iguales del Monumento (zonas,
@@ -54,6 +55,19 @@ export function build(w, g, isl) {
   // ---- el Propileo (monumentoPropileo.buildPropileo, copiado y corrido)
   const own = [];
   if (P) propileo(w, gb, extra, P, S, own);
+  // ---- la Madre Patria (world/monumentoTorre.js la tiene en su nicho; acá
+  // el nicho queda tapado por la pared del borde del Patio y la estatua quedaba
+  // adentro, con las manos asomando: 2026-10-09, el usuario, "la estatua del
+  // frente del Monumento está bugueada"): delante de la pared, bajo el arco,
+  // en su pedestal. globalThis.__mduOldEclMadre: en el nicho, como antes
+  if (S && globalThis.__mduOldEclMadre !== true) {
+    const mx = 66 + S.dx - 0.5;
+    const my = 0.8 + S.dy;
+    const mz = 30.5 + S.dz;
+    bbox(gb, 'travertino', mx - 0.4, my, mz - 1.3, mx + 0.4, my + 0.6, mz + 1.3, { b: 0.03, top: 'travStep' });
+    own.push(...statue('madre', M.bronze, mx, my + 0.6, mz, -Math.PI / 2, 1.3));
+    w.addBox([mx - 0.45, my, mz - 1.3, mx + 0.45, my + 3.2, mz + 1.3], { kind: 'prop' });
+  }
 
   // ---- los mástiles-farola del patio, sobre el parapeto: los de las luces del
   // config (allá, los del Patio cada 3,5 m) con la cruz de cuatro globos

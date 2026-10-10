@@ -20,6 +20,7 @@ import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
 import PenalForge from './penalForge';
 import { devKeys } from '../core/devKeys';
 import PenalMotin from './penalMotin';
+import PenalMaquina from './penalMaquina';
 import CineActors from '../ui/cineActors';
 import { cineClip, poseCineClip, cineSnap, cineBlendFrom } from '../net/gauchoSkin';
 import { assetUrl } from '../../lib/assets';
@@ -116,10 +117,16 @@ const INV = [
   ['bombilla', 'Bombilla suprema', '⟋'],
   ['agua', 'Agua embrujada', '≈'],
   ['timon', 'Timón del bote', '☸'],
+  // la Máquina de Muerte (entities/penalMaquina.js)
+  ['tambor', 'Tambor de seis caños', '✹'],
+  ['manivela', 'Manivela', '↻'],
+  ['cinta', 'Cinta de bombillas', '≡'],
 ];
 // los encierros de la ermita (en el Pack-a-Pava): cuánto hay que aguantar con el cuchillo y con el agua
 const KNIFE_RITUAL = 70;
 const WATER_RITUAL = 60;
+// la zona donde pasa la escena de la yerba (el patio de recreo)
+const PATIO = 'H';
 const GOLD = 0xffc84a;
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
@@ -228,6 +235,9 @@ export default class PenalEgg {
     this.boat = new PenalBoat(game, this);
     // la telesilla del muelle a la estación del cerro (entities/PenalLift.js)
     this.lift = new PenalLift(game, this);
+    // la Máquina de Muerte: la Bombilla Gut hecha Gatling, con su búsqueda
+    // aparte del easter egg (entities/penalMaquina.js)
+    this.maq = new PenalMaquina(game, this);
     // easter egg musical: tres guitarras (world/SongEgg.js)
     this.song = new SongEgg(game, 'penal');
     this.registerKnife();
@@ -238,7 +248,8 @@ export default class PenalEgg {
     this.defense = this.motin;
     game.defense = this.motin;
     this.mergeStatic();
-    // atajos de prueba (solo, jugando): Alt+N el cuchillo, Alt+B el bote
+    // atajos de prueba (solo, jugando): Alt+N el cuchillo, Alt+B el bote, Alt+V la Máquina de Muerte,
+    // Alt+T una Bombilla Gut común (sin ácido ni Gatling, sin mejorar)
     this.onKey = (e) => {
       if (!devKeys() || !e.altKey || game.state !== 'playing' || game.net) return;
       if (e.code === 'KeyN') {
@@ -247,6 +258,13 @@ export default class PenalEgg {
       } else if (e.code === 'KeyB') {
         e.preventDefault();
         this.debugBoat();
+      } else if (e.code === 'KeyV') {
+        e.preventDefault();
+        this.maq.debug();
+      } else if (e.code === 'KeyT') {
+        e.preventDefault();
+        game.weapons.give('gut');
+        game.hud.subtitle('Prueba: Bombilla Gut', 2);
       }
     };
     window.addEventListener('keydown', this.onKey);
@@ -1165,7 +1183,9 @@ export default class PenalEgg {
 
   announce(text, secs = 3, sting = false) {
     const g = this.g;
-    g.hud.subtitle(text, secs);
+    // (texto vacío: solo el sting. El usuario, 2026-10-08, sacó los avisos de
+    // lo que se ve o ya dice la guía)
+    if (text) g.hud.subtitle(text, secs);
     if (sting) g.audio.sting();
     g.net?.event('sub', { x: text, d: secs, s: sting ? 1 : 0 });
   }
@@ -1213,8 +1233,9 @@ export default class PenalEgg {
     if (n === 1) this.motin?.expectEarly();
     if (n === 3) {
       this.step = Math.max(this.step, 6);
-      // antes de que hable Benito, la Voz devuelve la yerba de la granja
-      g.later(2.5, () => this.startYerbaScene());
+      // antes de que hable Benito, la Voz devuelve la yerba de la granja: la
+      // escena arranca cuando están todos en el patio (yerbaGate)
+      this.yerbaAt = g.time + 2.5;
     } else
       g.later(1.2, () => {
         const t = this.lines(id, LINES[id].freed);
@@ -1250,7 +1271,7 @@ export default class PenalEgg {
         const k = this.keyObjs.k1;
         k.pos.set(d.pos.x, d.pos.y + 0.9, d.pos.z).addScaledVector(new THREE.Vector3(Math.sin(d.def.rot), 0, Math.cos(d.def.rot)), 1.1);
         this.keys.k1 = 'ground';
-        this.announce('El perro escupió una llave vieja. La de Anacleto.', 4, true);
+        this.announce('', 4, true);
       }
     }
     this.netSync();
@@ -1280,7 +1301,6 @@ export default class PenalEgg {
     // después del primer ritual, cualquiera la convierte al toque
     if (this.acidDone) {
       g.weapons.give('gutacida');
-      g.hud.subtitle('Tu Bombilla Gut salió convertida en Bombilla Ácida.', 3);
       return;
     }
     if (g.net?.guest) g.net.net.send({ t: 'pee', a: 'encierro' });
@@ -1297,7 +1317,7 @@ export default class PenalEgg {
     const g = this.g;
     if (this.encierro) return;
     this.encierro = { by, souls: 0, need: EE.encierro.need + 3 * (this.players() - 1), state: 'ritual', spawnT: 1.5 };
-    this.announce(`El encierro. Liquidá muertos adentro del círculo (${this.encierro.need} almas).`, 4, true);
+    this.announce('', 4, true);
     g.audio.bossArrive();
     this.netSync();
   }
@@ -1316,7 +1336,6 @@ export default class PenalEgg {
     const g = this.g;
     g.weapons.give('gutacida');
     g.audio.powerupGrab();
-    g.hud.subtitle('La Bombilla Ácida: sus frascos se pegan y revientan. Probala con el Alcaide.', 4);
     if (g.net?.guest) g.net.net.send({ t: 'pee', a: 'acidtaken' });
     else {
       this.encierro = null;
@@ -1336,7 +1355,7 @@ export default class PenalEgg {
     if (s) k.pos.copy(s);
     this.keys.k2 = 'ground';
     this.g.say('alcaide', '¡Mi cinturón! ¡Mis llaves! ¡Ah, gaucho degenerado!');
-    this.announce('¡Al Alcaide se le derritió el llavero! La llave de Cirilo quedó en el piso.', 4, true);
+    this.announce('', 4, true);
     this.netSync();
   }
 
@@ -1353,7 +1372,6 @@ export default class PenalEgg {
     if (this.chair !== 'empty') return;
     this.chair = 'loaded';
     this.chairBy = by;
-    this.announce('La bombilla quedó en la silla. Ahora, corriente desde el gaucho life.', 3.5);
     this.netSync();
   }
 
@@ -1368,7 +1386,7 @@ export default class PenalEgg {
     const k = this.keyObjs.k3;
     k.pos.copy(this.chairPos).add(new THREE.Vector3(0, 0.4, 0));
     this.keys.k3 = 'ground';
-    this.announce('¡La chispa forjó una llave! La de Benito quedó sobre la silla.', 4, true);
+    this.announce('', 4, true);
     this.netSync();
   }
 
@@ -1390,11 +1408,29 @@ export default class PenalEgg {
     this.safeOpen = true;
     g.audio.door(this.safePos, false);
     g.fx.electric(this.safePos, 25);
-    this.announce('La caja fuerte del Alcaide se abrió. Adentro brilla un mate dorado.', 4, true);
+    this.announce('', 4, true);
     this.netSync();
   }
 
   // ---------------- la yerba de la Voz ----------------
+  // (anfitrión) Con Benito libre, la escena de la yerba espera a que estén
+  // todos en el patio de recreo, que es donde pasa (pedido del usuario
+  // 2026-10-07: arrancaba sola al abrir la celda y agarraba a cada uno en una
+  // punta del penal). Mientras tanto, la luz del cielo marca el patio y cada
+  // tanto se avisa.
+  yerbaGate() {
+    const g = this.g;
+    if (g.net?.guest || !this.freed.g3 || this.items.yerba !== 'none' || this.scene || g.time < (this.yerbaAt || 0)) return;
+    if (this.motin?.eeLock() || this.fight) return;
+    if (!missingIn(g, PATIO).length) {
+      this.startYerbaScene();
+      return;
+    }
+    if (g.time < (this.yerbaTold || 0)) return;
+    this.announce('', 4, !this.yerbaTold);
+    this.yerbaTold = g.time + 45;
+  }
+
   startYerbaScene() {
     const g = this.g;
     if (this.items.yerba !== 'none') return;
@@ -1483,7 +1519,8 @@ export default class PenalEgg {
     const g = this.g;
     if (globalThis.__mduBlend === false) return;
     const Y = this.yerbaPos;
-    const C = new CineActors(g, { floor: (x, z) => this.floor(x, z) });
+    // (el Canchero, sin los anteojos de sol en esta: pedido del usuario 2026-10-07)
+    const C = new CineActors(g, { floor: (x, z) => this.floor(x, z), shades: false });
     // la ronda: hacia -z (las tomas de siempre miran desde +z)
     const a0 = -Math.PI / 2;
     const R = 3.1;
@@ -1739,7 +1776,7 @@ export default class PenalEgg {
     if (!g.net?.guest) {
       this.items.yerba = 'ground';
       if (this.items.agua === 'none') this.items.agua = 'asked';
-      this.announce('La yerba dorada quedó en el patio de recreo.', 4, true);
+      this.announce('', 4, true);
       this.netSync();
       g.net?.event('pee', { scene: 2 });
       // y ahora sí habla Benito: para la bombilla quiere agua embrujada del río
@@ -1757,7 +1794,7 @@ export default class PenalEgg {
     const gates = g.interact.list.filter((x) => x.kind === 'door' && x.door.def.kind === 'cerro' && !x.door.open);
     if (gates.length) g.later(3, () => {
       for (const it of gates) if (!it.door.open) g.interact.openDoor(it.door);
-      this.announce('Se abrió el portón de la capilla, el camino al cerro del Espinillo.', 4, true);
+      this.announce('', 4, true);
     });
     this.netSync();
   }
@@ -1791,7 +1828,7 @@ export default class PenalEgg {
     if (g.net?.guest) return;
     // (termina la de todos)
     g.net?.event('pee', { scene: 4 });
-    this.announce('Algo se mueve entre las banderas...', 3, true);
+    this.announce('', 3, true);
     g.later(1, () => g.arena.start());
   }
 
@@ -1806,8 +1843,10 @@ export default class PenalEgg {
 
   dropHat() {}
 
-  onKill(z) {
+  onKill(z, info) {
     const g = this.g;
+    // la cinta y la cuenta de la Máquina de Muerte (entities/penalMaquina.js)
+    this.maq.onKill(z, info);
     if (g.net?.guest || z.boss) return;
     const p = z.pos;
     // los perros comen almas (después de que Anacleto explicó)
@@ -1837,6 +1876,16 @@ export default class PenalEgg {
       if (E.souls >= E.need) this.finishEncierro();
       else if (E.souls % 3 === 0) this.netSync();
     }
+  }
+
+  // (Player.damage) El que le da manivela a la Máquina de Muerte no recibe daño.
+  safe(p) {
+    return this.maq.protects(p);
+  }
+
+  // Cae un jefe (entities/Zombies.js): el Alcaide larga la manivela.
+  onBossDeath(pos, z) {
+    this.maq.onBossDeath(pos, z);
   }
 
   // ---------------- el cuchillo de Anacleto ----------------
@@ -1924,7 +1973,7 @@ export default class PenalEgg {
     this.kn = { by, state: ritual ? 'ritual' : 'cook', t: 0, dur: ritual ? KNIFE_RITUAL : 3.4, boss: false };
     if (ritual) {
       this.encM.start();
-      this.announce(`¡El Pack-a-Pava se tragó el cuchillo y la ermita se cerró! Aguanten ${KNIFE_RITUAL} segundos.`, 4, true);
+      this.announce('', 4, true);
     }
     this.netSync();
   }
@@ -1974,7 +2023,7 @@ export default class PenalEgg {
         K.state = 'ready';
         K.t = 0;
         this.knifeDone = true;
-        this.announce('¡Aguantaron! La Cuchilla del Matarife está lista en el Pack-a-Pava.', 4, true);
+        this.announce('', 4, true);
         g.hud.achievement('La Cuchilla del Matarife', 'Aguantaste el encierro de la ermita');
         this.netSync();
       }
@@ -2050,6 +2099,10 @@ export default class PenalEgg {
         const a = this.items.agua;
         if (a === 'ready') return { text: 'agarrar el agua embrujada', noCost: true };
         if (a !== 'boat') return null;
+        // (con la máquina trabajando o con un mate adentro, nada: si no, este
+        // cartel le tapaba al Pack-a-Pava el suyo y al ir a agarrar el mate
+        // mejorado decía "ocupado". El usuario, 2026-10-07)
+        if (this.kn || pap.state !== 'idle') return null;
         const why = this.waterBlock();
         return why ? { text: why, noCost: true, info: true } : { text: 'dejar la damajuana en el Pack-a-Pava (encierro)', noCost: true };
       },
@@ -2084,7 +2137,7 @@ export default class PenalEgg {
     this.waterBoss = false;
     g.audio.pap(g.interact.pap.slotPos);
     this.encM.start();
-    this.announce(`¡San La Muerte se quedó con el agua y la ermita se cerró! Aguanten ${WATER_RITUAL} segundos.`, 4, true);
+    this.announce('', 4, true);
     this.netSync();
   }
 
@@ -2092,7 +2145,7 @@ export default class PenalEgg {
     this.items.agua = 'held';
     this.g.audio.powerupGrab();
     this.toastAll('Conseguiste: Agua embrujada');
-    this.announce('Llévenle el agua embrujada a Benito, a la enfermería. El bote los espera en el muellecito.', 5, true);
+    this.announce('', 5, true);
     this.netSync();
   }
 
@@ -2141,7 +2194,7 @@ export default class PenalEgg {
     }
     if (this.waterT >= WATER_RITUAL) {
       this.items.agua = 'ready';
-      this.announce('¡Aguantaron! San La Muerte embrujó el agua. Agárrenla del Pack-a-Pava y llévensela a Benito.', 5, true);
+      this.announce('', 5, true);
       this.netSync();
     } else if (Math.floor(this.waterT) % 10 === 0 && Math.floor(this.waterT - dt) % 10 !== 0) this.netSync();
   }
@@ -2244,6 +2297,7 @@ export default class PenalEgg {
       this.encierro = null;
       this.netSync();
     } else if (m.a === 'skull' || m.a === 'gutgrab' || m.a === 'nicanor') this.ghosts.onGuest(m, from);
+    else if (m.a === 'mq') this.maq.onGuest(m, from);
     else if (m.a === 'chair') this.loadChair(from);
     else if (m.a === 'chairtaken' && this.chairBy === from) {
       this.chair = 'taken';
@@ -2283,6 +2337,7 @@ export default class PenalEgg {
       lift: this.lift.netState(),
       sk: this.ghosts.netState(),
       mo: this.motin.state(),
+      mq: this.maq.netState(),
     };
   }
 
@@ -2357,6 +2412,14 @@ export default class PenalEgg {
       if (d) g.fx.soul(new THREE.Vector3(...m.soul), d.pos.clone().setY(d.pos.y + 0.8));
       return;
     }
+    if (m.mqs) {
+      this.maq.soul(m.mqs);
+      return;
+    }
+    if (m.mqa) {
+      this.maq.onAim(m.mqa);
+      return;
+    }
     if (m.esoul) {
       g.fx.soul(new THREE.Vector3(...m.esoul), this.encTop);
       if (this.encierro) this.encierro.souls++;
@@ -2393,6 +2456,7 @@ export default class PenalEgg {
     if (m.lift) this.lift.applyState(m.lift);
     if (m.lz) this.lift.applyRiders(m.lz);
     if (m.sk) this.ghosts.applyState(m.sk);
+    if (m.mq) this.maq.applyState(m.mq);
   }
 
   // Alt+K (solo): los tres gauchos libres, todo en la mano y el cerro abierto.
@@ -2428,6 +2492,7 @@ export default class PenalEgg {
     this.ghosts.update(dt);
     this.boat.update(dt);
     this.lift.update(dt);
+    this.maq.update(dt);
     this.song.update(dt);
     this.plane.update(dt);
     // los gauchos: los libres se paran y miran a quien tengan cerca
@@ -2511,6 +2576,7 @@ export default class PenalEgg {
     else if (this.items.agua === 'pap') g.hud.setCraftText?.(`<span>Encierro del agua</span><b>${Math.max(0, Math.ceil(WATER_RITUAL - this.waterT))} s</b>`);
     else if (this.boat.hudText()) g.hud.setCraftText?.(this.boat.hudText());
     else if (this.lift.hudText()) g.hud.setCraftText?.(this.lift.hudText());
+    else if (this.maq.hudText()) g.hud.setCraftText?.(this.maq.hudText());
     else if (this.step >= 1 && !this.freed.g1 && this.keys.k1 === 'none') {
       const fed = this.dogFed.filter((n, i) => n >= this.dogNeed(i)).length;
       g.hud.setCraftText?.(`<span>Perros</span><b>${fed} / 3</b>`);
@@ -2582,6 +2648,7 @@ export default class PenalEgg {
       bombilla: this.items.bombilla === 'held',
       agua: this.items.agua === 'held' || this.items.agua === 'boat',
       timon: this.boat.timon === 'held',
+      ...this.maq.inv(),
     };
     const key = Object.values(inv).map((x) => (x ? 1 : 0)).join('') + (this.fight ? 'f' : '');
     if (key !== this.invKey) {
@@ -2589,6 +2656,7 @@ export default class PenalEgg {
       g.hud.setInventory(this.fight ? null : inv, false, INV);
     }
     this.updateBeam();
+    this.yerbaGate();
     this.motin.update(dt);
     // los gauchos recuerdan lo que falta si pasa mucho sin avanzar
     if (!g.net?.guest && !this.fight && !this.scene) {
@@ -2612,8 +2680,10 @@ export default class PenalEgg {
     E.spawnT = 1.8 / Math.sqrt(this.players());
     if (g.zombies.alive >= maxAlive(this.players())) return;
     // salen por el pasillo de los calabozos, delante de la celda
+    // (el pasillo va de x 21 a 24: con la cuenta vieja, 8,5 a 13,5, caían
+    // siempre afuera del mapa y no salía ninguno)
     for (let i = 0; i < 8; i++) {
-      const x = 8.5 + Math.random() * 5;
+      const x = 21.4 + Math.random() * 2.2;
       const z = this.encPos.z + (Math.random() - 0.5) * 12;
       if (g.nav.blocked(Math.floor(x), Math.floor(z)) || !Number.isFinite(g.nav.distAt(x, z))) continue;
       const round = Math.max(4, g.rounds.round);
@@ -2641,13 +2711,14 @@ export default class PenalEgg {
     else if (this.encierro?.state === 'ritual') at = this.encPos;
     else if (!this.freed.g1) at = !this.talked.g1 ? c('g1') : this.keys.k1 === 'ground' ? this.keyObjs.k1.pos : this.keys.k1 === 'held' ? c('g1') : this.dogs.find((d) => this.dogFed[d.i] < this.dogNeed(d.i))?.pos;
     else if (!this.freed.g2) at = !this.talked.g2 ? c('g2') : this.keys.k2 === 'ground' ? this.keyObjs.k2.pos : this.keys.k2 === 'held' ? c('g2') : !this.ghosts.nicanor ? this.ghosts.nic.pos : null;
-    else if (!this.freed.g3) at = !this.talked.g3 ? c('g3') : this.keys.k3 === 'ground' ? this.keyObjs.k3.pos : this.keys.k3 === 'held' ? c('g3') : this.chair !== 'done' ? this.chairPos : null;
-    else if (this.items.yerba === 'ground') at = this.yerbaPos;
+    else if (!this.freed.g3) at = !this.talked.g3 ? c('g3') : this.keys.k3 === 'ground' ? this.keyObjs.k3.pos : this.keys.k3 === 'held' ? c('g3') : null;
+    else if (this.items.yerba === 'ground' || this.items.yerba === 'none') at = this.yerbaPos;
     else if (this.items.agua === 'asked') at = this.boat.state === 'hull' || this.boat.state === 'moored' ? this.boat.pos : null;
     else if (this.items.agua === 'boat' || this.items.agua === 'ready') at = this.boat.state === 'sail' ? null : g.interact.pap?.group.position;
     else if (this.items.agua === 'held') at = c('g3');
-    // (el mate dorado está en la caja fuerte de la oficina: antes la luz nunca la marcaba)
-    else if (this.items.mate === 'safe' && this.items.bombilla !== 'none') at = this.safePos;
+    // (ni la silla eléctrica ni la caja fuerte del Alcaide llevan luz: pedido
+    // del usuario 2026-10-07. Lo dicen Benito y los carteles)
+    else if (this.items.mate === 'safe' && this.items.bombilla !== 'none') at = null;
     else if (this.step >= 7) at = this.altarPos;
     const b = this.beam;
     b.visible = !!at;
@@ -2669,6 +2740,7 @@ export default class PenalEgg {
     this.ghosts.dispose();
     this.boat.dispose();
     this.lift.dispose();
+    this.maq.dispose();
     this.encM.dispose();
     this.papJug?.removeFromParent();
     this.motin?.dispose();

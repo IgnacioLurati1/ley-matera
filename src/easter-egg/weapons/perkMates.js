@@ -1340,6 +1340,37 @@ function stamin(T, M, perk) {
 }
 
 // Cualquier otro perk: la calabaza del color del perk, con la faja de su nombre.
+// Catalizador Caótico (CaoSé, solo Eclipse): de obsidiana negra laqueada, la
+// faja oro con la marca, al frente el eclipse (la luna negra con su aro de oro)
+// y una grieta violeta que sube por la panza; arriba, chispas violetas.
+function catal(T, M, perk) {
+  const L = perk.label;
+  const g = new THREE.Group();
+  const pts = profile([[0, 0], [0.022, 0.002], [0.039, 0.013], [0.047, 0.035], [0.046, 0.058], [0.04, 0.076], [0.032, 0.088], [0.029, 0.095], [0.031, 0.101]]);
+  const rAt = (y) => VM.profileRadius(pts, y);
+  const top = { r: 0.031, y: 0.101 };
+  const gold = std({ color: 0xd8a842, metalness: 1, roughness: 0.28 });
+  g.add(body(pts, phys({ color: 0x0e0a16, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.04 })));
+  const bandTex = texOf('cs-faja', 1024, 128, paintBand(L, perk, { bg: L.band, ink: L.bandText, rule: L.accent }));
+  g.add(band(rAt, 0.026, 0.048, phys({ map: bandTex, roughness: 0.3, clearcoat: 1 }), 0.0009));
+  // el eclipse al frente, arriba de la faja (lejos de los dedos)
+  const ecl = new THREE.Group();
+  const ring = VM.tor(0.0075, 0.0011, gold, 6, 24);
+  ecl.add(ring);
+  const moon = new THREE.Mesh(new THREE.CircleGeometry(0.0068, 20), std({ color: 0x030205, roughness: 0.4 }));
+  moon.position.z = 0.0004;
+  ecl.add(moon);
+  onSurface(ecl, rAt, 0.35, 0.064, 0.0012);
+  g.add(ecl);
+  // la grieta violeta que sube por la panza, del otro lado
+  const glowV = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xa45cff).multiplyScalar(1.8), toneMapped: false });
+  for (const [a, y0, y1] of [[-0.55, 0.012, 0.03], [-0.45, 0.03, 0.05], [-0.6, 0.05, 0.07]]) {
+    const s = strip(rAt, a, 0.05, y0, y1, glowV, 0.0008, 2);
+    g.add(s);
+  }
+  return { g, rAt, top, vir: [gold, 0.012, 0.004], bomb: { mat: gold }, topping: (gg) => sparks(gg, top, 16, 0xb070ff, 97) };
+}
+
 function generic(T, M, perk) {
   const g = new THREE.Group();
   const pts = profile([[0, 0], [0.022, 0.002], [0.038, 0.013], [0.046, 0.034], [0.046, 0.056], [0.041, 0.074], [0.033, 0.087], [0.029, 0.094], [0.031, 0.101]]);
@@ -1349,7 +1380,7 @@ function generic(T, M, perk) {
   return { g, rAt, top, vir: [M.silver, 0.012, 0.004] };
 }
 
-const BUILDERS = { jugg, revive, speed, doubletap, mule, deadshot, phd, dragon, aqua, cherry, wish, maiz, stamin };
+const BUILDERS = { jugg, revive, speed, doubletap, mule, deadshot, phd, dragon, aqua, cherry, wish, maiz, stamin, ...(globalThis.__mduEclipse === true ? { catal } : {}) };
 
 // Arma el mate de un perk (o uno genérico del color, si no hay perk).
 // Devuelve { root, tip, strawDir } como el de siempre (Weapons.drink).

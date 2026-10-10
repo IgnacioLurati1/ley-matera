@@ -1,6 +1,7 @@
 import { paintBase, wearField } from './textures';
 import { bakeArrays } from '../fx/Surfaces';
 import { CASTLE_PAINT } from '../world/castleTextures';
+import { MONU_PAINT } from '../world/monumentoTextures';
 
 // Pinta texturas de core/textures en otro hilo, al abrir el juego (las pide
 // core/texturePool.js). Las que traen relieve salen con su normal map ya
@@ -10,12 +11,14 @@ import { CASTLE_PAINT } from '../world/castleTextures';
 // en el hilo principal si después se sube la calidad, fx/Surfaces bake)
 const paint = (name, relief) => {
   try {
-    const c = paintBase(name) || CASTLE_PAINT[name]?.();
+    const c = paintBase(name) || CASTLE_PAINT[name]?.() || MONU_PAINT[name]?.();
     if (!c) return;
     const tr = [];
     let rel = null;
     if (c.relief) {
-      rel = { depth: c.relief.depth };
+      // (los números del relieve van todos: depth y, las del Monumento, scale, ao...)
+      rel = {};
+      for (const [k, v] of Object.entries(c.relief)) if (typeof v === 'number') rel[k] = v;
       if (relief) {
         const b = bakeArrays(c);
         rel.pre = b;

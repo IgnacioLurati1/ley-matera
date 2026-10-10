@@ -10,6 +10,7 @@ import { walkLegs, stepPerson } from '../entities/personWalk';
 import { cineClip, poseCineClip, eyeSpots, cineSnap, headProp, FACE_EYES, gauchoClipsReady } from '../net/gauchoSkin';
 import { assetUrl } from '../../lib/assets';
 // la entrada de Eclipse Matero (el mapa escondido: solo existe con su switch)
+import { crewBandana, gilVincha } from '../net/gilLook';
 import { eclipse } from './eclipseIntro';
 
 // Los guiones de las cinemáticas de entrada (ui/Intro.js), uno por mapa.
@@ -281,7 +282,7 @@ function molino(g, I) {
   const people = new Avatars(g, null);
   const F = puppet(people, 430);
   // El que te trae: el gaucho dorado. Nadie sabe quién es (y en el final del
-  // castillo es el que se lleva a uno de los que duermen: el ciclo). Un
+  // castillo es el que se lleva a uno de los que duermen: la ronda). Un
   // gaucho como ustedes (net/gauchoSkin), en la sombra, con el poncho dorado
   // gastado y dos ojos de oro debajo del ala (goldGaucho, cuando baja el cuerpo).
   F.M.poncho.color.set(GOLD_PONCHO);
@@ -1435,7 +1436,11 @@ function penal(g, I) {
     const mine = crew.list.find((r) => r.id - 470 === me)?.persona || 'valiente';
     for (const r of crew.list) {
       r.own = r.id - 470 === me;
-      const [dx, dz, at = look] = spots[r.own ? 'valiente' : r.persona === 'valiente' ? mine : r.persona];
+      // (en línea, cada uno en el lugar de su carácter, donde arranca de verdad
+      // —entities/Player PENAL_SPOTS—: con el cambio de lugares, el muñeco del
+      // Valiente quedaba arriba del cuerpo del invitado. __mduNoPenalSpots: como antes)
+      const ownSpot = g.net && globalThis.__mduNoPenalSpots !== true ? r.persona : null;
+      const [dx, dz, at = look] = spots[ownSpot || (r.own ? 'valiente' : r.persona === 'valiente' ? mine : r.persona)];
       r.pos.set(PLAYER_START.x + dx, 0, PLAYER_START.z + dz);
       r.pos.y = crew.floor(r.pos.x, r.pos.z);
       // (cada uno mira a lo suyo, y no todos exactamente igual)
@@ -2352,6 +2357,8 @@ function esteros(g, I) {
     return { ...c, a };
   });
   const gil = crew[3].a;
+  // (2026-10-10: los compañeros del Gil, con su bandana: net/gilLook crewBandana)
+  people.bandanas = true;
   const canoe = buildCanoe(g);
   const pole = buildPole();
   g.scene.add(pole);
@@ -2659,6 +2666,8 @@ function esteros(g, I) {
     },
     tick(I, dt, t) {
       if (I.shotI < 6) poseCrew(t, dt);
+      // (las bandanas de los compañeros del Gil: acá no corre people.update)
+      if (globalThis.__mduNoBandanas !== true) for (const c of crew) c.a === gil ? gilVincha(gil) : crewBandana(c.a);
       // el farol tiembla
       const flick = 0.85 + Math.sin(t * 17) * 0.06 + Math.sin(t * 7.3) * 0.08;
       lamp.flame.scale.setScalar(0.22 * flick);

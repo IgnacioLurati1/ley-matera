@@ -78,7 +78,6 @@ export default class TowerNoche {
       g.powerups.drop(this.lastPos || g.player.pos.clone(), true, 'maxammo');
       g.net?.event('pee', { noche: -1 });
     }
-    g.hud.subtitle('El viento se calmó... por ahora.', 3);
   }
 
   applyRemote(m) {

@@ -482,7 +482,6 @@ export default class EasterEgg {
             this.hearthObj.coals.material.emissiveIntensity = 0.4;
             this.encH.stop();
             this.gain('agua', `Agua a ${Math.round(this.temp)} °C`);
-            this.announce('¡Agua a punto! La oficina se abrió.', 3);
           } else if (this.temp < 75) {
             this.announce(`Todavía está fría (${Math.round(this.temp)} °C). Se apagó el fogón y se abrió la oficina.`, 3);
             this.fail('fría');
@@ -543,7 +542,7 @@ export default class EasterEgg {
     this.souls = 0;
     this.kilnNeed = 12 + 4 * (this.players() - 1);
     this.encD.start();
-    this.announce(`¡El barbacuá los encerró! Liquiden muertos adentro para secar la yerba (${this.kilnNeed} almas).`, 4, true);
+    this.announce('', 4, true);
     g.fx.explosion(KILN_MOUTH, 1.6, [1, 0.5, 0.15]);
     this.netSync();
   }
@@ -555,7 +554,7 @@ export default class EasterEgg {
     this.encD.stop();
     g.fx.explosion(KILN_TOP, 2.4, [1, 0.45, 0.1]);
     g.fx.addShake(0.3);
-    this.announce('¡La yerba se secó! Pero el fuego del barbacuá se desbocó y la tapa toda.', 4, true);
+    this.announce('', 4, true);
     g.later(3, () => g.say('abuelo', LINES.tronador));
     this.netSync();
   }
@@ -592,7 +591,7 @@ export default class EasterEgg {
     if (this.kiln !== 'hot') return;
     this.kiln = 'ready';
     this.applyFire();
-    this.announce('¡El soplido apagó el barbacuá! La yerba seca quedó a la vista.', 4, true);
+    this.announce('', 4, true);
     this.netSync();
   }
 
@@ -655,7 +654,6 @@ export default class EasterEgg {
     g.audio.powerOn(new THREE.Vector3(43.5, 2, 10));
     g.fx.addShake(0.35);
     g.net?.event('ee', { shake: 1 });
-    this.announce('¡El molino arrancó! La yerba quedó molida.', 3.5);
     this.gain('yerba', 'Yerba molida');
   }
 
@@ -665,7 +663,7 @@ export default class EasterEgg {
     this.temp = 20;
     this.hearthObj.coals.material.emissiveIntensity = 3;
     this.encH.start();
-    this.announce('La pava está al fuego y la oficina quedó encerrada. Aguanten y sáquenla entre 75 y 85 °C.', 4, true);
+    this.announce('', 4, true);
     this.netSync();
   }
 
@@ -681,7 +679,7 @@ export default class EasterEgg {
     g.fx.lightning(new THREE.Vector3(this.tumbaPos.x + 1, 30, this.tumbaPos.z), new THREE.Vector3(this.tumbaPos.x + 1, 2, this.tumbaPos.z), 0x9affc8, 0.5);
     g.audio.thunder?.(this.tumbaPos);
     g.post.flash(0.6);
-    this.announce(`¡Se abren las tumbas! Liquiden a los peones (${this.tumbaNeed} almas)`, 4.5, true);
+    this.announce('', 4.5, true);
     this.netSync();
   }
 
@@ -713,7 +711,9 @@ export default class EasterEgg {
   // Aviso para todo el equipo (el easter egg es de todos).
   announce(text, secs = 3, sting = false) {
     const g = this.g;
-    g.hud.subtitle(text, secs);
+    // (texto vacío: solo el sting. El usuario, 2026-10-08, sacó los avisos de
+    // lo que se ve o ya dice la guía)
+    if (text) g.hud.subtitle(text, secs);
     if (sting) g.audio.sting();
     g.net?.event('sub', { x: text, d: secs, s: sting ? 1 : 0 });
   }
@@ -732,8 +732,6 @@ export default class EasterEgg {
     this.netSync();
     g.hud.setInventory(this.items);
     this.toastAll(`Conseguiste: ${label}`);
-    const missing = Object.entries(this.items).filter(([, v]) => !v).length;
-    if (!missing) this.announce('Está todo. Vayan a la capilla a cebarle al Abuelo.', 3.5);
   }
 
   // Más Tronadores en la caja mientras el fuego tapa la yerba.
@@ -747,7 +745,6 @@ export default class EasterEgg {
     this.started = g.time;
     this.chair.body.visible = true;
     this.ghostLight.intensity = 4;
-    g.later(4, () => g.hud.subtitle('Se escucha una mecedora en la capilla...', 3));
     if (g.world.zoneAt(g.player.pos.x, g.player.pos.z) === 'E') this.onZone('E');
   }
 
@@ -868,10 +865,6 @@ export default class EasterEgg {
 
   onZone(k) {
     const g = this.g;
-    if (k === 'I' && !this.iSeen) {
-      this.iSeen = true;
-      g.later(2.5, () => g.hud.subtitle('Se siente que algo te mira desde arriba...', 3));
-    }
     if (k !== 'E' || !g.world.power || this.arenaGone) return;
     this.talkT = 6;
     g.later(1.6, () => {
@@ -957,7 +950,6 @@ export default class EasterEgg {
     this.talkT = 40;
     g.later(8, () => {
       g.say('abuelo', this.hasHat ? LINES.gotHat : LINES.hat);
-      if (!this.hasHat) this.announce('Cuando caiga el Capataz, su sombrero va a su tumba.', 5);
     });
   }
 
@@ -968,7 +960,6 @@ export default class EasterEgg {
     g.audio.fanfare();
     g.post.flash(1.5);
     g.zombies.setEyeColor(0x39a8ff);
-    g.later(3, () => g.hud.subtitle(g.net ? 'El Abuelo les cebó el Mate de Oro: cada uno vaya a buscar el suyo a la capilla.' : 'El Abuelo te cebó el Mate de Oro: agarralo de su mano.', 5));
     g.hud.setInventory(null);
     // el Abuelo con su mate
     const mats = getMats(g.textures);
@@ -1014,7 +1005,6 @@ export default class EasterEgg {
     // todos con su Mate de Oro: si todavía no hubo Noche de la Luz Mala, viene
     // ahora (y la tumba espera hasta que termine)
     if (!this.missingOro().length && this.noche?.expectEarly()) return;
-    if (g.net && this.hasHat && !this.missingOro().length) this.announce('Todos tienen su Mate de Oro. Llévenle el sombrero a la tumba del Capataz.', 4);
   }
 
   // Nombres de los que todavía no agarraron su Mate de Oro.
@@ -1078,7 +1068,7 @@ export default class EasterEgg {
           this.toastAll('Conseguiste: Sombrero del Capataz');
           g.net?.event('ee', { hatTaken: 1 });
           this.netSync();
-          if (this.done) this.announce(this.missingOro().length ? 'Primero, cada uno su Mate de Oro.' : 'Llévenle el sombrero a la tumba del Capataz, en el cementerio.', 4);
+          if (this.done && this.missingOro().length) this.announce('Primero, cada uno su Mate de Oro.', 4);
           return true;
         },
       });

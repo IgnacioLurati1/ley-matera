@@ -4,6 +4,7 @@ import { MAP_LIST, MAP_MODES, FEATURES } from '../config/map';
 import { readyBossSkins } from '../entities/bossSkin';
 import { hasRetired, keepOf, flushRetired } from '../core/sceneFlush';
 import { keyLabel } from '../core/controls';
+import { settleMemory } from '../core/memSettle';
 
 // Llegada a un mapa: la carga del principio (arma el mapa elegido), el cambio
 // de mapa en el título y la entrada a la partida. En línea, el anfitrión
@@ -522,11 +523,24 @@ export default class Arrival {
         this.screen.progress(0.1, `Viajando a ${info.name}…`);
         await frame();
         await frame();
+        // (Eclipse: armarlo traba ~3-4 s; que la postal termine de aparecer
+        // antes, si no quedaba a medio fundir sobre el menú. agente rend;
+        // globalThis.__mduNoEclSettle: como antes)
+        if (id === 'eclipse' && globalThis.__mduNoEclSettle !== true) await later(240);
         if (g.state !== 'title') break;
-        g.buildScene();
-        built = key;
-        this.screen.progress(0.7);
-        await compile(g);
+        // (sesión 1f, el usuario: "la pantalla de cambio de mapa tarda una
+        // eternidad": mientras se compila, el bucle no dibuja el mapa nuevo —está
+        // tapado por la postal—: cada programa que dibujaba antes de que la placa
+        // terminara lo esperaba ahí, ~4 s en Eclipse. __mduNoSwitchHold: como antes)
+        g.switchHold = globalThis.__mduNoSwitchHold !== true;
+        try {
+          g.buildScene();
+          built = key;
+          this.screen.progress(0.7);
+          await compile(g);
+        } finally {
+          g.switchHold = false;
+        }
         if (g.state !== 'title') break;
         warmTitle(g);
         if (!postcards.has(id)) snapPostcard(g, id);
@@ -774,6 +788,8 @@ export default class Arrival {
     this.goAt = null;
     const intro = !this.noIntro && !!g.intro?.play({ at });
     this.noIntro = false;
+    // (sin cinemática de entrada: acá; con cinemática, cuando termina: ui/Intro finish)
+    if (!intro) settleMemory();
     // sin clic reciente el navegador no deja capturar el mouse: se pide uno
     if (!g.input.locked && !intro) g.menus.showClick(true);
     this.screen.reveal(1800);

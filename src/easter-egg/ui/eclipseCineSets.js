@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { buildProp } from '../world/props';
 import { registerEsterosProps } from '../world/esterosProps';
+import { buildTussocks, evenFoliage } from '../world/esterosGrass';
+import { slGroundLook } from '../world/eclipse/sanlorenzoLook';
 
 // Los decorados del final de Eclipse Matero (ui/EclipseEnding.js): lejos de las
 // islas y del campo de San Lorenzo, en el vacío, con su propio cielo. Nada de
@@ -24,7 +26,9 @@ export const SET = {
   santuario: new THREE.Vector3(45, 0, 0),
   fogon: new THREE.Vector3(90, 0, 0),
 };
-export const at = (k, x = 0, z = 0, out = new THREE.Vector3()) => out.copy(STAGE).add(SET[k]).add(tmpA.set(x, 0, z));
+// (un decorado llevado a un lugar del mapa: ui/EclipseEnding FIN3, el fogón del claro)
+export const SET_AT = {};
+export const at = (k, x = 0, z = 0, out = new THREE.Vector3()) => (SET_AT[k] ? out.copy(SET_AT[k]) : out.copy(STAGE).add(SET[k])).add(tmpA.set(x, 0, z));
 const tmpA = new THREE.Vector3();
 
 // ---------------- el cielo ----------------
@@ -145,7 +149,7 @@ const addAt = (parent, geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
   return m;
 };
 // Un piso redondo con colores por vértice (manchas): pasto, tierra o barro.
-function groundDisc(radius, a, b, seed = 1) {
+function groundDisc(radius, a, b, seed = 1, map = null) {
   const geo = new THREE.CircleGeometry(radius, 48, 0, Math.PI * 2);
   geo.rotateX(-Math.PI / 2);
   // (más vértices adentro: una grilla polar)
@@ -168,8 +172,50 @@ function groundDisc(radius, a, b, seed = 1) {
   ring.setAttribute('color', new THREE.BufferAttribute(col, 3));
   ring.computeVertexNormals();
   geo.dispose();
-  const m = new THREE.Mesh(ring, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }));
+  // (con textura: el pasto del mundo repetido cada 2 m)
+  let tex = null;
+  if (map) {
+    tex = map.clone();
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(radius, radius);
+    tex.needsUpdate = true;
+  }
+  const m = new THREE.Mesh(ring, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, map: tex }));
   m.receiveShadow = true;
+  return m;
+}
+
+// El horizonte de un decorado: lomas bajas en ronda, lejos. La niebla las deja
+// en silueta contra el cielo y tapan el canto del piso.
+function farHills(radius, color, seed = 1, hMax = 7) {
+  const N = 72;
+  const r0 = radius * 0.7;
+  const r1 = radius * 0.86;
+  const r2 = radius * 1.02;
+  const pos = [];
+  const idx = [];
+  for (let i = 0; i <= N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const n = 0.5 + 0.28 * Math.sin(a * 3 + seed) + 0.16 * Math.sin(a * 7 + seed * 2.3) + 0.1 * Math.sin(a * 13 - seed);
+    const h = hMax * Math.max(0.14, n);
+    const c = Math.cos(a);
+    const z = Math.sin(a);
+    // (el pie adentro del piso, la cresta, la espalda que cae)
+    const rr = r1 + 2.2 * Math.sin(a * 5 + seed * 1.7);
+    pos.push(c * r0, -0.4, z * r0, c * rr, h, z * rr, c * r2, -6, z * r2);
+  }
+  for (let i = 0; i < N; i++) {
+    const a = i * 3;
+    const b = a + 3;
+    idx.push(a, a + 1, b, b, a + 1, b + 1, a + 1, a + 2, b + 1, b + 1, a + 2, b + 2);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true, side: THREE.DoubleSide }));
+  m.receiveShadow = false;
+  m.castShadow = false;
   return m;
 }
 
@@ -291,6 +337,7 @@ export function buildSets(g) {
     reed: std(0x4a5a2a),
   };
   const glowTex = g.textures?.dot;
+  let cur = root;
   const prop = (type, x, z, o = {}, seed = 7) => {
     const p = buildProp({ type, pos: [x, z], ...o }, W.M, seed);
     if (!p) return null;
@@ -300,90 +347,212 @@ export function buildSets(g) {
         m.receiveShadow = true;
       }
     });
-    root.add(p.obj);
+    cur.add(p.obj);
     return p.obj;
   };
   const out = { root, M, flames: [], parts: {} };
+  // (2026-10-07, ITERACION-6 F4, el usuario: "las zonas a donde van están
+  // pobremente detalladas en el horizonte". Cada decorado en su grupo y a la
+  // vista de a uno: los pisos del estero y del santuario —al mismo alto, a
+  // 45 m— se pisaban y parpadeaban en franjas, y lo de uno se veía desde el
+  // otro. Y lomas y monte lejos. __mduOldFinSets: todos juntos, sin lomas)
+  const split = globalThis.__mduOldFinSets !== true;
+  const groups = {};
+  const setG = (k) => {
+    if (!split) return (cur = root);
+    const G = new THREE.Group();
+    G.name = 'eclipseFin-' + k;
+    root.add(G);
+    groups[k] = G;
+    return (cur = G);
+  };
 
   // el campo (solo si no está el de San Lorenzo de la arena): pasto y ombúes lejos
   {
     const o = SET.campo;
+    setG('campo');
     const gr = groundDisc(48, 0x6a8a3a, 0x8a9a4a, 4);
     gr.position.copy(o);
-    root.add(gr);
+    cur.add(gr);
     for (const [x, z, s] of [[30, -18, 1.3], [26, 22, 1.1], [-20, 26, 1.2], [-28, -20, 1]]) prop('ombu', o.x + x, o.z + z, { s }, 13);
   }
   // el estero de 1877: el algarrobo, el agua con juncos y el facón al pie
   {
     const o = SET.estero;
-    const gr = groundDisc(26, 0x4a5a2e, 0x667a3a, 2);
+    const fin2 = globalThis.__mduOldEclFin !== true;
+    // (sesión 1f, el usuario: "los entornos de las cinemáticas, calidad de PS1":
+    // FIN3, el piso grande con el pasto de verdad —sin borde a la vista: la
+    // niebla de la noche lo come— y monte alrededor. __mduOldEclFin2: como antes)
+    const fin3 = fin2 && globalThis.__mduOldEclFin2 !== true;
+    const gr = fin3 ? groundDisc(72, 0x56683a, 0x74844a, 2, W.T?.grass) : fin2 ? groundDisc(34, 0x4e6030, 0x6e7e40, 2) : groundDisc(26, 0x4a5a2e, 0x667a3a, 2);
+    if (fin3) slGroundLook(gr.material);
+    setG('estero');
     gr.position.copy(o);
-    root.add(gr);
+    cur.add(gr);
+    if (fin3 && split) {
+      const hl = farHills(72, 0x2c3a24, 3, 6.5);
+      hl.position.copy(o);
+      cur.add(hl);
+      // (más monte, entre el pajonal y las lomas)
+      const far = [[50, 0.9, 'ombu', 1.5], [56, 1.7, 'algarrobo', 1.3], [52, 2.4, 'ombu', 1.2], [58, 3.0, 'algarrobo', 1.4], [49, 3.8, 'ombu', 1.3], [55, 4.5, 'algarrobo', 1.2], [51, 5.2, 'ombu', 1.5], [57, 5.9, 'algarrobo', 1.3], [54, 0.2, 'ombu', 1.2]];
+      for (const [r, a, type, sc] of far) prop(type, o.x + Math.cos(a) * r, o.z + Math.sin(a) * r, { s: sc }, 41 + Math.round(a * 10));
+    }
+    if (fin3) {
+      // el monte del estero, lejos: algarrobos y ombúes en ronda (no del lado del agua ni del camino)
+      const ring = [[24, -0.2, 'algarrobo', 1.0], [30, 0.5, 'ombu', 1.2], [27, 1.3, 'algarrobo', 0.9], [36, 2.0, 'ombu', 1.3], [31, 2.7, 'algarrobo', 1.1], [40, 3.3, 'ombu', 1.4], [26, 4.1, 'algarrobo', 0.95], [33, 4.8, 'ombu', 1.2], [44, 5.5, 'algarrobo', 1.2], [38, 6.0, 'ombu', 1.1]];
+      for (const [r, a, type, sc] of ring) prop(type, o.x + Math.cos(a) * r, o.z + Math.sin(a) * r, { s: sc }, 17 + Math.round(a * 10));
+    }
+    // (sesión 1f: el agua, atrás a la izquierda: el Gil caminaba sobre ella)
+    const WX = fin2 ? -15 : -9;
+    const WZ = fin2 ? -11 : 7;
     const water = new THREE.Mesh(new THREE.CircleGeometry(9, 32).rotateX(-Math.PI / 2), M.water);
-    water.position.set(o.x - 9, 0.03, o.z + 7);
+    water.position.set(o.x + WX, 0.03, o.z + WZ);
     water.receiveShadow = true;
-    root.add(water);
+    cur.add(water);
     out.parts.tree = prop('algarrobo', o.x, o.z, { s: 1.25 }, 11);
     for (let k = 0; k < 40; k++) {
       const a = (k / 40) * Math.PI * 2;
       const r = 8.5 + Math.sin(k * 3.7) * 0.8;
       const h = 0.9 + 0.5 * Math.abs(Math.sin(k * 1.9));
-      addAt(root, new THREE.ConeGeometry(0.03, h, 4).translate(0, h / 2, 0), M.reed, o.x - 9 + Math.cos(a) * r, 0, o.z + 7 + Math.sin(a) * r, 0.1 * Math.sin(k), 0, 0.12 * Math.cos(k * 2.3));
+      addAt(cur, new THREE.ConeGeometry(0.03, h, 4).translate(0, h / 2, 0), M.reed, o.x + WX + Math.cos(a) * r, 0, o.z + WZ + Math.sin(a) * r, 0.1 * Math.sin(k), 0, 0.12 * Math.cos(k * 2.3));
+    }
+    // (sesión 1f: el pajonal del estero de verdad —las matas de Mate no Numa—
+    // alrededor del algarrobo: era un disco de pasto liso. Libres el agua, el
+    // camino del Gil, el pie del árbol y el facón. __mduOldEclFin: sin matas)
+    if (globalThis.__mduOldEclFin !== true) {
+      let sd = 4111;
+      const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      const seg = (px, pz, ax, az, bx, bz) => {
+        const dx = bx - ax, dz = bz - az;
+        const u = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz)));
+        return Math.hypot(px - ax - dx * u, pz - az - dz * u);
+      };
+      const spots = [];
+      // (en manchones, como en el estero: densos, a la rodilla y más)
+      const fin3b = globalThis.__mduOldEclFin2 !== true;
+      for (let c = 0; c < (fin3b ? 110 : 60); c++) {
+        const a = rnd() * Math.PI * 2;
+        const r = 3.6 + Math.sqrt(rnd()) * (fin3b ? 44 : 26);
+        const cx = Math.cos(a) * r, cz = Math.sin(a) * r;
+        const n = 6 + Math.floor(rnd() * 12);
+        for (let k = 0; k < n; k++) {
+          const x = cx + (rnd() - 0.5) * 4.2, z = cz + (rnd() - 0.5) * 4.2;
+          if (Math.hypot(x, z) < 3.2) continue;
+          if (Math.hypot(x - WX, z - WZ) < 9.6) continue;
+          if (seg(x, z, -11, 7.5, -1.4, 1.7) < 1.6) continue;
+          if (Math.hypot(x + 2.1, z - 2.6) < 1.8) continue;
+          spots.push([o.x + x, 0, o.z + z, 1.15 + rnd() * 0.8, rnd() * 6.28, 1.1 + rnd() * 0.5]);
+        }
+      }
+      const tm = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 });
+      evenFoliage(tm);
+      out.tuss = buildTussocks(cur, spots, tm, { variants: 2, seed: 61 });
     }
     const facon = buildFacon();
-    facon.position.set(o.x + 0.95, 0, o.z + 1.2);
+    // (sesión 1f: donde se arrodilló el Gil, a dos metros del tronco: pegado al
+    // árbol, el tronco tapaba toda toma del facón)
+    if (fin2) facon.position.set(o.x - 2.1, 0, o.z + 2.6);
+    else facon.position.set(o.x + 0.95, 0, o.z + 1.2);
     facon.rotation.set(0.08, 0.6, -0.1);
-    root.add(facon);
+    cur.add(facon);
     out.parts.facon = facon;
   }
   // el santuario del Gauchito: la capillita, la cruz con cintas, banderas, velas, botellas
   {
     const o = SET.santuario;
-    const gr = groundDisc(24, 0x9a7050, 0xb08a60, 5);
+    const fin3 = globalThis.__mduOldEclFin !== true && globalThis.__mduOldEclFin2 !== true;
+    const gr = fin3 ? groundDisc(64, 0x8a6a48, 0xa88660, 5, W.T?.dirt || W.T?.ground) : groundDisc(24, 0x9a7050, 0xb08a60, 5);
+    if (fin3 && gr.material.map) slGroundLook(gr.material);
+    setG('santuario');
+    if (fin3) for (const [r, a, sc] of [[14, 2.2, 1.3], [18, 2.9, 1.1], [16, 3.6, 1.4], [22, 1.6, 1.2], [20, 4.3, 1.0]]) prop('ombu', o.x + Math.cos(a) * r, o.z + Math.sin(a) * r, { s: sc }, 31);
     gr.position.copy(o);
-    root.add(gr);
-    capilla(root, o.x, o.z, 1.0, 0, M);
+    cur.add(gr);
+    if (fin3 && split) {
+      const hl = farHills(64, 0x4a3a2a, 8, 7.5);
+      hl.position.copy(o);
+      cur.add(hl);
+      // el monte lejos, en ronda (la cámara mira para -z: ahí, más tupido)
+      const far = [[34, 4.2, 'algarrobo', 1.3], [40, 4.55, 'ombu', 1.5], [31, 4.9, 'algarrobo', 1.1], [44, 5.2, 'ombu', 1.4], [36, 5.55, 'algarrobo', 1.2], [47, 5.9, 'ombu', 1.3], [39, 0.2, 'algarrobo', 1.2], [45, 0.8, 'ombu', 1.3], [42, 3.5, 'algarrobo', 1.2], [48, 2.6, 'ombu', 1.4], [46, 1.6, 'algarrobo', 1.2]];
+      for (const [r, a, type, sc] of far) prop(type, o.x + Math.cos(a) * r, o.z + Math.sin(a) * r, { s: sc }, 53 + Math.round(a * 10));
+      // el pajonal seco alrededor (antes se veía el del estero, que llegaba
+      // hasta acá): libres la capilla y el pasillo de los cuatro y la cámara
+      let sd = 7331;
+      const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      const spots = [];
+      for (let c = 0; c < 90; c++) {
+        const a = rnd() * Math.PI * 2;
+        const r = 5.5 + Math.sqrt(rnd()) * 40;
+        const cx = Math.cos(a) * r;
+        const cz = Math.sin(a) * r;
+        const n = 6 + Math.floor(rnd() * 12);
+        for (let k = 0; k < n; k++) {
+          const x = cx + (rnd() - 0.5) * 4.2;
+          const z = cz + (rnd() - 0.5) * 4.2;
+          if (Math.hypot(x, z) < 5.2) continue;
+          if (Math.abs(x) < 3.6 && z > 0 && z < 12.5) continue;
+          spots.push([o.x + x, 0, o.z + z, 1.1 + rnd() * 0.8, rnd() * 6.28, 1.1 + rnd() * 0.5]);
+        }
+      }
+      const tm = new THREE.MeshStandardMaterial({ color: 0xe6cf98, vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 });
+      evenFoliage(tm);
+      out.tussS = buildTussocks(cur, spots, tm, { variants: 2, seed: 67 });
+    }
+    capilla(cur, o.x, o.z, 1.0, 0, M);
     prop('cruzCinta', o.x - 1.1, o.z + 0.55, { h: 1.4 }, 3);
     prop('cruzCinta', o.x + 1.15, o.z + 0.5, { h: 1.2 }, 5);
     for (let k = 0; k < 14; k++) {
       const a = -1.25 + (k / 13) * 2.5;
       const r = 2.2 + (k % 3) * 0.55;
-      flag(root, o.x + Math.sin(a) * r, o.z - Math.cos(a) * r * 0.55 + 0.2, 2.2 + (k % 4) * 0.35, 0.3 * Math.sin(k), M);
+      flag(cur, o.x + Math.sin(a) * r, o.z - Math.cos(a) * r * 0.55 + 0.2, 2.2 + (k % 4) * 0.35, 0.3 * Math.sin(k), M);
     }
     const cl = [];
     for (let k = 0; k < 16; k++) cl.push([o.x - 0.9 + (k % 8) * 0.26, o.z + 0.75 + Math.floor(k / 8) * 0.22 + 0.05 * Math.sin(k * 2.1), 0.1 + 0.08 * ((k * 7) % 3)]);
-    out.flames.push(...candles(root, cl, M, glowTex));
+    out.flames.push(...candles(cur, cl, M, glowTex));
     const bl = [];
     for (let k = 0; k < 12; k++) bl.push([o.x - 1.4 + k * 0.25, o.z + 1.35 + 0.08 * Math.sin(k * 1.7), k % 2]);
-    bottles(root, bl, M);
+    bottles(cur, bl, M);
   }
   // el fogón del camino: el fuego, los troncos, el camino y el santuario chico
   {
     const o = SET.fogon;
+    // (sesión 1f: en su grupo, para poder llevarlo al fogón de verdad del claro:
+    // ui/EclipseEnding FIN3 lo mueve y esconde lo que el claro ya tiene)
+    const fogG = new THREE.Group();
+    fogG.name = 'eclipseFinFogon';
+    root.add(fogG);
+    cur = root;
+    out.groups = { ...groups, fogon: fogG };
     const gr = groundDisc(24, 0x5a5034, 0x6e6040, 9);
     gr.position.copy(o);
-    root.add(gr);
+    gr.userData.setOnly = true;
+    fogG.add(gr);
     const road = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 46).rotateX(-Math.PI / 2), std(0x8a7058, { roughness: 1 }));
     road.position.set(o.x + 4.5, 0.012, o.z);
     road.receiveShadow = true;
-    root.add(road);
-    prop('fogonCampo', o.x, o.z, {}, 4);
+    road.userData.setOnly = true;
+    fogG.add(road);
+    const fp = prop('fogonCampo', o.x, o.z, {}, 4);
+    if (fp) {
+      fp.userData.setOnly = true;
+      fogG.add(fp);
+    }
     // los cuatro troncos alrededor (asiento a 0,40 m)
     out.seats = [];
     for (let k = 0; k < 4; k++) {
       const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
       const x = o.x + Math.cos(a) * 1.75;
       const z = o.z + Math.sin(a) * 1.75;
-      const log = addAt(root, new THREE.CylinderGeometry(0.19, 0.21, 1.1, 10).rotateZ(Math.PI / 2), M.log, x, 0.2, z, 0, -a + Math.PI / 2, 0);
+      const log = addAt(fogG, new THREE.CylinderGeometry(0.19, 0.21, 1.1, 10).rotateZ(Math.PI / 2), M.log, x, 0.2, z, 0, -a + Math.PI / 2, 0);
       log.userData.a = a;
+      log.userData.setLog = true;
       out.seats.push({ x, z, a });
     }
-    capilla(root, o.x + 6.6, o.z - 2.4, 0.62, -Math.PI / 2, M);
-    for (let k = 0; k < 5; k++) flag(root, o.x + 6.0 + (k % 2) * 1.2, o.z - 3.8 + k * 0.7, 1.9 + (k % 3) * 0.25, 0.4 * k, M);
+    capilla(fogG, o.x + 6.6, o.z - 2.4, 0.62, -Math.PI / 2, M);
+    for (let k = 0; k < 5; k++) flag(fogG, o.x + 6.0 + (k % 2) * 1.2, o.z - 3.8 + k * 0.7, 1.9 + (k % 3) * 0.25, 0.4 * k, M);
     const cl = [];
     for (let k = 0; k < 7; k++) cl.push([o.x + 5.9 + (k % 2) * 0.18, o.z - 3.0 + k * 0.22, 0.12]);
-    out.flames.push(...candles(root, cl, M, glowTex));
-    bottles(root, [[o.x + 6.2, o.z - 1.1, 1], [o.x + 6.35, o.z - 1.0, 0], [o.x + 6.1, o.z - 0.9, 1]], M);
+    out.flames.push(...candles(fogG, cl, M, glowTex));
+    bottles(fogG, [[o.x + 6.2, o.z - 1.1, 1], [o.x + 6.35, o.z - 1.0, 0], [o.x + 6.1, o.z - 0.9, 1]], M);
     // el fuego: llamas (brillos) arriba de las brasas
     const fire = new THREE.Group();
     fire.position.set(o.x, 0.15, o.z);
@@ -395,7 +564,7 @@ export function buildSets(g) {
       s.userData.ph = k * 1.7;
       fire.add(s);
     }
-    root.add(fire);
+    fogG.add(fire);
     out.fire = fire;
   }
   root.visible = false;

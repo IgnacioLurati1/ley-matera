@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ZONES } from '../config/map';
 import { PORTALS, ISLANDS } from '../config/maps/eclipse';
 import { ISLE_IDS } from './eclipseSky';
+import { eclSfx } from '../fx/eclipseSfx';
 
 // Los portales del desgarro de Eclipse Matero. Las islas no tienen puentes: se
 // pasa de una a otra por estos tajos en el aire. Cada portal une dos puntas;
@@ -52,6 +53,14 @@ const SNAP_AGE = 12;
 const SNAP_GAP = 2.5;
 // las esquirlas de cada punta
 const SHARDS = 7;
+// La GRIETA (el portal trabado, a La Disformidad; el usuario: "en el medio debería
+// haber una grieta que lleva a la dimensión oscura"): el mismo tajo pero enorme,
+// de 14 m de alto, con la marca y las esquirlas al tamaño. __mduNoBigRift: como los demás.
+const BIG = { sx: 2.4, sy: 3.0, mark: 4.4, shard: 2.6, reach: 1.7, radius: 4.2 };
+// (mundo, it. 4: `big` la grieta del claro al Nudo; `dark` el portal negro del medio del
+// Nudo a La Disformidad y el atajo de vuelta: el tajo grande, negro por dentro, con el filo violeta)
+const bigOf = (def) => (!!def.locked || !!def.big || !!def.dark) && globalThis.__mduNoBigRift !== true;
+const darkOf = (def) => !!def.dark && globalThis.__mduNoDarkPortal !== true;
 
 const NOISE = /* glsl */ `
   #define TAU 6.28318531
@@ -78,7 +87,7 @@ const VERT = /* glsl */ `
 // (adentro del tajo tapa todo; alrededor oscurece un poco, así el filo se lee
 // contra cualquier cielo).
 const FRAG = /* glsl */ `
-  uniform float uTime, uOpen, uLock, uHas, uSeed, uKick;
+  uniform float uTime, uOpen, uLock, uHas, uSeed, uKick, uDark;
   uniform vec2 uPar;
   uniform vec3 uCol;
   uniform sampler2D uMap;
@@ -127,6 +136,9 @@ const FRAG = /* glsl */ `
     float mem = vn(vec2(p.x * 3.0 + sin(p.y * 2.0 + t), p.y * 5.0 - t * 1.3));
     view += vec3(0.35, 0.2, 0.7) * smoothstep(0.74, 0.92, mem) * 0.05;
     view = mix(vec3(0.02, 0.0, 0.05), view, smoothstep(0.15, 0.85, uOpen));
+    // (el portal negro: adentro nada, un negro que se revuelve con un violeta muy hondo)
+    vec3 abyss = vec3(0.003, 0.0, 0.01) + vec3(0.16, 0.02, 0.38) * smoothstep(0.62, 0.95, mem) * 0.18 + vec3(0.22, 0.02, 0.55) * pow(edgeN, 5.0) * 0.45;
+    view = mix(view, abyss, uDark);
 
     // el filo: un núcleo casi blanco, el resplandor y chispas que saltan
     float core = exp(-abs(d) / 0.016);
@@ -136,8 +148,8 @@ const FRAG = /* glsl */ `
     float sk = floor(t * 14.0);
     float sl = fract(p.y * 7.0) - 0.5;
     float spark = step(0.93, h2(vec2(sy, sk + uSeed * 31.0))) * exp(-max(d, 0.0) / (0.06 + 0.16 * h2(vec2(sy + 3.0, sk)))) * step(0.0, d) * exp(-sl * sl * 90.0);
-    vec3 hot = mix(vec3(1.5, 1.15, 2.2), vec3(1.5, 0.75, 0.7), uLock);
-    vec3 vio = mix(vec3(0.45, 0.13, 1.0), vec3(0.5, 0.1, 0.14), uLock);
+    vec3 hot = mix(mix(vec3(1.5, 1.15, 2.2), vec3(1.5, 0.75, 0.7), uLock), vec3(0.62, 0.16, 1.25), uDark);
+    vec3 vio = mix(mix(vec3(0.45, 0.13, 1.0), vec3(0.5, 0.1, 0.14), uLock), vec3(0.3, 0.02, 0.72), uDark);
     float life = mix(0.5 + 0.3 * beat, 1.0, uOpen) * (1.0 - 0.4 * uLock) + uKick * 1.6;
     vec3 col = (hot * core + vio * glow * 0.55 * flick + vec3(1.3, 0.85, 1.9) * spark * (0.4 + 0.6 * uOpen)) * life * gm;
     col += view * ins;
@@ -149,7 +161,7 @@ const FRAG = /* glsl */ `
 
 // La marca en el piso: grietas que salen del pie del tajo y un charco de luz.
 const FRAG_MARK = /* glsl */ `
-  uniform float uTime, uOpen, uLock, uSeed, uKick;
+  uniform float uTime, uOpen, uLock, uSeed, uKick, uDark;
   varying vec2 vUv;
   ${NOISE}
   void main() {
@@ -166,7 +178,7 @@ const FRAG_MARK = /* glsl */ `
     float crack = (1.0 - smoothstep(0.0, 0.06 + 0.1 * r, k)) * on * smoothstep(len, len * 0.3, r);
     float pool = exp(-r * 4.5);
     float pulse = 0.6 + 0.4 * sin(uTime * 2.1 + uSeed * 6.0 - r * 5.0);
-    vec3 vio = mix(vec3(0.5, 0.16, 1.1), vec3(0.6, 0.12, 0.16), uLock);
+    vec3 vio = mix(mix(vec3(0.5, 0.16, 1.1), vec3(0.6, 0.12, 0.16), uLock), vec3(0.34, 0.04, 0.8), uDark);
     float life = mix(0.3, 1.0, uOpen) * (1.0 - 0.3 * uLock) + uKick * 0.6;
     vec3 col = vio * (crack * 2.2 * pulse + pool * 0.12) * life;
     // (la tierra quemada alrededor)
@@ -233,6 +245,13 @@ const FRAG_TRIP = /* glsl */ `
 `;
 
 const PREMUL = { transparent: true, depthWrite: false, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor, fog: false };
+// Los sonidos grabados de los portales (2026-10-10; globalThis.__mduOldPortalSfx
+// === true: los sintetizados de antes). El raro del viaje: menos del 5 %.
+const OLD_SFX = () => globalThis.__mduOldPortalSfx === true;
+const RARE_TRIP = 0.04;
+// cuánto tarda en abrirse el portal negro (s): lo que ruge su sonido
+const DARK_OPEN = 3.2;
+const def0 = (P) => P.def;
 const backOut = (k) => {
   const s = 1.9;
   const q = k - 1;
@@ -274,14 +293,16 @@ export default class EclipsePortals {
         const seed = (def.id * 0.37 + (e === def.a ? 0.11 : 0.61)) % 1;
         // (sin vista todavía, el tajo muestra el color del cielo de la isla a la que lleva)
         const col = new THREE.Color(ISLANDS[islaOf(o.zone)].lamp);
-        const U = { uTime: this.time, uOpen: { value: 0 }, uLock: { value: def.locked ? 1 : 0 }, uHas: { value: 0 }, uSeed: { value: seed }, uKick: { value: 0 }, uPar: { value: new THREE.Vector2() }, uCol: { value: col }, uMap: { value: null } };
+        const U = { uTime: this.time, uOpen: { value: 0 }, uLock: { value: def.locked ? 1 : 0 }, uDark: { value: darkOf(def) ? 1 : 0 }, uHas: { value: 0 }, uSeed: { value: seed }, uKick: { value: 0 }, uPar: { value: new THREE.Vector2() }, uCol: { value: col }, uMap: { value: null } };
         const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: U, side: THREE.DoubleSide, ...PREMUL });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.set(e.pos[0], y, e.pos[1]);
         mesh.renderOrder = 6;
+        const big = bigOf(def);
+        if (big) mesh.scale.set(BIG.sx, BIG.sy, 1);
         this.root.add(mesh);
         // la marca: adentro de la isla, hasta donde hay piso parejo
-        let mr = 1.9;
+        let mr = big ? BIG.mark : 1.9;
         const mx = e.pos[0] + e.face[0] * 0.9;
         const mz = e.pos[1] + e.face[1] * 0.9;
         const flat = (r) => {
@@ -300,15 +321,15 @@ export default class EclipsePortals {
         this.root.add(mark);
         const end = {
           P, pos: new THREE.Vector3(e.pos[0], y, e.pos[1]), face: e.face, zone: e.zone, isla: islaOf(e.zone), cell: w.idx(Math.floor(e.pos[0]), Math.floor(e.pos[1])),
-          mat, markMat, mesh, mark, U, seed, col, rt: null, stale: true, shotT: -99, dist: 999, kick: 0, other: null, n: this.ends.length,
+          mat, markMat, mesh, mark, U, seed, col, rt: null, stale: true, shotT: -99, dist: 999, kick: 0, other: null, n: this.ends.length, big,
         };
         P.ends.push(end);
         this.ends.push(end);
         game.interact.add({
           kind: 'desgarro',
           pos: new THREE.Vector3(e.pos[0], y + 1.2, e.pos[1]),
-          radius: 2.4,
-          prompt: () => (P.open ? null : def.locked ? { text: 'Sellado', noCost: true, info: true } : 'abrir el desgarro'),
+          radius: big ? BIG.radius : 2.4,
+          prompt: () => (P.open ? null : def.atajo ? { text: 'Lo abre el ritual del Pack-a-Pava', noCost: true, info: true } : def.locked ? { text: 'Sellado', noCost: true, info: true } : 'abrir el desgarro'),
           cost: () => (def.locked ? 0 : game.interact.doorCost({ cost: def.cost })),
           use: () => {
             if (P.open || def.locked) return false;
@@ -361,11 +382,22 @@ export default class EclipsePortals {
     return !this.g.net || this.g.net.host;
   }
 
+  // el portal negro (lo abre el paso previo del Pack-a-Pava) y el atajo (lo abre el ritual)
+  get darkId() {
+    return this.list.find((P) => P.def.dark && P.def.locked && !P.def.atajo)?.def.id ?? null;
+  }
+
+  get atajoId() {
+    return this.list.find((P) => P.def.atajo)?.def.id ?? null;
+  }
+
   // ---------------- lo que se escucha (horneado una vez, en la carga) ----------------
   bake() {
     const a = this.g.audio;
     if (this.baked || !a?.ctx || !a.bakeSound) return;
     this.baked = true;
+    // (los grabados, de fondo: fx/eclipseSfx)
+    if (!OLD_SFX()) eclSfx(this.g).load(['portal-teleport', 'portal-teleport-raro', 'portal-caos-abre']);
     // se abre: el crujido, el aire que se rasga, el golpe sordo y un brillo que sube
     a.bakeSound('ptl-abre', 1.9, function (o, t) {
       for (let i = 0; i < 7; i++) this.noise(o, { t: t + i * 0.03 + Math.random() * 0.02, dur: 0.05, type: 'highpass', freq: 2600 + Math.random() * 3200, gain: 0.4 - i * 0.04, attack: 0.002 });
@@ -440,7 +472,14 @@ export default class EclipsePortals {
     const cp = g.camera.position;
     const near = A.pos.distanceToSquared(cp) < B.pos.distanceToSquared(cp) ? A : B;
     for (const e of P.ends) e.kick = 1;
-    this.play('ptl-abre', near.pos, 1);
+    // (2026-10-10, el usuario: los sonidos grabados de los portales) el portal
+    // negro, con su apertura: ruge ~3,5 s y el tajo se abre en ese rato (no en
+    // 1,1 s). Si ya la está oyendo (los cuatro pilares, world/papGrietas.js
+    // opening, la largan 2 s antes), no se repite; si no, entra por donde ruge.
+    if (darkOf(def0(P)) && !OLD_SFX()) {
+      P.slow = true;
+      if (!(g.time - (this.caosAt ?? -99) < 8)) eclSfx(g).play('portal-caos-abre', { pos: near.pos, gain: 1, reverb: 0.25, ref: 9, offset: 1.5 });
+    } else this.play('ptl-abre', near.pos, 1);
     if (near.pos.distanceTo(cp) < 14) g.post?.flash?.(0.18);
   }
 
@@ -476,8 +515,9 @@ export default class EclipsePortals {
       const a = D.a + t * D.sp;
       const rad = (0.55 + D.rad * 0.25) * (1 - k) + D.rad * k;
       const h = (0.25 + (j % 3) * 0.3) * (1 - k) + D.h * k + Math.sin(t * 0.7 + D.bob) * 0.12;
-      const s = 0.55 + 0.45 * k;
-      tmpV.set(e.pos.x + Math.cos(a) * rad, e.pos.y + h, e.pos.z + Math.sin(a) * rad);
+      const bs = e.big ? BIG.shard : 1;
+      const s = (0.55 + 0.45 * k) * bs;
+      tmpV.set(e.pos.x + Math.cos(a) * rad * bs, e.pos.y + h * bs, e.pos.z + Math.sin(a) * rad * bs);
       tmpQ.setFromEuler(tmpE.set(D.rot[0] + t * D.rot[2] * 0.4, D.rot[1] + t * D.rot[2] * 0.3, 0));
       tmpS.set(D.s[0] * s, D.s[1] * s, D.s[2] * s);
       this.shards.setMatrixAt(e.n * SHARDS + j, tmpM.compose(tmpV, tmpQ, tmpS));
@@ -492,7 +532,7 @@ export default class EclipsePortals {
     for (const P of this.list) {
       const want = P.open ? 1 : 0;
       if (P.k !== want) {
-        P.k += Math.sign(want - P.k) * Math.min(Math.abs(want - P.k), dt / 1.1);
+        P.k += Math.sign(want - P.k) * Math.min(Math.abs(want - P.k), dt / (P.slow ? DARK_OPEN : 1.1));
         const o = P.k >= 1 ? 1 : Math.max(0, backOut(P.k));
         for (const e of P.ends) e.U.uOpen.value = o;
       }
@@ -525,7 +565,7 @@ export default class EclipsePortals {
         if (!P.open || P.k < 0.9) continue;
         for (let i = 0; i < 2; i++) {
           const e = P.ends[i];
-          if (Math.abs(pl.pos.y - e.pos.y) > 1.8 || Math.hypot(pl.pos.x - e.pos.x, pl.pos.z - e.pos.z) > REACH) continue;
+          if (Math.abs(pl.pos.y - e.pos.y) > 1.8 || Math.hypot(pl.pos.x - e.pos.x, pl.pos.z - e.pos.z) > (e.big ? BIG.reach : REACH)) continue;
           this.begin(pl, e, P.ends[1 - i]);
           return;
         }
@@ -551,7 +591,7 @@ export default class EclipsePortals {
       this.cross(pl, to);
       this.cd = COOLDOWN;
       g.post?.flash?.(0.22);
-      this.play('ptl-pasa', null, 1);
+      if (!this.tripSound()) this.play('ptl-pasa', null, 1);
       return;
     }
     this.trip = { t: 0, from, to, moved: false, fov: 0 };
@@ -564,7 +604,24 @@ export default class EclipsePortals {
     this.tripU.uIn.value = this.tripU.uHold.value = this.tripU.uOut.value = 0;
     this.over.visible = true;
     from.kick = 1;
-    this.play('ptl-viaje', null, 0.95);
+    if (!this.tripSound()) this.play('ptl-viaje', null, 0.95);
+  }
+
+  // El viaje, grabado (fx/eclipseSfx): la entrada y la salida en un solo
+  // archivo que calza con el túnel; menos del 5 % de las veces, el raro (sin su
+  // medio segundo de arranque: el golpe cae al salir). false si todavía no
+  // bajaron (suena el sintetizado de antes) o con __mduOldPortalSfx.
+  tripSound() {
+    if (OLD_SFX()) return false;
+    const S = eclSfx(this.g);
+    const rare = Math.random() < RARE_TRIP && S.has('portal-teleport-raro');
+    const id = rare ? 'portal-teleport-raro' : 'portal-teleport';
+    if (!S.has(id)) {
+      S.load(['portal-teleport', 'portal-teleport-raro', 'portal-caos-abre']);
+      return false;
+    }
+    S.play(id, { gain: 1, reverb: 0.12, offset: rare ? 0.4 : 0 });
+    return true;
   }
 
   tripStep(dt) {
@@ -609,8 +666,11 @@ export default class EclipsePortals {
   // El jugador sale por la otra punta, un paso adentro de la isla.
   cross(pl, to) {
     const g = this.g;
-    const x = to.pos.x + to.face[0] * 1.5;
-    const z = to.pos.z + to.face[1] * 1.5;
+    // (la grieta grande cruza a 1,7 m: el que llega sale más lejos, si no al
+    // pasar el descanso volvía a cruzar solo)
+    const out = to.big ? BIG.reach + 0.9 : 1.5;
+    const x = to.pos.x + to.face[0] * out;
+    const z = to.pos.z + to.face[1] * out;
     pl.pos.set(x, g.world.floorAt(x, z, to.pos.y + 1), z);
     pl.vel?.set?.(0, 0, 0);
     pl.yaw = Math.atan2(-to.face[0], -to.face[1]);
@@ -673,7 +733,8 @@ export default class EclipsePortals {
     let best = null;
     let bd = Infinity;
     for (const e of this.ends) {
-      if (!e.P.open || e.dist > SNAP_R) continue;
+      // (el portal negro no muestra el otro lado: adentro es negro)
+      if (!e.P.open || e.dist > SNAP_R || e.U.uDark.value > 0.5) continue;
       let need = false;
       if (!e.rt || e.stale) need = true;
       else {
@@ -718,6 +779,10 @@ export default class EclipsePortals {
     e.mesh.visible = false;
     const over = this.over.visible;
     this.over.visible = false;
+    // (mundo, it. 4) la grieta a la Disformidad no muestra el Pack-a-Pava: desde
+    // el claro se veía la máquina en el medio del tajo. Vive solo allá adentro.
+    const hidePap = (to.isla === 'desgarro' || to.isla === 'abismo') && globalThis.__mduNoRiftHidePap !== true ? [g.interact?.pap?.group, g.papq?.termas?.root].filter((o) => o?.visible) : [];
+    for (const o of hidePap) o.visible = false;
     const rt0 = renderer.getRenderTarget();
     const auto = renderer.shadowMap.autoUpdate;
     const need = renderer.shadowMap.needsUpdate;
@@ -737,6 +802,7 @@ export default class EclipsePortals {
       renderer.shadowMap.needsUpdate = need;
       e.mesh.visible = true;
       this.over.visible = over;
+      for (const o of hidePap) o.visible = true;
       if (keep) {
         fog.color.copy(keep.c);
         fog.density = keep.d;

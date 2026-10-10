@@ -1,8 +1,11 @@
 import { canStep } from './Levels';
+import { FEATURES } from '../config/map';
 import TowerNav from './TowerNav';
 
 // lo menos que pasa entre dos cálculos del campo de un jugador (ms)
 const SOLVE_GAP = 110;
+// cuántas celdas como mucho recorre un cálculo en Eclipse (~ 45-60 m alrededor)
+const NAV_BUDGET = 6000;
 
 // Campo de flujo: distancia (Dijkstra, 8 vecinos) desde la celda del jugador a
 // todas las celdas caminables. Todos los zombies lo comparten: cada uno solo
@@ -94,11 +97,19 @@ export default class Navigation {
     heap.push(start, 0);
     // lo que cuesta cada celda (el agua honda, entities/swim.js); sin agua, todo 1
     const cost = w.navCost;
+    // (Eclipse Matero: el mapa entero son ~40 000 celdas unidas por portales y
+    // el campo completo tardaba ~190 ms cada vez que el jugador cambiaba de
+    // celda —el usuario: "tirones tremendos, injugable" en la zona del medio—.
+    // Se corta en las NAV_BUDGET celdas más cercanas: los muertos aparecen
+    // cerca; más lejos van derecho. globalThis.__mduNoNavBudget: como antes)
+    const budget = FEATURES.eclipse && globalThis.__mduNoNavBudget !== true ? NAV_BUDGET : Infinity;
+    let popped = 0;
     while (heap.size) {
       // (sin armar un arreglo por celda: era basura de memoria en cada cálculo)
       const i = heap.pop();
       const d = heap.lastKey;
       if (d > dist[i]) continue;
+      if (++popped > budget) break;
       const x = i % W;
       const z = (i - x) / W;
       for (const [dx, dz, c] of NB) {

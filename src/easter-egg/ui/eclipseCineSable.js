@@ -255,6 +255,135 @@ vec3 otherSide(vec3 o, vec3 d) {
   return col;
 }
 `;
+// (2026-10-07, ITERACION-6 G1) El mismo Monumento, de noche: el final del
+// Monumento —la otra mitad de esta escena— pasa de noche. Lo de arriba,
+// apagado y azulado, con estrellas.
+const PAINT_MONUMENTO_NOCHE = PAINT_MONUMENTO.replace('vec3 otherSide(vec3 o, vec3 d) {', 'vec3 otherSideDay(vec3 o, vec3 d) {') + `
+vec3 otherSide(vec3 o, vec3 d) {
+  vec3 c = otherSideDay(o, d);
+  float l = dot(c, vec3(0.3, 0.55, 0.15));
+  vec3 n = mix(vec3(l), c, 0.4) * vec3(0.13, 0.16, 0.27);
+  // el cielo, más negro arriba, y las estrellas
+  float up = smoothstep(0.02, 0.5, d.y);
+  n *= 1.0 - 0.55 * up;
+  vec3 q = floor(normalize(d) * 150.0);
+  float st = step(0.994, fract(sin(dot(q, vec3(127.1, 311.7, 74.7))) * 43758.5453)) * smoothstep(0.1, 0.3, d.y) * step(0.9, l);
+  return n + vec3(0.8, 0.85, 1.0) * st * 0.7;
+}
+`;
+// (2026-10-08, ITERACION-7 C6) El otro lado del Primer Mate: San Lorenzo, el
+// 3 de febrero de 1813, al alba y con el eclipse total encima: el campo, el
+// convento de San Carlos (el claustro blanco con sus tejas, la iglesia y el
+// campanario), un ombú, y lejos, en el río, la silueta de El Eclipse con los
+// ojos prendidos. Lo usa ui/eclipseCruce.js.
+const PAINT_SANLORENZO = `
+vec3 hazeC = vec3(0.3, 0.19, 0.22);
+vec3 haze(vec3 c, float t) {
+  return mix(c, hazeC, 1.0 - exp(-t * 0.014));
+}
+vec3 skySL(vec3 d) {
+  float el = d.y;
+  vec3 c = mix(vec3(0.95, 0.5, 0.24), vec3(0.32, 0.15, 0.3), smoothstep(0.0, 0.15, el));
+  c = mix(c, vec3(0.02, 0.012, 0.045), smoothstep(0.15, 0.55, el));
+  // el eclipse: el disco negro con su corona, alto y a la izquierda
+  vec3 ed = normalize(vec3(-0.3, 0.52, -0.8));
+  float k = max(dot(d, ed), 0.0);
+  float disk = smoothstep(0.99925, 0.9994, k);
+  float cor = pow(k, 1400.0) * 2.2 + pow(k, 160.0) * 0.35;
+  c += vec3(1.0, 0.86, 0.62) * cor * (1.0 - disk);
+  c *= 1.0 - disk;
+  // las estrellas de la totalidad
+  vec3 q = floor(normalize(d) * 160.0);
+  c += vec3(0.75) * step(0.9955, fract(sin(dot(q, vec3(127.1, 311.7, 74.7))) * 43758.5453)) * smoothstep(0.22, 0.45, el);
+  return c;
+}
+vec3 otherSide(vec3 o, vec3 d) {
+  vec3 col = skySL(d);
+  float best = 1e5;
+  if (d.y < -0.002) {
+    // el campo: pasto oscuro, la luz del alba rasante desde el fondo
+    float t = o.y / -d.y;
+    vec3 h = o + d * t;
+    float n = vn(h.xz * 0.6) * 0.6 + vn(h.xz * 2.7) * 0.4;
+    vec3 gr = mix(vec3(0.045, 0.06, 0.03), vec3(0.16, 0.14, 0.07), n);
+    gr *= 0.75 + 0.45 * smoothstep(-10.0, -70.0, h.z);
+    col = haze(gr, t);
+    best = t;
+  }
+  if (d.z < -0.001) {
+    // El Eclipse, lejos en el río (160 m, a la derecha): negro, el borde violeta y los ojos
+    float t = (o.z + 160.0) / -d.z;
+    vec3 h = o + d * t;
+    vec2 qb = vec2((h.x - 44.0) / 17.0, (h.y - 22.0) / 30.0);
+    vec2 qh = vec2((h.x - 44.0) / 7.5, (h.y - 58.0) / 8.5);
+    float lb = length(qb) + 0.12 * (fbm(h.xy * 0.08) - 0.5);
+    float lh = length(qh);
+    if (t < best && h.y > 0.0 && (lb < 1.0 || lh < 1.0)) {
+      float rim = max(smoothstep(0.78, 1.0, lb) * step(lb, 1.0), smoothstep(0.7, 1.0, lh) * step(lh, 1.0));
+      vec3 c = vec3(0.025, 0.01, 0.045) + vec3(0.5, 0.14, 0.9) * rim * (0.55 + 0.25 * sin(uT * 2.0));
+      vec2 e1 = vec2(h.x - 41.5, h.y - 59.0);
+      vec2 e2 = vec2(h.x - 46.5, h.y - 59.0);
+      float eye = step(length(e1 * vec2(1.0, 2.2)), 1.0) + step(length(e2 * vec2(1.0, 2.2)), 1.0);
+      c += vec3(1.0, 0.25, 0.3) * eye * 2.0;
+      col = haze(c, t * 0.55);
+      best = t;
+    }
+    // el ombú (24 m, a la derecha): el tronco y la copa grande, oscuros
+    t = (o.z + 24.0) / -d.z;
+    h = o + d * t;
+    float trunk = step(abs(h.x - 9.0 - 0.2 * sin(h.y * 0.8)), 0.9 - 0.08 * h.y) * step(h.y, 4.5);
+    vec2 qc = vec2((h.x - 9.0) / 7.5, (h.y - 6.2) / 3.4);
+    float crown = step(length(qc), 0.95 + 0.3 * (fbm(h.xy * 0.7) - 0.5));
+    if (t < best && h.y > 0.0 && (trunk + crown) > 0.5) {
+      col = haze(vec3(0.02, 0.03, 0.02) + vec3(0.12, 0.08, 0.05) * fbm(h.xy * 2.5) * crown, t);
+      best = t;
+    }
+    // el convento (30 m): el claustro, la iglesia y el campanario, a la izquierda
+    t = (o.z + 30.0) / -d.z;
+    h = o + d * t;
+    if (t < best && h.y > 0.0) {
+      float x = h.x + 9.0;
+      // (contra el alba, en sombra: se recorta; lo claro, el borde que le da el sol)
+      vec3 wallC = vec3(0.32, 0.25, 0.24);
+      vec3 roofC = vec3(0.2, 0.08, 0.06);
+      vec3 c = vec3(-1.0);
+      // el claustro: muro bajo con ventanas y el techo de tejas
+      if (x > -22.0 && x < 2.0) {
+        if (h.y < 4.0) {
+          float win = step(0.42, fract(x / 3.2)) * step(fract(x / 3.2), 0.6) * step(1.4, h.y) * step(h.y, 2.7);
+          // (algunas, con un candil adentro)
+          float lit = step(0.55, hh(vec2(floor(x / 3.2), 3.0)));
+          c = mix(wallC, mix(vec3(0.04, 0.03, 0.04), vec3(1.0, 0.62, 0.28) * 1.4, lit), win);
+        } else if (h.y < 5.3 - 0.0) {
+          c = roofC * (0.85 + 0.15 * step(0.5, fract(x * 1.6)));
+        }
+      }
+      // la iglesia: el frente con el techo a dos aguas
+      if (x >= 2.0 && x < 12.0 && h.y < 8.0 + (5.0 - abs(x - 7.0)) * 0.55) {
+        c = h.y < 8.0 ? wallC * 0.92 : roofC;
+        float door = step(abs(x - 7.0), 1.1) * step(h.y, 3.2);
+        c = mix(c, vec3(0.08, 0.05, 0.04), door);
+      }
+      // el campanario, con la cúpula chica arriba
+      if (x >= 12.0 && x < 15.4) {
+        if (h.y < 15.0) {
+          float arch = step(abs(x - 13.7), 0.7) * step(11.5, h.y) * step(h.y, 13.6);
+          c = mix(wallC * 0.98, vec3(0.05, 0.03, 0.05), arch);
+        } else if (abs(x - 13.7) < 1.7 * sqrt(max(0.0, 1.0 - (h.y - 15.0) / 2.2))) {
+          c = wallC * 0.85;
+        }
+      }
+      if (c.x >= 0.0) {
+        // la luz del alba de un lado; el otro, en sombra
+        c *= 0.72 + 0.5 * smoothstep(-24.0, 16.0, x);
+        col = mix(c, hazeC, 0.18);
+        best = t;
+      }
+    }
+  }
+  return col;
+}
+`;
 // El otro lado del final: el estero de 1877 de noche, con luna llena: el agua
 // que la refleja, los juncos y el algarrobo recortado contra el cielo.
 const PAINT_ESTERO = `
@@ -365,7 +494,7 @@ void main() {
 }`;
 
 // Un desgarro suelto (el del final, ui/EclipseEnding.js): kind 'estero' (el de
-// 1877, de noche) o 'monumento'. root mira a +z; U: uOpen, uCrack, uFlash (los
+// 1877, de noche), 'monumento', 'monumentoNoche' o 'sanlorenzo' (ui/eclipseCruce). root mira a +z; U: uOpen, uCrack, uFlash (los
 // maneja quien lo usa); tick(dt, cam): el reloj y la cámara en su espacio.
 export function makeRift(kind = 'estero') {
   const root = new THREE.Group();
@@ -381,7 +510,7 @@ export function makeRift(kind = 'estero') {
   const glow = mk(4.6, RIFT_H + 0.8, GLOW_FRAG, { blending: THREE.AdditiveBlending });
   glow.position.z = -0.02;
   glow.renderOrder = 1;
-  const core = mk(2 * RIFT_W + 0.7, RIFT_H, riftFrag(kind === 'monumento' ? PAINT_MONUMENTO : PAINT_ESTERO), {});
+  const core = mk(2 * RIFT_W + 0.7, RIFT_H, riftFrag(kind === 'sanlorenzo' ? PAINT_SANLORENZO : kind === 'monumentoNoche' ? PAINT_MONUMENTO_NOCHE : kind === 'monumento' ? PAINT_MONUMENTO : PAINT_ESTERO), {});
   core.renderOrder = 2;
   const fl = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 3.2).rotateX(-Math.PI / 2).translate(0, 0.012, 0.8), new THREE.ShaderMaterial({ uniforms: U, vertexShader: FLOOR_VERT, fragmentShader: FLOOR_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
   mats.push(fl.material);

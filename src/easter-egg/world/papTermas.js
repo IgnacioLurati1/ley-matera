@@ -368,14 +368,7 @@ export default class PapTermas {
       this.timer = -1;
     }
     if (quiet) return;
-    const say = (t, d = 4.5) => g.hud?.subtitle?.(t, d);
-    if (s === 'ice') say('El calor del fogón llegó a la barbacana: el hielo de las cadenas del puente ya se puede romper.');
-    else if (s === 'crank') say('¡Las cadenas quedaron libres! Girá el torno de la barbacana para bajar el puente.');
-    else if (s === 'pools') say('¡El puente bajó! En las termas, destapá las tres pozas.');
-    else if (s === 'heat') {
-      say('¡El agua caliente llegó a la poza de la pava! Quedate en las termas hasta que se derrita el hielo.', 5);
-      g.audio?.kettle?.(this.gaugePos(), 3);
-    }
+    if (s === 'heat') g.audio?.kettle?.(this.gaugePos(), 3);
   }
 
   // ---------------- los tiros ----------------
@@ -534,7 +527,6 @@ export default class PapTermas {
       const s = g.world.castleSteam?.[p.i];
       if (s) s.frozen = true;
     }
-    if (!quiet) g.hud.subtitle('El frío volvió a tapar las pozas. Rompé las tres seguidas.', 4);
   }
 
   // listo: todo lo que quedaba (el atajo de prueba también pasa por acá)

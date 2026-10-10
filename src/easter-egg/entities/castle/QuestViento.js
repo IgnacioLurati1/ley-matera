@@ -175,7 +175,7 @@ export default class QuestViento {
     this.ph = 1;
     this.caught = [0, 0, 0];
     this.placeFeathers();
-    announce(this.g, '¡Sopla el Zonda! Tres plumas de cóndor andan en el viento, por el adarve, la cumbre y el palenque.', 5, true);
+    announce(this.g, '', 5, true);
     this.egg.say('fierro', LINES.zonda);
     this.gust();
   }
@@ -363,7 +363,7 @@ export default class QuestViento {
     this.g.fx.sparkle(F.pos, ELEM_RGB.viento, 30, 0.6);
     const n = this.caught.filter(Boolean).length;
     const who = id === myId(this.g) ? 'Agarraste' : `${this.g.net?.nameOf(id) || 'Alguien'} agarró`;
-    announce(this.g, `${who} una pluma de cóndor (${n} de 3).${n === 3 ? ' Al altar del mirador del viento.' : ''}`, 3);
+    announce(this.g, `${who} una pluma de cóndor (${n} de 3).`, 3);
     if (n === 3) this.ph = 2;
     this.egg.netSync();
   }

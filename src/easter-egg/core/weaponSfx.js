@@ -43,11 +43,35 @@ const SHOTS = {
   oro: { ids: ['oro'], gain: 0.69, reverb: 0.35, rate: [0.96, 1.04], max: 4, upRate: 0.94 },
   // la Bombilla del Diablo: uno de los tres chorros por tiro (la de Belcebú, más grave)
   stream: { ids: ['diablo-1', 'diablo-2', 'diablo-3'], gain: 0.71, reverb: 0.2, rate: [0.94, 1.06], max: 3, upRate: 0.9 },
+  // la Máquina de Muerte del penal (la Bombilla Gut hecha Gatling del
+  // infierno): el chasquido de cada tiro, de una Gatling de verdad a manivela
+  // ("Gatling Gun Close" de mikewest, freesound.org 239596, CC0). Lo grueso
+  // es el sostenido de gatlingBurst. Mejorada, más grave.
+  gatling: { ids: ['gatling-1', 'gatling-2', 'gatling-3', 'gatling-4'], gain: 0.22, reverb: 0.3, rate: [0.96, 1.05], max: 6, upRate: 0.92 },
+  // Los cuatro mates nuevos de la caja (2026-10-08), armados con grabaciones
+  // CC0 de freesound.org (scratchpad tools/build.py de la sesión 02b0a4d1):
+  // el Mate Labrador (escopeta automática): craigsmith "R11-58-Loud Shotgun
+  // Blasts" (486060) + MrGungus "shotgun shoot" (773873) + db465 "aa12_fire" (865991)
+  labrador: { ids: ['labrador-1', 'labrador-2', 'labrador-3'], gain: 1.1, reverb: 0.45, rate: [0.97, 1.03], max: 3, pap: true },
+  // el Mate Explosivo (la salida del cohete): Jarusca "Rocket Launch" (521377)
+  // con el golpe de misosound "BOOMING PUNCHY EXPLOSION" (251759) abajo
+  cohete: { ids: ['cohete-1', 'cohete-2'], gain: 0.75, reverb: 0.4, rate: [0.96, 1.04], max: 3, pap: true },
+  // el Mate Caótico: un tiro de craigsmith "S19-02 Light machine gun from
+  // optical" (675593) con un pedazo de Heretic4522 "Sci-Fi LMG Concept"
+  // (850829) arriba; al soltar, la cola de la ráfaga (`tail`). Las tres tomas
+  // llevan el mismo pedazo del sci-fi y tiros vecinos de la misma ráfaga (antes
+  // cada una era otro pedazo y parecían armas distintas al azar)
+  caotico: { ids: ['caotico-1', 'caotico-2', 'caotico-3'], gain: 0.94, reverb: 0.4, rate: [0.97, 1.03], max: 5, upRate: 0.94, tail: 'caotico-cola' },
+  // la Llamarada Matera: un tiro de fusil (michorvath "AR15 rifle shot" 427596)
+  // con la llamarada (Za-Games "Fire Burst Flash" 539972); las tres tomas, el
+  // mismo fusil y la misma llamarada apenas corridos (antes una era otro fusil
+  // con otra bola de fuego y parecían dos armas)
+  llamarada: { ids: ['llamarada-1', 'llamarada-2', 'llamarada-3'], gain: 0.56, reverb: 0.4, rate: [0.96, 1.04], max: 5, upRate: 0.93 },
 };
 // si el grabado no bajó: qué sintetizado hace de ese tipo nuevo. El Mate
 // Porongo del principio no tiene grabado a propósito: el usuario quiso el
 // sintetizado de antes (2026-09-29), solo para ese.
-const ALIAS = { gut: 'shotgun', luzmala: 'ray', mk3alt: 'ray', hoz: 'ray', oro: 'ray', porongo: 'pistol' };
+const ALIAS = { gut: 'shotgun', luzmala: 'ray', mk3alt: 'ray', hoz: 'ray', oro: 'ray', porongo: 'pistol', gatling: 'lmg', labrador: 'shotgun', cohete: 'launcher', caotico: 'lmg', llamarada: 'rifle' };
 
 // Los demás grabados (los piden por nombre): volumen y eco.
 const ONE = {
@@ -67,6 +91,21 @@ const ONE = {
   'acido-explosion': { gain: 0.6, reverb: 0.55, ref: 4 },
   'acido-burbujas': { gain: 0.45, reverb: 0.2, ref: 2.5 },
   'acido-charco': { gain: 0.4, reverb: 0.25, ref: 3 },
+  // la Máquina de Muerte: los caños que toman vuelta y los que frenan al
+  // soltar el gatillo ("MiniGun Shooting" de Steelskull, freesound.org 153492,
+  // CC0: la frenada del final, y un pedazo dado vuelta para el arranque)
+  'gatling-arranque': { gain: 0.8, reverb: 0.2 },
+  'gatling-fin': { gain: 0.9, reverb: 0.3 },
+  // el final de la ráfaga: el C-RAM que corta y su eco ("C-RAM - Firing (+
+  // Echo)" de gurkenjaeger13, freesound.org 621817, CC0)
+  'gatling-cola': { gain: 0.7, reverb: 0.2, ref: 6 },
+  // el reventón del cohete del Mate Explosivo (uno de los dos al azar):
+  // misosound "BOOMING PUNCHY EXPLOSION - close, big" (251759) y unfa
+  // "Grenade Explosion SFX (medium-sized, meaty, realistic)" (609587), CC0
+  'cohete-boom-1': { gain: 1.22, reverb: 0.6, ref: 5 },
+  'cohete-boom-2': { gain: 1.41, reverb: 0.6, ref: 5 },
+  // el final de una ráfaga del Mate Caótico (SHOTS.caotico.tail)
+  'caotico-cola': { gain: 0.9, reverb: 0.35, ref: 5 },
 };
 // Los que se repiten mientras dura algo (el remolino del Zonda, la ventisca del
 // Penitente, la bola de rayos de Illapa): cuánto dura la vuelta (build.py le
@@ -80,6 +119,15 @@ const LOOPS = {
   // estirado en granos, el zumbido del Rayo Matero y un acorde de oro
   // (scratchpad hozloop/build.py, 2026-09-30)
   'hoz-rayo-loop': { len: 3.0, gain: 0.55, reverb: 0.35, ref: 5 },
+  // la Máquina de Muerte (scratchpad 026bfe27…/snd/build2.py, 2026-10-07): el
+  // BRRRT sostenido mientras tira (el C-RAM, la Gatling de 20 mm de
+  // gurkenjaeger13, freesound.org 621817, CC0), el rugido del infierno debajo
+  // (un lanzallamas, "Flamethrower" de SamsterBirdies, freesound.org 490166,
+  // CC0) y el zumbido del tambor girando sin tirar (la minigun de Steelskull,
+  // freesound.org 153492, CC0)
+  'gatling-loop': { len: 2.6, gain: 0.5, reverb: 0.3, ref: 6 },
+  'gatling-fuego': { len: 3.0, gain: 0.26, reverb: 0.25, ref: 5 },
+  'gatling-giro': { len: 0.36, gain: 0.9, reverb: 0.1, ref: 4 },
 };
 
 // a cuánto baja la cola del tiro anterior cuando sale el siguiente del mismo tipo
@@ -128,8 +176,41 @@ export default class WeaponSfx {
     }
   }
 
+  // La Máquina de Muerte tirando: el sostenido y el fuego siguen mientras
+  // lleguen tiros (uno para los míos, sin lugar; otro para los de los
+  // compañeros, en su lugar) y se cortan con la cola del eco 0,12 s después
+  // del último (0,25 s el de un compañero: sus tiros llegan por la red).
+  // false si los grabados no bajaron.
+  gatlingBurst(pos, up) {
+    if (!this.buf['gatling-loop']) return false;
+    const key = pos ? 'r' : 'me';
+    const B = (this.bursts ||= {});
+    let b = B[key];
+    if (!b) {
+      const rate = up ? 0.93 : 1;
+      b = B[key] = { body: this.loop('gatling-loop', pos, { fadeIn: 0.02, rate }), fire: this.loop('gatling-fuego', pos, { fadeIn: 0.12, rate }) };
+    } else if (pos) {
+      b.body?.move(pos);
+      b.fire?.move(pos);
+    }
+    b.pos = pos ? pos.clone() : null;
+    clearTimeout(b.timer);
+    b.timer = setTimeout(() => {
+      b.body?.stop(0.06);
+      b.fire?.stop(0.35);
+      if (B[key] === b) delete B[key];
+      this.play('gatling-cola', { pos: b.pos, rate: up ? 0.93 : 1 });
+    }, pos ? 250 : 120);
+    return true;
+  }
+
   // Un tiro grabado. true si sonó (si no, el que llama sintetiza).
   shot(kind, pos, up) {
+    // (la Máquina de Muerte: el sostenido; el chasquido, uno sí y uno no)
+    if (kind === 'gatling' && this.gatlingBurst(pos, up)) {
+      this.gN = (this.gN || 0) + 1;
+      if (this.gN % 2) return true;
+    }
     const S = SHOTS[kind];
     const id = S && S.ids[Math.floor(Math.random() * S.ids.length)];
     if (!id || !this.buf[id]) return false;
@@ -169,6 +250,17 @@ export default class WeaponSfx {
       a.tone(o, { t, dur: 0.25, type: 'square', freq: 900, freqEnd: 120, gain: 0.06 });
     }
     if (S.mech) a.mech(t + S.mech[0], S.mech[1]);
+    // la cola de la ráfaga: suena una vez, 0,12 s después del último tiro
+    // (0,25 s si es de un compañero: sus tiros llegan por la red)
+    if (S.tail) {
+      const TT = (this.tails ||= {});
+      clearTimeout(TT[key]);
+      const at = pos ? pos.clone() : null;
+      TT[key] = setTimeout(() => {
+        delete TT[key];
+        this.play(S.tail, { pos: at, rate: up ? S.upRate ?? 1 : 1 });
+      }, pos ? 250 : 120);
+    }
     return true;
   }
 

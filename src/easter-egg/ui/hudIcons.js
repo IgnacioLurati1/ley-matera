@@ -79,7 +79,16 @@ export const SHIELD_ICONS = {
     <path d="M20 26 V15" stroke="#5a3a22" stroke-width="1.2"/>
     <path d="M17.6 15.6 Q18.5 12.4 21.5 12.6 Q23.6 13 22.6 15.2 Z" fill="#c8202a"/>
     <circle cx="20" cy="6.2" r="3" fill="#f6b40e" stroke="#85340a" stroke-width="0.6"/>
-    <path d="M20 1.4 V2.6 M15.6 3.2 L16.6 4 M24.4 3.2 L23.4 4 M14 6.2 H15.2 M24.8 6.2 H26" stroke="#f6b40e" stroke-width="1" stroke-linecap="round"/>`,
+    <path d="M20 1.4 V2.6 M15.6 3.2 L16.6 4 M24.4 3.2 L23.4 4 M14 6.2 H15.2 M24.8 6.2 H26" stroke="#f6b40e" stroke-width="1" stroke-linecap="round"/>`,  // Eclipse Matero: el Escudo de los Caballeros (tablas de quebracho en
+  // redondo, el zuncho de hierro remachado y el umbo de bronce)
+  eclipse: `
+    <circle cx="20" cy="23" r="17.5" fill="#8a3e28" stroke="#0e0c0a" stroke-width="1.4"/>
+    <path d="M9.6 10 V36 M16.5 6.4 V39.6 M23.5 6.4 V39.6 M30.4 10 V36" stroke="#4e1e10" stroke-width="1"/>
+    <circle cx="20" cy="23" r="16.2" fill="none" stroke="#3a3836" stroke-width="2.8"/>
+    <g fill="#8a867e"><circle cx="20" cy="6.8" r="0.9"/><circle cx="31.5" cy="11.5" r="0.9"/><circle cx="36.2" cy="23" r="0.9"/><circle cx="31.5" cy="34.5" r="0.9"/><circle cx="20" cy="39.2" r="0.9"/><circle cx="8.5" cy="34.5" r="0.9"/><circle cx="3.8" cy="23" r="0.9"/><circle cx="8.5" cy="11.5" r="0.9"/></g>
+    <circle cx="20" cy="23" r="6.8" fill="#b8923a" stroke="#4a3208" stroke-width="1"/>
+    <circle cx="20" cy="23" r="3.8" fill="#d8b85a"/>
+    <circle cx="18.6" cy="21.6" r="1.1" fill="#f4e0a0"/>`,
 };
 
 // Las rajaduras: la primera a los dos tercios del aguante, la segunda al tercio.
@@ -114,7 +123,10 @@ export const PART_ICONS = {
   // umbo de bronce
   umbo: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="10.5" cy="10.5" r="1.2"/><path d="M12 3 V5 M12 19 V21 M3 12 H5 M19 12 H21"/>',
   // correas de cuero con hebilla
-  correas: '<path d="M3 8 H21 M3 12 H21"/><path d="M3 16 H21 M3 20 H21"/><rect x="9" y="6" width="5" height="8" rx="1"/><rect x="11" y="14" width="5" height="8" rx="1"/>',
+  correas: '<path d="M3 8 H21 M3 12 H21"/><path d="M3 16 H21 M3 20 H21"/><rect x="9" y="6" width="5" height="8" rx="1"/><rect x="11" y="14" width="5" height="8" rx="1"/>',  // Eclipse: tablas de quebracho atadas, umbo de bronce y zuncho de hierro
+  quebracho: '<rect x="2.5" y="5" width="19" height="4.4" rx="0.8"/><rect x="2.5" y="10" width="19" height="4.4" rx="0.8"/><rect x="2.5" y="15" width="19" height="4.4" rx="0.8"/><path d="M7 3.5 V21 M17 3.5 V21"/>',
+  bronce: '<path d="M4 17 Q12 2 20 17 Z"/><path d="M2 17.5 H22"/><circle cx="5" cy="20" r="0.8"/><circle cx="19" cy="20" r="0.8"/><path d="M9 11 Q11 8 13.5 7.5"/>',
+  zuncho: '<circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="3.8" r="0.7"/><circle cx="20.2" cy="12" r="0.7"/><circle cx="12" cy="20.2" r="0.7"/><circle cx="3.8" cy="12" r="0.7"/>',
 };
 
 // Nombre corto de cada pieza, para la tarjeta.
@@ -132,6 +144,9 @@ export const PART_SHORT = {
   tabla: 'Tabla',
   umbo: 'Umbo',
   correas: 'Correas',
+  quebracho: 'Tablas',
+  bronce: 'Umbo',
+  zuncho: 'Zuncho',
 };
 
 export const partIcon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${PART_ICONS[id] || '<circle cx="12" cy="12" r="7"/>'}</svg>`;

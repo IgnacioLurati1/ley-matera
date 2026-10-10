@@ -49,7 +49,9 @@ export function isHost(g) {
 
 // Un cartel en pantalla para todos (el anfitrión lo reparte).
 export function announce(g, text, secs = 3, sting = false) {
-  g.hud.subtitle(text, secs);
+  // (texto vacío: solo el sting. El usuario, 2026-10-08, sacó los avisos de
+  // lo que se ve o ya dice la guía)
+  if (text) g.hud.subtitle(text, secs);
   if (sting) g.audio.sting();
   g.net?.event('sub', { x: text, d: secs, s: sting ? 1 : 0 });
 }

@@ -4,6 +4,7 @@ import LogrosMenu from './Logros';
 import Pulperia from './Pulperia';
 import Armory from './Armory';
 import { decorateOver } from './overCastle';
+import { decorateOverEclipse } from './overEclipse';
 import PlayMenu from './PlayMenu';
 import { mapChip, mapScreen, syncMapUI, wireMapScreen } from './MapSelect';
 import { TEXT } from '../config/map';
@@ -250,6 +251,7 @@ export default class Menus {
       'pause',
       `<h2 class="mdu-h2">Pausa</h2>
        <p class="mdu-small mdu-pause-note" data-pause-note hidden></p>
+       <p class="mdu-small mdu-pause-note" data-room hidden></p>
        <div class="mdu-list">
          <button class="mdu-btn" data-act="resume">Continuar</button>
          <button class="mdu-btn" data-act="options">Opciones</button>
@@ -632,6 +634,13 @@ export default class Menus {
     s.querySelector('.mdu-h2').textContent = mode === 'guest' ? 'Menú' : 'Pausa';
     note.textContent = notes[mode] || '';
     note.hidden = !note.textContent;
+    // (en línea, el código de la sala a mano: para pasárselo al que se cayó;
+    // el usuario, 2026-10-06. Por código largo, "manual", no hay)
+    const room = s.querySelector('[data-room]');
+    // (también si el anfitrión quedó solo: justo cuando se le cayó el amigo)
+    const code = this.g.net?.code || null;
+    room.textContent = code ? `Código de la sala: ${code}` : '';
+    room.hidden = !code;
     btn('resume').hidden = mode === 'hostPaused';
     btn('resume').textContent = mode === 'guest' ? 'Volver al juego' : 'Continuar';
     btn('restart').hidden = mode === 'guest' || mode === 'hostPaused';
@@ -665,8 +674,8 @@ export default class Menus {
       ['Tiempo', `${mins}:${String(secs).padStart(2, '0')}`],
       [TEXT.egg, stats.easterEgg ? 'Completada' : 'Pendiente'],
     ];
-    // con este, los seis: el super easter egg
-    if (stats.knight) rows.push(['<b style="color:#f2c94c">✦ Caballero de la Luz ✦</b>', 'Completaste los seis: el Porongo del Caballero, 100 pesos y el Mate Supremo en la caja']);
+    // con este, todos: el super easter egg
+    if (stats.knight) rows.push(['<b style="color:#f2c94c">✦ Caballero de la Luz ✦</b>', 'Completaste todos: el Porongo del Caballero, 100 pesos y el Mate Supremo en la caja']);
     s.querySelector('[data-stats]').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
     // tabla del equipo
     const table = s.querySelector('[data-board]');
@@ -695,6 +704,8 @@ export default class Menus {
     this.g.levels?.summary(s);
     // el castillo (el final del juego): su amanecer y sus animaciones (ui/overCastle.js)
     decorateOver(this.g, s, { won });
+    // Eclipse Matero (el final canónico): su eclipse que se abre (ui/overEclipse.js)
+    decorateOverEclipse(this.g, s, { won });
     this.show('over');
   }
 

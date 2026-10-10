@@ -137,9 +137,23 @@ export default class Armada {
     return this.g.world.M;
   }
 
-  // (ojo: `active` no, que Zombies lo lee como el de la defensa del yerbal)
+  // (ojo: `active` no es de la escuadra: Zombies lo lee como "hay algo que
+  // los muertos van a romper", la defensa del yerbal en La Tapera. Acá, la
+  // Bandera subiendo: van al mástil a tirar de la driza. entities/monumento/Bandera.js)
   get running() {
     return this.st.on === 1;
+  }
+
+  get active() {
+    return !!this.ee.bnd?.tugging;
+  }
+
+  goal(z, target, distP) {
+    return this.ee.bnd.goal(z, target, distP);
+  }
+
+  zombieHit(G) {
+    this.ee.bnd.zombieHit(G);
   }
 
   // (las rondas: no frena el fin de la ronda; la horda sí)
@@ -307,7 +321,6 @@ export default class Armada {
     this.nextVolley = this.ships.map((_, i) => SAIL_T + 2 + i * 2.5);
     this.reload = [0, 0];
     if (quiet) return;
-    g.hud.subtitle?.(flag ? '¡La escuadra realista viene por la Bandera!' : '¡La escuadra realista sube por el Paraná!', 4);
     g.audio.bugle?.(tmpV.set(102, -1, 9));
     // dos cañonazos lejos, río abajo: ya vienen
     g.later?.(1.2, () => g.audio.explosion?.(tmpV.set(150, WATER, 120), 0.6));
@@ -322,14 +335,12 @@ export default class Armada {
     for (const m of this.marks) m.mesh.removeFromParent();
     this.marks.length = 0;
     if (won) {
-      g.hud.subtitle?.('¡La escuadra se hundió! El botín, al pie de la Batería.', 4);
       g.addPoints?.(REWARD_PTS, null, true);
       // (munición llena para cada uno: refillAll no existía, no hacía nada)
       g.weapons?.maxAmmo?.();
       if (isHost(g)) g.powerups?.drop(tmpV.set(EE.bateria[0] - 1.5, g.world.floorAt(EE.bateria[0] - 1.5, EE.bateria[1]), EE.bateria[1] + 1.5).clone(), true, 'maxammo');
       g.hud.achievement?.('La Batería Libertad', 'Hundiste la escuadra del rey');
     } else {
-      g.hud.subtitle?.('La escuadra se vuelve río abajo… por ahora.', 3.5);
       for (const s of this.ships) if (s.alive) s.leaving = 0.001;
     }
   }
@@ -410,7 +421,6 @@ export default class Armada {
     if (hp <= 0 && s.alive) {
       s.alive = false;
       s.sink = 0.001;
-      g.hud.subtitle?.(this.st.hp.every((h) => h <= 0) ? '¡Se hundió el último bergantín!' : '¡Un bergantín se hunde!', 3);
       g.audio.bugle?.(tmpV.set(102, -1, 9));
       if (isHost(g) && this.st.hp.every((h) => h <= 0)) this.send({ a: 'end', won: 1 });
     }

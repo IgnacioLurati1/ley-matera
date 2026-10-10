@@ -1,0 +1,6 @@
+/* Los gauchos que hablan en la partida (ui/dialogos.js): el nombre con el
+   color de cada uno (los de ui/overEclipse). */
+.mdu-line.is-dlg-valiente b { color: #e8735a; }
+.mdu-line.is-dlg-miedoso b { color: #d9b77c; }
+.mdu-line.is-dlg-canchero b { color: #8ea2ea; }
+.mdu-line.is-dlg-viejo b { color: #93c47e; }

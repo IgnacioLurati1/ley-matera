@@ -7,6 +7,8 @@ import { prefetchTrack } from '../core/music';
 import { cineClip, poseCineClip, gauchoClip, cineSnap } from '../net/gauchoSkin';
 import { PERSONA_T } from './cineCrew';
 import { assetUrl } from '../../lib/assets';
+import Quiebre, { LEN as QUIEBRE_SECS } from './esterosQuiebre';
+import { gilVincha } from '../net/gilLook';
 
 // El final de "Mate no Numa" (El Pacto): cayó el Luisón y los cuatro quedan
 // al pie del Algarrobo de los Colgados. La voz le habla a Gil (solo él la oye:
@@ -18,9 +20,11 @@ import { assetUrl } from '../../lib/assets';
 //    lo mata a traición; Benito retrocede con las manos arriba y Gil lo alcanza;
 //    Anacleto le ruega de rodillas. Queda ensangrentado; se guarda algo para él
 //    (la hoja del códice, si la arrancó, o la cinta colorada del facón) y se
-//    va a cosechar almas de gauchos. "El ciclo continúa".
+//    va a cosechar almas de gauchos. "La ronda continúa".
 //  · negarse: le apunta al árbol con el facón, los tres se le ponen al lado y
-//    la voz se va con un trueno. Los cuatro se van juntos. "El ciclo se ha roto".
+//    la voz se va con un trueno. Los cuatro se van juntos y, atrás, el
+//    algarrobo empieza a partirse (la disformidad: ui/esterosQuiebre.js); la
+//    cámara panea hacia él y corta a negro en seco. "La ronda se ha roto".
 // Los cuerpos se mueven con clips animados a mano en Blender (scratchpad
 // cine-esteros/esteros_clips.py -> modelos/gaucho/cine-esteros.json; el
 // caminar y correr, los de siempre de net/gauchoSkin). Cada uno con su
@@ -34,6 +38,21 @@ import { assetUrl } from '../../lib/assets';
 const CHOOSE_SECS = 30;
 // dónde arranca a sonar la canción de la traición (antes, 0,38 s de nada)
 const TRAICION_AT = 0.36;
+// El algarrobo que se parte, contado desde que los cuatro arrancan para el
+// fogón: cuándo se prende el hueco, cuándo la cámara deja a los cuatro y
+// cuánto tarda en llegar al árbol (llega cuando el tronco se raja); y desde
+// dónde lo mira al final [x, z, alto]: del lado del hueco, por arriba del
+// pajonal (desde donde se vio irse a la voz), con el árbol entero en cuadro.
+// La mirada queda un poco a la derecha del tronco (QUIEBRE_AIM, m) y el lente
+// se cierra (QUIEBRE_FOV): los cuatro, que se van por la izquierda, salen de cuadro.
+const QUIEBRE_AT = 1;
+const PAN_AT = 1.8;
+const PAN_SECS = 2.8;
+const QUIEBRE_EYE = [7.2, 10.9, 2.3];
+const QUIEBRE_AIM = 1.2;
+const QUIEBRE_FOV = 60;
+// (y lo que sube la mirada, m, desde que el tronco se raja hasta el corte)
+const QUIEBRE_TILT = 0.5;
 const MATES = [
   { id: 901, key: 'anacleto', name: 'Anacleto', color: 0x3a6a2a, persona: 'viejo' },
   { id: 902, key: 'cirilo', name: 'Cirilo', color: 0x2a3a7a, persona: 'canchero' },
@@ -128,6 +147,8 @@ export default class EsterosEnding extends CastleCine {
     g.weapons.clearProjectiles();
     g.weapons.clearStuck();
     this.npc = new Avatars(g, null);
+    // (2026-10-10: las bandanas de los compañeros del Gil y su vincha, net/gilLook.js)
+    this.npc.bandanas = true;
     this.people = {};
     for (const P of [GIL, ...MATES]) {
       const pos = this.spots[P.key].clone();
@@ -135,6 +156,7 @@ export default class EsterosEnding extends CastleCine {
       this.npc.add(r);
       const a = this.npc.list.get(P.id);
       a.M.poncho.color.set(P.color).multiplyScalar(1.7);
+      if (P.key === 'gil' && globalThis.__mduNoBandanas !== true) gilVincha(a);
       this.people[P.key] = { key: P.key, r, a, persona: P.persona, cc: null, mv: null };
     }
     this.face('gil', this.H);
@@ -152,6 +174,10 @@ export default class EsterosEnding extends CastleCine {
     this.redEl.style.cssText = 'position:absolute;inset:0;background:radial-gradient(circle at 50% 55%,rgba(140,0,0,.2),rgba(60,0,0,.85));opacity:0;pointer-events:none';
     this.el.insertBefore(this.redEl, this.el.querySelector('.mdu-fcine__fade'));
     this.buildChoice();
+    // el algarrobo en pedazos (si Gil se niega): armado ya, escondido, así se
+    // compila con todo lo demás
+    const tree = w.dynamic?.algarrobo;
+    this.quiebre = tree?.pieces ? new Quiebre(g, this.root, tree, { eye: this.pt(...QUIEBRE_EYE), light: this.hl, hole: this.egg.hueco }) : null;
     // los cuatro, el facón y lo que se vuelve a ver del estero: compilado ya,
     // en segundo plano (el relieve de Surfaces primero, si no se recompila)
     // (de noche en el pajonal no se veían las caras: la escena, más expuesta)
@@ -610,7 +636,7 @@ export default class EsterosEnding extends CastleCine {
         return 2.4;
       }],
       [0, () => {
-        this.title('El ciclo continúa');
+        this.title('La ronda continúa');
         return 6;
       }],
     ];
@@ -621,6 +647,9 @@ export default class EsterosEnding extends CastleCine {
     const S = this.spots;
     const P = this.people;
     const gy = S.gil.y;
+    const Q = this.quiebre;
+    // (el medio de los que se van: lo que sigue la cámara)
+    const four = () => this.head('gil', 1).lerp(this.head('benito', 1), 0.5);
     return [
       // Gil le apunta al hueco con el facón
       [0.2, () => {
@@ -689,6 +718,8 @@ export default class EsterosEnding extends CastleCine {
         return 2.4;
       }],
       [0, () => {
+        // (el árbol del mapa por sus pedazos, igual de armado: esta toma mira para el otro lado)
+        Q?.swap();
         this.act('gil', 'gilStand', { loop: true, fade: 0.6 });
         this.knife.visible = false;
         this.act('anacleto', 'stretch', { loop: true, fade: 0.6 });
@@ -717,18 +748,67 @@ export default class EsterosEnding extends CastleCine {
           this.later(0.9, () => this.walkTo('anacleto', 9.4, 7.6, 5.4, { then: 'stretch' }));
           this.later(0.6, () => this.walkTo('benito', 9.3, 6.0, 3.2, { then: 'nervous' }));
         }
-        this.follow(8, this.pt(10.6, 13.4, 2.4), this.pt(11.0, 14.5, 2.6), () => this.head('gil', 1).lerp(this.head('benito', 1), 0.5));
-        return 5;
+        this.follow(8, this.pt(10.6, 13.4, 2.4), this.pt(11.0, 14.5, 2.6), four);
+        // (sin el árbol suelto, __mduNoQuiebre: como antes, la toma sigue hasta
+        // que se quedan quietos y funde a negro)
+        if (!Q) return 5;
+        // atrás de ellos, el hueco se prende violeta
+        this.later(QUIEBRE_AT, () => Q.start());
+        return PAN_AT;
       }],
+      ...(Q
+        ? [
+            // El paneo: de los cuatro, que siguen caminando, al algarrobo. La
+            // cámara los rodea hacia el lado del hueco; llega cuando el tronco
+            // se raja y después se le arrima despacio. (Antes la toma esperaba
+            // a que los cuatro se quedaran quietos y recién ahí fundía a negro.)
+            [0, () => {
+              const a = this.pos.clone();
+              const b = this.pt(...QUIEBRE_EYE);
+              // (a la altura de la horqueta, corrida hacia la derecha de la cámara)
+              const at = Q.top.clone().setY(Q.top.y - 0.45);
+              const to = tmpV.subVectors(at, b).setY(0).normalize();
+              at.x -= to.z * QUIEBRE_AIM;
+              at.z += to.x * QUIEBRE_AIM;
+              const push = to.clone().multiplyScalar(0.12);
+              const fov = Math.min(this.fov0, QUIEBRE_FOV);
+              // (cuánto falta para el corte cuando llega: en ese rato la mirada
+              // sube por la grieta hasta las ramas que se sueltan)
+              const rest = QUIEBRE_AT + QUIEBRE_SECS - PAN_AT - PAN_SECS;
+              this.shot(QUIEBRE_SECS, (u, lt, pos, look) => {
+                const k = smooth(Math.min(1, lt / PAN_SECS));
+                const more = Math.max(0, lt - PAN_SECS);
+                pos.lerpVectors(a, b, k).addScaledVector(push, more);
+                look.copy(four()).lerp(at, k);
+                look.y += QUIEBRE_TILT * smooth(more / rest);
+                this.wantFov = lerp(this.fov0, fov, k);
+              });
+              return QUIEBRE_AT + QUIEBRE_SECS - PAN_AT;
+            }],
+            // el corte en seco: negro de una (nada de fundido) y se calla todo
+            [0, () => {
+              this.blackout();
+              Q.stop();
+              return 1;
+            }],
+          ]
+        : [
+            [0, () => {
+              this.fade(true);
+              return 2.4;
+            }],
+          ]),
       [0, () => {
-        this.fade(true);
-        return 2.4;
-      }],
-      [0, () => {
-        this.title('El ciclo se ha roto');
+        this.title('La ronda se ha roto');
         return 6;
       }],
     ];
+  }
+
+  // Negro de una, sin fundido.
+  blackout() {
+    this.el.querySelector('.mdu-fcine__fade').style.transition = 'none';
+    this.fade(true);
   }
 
   // Gil queda manchado: el poncho oscuro de sangre, las manos y el facón.
@@ -881,7 +961,13 @@ export default class EsterosEnding extends CastleCine {
     this.poseAll(dt);
     // el hueco: una luz fría que late cuando la voz habla
     const want = this.hlOn ? 2.2 + Math.sin(t * 2.4) * 0.6 + (this.hlBoost || 0) * 8 : 0;
-    this.hl.intensity = lerp(this.hl.intensity, want, Math.min(1, dt * 3));
+    // (el algarrobo que se parte: esa luz es la de la grieta, y la cámara tiembla)
+    const Q = this.quiebre;
+    Q?.update(dt);
+    if (Q?.on) {
+      this.hl.intensity = Q.glow;
+      this.shake = Math.max(this.shake, Q.shake);
+    } else this.hl.intensity = lerp(this.hl.intensity, want, Math.min(1, dt * 3));
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 1.6);
     this.redEl.style.opacity = String(this.flash * 0.8);
     if (this.waiting) {
@@ -998,6 +1084,8 @@ export default class EsterosEnding extends CastleCine {
     if (g.net?.avatars) g.net.avatars.root.visible = true;
     if (this.hidInteract !== undefined) g.interact.root.visible = this.hidInteract;
     this.npc.dispose();
+    // (el algarrobo del mapa vuelve a su lugar; la luz, a su color)
+    this.quiebre?.dispose();
     // (la luz del hueco es del mapa: queda, apagada)
     if (this.hl === this.egg.cineLight) this.hl.intensity = 0;
   }

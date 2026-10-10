@@ -6,6 +6,7 @@ import CineActors, { yawTo } from './cineActors';
 import { EE } from '../config/map';
 import { belgranoSkin } from '../entities/monumento/belgranoSkin';
 import SableBeat, { sableBeatOn } from './monumentoSableBeat';
+import { warmObject } from './cineWarm';
 
 // El final del easter egg del Monumento ("La Primera Bandera"), adentro del
 // juego (MonumentoEgg.scene): la partida queda quieta y no se termina.
@@ -457,8 +458,17 @@ export default class MonumentoEnding extends CastleCine {
       T.shRp = -1.1;
       T.shRr = 0.15;
       T.elR = -0.55;
+    } else if (b.arm === 3 && this.belSip()) {
+      // toma: el mate abajo del mentón, la bombilla a los labios, la cabeza
+      // apenas inclinada (medido en el juego con el modelo de verdad: con la
+      // pose de las piezas la mano le quedaba abierta al lado de la oreja)
+      T.shRp = -0.69;
+      T.shRr = 0.16;
+      T.shRy = -1.11;
+      T.elR = -1.83;
+      T.headP = 0.1;
     } else if (b.arm === 3) {
-      // toma
+      // toma (el de piezas)
       T.shRp = -1.35;
       T.shRr = 0.1;
       T.elR = -1.9;
@@ -466,6 +476,11 @@ export default class MonumentoEnding extends CastleCine {
     }
     if (this.crew) this.spring(b.r, P, T, b.arm === 1 ? 4.2 : 5.5);
     else this.ease(b.r, P, T, b.arm === 1 ? 3.2 : 4.5);
+  }
+
+  // ¿Toma con la pose del modelo de verdad? (globalThis.__mduNoBelMate: como antes)
+  belSip() {
+    return !!this.bel.a.gs && globalThis.__mduNoBelMate !== true;
   }
 
   // Como ease, pero con inercia (un resorte apenas amortiguado): el brazo
@@ -548,6 +563,13 @@ export default class MonumentoEnding extends CastleCine {
     }
     // el modelo de verdad: ánima azul y transparente, o sólido en 1812
     const bm = b.a.M.belgrano;
+    // (baja después de armar la escena: se compila apenas llega, escondido
+    // todavía. Si no, al aparecer trababa el cuadro: 0,3 s en Baja y 0,7 s en
+    // Épica, medido. globalThis.__mduNoBelWarm: como antes)
+    if (bm && !this.belWarm && globalThis.__mduNoBelWarm !== true) {
+      this.belWarm = true;
+      warmObject(g, b.a.group);
+    }
     if (bm) {
       const ghost = !b.solid;
       if (bm.depthWrite === ghost) {
@@ -599,7 +621,23 @@ export default class MonumentoEnding extends CastleCine {
       if (r.a.hand) r.a.hand.visible = !r.mateOff;
     }
     this.people.update(dt);
-    uprightMate(b.a, b.arm >= 2 ? 1 : 0, b.r.yaw);
+    // (Avatars le esconde el mate a las ánimas: Belgrano levantaba la mano
+    // vacía a la cara; el mate que le convidan va en su mano)
+    if (b.on && globalThis.__mduNoBelMate !== true) {
+      b.a.hand.visible = b.mate > 0;
+      // y es el mate del Canchero, de verdad: con el material del ánima
+      // (azul y transparente sobre su cuerpo azul) no se distinguía
+      if (b.mate > 0 && !this.belMate && this.mid?.a?.hand) {
+        this.belMate = true;
+        const mine = [];
+        const his = [];
+        b.a.hand.traverse((o) => o.isMesh && mine.push(o));
+        this.mid.a.hand.traverse((o) => o.isMesh && his.push(o));
+        if (mine.length === his.length) mine.forEach((o, i) => (o.material = his[i].material));
+      }
+    }
+    // (la bombilla inclinada hacia su cara, no hacia el costado)
+    uprightMate(b.a, b.arm >= 2 ? 1 : 0, b.r.yaw + (this.belSip() ? Math.PI / 2 : 0));
     if (this.crew) {
       // (con el reloj de la escena, que en línea es el de verdad: si una compu
       // se traba, los cuatro siguen en hora con Belgrano y las tomas)

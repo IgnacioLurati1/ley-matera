@@ -25,3 +25,26 @@ export function warmScene(g) {
     R.setRenderTarget(prev);
   }
 }
+
+// Lo mismo para un actor que llega tarde (un modelo que baja con la escena ya
+// armada: Belgrano en ui/MonumentoEnding): sus texturas a la placa y sus
+// shaders compilados contra las luces y la niebla de la escena, escondido.
+export function warmObject(g, obj) {
+  const R = g.renderer;
+  if (!R?.compile || !obj) return;
+  obj.traverse((o) => {
+    for (const m of [].concat(o.material || [])) {
+      for (const k of ['map', 'normalMap', 'emissiveMap', 'roughnessMap', 'metalnessMap', 'alphaMap']) if (m[k]?.isTexture) R.initTexture(m[k]);
+    }
+  });
+  const prev = R.getRenderTarget();
+  R.setRenderTarget(g.post?.composer?.renderTarget1 || prev);
+  try {
+    if (R.compileAsync) R.compileAsync(obj, g.camera, g.scene).catch(() => {});
+    else R.compile(obj, g.camera, g.scene);
+  } catch {
+    /* si falla, se compila sobre la marcha como siempre */
+  } finally {
+    R.setRenderTarget(prev);
+  }
+}

@@ -21,6 +21,9 @@ export const MAT = {
   ribbon: () => mat('ribbon', () => std({ color: 0xa81810, roughness: 0.6 })),
   feather: () => mat('feather', () => std({ color: 0x8a7a64, roughness: 0.9, side: THREE.DoubleSide })),
   bird: () => mat('bird', () => std({ color: 0x6a5e4c, roughness: 0.95, flatShading: true })),
+  // (el urutaú del paso, que se tiene que poder ver de noche: más claro, con
+  // un poco de luz propia, como la corteza seca a la luz de la luna)
+  birdSee: () => mat('birdSee', () => std({ color: 0x9a8a70, roughness: 0.9, flatShading: true, emissive: 0x2a241a, emissiveIntensity: 1 })),
   eye: () => mat('eye', () => new THREE.MeshBasicMaterial({ color: 0xffd23a, toneMapped: false })),
   soot: () => mat('soot', () => std({ color: 0x1a1816, metalness: 0.5, roughness: 0.55 })),
 };

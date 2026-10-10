@@ -20,6 +20,10 @@ const smooth = (u) => u * u * (3 - 2 * u);
 const clamp01 = (u) => Math.max(0, Math.min(1, u));
 const rnd = () => Math.random() - 0.5;
 const GOLD_RGB = [[1, 0.85, 0.45], [1, 0.95, 0.75], [1, 0.72, 0.25]];
+// Cuánto de los fogonazos, del velo blanco y de la luz del mate (el usuario,
+// 2026-10-07: "bajar un poco el brillo del mate dorado cuando se arma, te deja
+// ciego"). 1: como era. globalThis.__mduForgeBright: otro valor, para comparar.
+const BRIGHT = () => globalThis.__mduForgeBright ?? 0.5;
 
 export default class PenalForge {
   constructor(ee, onEnd) {
@@ -34,6 +38,7 @@ export default class PenalForge {
     this.timers = [];
     this.shake = 0;
     this.supK = 0;
+    this.bright = BRIGHT();
     this.el = document.createElement('div');
     this.el.className = 'mdu-fcine is-on mdu-fcine--mid';
     this.el.innerHTML = '<i class="mdu-fcine__bar"></i><i class="mdu-fcine__bar mdu-fcine__bar--b"></i><i class="mdu-fcine__sup"></i><span class="mdu-cine__skip">Saltar (Espacio)</span><i class="mdu-fcine__black"></i>';
@@ -89,9 +94,10 @@ export default class PenalForge {
         this.shake = Math.max(this.shake, k);
       },
       onBoom: () => {
-        this.supK = 0.7;
+        this.supK = 0.7 * this.bright;
       },
       kill: true,
+      bright: this.bright,
     });
     // ni el haz de la caja (desde arriba del penal queda como una barra)
     this.boxBeams = [g.interact?.box, ...(g.interact?.saleBoxes || [])].map((b) => b?.beam).filter((b) => b?.visible);
@@ -205,14 +211,15 @@ export default class PenalForge {
     S.scale.setScalar(1);
     S.visible = true;
     this.power.SF?.sun(C, 0, 0.8, false, 0.7);
-    g.fx.flash(C, 0xffd070, 90, 0.8, 18);
+    const K = this.bright;
+    g.fx.flash(C, 0xffd070, 90 * K, 0.8, 18);
     g.fx.sparkle(C, [1, 0.9, 0.55], 80, 1.2);
     for (let i = 0; i < 90; i++) {
       tmpV.set(rnd(), rnd(), rnd()).normalize().multiplyScalar(4 + Math.random() * 6);
       g.fx.add.spawn(C.x, C.y, C.z, tmpV.x, tmpV.y, tmpV.z, { color: GOLD_RGB[i % 3], size: 0.14, size1: 0, life: 0.7 + Math.random() * 0.4, drag: 1.8 });
     }
-    g.post.flash(0.4);
-    this.supK = 0.3;
+    g.post.flash(0.4 * K);
+    this.supK = 0.3 * K;
     this.shake = Math.max(this.shake, 0.6);
     g.audio.thunderCrack?.(C.clone(), { dur: 1.1, gain: 0.6, big: true });
     g.audio.powerupGrab?.();
@@ -363,7 +370,7 @@ export default class PenalForge {
     const L = this.light;
     if (!L) return;
     L.position.copy(this.C).setY(this.C.y + 0.4);
-    L.intensity = Math.min(12, lt * 5);
+    L.intensity = Math.min(12, lt * 5) * this.bright;
   }
 
   // ---------------- el final ----------------

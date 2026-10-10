@@ -15,6 +15,8 @@
 //  · Extremaunión (Dying Wish): el corazón con la aureola y el latido que vuelve.
 //  · Maleza Gaucha (Maizaster): los ojos que espían entre la paja seca.
 //  · Trotadora (Stamin-Up): la alpargata con alas, a la carrera.
+//  · CaoSé (Catalizador Caótico, solo Eclipse): el eclipse con la corona
+//    despareja y la grieta violeta que lo parte.
 // Los usan el medallón del HUD (perkIconURL), el emblema del paquete de la
 // máquina (core/textures perkLabel) y la faja del mate (weapons/perkMates).
 // Todo en unidades del radio: el símbolo cabe en un círculo de radio ~0.66.
@@ -388,6 +390,29 @@ const SYMBOLS = {
     const pl = new Path2D();
     pl.ellipse(0.43, -0.6, 0.07, 0.17, 0.2, 0, Math.PI * 2);
     solid(ctx, pl, FG, 0.04);
+  },
+  catal(ctx, T) {
+    // el eclipse: la corona de oro con sus rayos desparejos (el caos)...
+    const rays = [];
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2 + 0.1;
+      const r1 = 0.6 + ((i * 7) % 5) * 0.035;
+      rays.push([Math.cos(a - 0.11) * 0.36, Math.sin(a - 0.11) * 0.36], [Math.cos(a) * r1, Math.sin(a) * r1], [Math.cos(a + 0.11) * 0.36, Math.sin(a + 0.11) * 0.36]);
+    }
+    solid(ctx, poly(rays), BRASS, 0.05);
+    const ring = new Path2D();
+    ring.arc(0, 0, 0.4, 0, Math.PI * 2);
+    line(ctx, ring, 0.06, '#ffe6a0');
+    // ...la luna negra que la tapa...
+    const moon = new Path2D();
+    moon.arc(0, 0, 0.36, 0, Math.PI * 2);
+    ctx.fillStyle = '#07030d';
+    ctx.fill(moon);
+    // ...y la grieta violeta que la parte (la Disformidad), de punta a punta
+    const crack = poly([[-0.62, -0.5], [-0.24, -0.16], [-0.32, 0.02], [0.06, 0.12], [-0.02, 0.26], [0.42, 0.42], [0.66, 0.64]], false);
+    line(ctx, crack, 0.08, '#c48cff');
+    const core = poly([[-0.24, -0.16], [-0.32, 0.02], [0.06, 0.12], [-0.02, 0.26]], false);
+    line(ctx, core, 0.025, '#ffffff');
   },
   stamin(ctx, T) {
     // las rayas de la corrida, atrás

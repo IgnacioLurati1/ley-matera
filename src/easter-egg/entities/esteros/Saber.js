@@ -76,6 +76,74 @@ export default class Saber {
     return this.g.world.floorAt(x, z, y);
   }
 
+  // Dónde se para un urutaú que en el mapa está en (x, z): si cae adentro del
+  // pajonal, en el borde del piso más cerca (0,35 m antes de la primera mata).
+  perch(x, z) {
+    const w = this.g.world;
+    if (!w.grid || !w.inside) return [x, z];
+    const FLOOR = 1;
+    const isF = (ix, iz) => w.inside(ix, iz) && w.grid[w.idx(ix, iz)] === FLOOR;
+    const cx = Math.floor(x);
+    const cz = Math.floor(z);
+    if (isF(cx, cz)) return [x, z];
+    let best = null;
+    let bd = 1e9;
+    for (let dz = -9; dz <= 9; dz++) {
+      for (let dx = -9; dx <= 9; dx++) {
+        const ix = cx + dx;
+        const iz = cz + dz;
+        if (!isF(ix, iz)) continue;
+        // (una del borde: con pajonal al lado, hacia el lugar del mapa)
+        for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (isF(ix + ox, iz + oz)) continue;
+          const px = ix + 0.5 + ox * 0.15;
+          const pz = iz + 0.5 + oz * 0.15;
+          const d = Math.hypot(px - x, pz - z);
+          if (d < bd) {
+            bd = d;
+            best = [px, pz];
+          }
+        }
+      }
+    }
+    return best || [x, z];
+  }
+
+  // Dónde cae la pluma de un urutaú parado en (x, z).
+  // (2026-10-08, el usuario: "la pluma cae fuera del mapa". Los tres palos
+  // están adentro del pajonal del borde, fuera del piso que se camina —a 2, 3
+  // y 5 m del borde— y la pluma caía al pie del palo: no se llegaba. Ahora
+  // cae meciéndose hacia el piso más cerca, en una celda con piso alrededor.
+  // globalThis.__mduOldPluma: al pie del palo, como antes)
+  landing(x, z) {
+    const w = this.g.world;
+    if (globalThis.__mduOldPluma === true || !w.grid || !w.inside) return null;
+    const FLOOR = 1;
+    const isF = (ix, iz) => w.inside(ix, iz) && w.grid[w.idx(ix, iz)] === FLOOR;
+    const cx = Math.floor(x);
+    const cz = Math.floor(z);
+    let best = null;
+    let bd = 1e9;
+    for (const inner of [true, false]) {
+      for (let dz = -9; dz <= 9; dz++) {
+        for (let dx = -9; dx <= 9; dx++) {
+          const ix = cx + dx;
+          const iz = cz + dz;
+          if (!isF(ix, iz)) continue;
+          if (inner && !(isF(ix + 1, iz) && isF(ix - 1, iz) && isF(ix, iz + 1) && isF(ix, iz - 1))) continue;
+          const d = Math.hypot(ix + 0.5 - x, iz + 0.5 - z);
+          if (d < bd) {
+            bd = d;
+            best = [ix + 0.5, iz + 0.5];
+          }
+        }
+      }
+      if (best) break;
+    }
+    if (!best) return null;
+    return new THREE.Vector3(best[0], this.floor(best[0], best[1]) + 0.04, best[1]);
+  }
+
   // ---------------- lo que se ve ----------------
   build() {
     const g = this.g;
@@ -132,7 +200,15 @@ export default class Saber {
     this.key2Glint.visible = false;
     this.root.add(this.key2, this.key2Glint);
     // los urutaú: un palo seco con el pájaro arriba (como un pedazo de rama)
-    this.birds = EE.urutau.map(([x, z, h]) => {
+    // (2026-10-08, el usuario: "son imposibles de ver". Los tres palos estaban
+    // adentro del pajonal, que tiene 2,5-3 m: desde donde se camina no se veía
+    // ni el palo. Ahora cada uno se para al borde del pajonal, del lado del
+    // piso; el pájaro, un poco más grande y más claro (sigue pareciendo un
+    // pedazo de rama), y cuando canta le brillan los ojos.
+    // globalThis.__mduOldUruSpot: adentro del pajonal y como antes)
+    const SEE = globalThis.__mduOldUruSpot !== true;
+    this.birds = EE.urutau.map(([x0, z0, h]) => {
+      const [x, z] = SEE ? this.perch(x0, z0) : [x0, z0];
       const y0 = this.floor(x, z);
       const grp = new THREE.Group();
       grp.position.set(x, y0, z);
@@ -159,14 +235,23 @@ export default class Saber {
         eyes.push(e);
       }
       bird.rotation.x = -0.18;
+      if (SEE) {
+        bird.scale.setScalar(1.45);
+        body.material = head.material = MAT.birdSee();
+      }
       grp.add(bird);
+      // (el brillo de los ojos cuando canta)
+      const eyeGlow = glint(g, 0xffd23a, 0.45);
+      eyeGlow.position.set(0.02, h + 0.44 * (SEE ? 1.45 : 1), 0.1);
+      eyeGlow.visible = false;
+      grp.add(eyeGlow);
       const feather = featherModel();
       feather.visible = false;
       this.root.add(grp, feather);
       const fg = glint(g, 0xe8e0d0, 0.6);
       fg.visible = false;
       this.root.add(fg);
-      return { grp, bird, eyes, feather, fg, top: new THREE.Vector3(x + 0.02, y0 + h + 0.3, z), ground: new THREE.Vector3(x + 0.35, y0 + 0.04, z + 0.25) };
+      return { grp, bird, eyes, eyeGlow: SEE ? eyeGlow : null, feather, fg, top: new THREE.Vector3(x + 0.02, y0 + h + 0.3, z), ground: this.landing(x, z) || new THREE.Vector3(x + 0.35, y0 + 0.04, z + 0.25) };
     });
     this.sync();
   }
@@ -223,7 +308,6 @@ export default class Saber {
       use: () => {
         if (!on() || this.reja !== 'lagoon') return false;
         this.reja = 'held';
-        announce(g, 'Una llave vieja, de reja. En la Reducción hay una cripta cerrada con una reja.', 4);
         this.changed();
         return true;
       },
@@ -245,7 +329,6 @@ export default class Saber {
           if (this.reja !== 'held' || rejaIt.door.open) return false;
           this.reja = 'open';
           I.openDoor(rejaIt.door);
-          announce(g, 'La reja cedió. La cripta está inundada: hay que bucear.', 4);
           this.changed();
           return true;
         },
@@ -272,7 +355,6 @@ export default class Saber {
           g.audio.door(this.chest.position, false);
         } else {
           this.codice = 'held';
-          announce(g, 'El códice de los padres de la Reducción. Al hueco del algarrobo.', 4);
           // Gil puede guardarse una hoja (se lo avisa solo a él)
           E.whisperGil('hoja');
         }
@@ -316,7 +398,6 @@ export default class Saber {
         if (!on() || this.papeles !== 'none') return false;
         if (this.caja === 'open') {
           this.papeles = 'held';
-          announce(g, 'Los papeles del coronel: nombres, fechas, desertores. Al hueco del algarrobo.', 4);
         } else if (this.llave === 'held') {
           this.caja = 'open';
           this.llave = 'used';
@@ -337,7 +418,6 @@ export default class Saber {
       use: () => {
         if (this.llave !== 'floor') return false;
         this.llave = 'held';
-        announce(g, 'La llave de la caja fuerte del coronel. El despacho, arriba en la casona.', 4);
         this.changed();
         return true;
       },
@@ -355,7 +435,7 @@ export default class Saber {
           if (this.uru[i] !== 2) return false;
           this.uru[i] = 3;
           const n = this.uru.filter((u) => u === 3).length;
-          announce(g, n < 3 ? `Una pluma de urutaú (${n}/3). Los otros siguen llorando en algún lado.` : 'Las tres plumas de urutaú. Al hueco del algarrobo.', 4);
+          announce(g, `Pluma de urutaú (${n}/3).`, 3);
           this.changed();
           return true;
         },
@@ -369,10 +449,10 @@ export default class Saber {
     this.caja = 'sargento';
     // si el Sargento ya anda suelto (el de la ronda), la llave la tiene él
     if (!freeBoss(g)) {
-      announce(g, 'Cerrada con llave. La llave la tiene el Sargento de la partida, que anda afuera.', 5, true);
+      announce(g, 'Cerrada con llave.', 3, true);
       return;
     }
-    announce(g, 'Cerrada con llave. Afuera, alguien grita órdenes... ¡El Sargento de la partida!', 5, true);
+    announce(g, 'Cerrada con llave.', 3, true);
     g.zombies.spawnBoss(Math.max(8, g.rounds.round), { at: new THREE.Vector3(72.5, this.floor(72.5, 21.5), 21.5), kind: 'sargento' });
   }
 
@@ -389,7 +469,6 @@ export default class Saber {
     this.llave = 'floor';
     const y = this.g.world.floorAt(pos.x, pos.z, pos.y);
     this.llavePos = [pos.x, y, pos.z];
-    announce(this.g, 'Al Sargento se le cayó una llave.', 3.5);
     this.changed();
   }
 
@@ -489,6 +568,10 @@ export default class Saber {
       }
       this.eyeT[i] = Math.max(0, this.eyeT[i] - dt);
       for (const e of b.eyes) e.visible = this.eyeT[i] > 0 || (on && Math.sin(t * 0.7 + i * 2) > 0.985);
+      if (b.eyeGlow) {
+        b.eyeGlow.visible = this.uru[i] === 0 && this.eyeT[i] > 0;
+        if (b.eyeGlow.visible) b.eyeGlow.material.opacity = 0.75 * Math.min(1, this.eyeT[i] / 0.6, (3.2 - this.eyeT[i]) / 0.3);
+      }
       // la pluma cae meciéndose
       if (this.uru[i] === 1) {
         this.fallT[i] += dt;

@@ -70,7 +70,7 @@ export default class Ofrenda {
         if ((this.orb !== 'lake' && this.orb !== 'floor') || !E.isGil(from)) return false;
         this.orb = 'carried';
         this.carrier = from;
-        announce(g, 'Gil levantó la luz de los ahogados. Al hueco del algarrobo: cúbranlo.', 4, true);
+        announce(g, '', 4, true);
         E.netSync();
         return true;
       },
@@ -159,7 +159,6 @@ export default class Ofrenda {
       this.orb = 'floor';
       this.dropPos = [pos.x, w.floorAt(pos.x, pos.z, pos.y), pos.z];
       this.carrier = null;
-      announce(g, 'A Gil se le cayó la luz de los ahogados. Que la levante (solo él puede).', 4);
       E.netSync();
     }
   }

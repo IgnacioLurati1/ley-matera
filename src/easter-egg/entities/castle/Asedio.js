@@ -674,7 +674,6 @@ export default class Asedio {
     if (R.state === 'active' && !R.dogs && g.state === 'playing' && !this.blocked()) this.start(R);
     else {
       this.early = true;
-      announce(g, 'Cuernos en el valle...', 3);
       this.horns(0, 0.6);
     }
     this.sync(true);
@@ -794,7 +793,6 @@ export default class Asedio {
     // ¡bajen el rastrillo!
     if (G.mode === 'up') {
       this.setGateMode('down');
-      g.hud.subtitle('¡Bajen el rastrillo!', 2.5);
     } else this.gateSolid(true, false);
     // el que quedó en la barbacana pasa al patio
     const p = g.player.pos;
@@ -1164,7 +1162,7 @@ export default class Asedio {
     this.setGateMode('broken');
     g.net?.event('ee', { ase: 'gb' });
     this.breakFx();
-    announce(g, '¡Rompieron el rastrillo!', 3, true);
+    announce(g, '', 3, true);
     this.egg.say('fierro', LINES.broke, 0.5);
     this.dirty = true;
     this.sync(true);
@@ -1197,7 +1195,7 @@ export default class Asedio {
       G.frost = 0;
       G.hp = charged ? ICE_CHARGED : 0.2;
       this.setGateMode('down');
-      announce(g, 'El hielo cerró el rastrillo', 3, true);
+      announce(g, '', 3, true);
     } else if (G.hp < 1) G.hp = Math.min(1, G.hp + (charged ? ICE_CHARGED : ICE_BASE));
     G.iceT = Math.max(G.iceT, charged ? 25 : 8);
     g.net?.event('ee', { ase: 'gi', c: charged ? 1 : 0 });
@@ -1305,7 +1303,6 @@ export default class Asedio {
         if (d < 12) g.fx.addShake(0.25 * (1 - d / 12));
         if (host && !this.saidLadders) {
           this.saidLadders = true;
-          announce(g, '¡Escaleras en la muralla!', 2.5);
         }
       }
     } else if (L.st === 'up') {
@@ -2112,7 +2109,7 @@ export default class Asedio {
       this.forceSpawn = null;
       g.fx.dust(tmpA.set(bx, at.y + 0.3, bz), UP, [0.45, 0.4, 0.35], 18);
     }
-    announce(g, '¡El ariete!', 3, true);
+    announce(g, '', 3, true);
     this.egg.say('fierro', LINES.cmd, 1.5);
     g.net?.event('ee', { ase: 'cmd' });
     this.horns(0, 0.7);
@@ -2409,7 +2406,7 @@ export default class Asedio {
     this.phase = 'won';
     g.addPoints(pts, null, true);
     g.hud.toast(intact ? `¡Rastrillo entero! +${pts} y el Cofre del botín` : `¡Se levantó el asedio! +${pts}`);
-    announce(g, '¡Cayó el Caballero Negro! Se levanta el asedio.', 4, true);
+    announce(g, '', 4, true);
     this.bell(BELL_END, 0.2);
     this.belled = true;
     this.retreat();

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import SliceWalk from './sliceWalk';
+import { downHit, hasGrid, warmGrids } from './flatGrid';
 
 // Partículas (sangre, chispas, polvo, vapor, fuego, escarcha, almas),
 // haces (trazadoras, rayos), calcos en paredes, luces de destello y restos.
@@ -580,13 +581,7 @@ export default class Effects {
     const same = this.flats && this.flatsW === this.g.world && now >= this.flatsT;
     if (same && now - this.flatsT < 30) return this.flats;
     const root = this.g.scene;
-    const add = (L) => (o) => {
-      if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || !o.visible || o.material?.transparent || !o.geometry) return;
-      const geo = o.geometry;
-      const tris = (geo.index ? geo.index.count : geo.attributes.position?.count || 0) / 3;
-      if (tris > 20000) return;
-      L.push({ o, b: new THREE.Box3().setFromObject(o) });
-    };
+    const add = (L) => this.flatAdder(L);
     // la vieja (pasaron 30 s): se rehace de a tajadas (fx/sliceWalk.js) y
     // mientras tanto sirve la de antes
     if (same && root) {
@@ -610,6 +605,18 @@ export default class Effects {
     return L;
   }
 
+  // Lo que va a la lista de lowFlats (las mallas quietas no tan grandes, con su caja).
+  flatAdder(L) {
+    return (o) => {
+      // (las copias de Eclipse para las islas de lejos, world/eclipseLejos.js: sus piezas ya están)
+      if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || !o.visible || o.material?.transparent || !o.geometry || o.userData.lejos) return;
+      const geo = o.geometry;
+      const tris = (geo.index ? geo.index.count : geo.attributes.position?.count || 0) / 3;
+      if (tris > 20000) return;
+      L.push({ o, b: new THREE.Box3().setFromObject(o) });
+    };
+  }
+
   // La altura de lo que tapa el piso en (x, z), entre p.y y 25 cm arriba (null
   // si nada). Se guarda por pedacito de 25 cm (los props juntados por material
   // tienen miles de triángulos: el rayo cuesta, pero una vez por lugar).
@@ -617,14 +624,28 @@ export default class Effects {
     const L = this.lowFlats();
     const key = `${Math.floor(p.x * 4)},${Math.floor(p.z * 4)},${Math.round(p.y * 10)}`;
     if (this.tops.has(key)) return this.tops.get(key);
-    // (cada rayo nuevo cuesta 5-7 ms en la torre: una explosión que mataba a 10
-    // trababa el cuadro. Pocos por cuadro; los demás, en el piso de la grilla)
+    // (cada rayo nuevo costaba 5-7 ms en la torre y 5-17 en el penal, contra la
+    // utilería juntada: una explosión que mataba a 10 trababa el cuadro. Ahora
+    // cada malla arma una vez su rejilla en planta (fx/flatGrid.js) y el rayo
+    // prueba solo los triángulos de su celda: varios por cuadro; armar una
+    // rejilla, una por cuadro (la que falta queda para el que sigue))
     if (!(this.topBudget > 0)) return null;
     this.topBudget--;
+    const old = globalThis.__mduNoFlatGrid === true;
     let top = null;
     for (const { o, b } of L) {
       if (p.x < b.min.x || p.x > b.max.x || p.z < b.min.z || p.z > b.max.z || b.max.y < p.y - 0.02 || b.min.y > p.y + 0.25) continue;
-      decalRay.set(tmpR.set(p.x, Math.min(b.max.y, p.y + 0.25) + 0.01, p.z), DOWN);
+      const yTop = Math.min(b.max.y, p.y + 0.25) + 0.01;
+      if (!old) {
+        if (!hasGrid(o)) {
+          if (!(this.gridBudget > 0)) return null;
+          this.gridBudget--;
+        }
+        const y = downHit(o, p.x, p.z, yTop, Math.max(yTop - 0.3, p.y - 0.02));
+        if (y !== null && (top === null || y > top)) top = y;
+        continue;
+      }
+      decalRay.set(tmpR.set(p.x, yTop, p.z), DOWN);
       decalRay.far = 0.3;
       for (const h of decalRay.intersectObject(o, false)) {
         if (h.point.y < p.y - 0.02) break;
@@ -666,7 +687,35 @@ export default class Effects {
   }
 
   update(dt, camera) {
-    this.topBudget = 1;
+    // (los rayos de los calcos: varios por cuadro con la rejilla, uno sin ella;
+    // armar la rejilla de una malla, una por cuadro)
+    this.topBudget = globalThis.__mduNoFlatGrid === true ? 1 : 6;
+    this.gridBudget = 1;
+    // las rejillas de los calcos se arman de a poco (1 ms por cuadro) desde que
+    // arranca la partida: así la primera muerte cerca de algo grande no traba
+    if (globalThis.__mduNoFlatGrid !== true && this.g?.state === 'playing' && (this.g.time || 0) > 2) {
+      // (la lista, si todavía no la armó un calco: de a tajadas, sin trabar)
+      if ((!this.flats || this.flatsW !== this.g.world) && this.g.scene) {
+        if (this.warmW !== this.g.world) {
+          this.warmW = this.g.world;
+          this.warmNext = [];
+          (this.warmWalk ||= new SliceWalk()).reset();
+        }
+        if (this.warmWalk.step([this.g.scene], this.flatAdder(this.warmNext), 40)) {
+          this.flats = this.warmNext;
+          this.flatsW = this.g.world;
+          this.flatsT = this.g.time || 0;
+          this.tops = new Map();
+          this.warmNext = [];
+        }
+      }
+      const L = this.flatsW === this.g.world ? this.flats : null;
+      if (L !== this.warmL) {
+        this.warmL = L;
+        this.warmI = 0;
+      }
+      if (L && this.warmI < L.length) this.warmI = warmGrids(L, this.warmI, 1);
+    }
     this.add.update(dt);
     this.alpha.update(dt);
     // haces

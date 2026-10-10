@@ -5,6 +5,7 @@ import { mesh, boxGeo, cylGeo, compactGroup } from './props';
 import { ACT } from '../config/map';
 import { fireflies } from '../fx/Fireflies';
 import { shieldModel } from './shieldModels';
+import { partModel } from './eclipseShield';
 import { buildJar } from './jarModels';
 import ShieldUpgrade from './ShieldUpgrade';
 
@@ -155,7 +156,6 @@ export default class Activities {
     best.pulse = 1;
     if (!this.hinted) {
       this.hinted = true;
-      g.hud.subtitle('Un alma voló hacia el frasco de la repisa...', 3, 'soul');
     }
     g.net?.event('jar', { i: this.jars.indexOf(best), c: best.count });
     if (best.count >= this.needFor()) {
@@ -573,7 +573,10 @@ export default class Activities {
     for (const def of ACT.parts) {
       const obj = new THREE.Group();
       obj.position.set(...def.pos);
-      if (def.id === 'tapa') {
+      // (las de Eclipse tienen su modelo: world/eclipseShield)
+      const own = partModel(def.id, M);
+      if (own) obj.add(own);
+      else if (def.id === 'tapa') {
         obj.add(mesh(cylGeo(0.26, 0.26, 0.03, 20), M.iron, 0, 0.015, 0));
         obj.add(mesh(new THREE.TorusGeometry(0.05, 0.012, 6, 12), M.iron, 0, 0.04, 0, Math.PI / 2, 0, 0));
       } else if (def.id === 'barrote') {

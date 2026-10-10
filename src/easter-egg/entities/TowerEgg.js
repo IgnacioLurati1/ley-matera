@@ -594,7 +594,6 @@ export default class TowerEgg {
         this.brasa = { by: g.net?.useFrom ?? this.myId(), t: EE.brasa || 80, warned: false };
         g.hud.toast('Brasa');
         g.audio.sting();
-        this.announce('Llevala al barbacuá del piso 3, antes de que se apague', 4);
         this.netSync();
         return true;
       },
@@ -731,7 +730,9 @@ export default class TowerEgg {
 
   announce(text, secs = 3, sting = false) {
     const g = this.g;
-    g.hud.subtitle(text, secs);
+    // (texto vacío: solo el sting. El usuario, 2026-10-08, sacó los avisos de
+    // lo que se ve o ya dice la guía)
+    if (text) g.hud.subtitle(text, secs);
     if (sting) g.audio.sting();
     g.net?.event('sub', { x: text, d: secs, s: sting ? 1 : 0 });
   }
@@ -790,7 +791,6 @@ export default class TowerEgg {
   // (anfitrión) La brasa prende el barbacuá: arde, y el caño salta suelto.
   light() {
     this.burnT = 0;
-    this.announce('¡Prendió!', 2);
     this.netSync();
   }
 
@@ -814,14 +814,14 @@ export default class TowerEgg {
       this.lines('fierro', FIERRO.built, 1);
       this.say('entidad', VOZ.campanas, 12);
       this.bells.show();
-      g.later(3, () => this.announce('Tirale a la campana de la cima', 4, true));
+      g.later(3, () => this.announce('', 4, true));
     }
     this.netSync();
   }
 
   // (anfitrión) Una campana quedó de oro: la que sigue.
   bellNext(i) {
-    this.announce(`¡Rápido, ${BELL_NAME[i]}!`, 4, true);
+    this.announce('', 4, true);
   }
 
   // (anfitrión) Las tres campanas: la Voz manda el alma pesada a la plaza del 5.
@@ -863,7 +863,7 @@ export default class TowerEgg {
     const kind = Math.random() < 0.5 ? 'capataz' : 'alcaide';
     this.heavy = g.zombies.spawnBoss(Math.max(10, g.rounds.round), { kind, at });
     this.heavyAt = at.clone();
-    this.announce('¡El alma pesada! Bajalo en la plaza del 5', 3.5, true);
+    this.announce('', 3.5, true);
   }
 
   fire() {
@@ -968,7 +968,7 @@ export default class TowerEgg {
     g.fx.explosion(this.sealPos.clone().setY(this.sealPos.y + 0.3), 4, [1, 0.8, 0.3]);
     g.fx.sparkle(this.sealPos.clone().setY(this.sealPos.y + 0.5), [1, 0.85, 0.4], 60, 3);
     g.post?.flash(0.5);
-    this.announce('¡El sello se rompió! Debajo había una mecha.', 4, true);
+    this.announce('', 4, true);
     this.say('entidad', VOZ.sello, 1.5);
     this.netSync();
   }
@@ -1040,12 +1040,11 @@ export default class TowerEgg {
     const g = this.g;
     this.parts.rueda = 'falling';
     this.fallT = 0;
-    this.announce('¡La rueda se soltó! Cae por el agujero...', 3, true);
+    this.announce('', 3, true);
     this.say('entidad', VOZ.rueda, 1.5);
     g.later(2.2, () => {
       if (this.parts.rueda !== 'falling') return;
       this.parts.rueda = 'ground';
-      this.announce('La rueda cayó en la plaza del piso 5.', 3);
       this.netSync();
     });
   }
@@ -1439,7 +1438,7 @@ export default class TowerEgg {
     if (S.kind === 'cannon') {
       this.T.skyOpenK = 1;
       if (!g.net?.guest) {
-        this.announce('Se abrió el cielo. La escalera divina baja si se paga en la pared dorada de la cima.', 5, true);
+        this.announce('', 5, true);
         const many = this.players() > 1;
         this.lines('fierro', FIERRO.shot.map((l) => l.replace('{plata}', this.costWords()).replace('{junten}', many ? 'Junten entre todos' : 'Juntala')), 1);
       }
@@ -1739,7 +1738,6 @@ export default class TowerEgg {
           g.audio.chain?.(this.barbPos);
           if (host && this.parts.cano === 'stuck') {
             this.parts.cano = 'none';
-            this.announce('¡El caño se soltó!', 2.5);
             this.netSync();
           }
         }

@@ -106,10 +106,15 @@ export default class CineActors {
   // fill: luz de relleno solo para ellos (desde la cámara, gauchoSkin uFill),
   // para las escenas de noche: se leen sin tocar la luz del resto.
   // (globalThis.__mduNoFill: sin el relleno, para comparar)
-  constructor(g, { base = 480, floor = null, parent = null, fill = null } = {}) {
+  // shades: false, el Canchero sin sus anteojos de sol en esta escena.
+  // bandanas: false, sin las bandanas de los compañeros del Gil (net/gilLook
+  // crewBandana; solo salen en Mate no Numa y Eclipse): los cuatro de siempre
+  // del fogón, la gente del santuario.
+  constructor(g, { base = 480, floor = null, parent = null, fill = null, shades = true, bandanas = true } = {}) {
     this.g = g;
     this.fill = fill && !globalThis.__mduNoFill ? new THREE.Color(fill).multiplyScalar(globalThis.__mduFillK ?? 1) : null;
     this.people = new Avatars(g, null);
+    this.people.bandanas = bandanas;
     if (parent) parent.add(this.people.root);
     this.floor = floor || ((x, z) => g.world.floorAt(x, z));
     this.list = [];
@@ -131,7 +136,7 @@ export default class CineActors {
     // el Canchero, con sus anteojos de sol puestos (nada lo despeina). Solo en
     // el penal y la torre (el usuario, 2026-10-04: abusaba de los anteojos);
     // en el Monumento, sin anteojos. globalThis.__mduShadesAll: en todos.
-    this.shadesOf = g.mapId === 'penal' || g.mapId === 'torre' || globalThis.__mduShadesAll ? this.by.canchero || null : null;
+    this.shadesOf = shades && (g.mapId === 'penal' || g.mapId === 'torre' || globalThis.__mduShadesAll) ? this.by.canchero || null : null;
   }
 
   // Cada cuadro, después de mover la escena: los tiempos, los caminos, la pose
@@ -164,7 +169,9 @@ export default class CineActors {
     // (antes del primer cuadro el muñeco todavía no está en su lugar: los
     // huesos en el origen. El primer clip arranca derecho, sin mezcla; si no,
     // salía de abajo del piso)
-    const fresh = !this.posed;
+    // (2026-10-07: y el que acaban de poner en otro lugar —r.tpAt, un corte u
+    // otro decorado— tampoco se mezcla desde donde estaba: llegaba volando)
+    const fresh = !this.posed || (r.tpAt === this.t && globalThis.__mduOldCineGlide !== true);
     r.cc = { name, lt: o.t || 0, rate: o.rate ?? 1, loop: !!o.loop, look: o.look || 0, tilt: o.tilt || 0, yaw: o.yaw, fade: o.fade ?? 0.3, at: this.t, snap: fresh ? null : cineSnap(r.a), fresh };
   }
 
@@ -287,6 +294,14 @@ export default class CineActors {
       // (para atrás, rate < 0: se para de donde se arrodilló)
       if (!loop) S.lt = Math.max(0, S.lt);
       const o = { loop, look: S.look, tilt: S.tilt };
+      // (2026-10-07, el usuario: "cuando el Gil se iba a entregar a la partida
+      // no cargaba por medio segundo y luego aparecía": la mezcla arrancaba de
+      // la cadera de antes, en el decorado anterior a 785 m, y el muñeco cruzaba
+      // el mapa en 0,6 s. De lejos no se mezcla. __mduOldCineGlide: como antes)
+      if (S.snap?.h && globalThis.__mduOldCineGlide !== true && Math.hypot(S.snap.h.x - r.pos.x, S.snap.h.z - r.pos.z) > 12) {
+        S.snap = null;
+        S.fresh = true;
+      }
       if (S.snap && this.t - S.at < S.fade) {
         o.snap = S.snap;
         o.sw = smooth(Math.min(1, (this.t - S.at) / S.fade));

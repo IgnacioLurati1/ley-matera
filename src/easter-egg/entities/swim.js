@@ -188,6 +188,15 @@ export function swimMove(p, dt, input, W, wx, wz, f) {
     const dA = g.world.waterDepth(ax, az, fa + 0.5) || 0;
     // (el mapa puede decir por dónde sí: world.swimClimb, el Monumento por la escalerilla)
     if (fa > p.pos.y + 0.4 && fa < W.surface + 0.9 && dA < SWIM && (g.world.swimClimb?.(ax, az, p) ?? true)) {
+      // (Eclipse: se trepa de a poco, climbStep; de un cuadro al otro subía
+      // 1,5 m y avanzaba: "te teletransportás al subir por los bordes", el
+      // usuario 2026-10-06. agente rend; globalThis.__mduNoEclClimb: como antes)
+      if (g.mapId === 'eclipse' && globalThis.__mduNoEclClimb !== true) {
+        p.climbing = { t: 0, dur: CLIMB_S, from: p.pos.clone(), to: p.pos.clone().set(ax, fa, az) };
+        p.vel.set(0, 0, 0);
+        g.water?.splash?.(p.pos.x, p.pos.z, 0.4);
+        return;
+      }
       p.pos.set(ax, fa, az);
       p.vel.set(0, 0, 0);
       p.onGround = true;
@@ -210,6 +219,34 @@ export function swimMove(p, dt, input, W, wx, wz, f) {
       if (p.swim === 2) g.water?.splash?.(p.pos.x - Math.sin(p.yaw) * 0.5, p.pos.z - Math.cos(p.yaw) * 0.5, 0.2);
     }
   }
+}
+
+// Trepando a la orilla (Eclipse; lo arma swimMove): primero sube contra el
+// borde y, ya con el pecho arriba, pasa al pasto. Devuelve si sigue trepando
+// (Player no camina ni nada mientras tanto).
+const CLIMB_S = 0.5;
+export function climbStep(p, dt) {
+  const C = p.climbing;
+  if (!C) return false;
+  if (p.downed || !p.alive) {
+    p.climbing = null;
+    return false;
+  }
+  C.t += dt;
+  const k = Math.min(1, C.t / C.dur);
+  const ease = (u) => u * u * (3 - 2 * u);
+  const ky = ease(Math.min(1, k / 0.7));
+  const kx = ease(Math.max(0, (k - 0.3) / 0.7));
+  p.pos.set(C.from.x + (C.to.x - C.from.x) * kx, C.from.y + (C.to.y - C.from.y) * ky, C.from.z + (C.to.z - C.from.z) * kx);
+  p.vel.set(0, 0, 0);
+  p.onGround = false;
+  p.airTop = p.pos.y;
+  if (k >= 1) {
+    p.climbing = null;
+    p.onGround = true;
+    p.g.audio.land();
+  }
+  return true;
 }
 
 // ---------------- los zombies ----------------

@@ -42,9 +42,23 @@ const AO_BASE = { radius: 0.7, distanceExponent: 1.2, thickness: 1.2, scale: 1.1
 // El Monumento: la Torre (70 m) corta la luna en la bruma del cielo y arriba
 // de ella quedaban haces y una cuña clara contra las estrellas; poca bruma en
 // el cielo (abajo, entre los edificios, los haces siguen).
-const VOL_MAP = { esteros: { scatter: 0.6, sky: 0.25 }, monumento: { sky: 0.15 } };
+// (Eclipse Matero, sesión 1f: la luz volumétrica pintaba de bruma gris el
+// cielo alrededor del eclipse y dejaba rayos de sombra en el aire —las rejas
+// "volando" que vio el usuario—; con la niebla más espesa de eclipseMood,
+// todavía más. globalThis.__mduNoEclVol: como antes)
+const VOL_MAP = { esteros: { scatter: 0.6, sky: 0.25 }, monumento: { sky: 0.15 }, ...(globalThis.__mduNoEclVol === true ? {} : { eclipse: { scatter: 0.35, sky: 0.1 } }) };
 const AO_MAP = {
   castillo: { radius: 1.4, distanceExponent: 1.4, thickness: 2.4, scale: 1.8, blend: 1, more: 4 },
+  // Eclipse Matero (grafica-v3): islas abiertas con muros, utilería grande y
+  // barrancos; con el radio de los cuartos chicos "no se veía la oclusión"
+  // (globalThis.__mduNoEclAo: la de siempre)
+  // (pow: la oclusión elevada, más marcada en los rincones; islas abiertas de noche)
+  // (2026-10-09, el usuario: "la oclusión en el mapa está medio rara": con
+  // radio 1,8, grosor 2,6, escala 2,2 y elevada a 2,2 oscurecía cosas enteras
+  // —la máquina del molino, las rejas del penal, la estatua del Monumento— y
+  // se comía los charcos de luz y los faroles. Más suave: sigue marcando los
+  // rincones. globalThis.__mduOldEclAo10: como antes)
+  eclipse: globalThis.__mduOldEclAo10 === true ? { radius: 1.8, distanceExponent: 1.4, thickness: 2.6, scale: 2.2, blend: 1, more: 4, pow: 2.2 } : { radius: 1.2, distanceExponent: 1.4, thickness: 1.6, scale: 1.5, blend: 1, more: 4, pow: 1.3 },
 };
 // Cómo se elige qué fuego tira sombra (Epic.pickLamps).
 const LAMP_FALL = 7; // a esta distancia un fuego cuenta la mitad
@@ -1147,12 +1161,14 @@ function safeGtao(gtao, gNormal) {
   // negros. Por eso la marca se mira también a unos píxeles alrededor.)
   b.uniforms.tGNormal = { value: gNormal };
   b.uniforms.uFolAO = { value: FOLIAGE_AO };
+  // (cuánto se marca: 1 = como sale del GTAO; AO_MAP[mapa].pow)
+  b.uniforms.uAoPow = { value: 1 };
   b.uniforms.uGTexel = { value: new THREE.Vector2(1, 1) };
   b.fragmentShader = b.fragmentShader
     .replace(
       'uniform sampler2D tDiffuse;',
       `uniform sampler2D tDiffuse, tGNormal;
-		uniform float uFolAO;
+		uniform float uFolAO, uAoPow;
 		uniform vec2 uGTexel;
 		float folAt(vec2 uv) { return abs(texture2D(tGNormal, uv).a - ${(FOLIAGE_B / 15).toFixed(4)}) < 0.02 ? 1.0 : 0.0; }
 		float folNear(vec2 uv) {
@@ -1167,7 +1183,7 @@ function safeGtao(gtao, gNormal) {
       'vec4 texel = texture2D( tDiffuse, vUv );',
       'vec4 texel = texture2D( tDiffuse, vUv );\n\t\t\ttexel = mix( texel, vec4( 1.0 ), greaterThanEqual( floatBitsToUint( texel ) & 0x7fffffffu, uvec4( 0x7f800000u ) ) );',
     )
-    .replace('mix(vec3(1.), texel.rgb, intensity)', 'mix(vec3(1.), texel.rgb, intensity * mix(1.0, uFolAO, folNear(vUv)))');
+    .replace('mix(vec3(1.), texel.rgb, intensity)', 'mix(vec3(1.), pow(max(texel.rgb, vec3(0.0)), vec3(uAoPow)), intensity * mix(1.0, uFolAO, folNear(vUv)))');
   b.needsUpdate = true;
 }
 
@@ -1383,10 +1399,11 @@ export default class Epic {
     this.gbuffer.scale = c.gres || (c.light ? 1 : 0.5);
     this.gbuffer.setSize(this.gbuffer.w, this.gbuffer.h);
     if (c.ao) {
-      const A = AO_MAP[game?.mapId] || AO_BASE;
+      const A = (game?.mapId === 'eclipse' && globalThis.__mduNoEclAo === true ? null : AO_MAP[game?.mapId]) || AO_BASE;
       this.gtao.updateGtaoMaterial({ radius: A.radius, distanceExponent: A.distanceExponent, thickness: A.thickness, scale: A.scale, samples: c.ao + A.more });
       this.gtao.updatePdMaterial({ samples: c.ao >= 12 ? 8 : 6 });
       this.gtao.blendIntensity = A.blend;
+      this.gtao.blendMaterial.uniforms.uAoPow.value = A.pow ?? 1;
     }
     const scene = this.scene;
     this.pool.forEach((l, i) => {

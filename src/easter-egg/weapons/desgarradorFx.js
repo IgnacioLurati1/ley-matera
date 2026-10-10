@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { flareTexture, raysTexture } from './supremoFx';
 import { spectralGeos, spectralCenter, bladeEdge, cosmicMats, VIOLET, GOLD, desgarradorModel, boltsWarmMesh } from './desgarradorModels';
 import { PART_COUNT } from '../entities/skeleton';
+import { bakeV4 } from './desgarradorSfx';
+import { bakeV5 } from './desgarradorSfx5';
 
 // Lo que se ve y se oye en el mundo del Desgarrador Cósmico (weapons/Desgarrador.js):
 //  · las grietas: cada tajo deja el espacio-tiempo rajado donde pasó la hoja
@@ -161,14 +163,15 @@ void main(){
 // de 0 a 1 en z y el largo lo pone uLen; acá violeta, con dos hebras de
 // grieta negra que se enroscan y medialunas violetas que corren)
 const TUBE_VS = `
-uniform float uLen, uR, uTime;
-varying vec2 vUv; varying vec3 vN; varying vec3 vV; varying vec3 vAx; varying float vAlong;
+uniform float uLen, uR, uTime, uTaper, uMin;
+varying vec2 vUv; varying vec3 vN; varying vec3 vV; varying vec3 vAx; varying float vAlong; varying vec2 vNdc;
 void main(){
   float along = position.z * uLen;
-  float t0 = smoothstep(0.0, 1.4, along);
+  // (v4) fino donde nace (cerca de la cámara) y se engrosa en uTaper m
+  float t0 = smoothstep(0.0, uTaper, along);
   float t1 = 1.0 - 0.5 * smoothstep(uLen - 0.3, uLen, along);
   float pulse = 1.0 + 0.2 * sin(along * 2.1 - uTime * 30.0) + 0.08 * sin(along * 6.7 + uTime * 37.0);
-  float r = uR * mix(0.25, 1.0, t0) * t1 * pulse;
+  float r = uR * mix(uMin, 1.0, t0) * t1 * pulse;
   vec4 mv = modelViewMatrix * vec4(position.xy * r, along, 1.0);
   vN = normalMatrix * vec3(position.xy, 0.0);
   vAx = normalize((modelViewMatrix * vec4(0.0, 0.0, 1.0, 0.0)).xyz);
@@ -176,12 +179,17 @@ void main(){
   vUv = uv;
   vAlong = along;
   gl_Position = projectionMatrix * mv;
+  vNdc = gl_Position.xy / max(gl_Position.w, 1e-4);
 }`;
 const TUBE_FS = `
-uniform float uLen, uTime, uGrow, uK, uSharp, uFlow, uGain, uNear;
+uniform float uLen, uTime, uGrow, uK, uSharp, uFlow, uGain, uNear, uEnd, uOwn;
 uniform vec3 uA, uB;
-varying vec2 vUv; varying vec3 vN; varying vec3 vV; varying vec3 vAx; varying float vAlong;
+varying vec2 vUv; varying vec3 vN; varying vec3 vV; varying vec3 vAx; varying float vAlong; varying vec2 vNdc;
 ${NOISE}
+// (guadana5, tercera vuelta: "al tirar el rayo se pone tan al medio que tapa
+// todo": el propio se aclara en el medio de la pantalla, donde se apunta)
+float ctrFade(vec2 ndc, float own){ return mix(1.0, mix(0.2, 1.0, smoothstep(0.05, 0.4, length(ndc))), own); }
+
 void main(){
   if (vAlong > uGrow) discard;
   vec3 n = vN / max(length(vN), 1e-4);
@@ -197,36 +205,84 @@ void main(){
   float cam = mix(uNear, 1.0, smoothstep(0.4, 3.5, length(vV))) * smoothstep(0.12, 0.45, length(vV));
   float tail = 1.0 - smoothstep(uLen - 0.5, uLen + 0.05, vAlong) * 0.5;
   vec3 col = mix(uA, uB, core * 0.85 + head * 0.6) * (0.75 + core * 0.55 + head * 1.2);
-  float a = core * energy * cam * tail * (1.0 - uK) * uGain;
+  // (guadana5) visto de punta (desde la cámara, mirando por donde va el rayo)
+  // se transparenta: si no, un rayo grueso es un disco sobre la mira
+  float endOn = 1.0 - uEnd * 0.92 * smoothstep(0.86, 0.985, abs(dot(v, vAx)));
+  float a = core * energy * cam * tail * (1.0 - uK) * uGain * endOn * ctrFade(vNdc, uOwn);
   gl_FragColor = vec4(col * a, a);
 }`;
 const HELIX_VS = `
-uniform float uLen, uTime, uR;
-varying float vSide; varying float vAlong; varying float vDist;
+uniform float uLen, uTime, uR, uTaper, uMin, uDir;
+varying float vSide; varying float vAlong; varying float vDist; varying vec2 vNdc;
 void main(){
   float along = position.z * uLen;
-  float ang = along * 1.6 - uTime * 11.0 + position.y;
-  float t0 = smoothstep(0.0, 2.0, along);
-  float r = uR * mix(0.12, 1.0, t0) * (1.0 + 0.22 * sin(along * 1.8 - uTime * 8.0 + position.y));
+  float ang = (along * 1.6 - uTime * 11.0) * uDir + position.y;
+  float t0 = smoothstep(0.0, uTaper, along);
+  float r = uR * mix(uMin, 1.0, t0) * (1.0 + 0.22 * sin(along * 1.8 - uTime * 8.0 + position.y));
   vec3 p = vec3(cos(ang) * r, sin(ang) * r, along + position.x * 0.08);
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   vSide = position.x;
   vAlong = along;
   vDist = length(mv.xyz);
   gl_Position = projectionMatrix * mv;
+  vNdc = gl_Position.xy / max(gl_Position.w, 1e-4);
 }`;
 const HELIX_FS = `
-uniform float uLen, uTime, uGrow, uK;
+uniform float uLen, uTime, uGrow, uK, uOwn;
 uniform vec3 uA;
-varying float vSide; varying float vAlong; varying float vDist;
+varying float vSide; varying float vAlong; varying float vDist; varying vec2 vNdc;
+// (guadana5, tercera vuelta: "al tirar el rayo se pone tan al medio que tapa
+// todo": el propio se aclara en el medio de la pantalla, donde se apunta)
+float ctrFade(vec2 ndc, float own){ return mix(1.0, mix(0.2, 1.0, smoothstep(0.05, 0.4, length(ndc))), own); }
+
 void main(){
   if (vAlong > uGrow) discard;
   float edge = 1.0 - vSide * vSide;
   float spark = 0.5 + 0.5 * sin(vAlong * 8.0 - uTime * 44.0);
   float cam = smoothstep(0.6, 2.2, vDist);
   float tail = 1.0 - smoothstep(uLen - 1.0, uLen, vAlong);
-  float a = edge * spark * cam * tail * (1.0 - uK) * 0.9;
+  float a = edge * spark * cam * tail * (1.0 - uK) * 0.9 * ctrFade(vNdc, uOwn);
   gl_FragColor = vec4(uA * a, a);
+}`;
+// guadana5 (iteración 4: "la guadaña en el estado de furia tira un rayo láser
+// súper débil que es peor que en el estado normal y es muy poco vistoso"): el
+// rayo de vacío. Un núcleo GRUESO de negro con estrellas que corren y el borde
+// de neón violeta (se dibuja normal, no sumado: oscurece lo que tapa), adentro
+// de un resplandor grande y dos hebras que se enroscan para lados contrarios.
+// (globalThis.__mduDesgOldBeam: el rayo de la v4)
+const OLD_BEAM = globalThis.__mduDesgOldBeam === true;
+const VOID_FS = `
+uniform float uLen, uTime, uGrow, uK, uOwn;
+uniform vec3 uA, uB;
+varying vec2 vUv; varying vec3 vN; varying vec3 vV; varying vec3 vAx; varying float vAlong; varying vec2 vNdc;
+${NOISE}
+// (guadana5, tercera vuelta: "al tirar el rayo se pone tan al medio que tapa
+// todo": el propio se aclara en el medio de la pantalla, donde se apunta)
+float ctrFade(vec2 ndc, float own){ return mix(1.0, mix(0.2, 1.0, smoothstep(0.05, 0.4, length(ndc))), own); }
+
+void main(){
+  if (vAlong > uGrow) discard;
+  vec3 n = vN / max(length(vN), 1e-4);
+  vec3 v = vV / max(length(vV), 1e-4);
+  vec3 vp = v - vAx * dot(v, vAx);
+  float lp = length(vp);
+  float face = lp < 1e-3 ? 1.0 : clamp(abs(dot(n, vp / lp)), 0.0, 1.0);
+  float edge = 1.0 - face;
+  float a1 = vUv.x * 6.2832;
+  // estrellas que corren hacia adelante y la nebulosa que se retuerce
+  float st = nz(vec2(cos(a1) * 9.0 + 7.0, vAlong * 5.0 - uTime * 34.0));
+  float neb = nz(vec2(sin(a1) * 2.0, vAlong * 0.9 - uTime * 6.0));
+  vec3 deep = vec3(0.012, 0.0, 0.035) + uA * (0.1 * neb) + vec3(1.0, 0.9, 1.0) * smoothstep(0.86, 0.97, st) * 1.6;
+  float flick = 0.85 + 0.15 * sin(uTime * 47.0 + vAlong * 3.0);
+  float rim = smoothstep(0.5, 0.93, edge);
+  vec3 col = mix(deep, mix(uA, uB, smoothstep(0.85, 1.0, edge)) * 2.4 * flick, rim);
+  float head = smoothstep(uGrow - 1.0, uGrow, vAlong) * step(uGrow, uLen - 0.01);
+  col += uB * head * 1.5;
+  float cam = smoothstep(0.3, 1.4, length(vV));
+  float tail = 1.0 - smoothstep(uLen - 0.4, uLen + 0.05, vAlong) * 0.6;
+  float endOn = 1.0 - 0.8 * smoothstep(0.94, 0.997, abs(dot(v, vAx)));
+  float a = (1.0 - smoothstep(0.96, 1.0, edge)) * cam * tail * (1.0 - uK) * endOn * ctrFade(vNdc, uOwn);
+  gl_FragColor = vec4(col * a, a);
 }`;
 const RINGS = 9;
 let BEAM_GEO = null;
@@ -253,7 +309,8 @@ function beamGeos() {
   helix.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
   // las medialunas que corren por el rayo (como la hoja de la guadaña)
   const ring = new THREE.TorusGeometry(0.34, 0.02, 6, 26, Math.PI * 1.1);
-  BEAM_GEO = { tube, helix, ring };
+  const shock = new THREE.PlaneGeometry(1, 1);
+  BEAM_GEO = { tube, helix, ring, shock };
   return BEAM_GEO;
 }
 const shader = (uniforms, vs, fs, blending = THREE.AdditiveBlending) =>
@@ -271,6 +328,7 @@ const prep = (o, order = 8) => {
 // ---------------- la burbuja del tiempo / la cáscara del pozo ----------------
 // Una esfera de luz: casi nada adentro y el borde encendido (fresnel), con
 // ondas que corren. (sin pow sobre lo que puede dar negativo)
+const OLD_BUBBLES = globalThis.__mduDesgOldBubbles === true;
 const BUBBLE_VS = `
 varying vec3 vN; varying vec3 vV; varying vec3 vP;
 void main(){
@@ -303,13 +361,33 @@ class Rig {
     this.LEN = { value: 1 };
     this.GROW = { value: 0 };
     this.K = { value: 1 };
-    const tube = (r, sharp, flow, gain, near, a, b) =>
-      prep(new THREE.Mesh(G.tube, shader({ uLen: this.LEN, uTime: this.TIME, uGrow: this.GROW, uK: this.K, uR: { value: r }, uSharp: { value: sharp }, uFlow: { value: flow }, uGain: { value: gain }, uNear: { value: near }, uA: { value: new THREE.Color(a) }, uB: { value: new THREE.Color(b) } }, TUBE_VS, TUBE_FS)));
-    this.glow = tube(0.24, 1.2, 1, 0.42, 0.22, 0x7a1cff, 0xd060ff);
-    this.core = tube(0.06, 2.6, 0.4, 0.85, 0.8, 0xc890ff, 0xfff0ff);
-    this.R0 = [0.24, 0.06, 0.4];
-    this.helix = prep(new THREE.Mesh(G.helix, shader({ uLen: this.LEN, uTime: this.TIME, uGrow: this.GROW, uK: this.K, uR: { value: 0.4 }, uA: { value: new THREE.Color(0xff6ae0).multiplyScalar(1.2) } }, HELIX_VS, HELIX_FS)));
-    this.root.add(this.glow, this.core, this.helix);
+    // (v4) cuántos metros tarda en engrosarse (globalThis.__mduDesgBeamTip: como antes, 1,4)
+    // (guadana5: nace fino, a la derecha, y a los 4 m ya es grueso: cerca de la
+    // cámara se ve de punta y tapaba la mira con un disco)
+    this.TAPER = { value: globalThis.__mduDesgBeamTip === true ? 1.4 : OLD_BEAM ? 7 : 3 };
+    this.MIN = { value: OLD_BEAM ? 0.07 : 0.2 };
+    this.OWN = { value: 0 };
+    const tube = (r, sharp, flow, gain, near, a, b, fs = TUBE_FS, blending = THREE.AdditiveBlending) =>
+      prep(new THREE.Mesh(G.tube, shader({ uLen: this.LEN, uTime: this.TIME, uGrow: this.GROW, uK: this.K, uTaper: this.TAPER, uMin: this.MIN, uOwn: this.OWN, uEnd: { value: OLD_BEAM ? 0 : 1 }, uR: { value: r }, uSharp: { value: sharp }, uFlow: { value: flow }, uGain: { value: gain }, uNear: { value: near }, uA: { value: new THREE.Color(a) }, uB: { value: new THREE.Color(b) } }, TUBE_VS, fs, blending)));
+    const helix = (r, hex, dir) => prep(new THREE.Mesh(G.helix, shader({ uLen: this.LEN, uTime: this.TIME, uGrow: this.GROW, uK: this.K, uTaper: this.TAPER, uMin: this.MIN, uOwn: this.OWN, uDir: { value: dir }, uR: { value: r }, uA: { value: new THREE.Color(hex).multiplyScalar(1.2) } }, HELIX_VS, HELIX_FS)));
+    if (OLD_BEAM) {
+      this.MIN.value = 0.07;
+      this.glow = tube(0.24, 1.2, 1, 0.42, 0.22, 0x7a1cff, 0xd060ff);
+      this.core = tube(0.06, 2.6, 0.4, 0.85, 0.8, 0xc890ff, 0xfff0ff);
+      this.R0 = [0.24, 0.06, 0.4];
+      this.helix = helix(0.4, 0xff6ae0, 1);
+      this.root.add(this.glow, this.core, this.helix);
+    } else {
+      // el resplandor grande (atrás), el núcleo de vacío (encima, normal) y un
+      // hilo caliente en el medio; dos hebras: rosa y violeta, al revés
+      this.glow = prep(tube(0.7, 1.1, 1, 0.5, 0.12, 0x5a10e0, 0xc050ff), 7);
+      this.voidT = prep(tube(0.24, 1, 0, 1, 1, 0x9a40ff, 0xf0c8ff, VOID_FS, THREE.NormalBlending), 9);
+      this.core = prep(tube(0.035, 3, 0.5, 0.7, 0.6, 0xd0a0ff, 0xffffff), 10);
+      this.helix = prep(helix(0.62, 0xff6ae0, 1), 10);
+      this.helix2 = prep(helix(0.5, 0x9a5cff, -1.35), 10);
+      this.R0 = [0.7, 0.035, 0.62, 0.24, 0.5];
+      this.root.add(this.glow, this.voidT, this.core, this.helix, this.helix2);
+    }
     this.ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xb070ff).multiplyScalar(1.9), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true, toneMapped: false, fog: false });
     this.rings = [];
     for (let i = 0; i < RINGS; i++) {
@@ -323,6 +401,17 @@ class Rig {
     this.hitFlare = prep(sprite(flareTexture(), 0xe0b0ff, 1.2));
     this.hitRays = prep(sprite(raysTexture(), 0xa040ff, 1));
     this.hit.add(this.hitRays, this.hitFlare);
+    // (guadana5) donde pega: tres ondas de choque que se abren (de cara al rayo)
+    this.shocks = [];
+    if (!OLD_BEAM) {
+      const sm = new THREE.MeshBasicMaterial({ map: ringTex(), color: new THREE.Color(0.75, 0.4, 1).multiplyScalar(1.6), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false });
+      for (let i = 0; i < 3; i++) {
+        const m = prep(new THREE.Mesh(G.shock, sm.clone()), 9);
+        m.visible = false;
+        this.hit.add(m);
+        this.shocks.push({ m, t: i / 3 });
+      }
+    }
     this.root.add(this.hit);
     this.tip = prep(sprite(flareTexture(), 0xf0d0ff, 1.8));
     this.root.add(this.tip);
@@ -347,9 +436,23 @@ class Rig {
 
   // De a a b; k (0 apagado, 1 entero); grow: hasta dónde llegó la punta.
   set(a, b, k, grow, wall, time, dt, tip, ws = 1) {
+    // (guadana5, tercera vuelta: el propio -sin la chispa de la punta- en
+    // primera persona: nace más fino, tarda más en engrosarse y se aclara en la
+    // mira; el de un compañero, visto de afuera, igual de grande.
+    // globalThis.__mduDesgOldBeamFp: el propio como el de afuera)
+    const own = !tip && !OLD_BEAM && globalThis.__mduDesgOldBeamFp !== true;
+    this.OWN.value = own ? 1 : 0;
+    if (!OLD_BEAM) {
+      this.MIN.value = own ? 0.06 : 0.2;
+      this.TAPER.value = own ? 6.5 : 3;
+    }
     this.glow.material.uniforms.uR.value = this.R0[0] * ws;
     this.core.material.uniforms.uR.value = this.R0[1] * ws;
     this.helix.material.uniforms.uR.value = this.R0[2] * ws;
+    if (this.voidT) {
+      this.voidT.material.uniforms.uR.value = this.R0[3] * ws;
+      this.helix2.material.uniforms.uR.value = this.R0[4] * ws;
+    }
     const d = tmpV3.subVectors(b, a);
     const len = Math.max(0.05, d.length());
     d.divideScalar(len);
@@ -380,13 +483,13 @@ class Rig {
         continue;
       }
       r.spin += dt * 17;
-      const s = (0.3 + 0.7 * smooth(r.u / 2.5)) * (1 - 0.75 * smooth((r.u - (reach - 4)) / 4)) * k;
+      const s = (0.08 + 0.92 * smooth(r.u / this.TAPER.value)) * (1 - 0.75 * smooth((r.u - (reach - 4)) / 4)) * k;
       r.m.visible = s > 0.02;
       r.m.position.set(0, 0, r.u);
       r.m.rotation.set(0, 0, r.spin);
       r.m.scale.setScalar(s);
     }
-    this.ringMat.opacity = 0.9 * k;
+    this.ringMat.opacity = 0.9 * k * (own ? 0.4 : 1);
     const on = wall && grow >= len - 0.01;
     this.hit.visible = on;
     if (on) {
@@ -395,7 +498,20 @@ class Rig {
       this.hitFlare.scale.setScalar(1.0 * f * k);
       this.hitRays.scale.setScalar(1.6 * (0.9 + 0.1 * Math.sin(time * 9)) * k);
       this.hitRays.material.rotation = -time * 2.4;
-    }
+      if (this.shocks.length) {
+        // (guadana5: más grande, el rayo nuevo es grueso)
+        // (el propio: el impacto cae en la mira, más chico)
+        this.hitFlare.scale.multiplyScalar((own ? 0.7 : 1.5) * ws);
+        this.hitRays.scale.multiplyScalar((own ? 0.9 : 1.9) * ws);
+        for (const S of this.shocks) {
+          S.t = (S.t + dt * 2.6) % 1;
+          S.m.visible = true;
+          S.m.scale.setScalar((0.3 + 2.1 * S.t) * ws * k);
+          S.m.rotation.z = S.t * 3 + time;
+          S.m.material.opacity = (1 - S.t) * (1 - S.t) * k * (own ? 0.35 : 1);
+        }
+      }
+    } else for (const S of this.shocks) S.m.visible = false;
     this.tip.visible = !!tip;
     if (tip) this.tip.scale.setScalar((0.55 + rnd() * 0.12) * k);
   }
@@ -542,6 +658,14 @@ export default class DesgarradorFx {
     this.coreMat = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
     for (let i = 0; i < 3; i++) this.bubbles.push(this.newBubble());
     for (let i = 0; i < 2; i++) this.wells.push(this.newWell());
+    // (v4) los agujeros negros chicos (cada tajo de la del Eclipse, la ruptura,
+    // la succión del Cazador): núcleo negro, la cáscara que dobla la luz y el
+    // disco que gira (violeta y oro)
+    this.holeDisk = add({ map: ringTex(), color: new THREE.Color(0.75, 0.35, 1).multiplyScalar(0.75) });
+    this.holeDiskGold = add({ map: ringTex(), color: new THREE.Color(1, 0.72, 0.3).multiplyScalar(0.7) });
+    this.holeGeo = new THREE.PlaneGeometry(1, 1);
+    this.holes = [];
+    for (let i = 0; i < 5; i++) this.holes.push(this.newHole());
     this.baked = false;
   }
 
@@ -562,6 +686,98 @@ export default class DesgarradorFx {
     core.visible = shell.visible = false;
     this.root.add(core, shell);
     return { core, shell, U: mat.uniforms, on: false, t: 0, p: new THREE.Vector3(), W: null, own: false, pal: 'base', ring: null };
+  }
+
+  newHole() {
+    const core = prep(new THREE.Mesh(this.bubbleGeo, this.coreMat), 5);
+    const mat = this.bubbleMat.clone();
+    mat.uniforms.uTime = this.bubbleMat.uniforms.uTime;
+    const shell = prep(new THREE.Mesh(this.bubbleGeo, mat), 7);
+    const disk = prep(new THREE.Mesh(this.holeGeo, this.holeDisk), 6);
+    const disk2 = prep(new THREE.Mesh(this.holeGeo, this.holeDiskGold), 6);
+    const grp = new THREE.Group();
+    grp.add(core, shell, disk, disk2);
+    grp.visible = false;
+    this.root.add(grp);
+    return { grp, core, shell, disk, disk2, U: mat.uniforms, on: false, t: 0, life: 1, R: 0.5, p: new THREE.Vector3(), spin: 0, pal: 'base', gold: false };
+  }
+
+  // ---------------- el agujero negro (v4) ----------------
+  // En p, de radio R, dura life s (se cierra de golpe al final: la implosión del
+  // sonido 'desg-agujero' cae a los 0,9 s). gold: el disco de oro (la del Eclipse).
+  // own: el propio (el sonido en la cabeza). sound: false si ya suena otro.
+  hole(p, R = 0.55, life = 0.95, { pal = 'base', gold = true, own = false, sound = true } = {}) {
+    this.attach();
+    let h = this.holes.find((x) => !x.on);
+    if (!h) h = this.holes.reduce((a, b) => (a.t / a.life > b.t / b.life ? a : b));
+    h.on = true;
+    h.t = 0;
+    h.life = Math.max(0.3, life);
+    h.R = R;
+    h.p.copy(p);
+    h.pal = pal;
+    h.gold = gold;
+    h.spin = Math.random() * 6;
+    h.grp.position.copy(p);
+    h.grp.visible = true;
+    h.disk2.visible = gold;
+    // (guadana5: la cáscara de luz del agujero se veía como una pompa de jabón
+    // -"burbujitas totalmente de más"-: solo el núcleo negro y el disco que
+    // gira. globalThis.__mduDesgOldBubbles: vuelve)
+    h.shell.visible = OLD_BUBBLES;
+    h.U.uCol.value.setRGB(...(PAL[pal] || PAL.base).edge);
+    this.g.fx.flash(p, pal === 'exec' ? 0xff60c0 : 0x9040ff, 5, 0.25, 8);
+    // (guadana5: el nuevo, con cuerpo audible y más fuerte; el de la v4 se
+    // tapaba. globalThis.__mduDesgOldHoleSnd: el de antes)
+    if (sound) {
+      if (globalThis.__mduDesgOldHoleSnd === true) this.play('desg-agujero', { pos: own ? null : p, gain: own ? 0.75 : 0.9 });
+      else this.play('desg-agujero5', { pos: own ? null : p, gain: own ? 1 : 1.15 });
+    }
+    return h;
+  }
+
+  stepHole(h, dt) {
+    const g = this.g;
+    h.t += dt;
+    const k = h.t / h.life;
+    const open = smooth(h.t / 0.14);
+    const close = k > 0.86 ? 1 - smooth((k - 0.86) / 0.14) : 1;
+    // (cerca de la cámara se achica y se apaga: no tapa ni lava la pantalla)
+    const cam = g.camera;
+    const dc = cam ? h.p.distanceTo(cam.position) : 5;
+    const nearK = Math.max(0.3, Math.min(1, (dc - 1.2) / 2.8));
+    const s = Math.max(0.01, h.R * open * close * nearK * (1 + 0.05 * Math.sin(h.t * 37)));
+    h.core.scale.setScalar(s);
+    h.shell.scale.setScalar(s * 1.6);
+    h.U.uK.value = 1.15 * close * nearK;
+    // el disco: de cara a la cámara pero inclinado, girando
+    if (cam) h.grp.lookAt(cam.position);
+    h.spin += dt * 7;
+    h.disk.rotation.set(1.05, 0, h.spin);
+    h.disk2.rotation.set(1.05, 0, -h.spin * 1.4);
+    h.disk.scale.setScalar(s * 3.4);
+    h.disk2.scale.setScalar(s * 2.4);
+    // lo que entra en espiral (guadana5: menos y más chicos: eran puntitos
+    // redondos que se leían como burbujas)
+    if (Math.random() < (OLD_BUBBLES ? 0.9 : 0.45)) {
+      for (let i = 0; i < (OLD_BUBBLES ? 3 : 1); i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = h.R * (2.5 + Math.random() * 3);
+        const x = h.p.x + Math.cos(a) * r;
+        const z = h.p.z + Math.sin(a) * r;
+        const y = h.p.y + rnd() * h.R * 2;
+        const tt = 0.3;
+        g.fx.add.spawn(x, y, z, (h.p.x - x) / tt - Math.sin(a) * 3, (h.p.y - y) / tt, (h.p.z - z) / tt + Math.cos(a) * 3, { color: i ? (PAL[h.pal] || PAL.base).dust[i % 3] : [1.3, 0.95, 0.45], size: 0.05, size1: 0, life: tt, drag: 0 });
+      }
+    }
+    if (h.t >= h.life) {
+      h.on = false;
+      h.grp.visible = false;
+      // se cierra: el destello de oro y las chispas que salen
+      g.fx.flash(h.p, 0xffc070, 5, 0.18, 7);
+      g.fx.sparkle(h.p, [1.2, 0.9, 0.5], 6, h.R);
+      for (let i = 0; i < 12; i++) g.fx.add.spawn(h.p.x, h.p.y, h.p.z, rnd() * 6, rnd() * 6, rnd() * 6, { color: i % 2 ? [1.3, 0.95, 0.45] : (PAL[h.pal] || PAL.base).dust[1], size: 0.05, size1: 0, life: 0.3, drag: 4 });
+    }
   }
 
   riftUniforms() {
@@ -615,6 +831,7 @@ export default class DesgarradorFx {
     rig.root.removeFromParent();
     rig.set(tmpV.set(0, 0, 0), tmpV2.set(0, 0, -3), 1, 99, true, 0, 0.016, true);
     for (const x of rig.rings) x.m.visible = true;
+    for (const x of rig.shocks) x.m.visible = true;
     grp.add(rig.root);
     // la de tamaño real (el muñeco de un compañero, la caja): sus materiales en el
     // mundo, con los rayos de la Furia a la vista (escondidos no se compilaban)
@@ -633,6 +850,11 @@ export default class DesgarradorFx {
     const b = new THREE.Mesh(this.bubbleGeo, this.bubbleMat);
     b.frustumCulled = false;
     grp.add(b, new THREE.Mesh(this.bubbleGeo, this.coreMat));
+    // (v4) el disco del agujero negro, la hoja que sangra vacío y las esquirlas
+    for (const m of [this.holeDisk, this.holeDiskGold]) grp.add(new THREE.Mesh(this.holeGeo, m));
+    if (this.d.bleed) grp.add(this.d.bleed.warmMesh(), this.d.orbit.warmMesh());
+    // (furia11) las chispas de concentrar la Furia (weapons/desgarradorFuria.js)
+    if (this.d.gather) grp.add(this.d.gather.warmMesh());
   }
 
   // ---------------- las grietas ----------------
@@ -800,7 +1022,7 @@ export default class DesgarradorFx {
   throwStart(F) {
     this.attach();
     const fl = this.flyers.find((x) => !x.on && x.up === !!F.up) || this.newFlyer(!!F.up);
-    Object.assign(fl, { id: F.id, own: F.own, st: F.st, home: F.home, onEnd: F.onEnd, R: F.R, A: F.A, T: F.T, pal: F.pal || 'base', cfg: F.cfg || null, burst: false });
+    Object.assign(fl, { id: F.id, own: F.own, st: F.st, home: F.home, onEnd: F.onEnd, R: F.R, A: F.A, T: F.T, pal: F.pal || 'base', cfg: F.cfg || null, burst: false, orbited: false });
     fl.o.copy(F.o);
     fl.f.copy(F.f);
     fl.r.copy(F.r);
@@ -863,12 +1085,42 @@ export default class DesgarradorFx {
         }
       }
       if (u >= 1) fl.done = true;
+      // (v4) las de los costados de la del Eclipse: en la punta se ponen a
+      // orbitar el pozo (cortan todo lo que el pozo arrastra) y después vuelven
+      const O = fl.cfg?.orbit;
+      if (O && !fl.orbited && u >= 0.5) {
+        fl.orbited = true;
+        fl.mode = 'orbit';
+        fl.orbT = O.time;
+        fl.orbA = Math.atan2(fl.pos.z - O.c.z, fl.pos.x - O.c.x);
+        fl.orbR = Math.max(2.5, Math.hypot(fl.pos.x - O.c.x, fl.pos.z - O.c.z));
+        fl.orbR0 = fl.orbR;
+        fl.orbY = fl.pos.y;
+        fl.hits.clear?.();
+      }
       // la del medio de la del Eclipse: en la punta se queda girando y abre el pozo
       if (fl.cfg?.well && !fl.welled && u >= 0.5) {
         fl.welled = true;
         fl.mode = 'hold';
         fl.holdT = fl.cfg.well.time;
         this.well(fl.pos.clone(), fl.cfg.well, fl.own, fl.pal);
+      }
+    } else if (fl.mode === 'orbit') {
+      const O = fl.cfg.orbit;
+      fl.orbT -= dt;
+      const k = 1 - Math.max(0, fl.orbT) / O.time;
+      fl.orbA += O.w * dt;
+      fl.orbR = fl.orbR0 * (1 - 0.45 * k);
+      fl.pos.set(O.c.x + Math.cos(fl.orbA) * fl.orbR, fl.orbY + Math.sin(fl.orbA * 2) * 0.25, O.c.z + Math.sin(fl.orbA) * fl.orbR);
+      // (cada media vuelta puede volver a cortar al mismo)
+      fl.orbCut = (fl.orbCut || 0) - dt;
+      if (fl.orbCut <= 0) {
+        fl.orbCut = Math.PI / Math.abs(O.w);
+        fl.hits.clear?.();
+      }
+      if (fl.orbT <= 0) {
+        fl.mode = 'back';
+        fl.backV = 8;
       }
     } else if (fl.mode === 'hold') {
       fl.holdT -= dt;
@@ -885,7 +1137,7 @@ export default class DesgarradorFx {
         fl.done = true;
       } else fl.pos.addScaledVector(tmpV.divideScalar(dd), fl.backV * dt);
     }
-    if (fl.t > 0.35 && fl.mode !== 'hold' && fl.pos.distanceTo(home) < 0.9) fl.done = true;
+    if (fl.t > 0.35 && fl.mode !== 'hold' && fl.mode !== 'orbit' && fl.pos.distanceTo(home) < 0.9) fl.done = true;
     // de ida arrastra a los de alrededor (lo hace el anfitrión: él mueve a los
     // muertos; también con la de un compañero) y en la vuelta, revienta
     if (fl.cfg?.pull && fl.mode === 'arc' && fl.t < fl.T * 0.5 && (!g.net || g.net.host)) this.pull(fl, dt);
@@ -895,7 +1147,7 @@ export default class DesgarradorFx {
       if (fl.own) this.d.novaHits(fl.pos.clone(), fl.cfg.burst, 'guadaña');
     }
     fl.group.position.copy(fl.pos);
-    fl.ang += dt * (fl.up ? 25 : 22) * (fl.mode === 'hold' ? 1.8 : 1);
+    fl.ang += dt * (fl.up ? 25 : 22) * (fl.mode === 'hold' || fl.mode === 'orbit' ? 1.8 : 1);
     fl.spinG.rotation.z = fl.ang;
     // (sale chica de la hoja y crece; vuelve achicándose)
     const grow = Math.min(1, 0.35 + fl.t * 5) * (fl.mode === 'back' ? Math.max(0.45, Math.min(1, fl.pos.distanceTo(home) / 2.5)) : 1) * (fl.up ? 1.35 : 1);
@@ -1157,7 +1409,13 @@ export default class DesgarradorFx {
     if (!this.slices.includes(z)) this.slices.push(z);
     tmpV.set(z.pos.x, (z.baseY ?? z.pos.y ?? 0) + 1.1 * (z.scale || 1), z.pos.z);
     g.fx.flash(tmpV.lerp(p, 0.5), 0xa050ff, 3.5, 0.22, 6);
-    this.play('desg-trago', { pos: p, gain: 0.8, rate: 0.9 + Math.random() * 0.2 });
+    // (v4) suena a agujero negro, y no más de uno cada 0,1 s (se traga a muchos
+    // de una: antes sonaban todos encimados). globalThis.__mduDesgOldTrago: el de antes
+    if (globalThis.__mduDesgOldTrago === true) this.play('desg-trago', { pos: p, gain: 0.8, rate: 0.9 + Math.random() * 0.2 });
+    else if (g.time - (this.tragoT ?? -9) > 0.1) {
+      this.tragoT = g.time;
+      this.play('desg-trago4', { pos: p, gain: 0.75, rate: 0.92 + Math.random() * 0.16 });
+    }
   }
 
   swallowMats(z, S) {
@@ -1297,8 +1555,9 @@ export default class DesgarradorFx {
       const u = Math.random();
       g.fx.add.spawn(a.x + (b.x - a.x) * u + rnd() * 0.5, Math.min(a.y, b.y) + 0.3 + Math.random() * 1.5, a.z + (b.z - a.z) * u + rnd() * 0.5, rnd() * 0.5, Math.random() * 0.6, rnd() * 0.5, { color: D[i % 3], size: 0.05 + Math.random() * 0.03, size1: 0, life: 0.5 + Math.random() * 0.5, drag: 1.2 });
     }
+    this.dashStreaks(a, b, pal);
     // (el estallido del final: el daño lo pone el que embistió, Desgarrador.stepDash)
-    this.nova(b, cfg?.burst?.radius || 3.4, { pal, dust: true, big: 1 });
+    this.nova(b, cfg?.burst?.radius || 3.4, { pal, dust: true, big: globalThis.__mduNoDesgFx4 === true ? 1 : 1.3 });
     if (!own) this.play('desg-embestida', { pos: b, gain: 0.9 });
   }
 
@@ -1333,9 +1592,59 @@ export default class DesgarradorFx {
     if (sound) this.play('desg-estallido', { pos: at, gain: 0.9 * big, rate: 0.9 + Math.random() * 0.2 });
   }
 
+  // ---------------- v4: un escalón más de peso y lectura ----------------
+  // (globalThis.__mduNoDesgFx4: como en la v3)
+  // El corte en el muerto: una raja finita que lo cruza (se lee dónde pegó),
+  // un soplo de vacío y chispas para el lado del tajo.
+  cutMark(p, dir, pal = 'base') {
+    if (globalThis.__mduNoDesgFx4 === true) return;
+    const g = this.g;
+    const yaw = Math.atan2(dir.x, dir.z) + Math.PI / 2;
+    this.rift({ o: p, yaw, roll: (Math.random() - 0.5) * 0.9, kind: 'line', len: 1.15, w: 0.05, life: 0.42, sweep: 0.03, pal, own: false });
+    for (let i = 0; i < 4; i++) g.fx.alpha.spawn(p.x + rnd() * 0.3, p.y + rnd() * 0.4, p.z + rnd() * 0.3, dir.x * 1.5 + rnd(), 0.3 + Math.random() * 0.5, dir.z * 1.5 + rnd(), { color: [0.03, 0.0, 0.06], size: 0.18, size1: 0.5, life: 0.45, alpha: 0.55, drag: 2 });
+    const D = (PAL[pal] || PAL.base).dust;
+    for (let i = 0; i < 8; i++) g.fx.add.spawn(p.x, p.y, p.z, dir.x * (3 + Math.random() * 4) + rnd() * 2, Math.random() * 2.5, dir.z * (3 + Math.random() * 4) + rnd() * 2, { color: i % 3 ? D[i % 3] : [1.3, 1.1, 1.3], size: 0.045, size1: 0, life: 0.3 + Math.random() * 0.2, drag: 2.5 });
+  }
+
+  // La espectral sale: el destello en la mano y un abanico de chispas adelante.
+  launchFx(o, f, pal = 'base', up = false) {
+    if (globalThis.__mduNoDesgFx4 === true) return;
+    const g = this.g;
+    g.fx.flash(o, up ? 0xffc060 : 0xa050ff, 5, 0.16, 6);
+    const D = (PAL[pal] || PAL.base).dust;
+    for (let i = 0; i < 18; i++) {
+      const s = 5 + Math.random() * 7;
+      g.fx.add.spawn(o.x, o.y, o.z, f.x * s + rnd() * 3, f.y * s + rnd() * 2, f.z * s + rnd() * 3, { color: up && i % 3 === 0 ? [1.3, 0.95, 0.45] : D[i % 3], size: 0.05, size1: 0, life: 0.3 + Math.random() * 0.2, drag: 3 });
+    }
+  }
+
+  // La embestida deja el aire rajado: estelas largas a lo largo del camino.
+  dashStreaks(a, b, pal = 'base') {
+    if (globalThis.__mduNoDesgFx4 === true) return;
+    const g = this.g;
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const D = (PAL[pal] || PAL.base).dust;
+    for (let i = 0; i < 36; i++) {
+      const u = Math.random();
+      const s = 8 + Math.random() * 10;
+      g.fx.add.spawn(a.x + dx * u + rnd() * 1.2, Math.min(a.y, b.y) + 0.4 + Math.random() * 1.4, a.z + dz * u + rnd() * 1.2, (dx / len) * s, 0, (dz / len) * s, { color: D[i % 3], size: 0.035, size1: 0.01, life: 0.18 + Math.random() * 0.12, drag: 5 });
+    }
+    for (let i = 0; i < 10; i++) g.fx.alpha.spawn(a.x + rnd() * 0.6, a.y + 0.1, a.z + rnd() * 0.6, rnd() * 3 - (dx / len) * 2, 0.3 + Math.random() * 0.6, rnd() * 3 - (dz / len) * 2, { color: [0.34, 0.3, 0.27], size: 0.4, size1: 1.2, life: 0.8, alpha: 0.4, drag: 2.5 });
+  }
+
   // El giro de la R: el polvo que levanta y el anillo de desgarro a ras del piso.
   spinFx(p, dur, pal) {
     const g = this.g;
+    // (v4) el aro de chispas que sale girando
+    if (globalThis.__mduNoDesgFx4 !== true) {
+      const D = (PAL[pal] || PAL.base).dust;
+      for (let i = 0; i < 30; i++) {
+        const a = (i / 30) * Math.PI * 2;
+        g.fx.add.spawn(p.x + Math.cos(a) * 1.2, p.y + 1.2 + rnd() * 0.3, p.z + Math.sin(a) * 1.2, -Math.sin(a) * 7 + Math.cos(a) * 2, rnd(), Math.cos(a) * 7 + Math.sin(a) * 2, { color: D[i % 3], size: 0.05, size1: 0, life: 0.4, drag: 2 });
+      }
+    }
     this.nova(p, 3.1, { pal, dust: true, big: 0.6, life: Math.min(1, dur * 0.7), h: 0.25, w: 0.18, sound: false });
     // el remolino de polvo alrededor (gira con la guadaña)
     for (let i = 0; i < 26; i++) {
@@ -1375,10 +1684,16 @@ export default class DesgarradorFx {
   // En c: una raja parada de espacio roto, el anillo que barre 10 m, la burbuja
   // donde se frena el tiempo, el destello y las piedras. Solo se ve: el daño, el
   // tirón y lo lento los pone Desgarrador.rupture.
-  rupture(c, R, pal = 'base', own = false) {
+  rupture(c, R, pal = 'base', own = false, big = false) {
     const g = this.g;
     const fy0 = g.world.floorAt(c.x, c.z, c.y + 0.5);
     const fy = Number.isFinite(fy0) && fy0 > c.y - 3 ? fy0 : c.y;
+    // (v4) en el medio, el agujero negro que se los traga (el del golpe cargado, grande)
+    if (globalThis.__mduNoSlashHole !== true) this.hole(_n2.set(c.x, fy + 1.4, c.z), big ? 0.95 : 0.6, big ? 1.25 : 1.0, { pal, gold: true, own });
+    if (big) {
+      // más rajas paradas alrededor, como un vidrio roto en el aire
+      for (let i = 0; i < 4; i++) this.rift({ o: tmpV.set(c.x + rnd() * 5, fy + 1 + Math.random() * 2.2, c.z + rnd() * 5), yaw: Math.random() * 6, roll: Math.PI / 2 + rnd() * 1.2, kind: 'line', len: 2 + Math.random() * 2.5, w: 0.1, life: 2.4, sweep: 0.1 + Math.random() * 0.2, pal, own: false, glass: 10 });
+    }
     const cam = g.camera?.position;
     const yaw = cam ? Math.atan2(c.x - cam.x, c.z - cam.z) + Math.PI / 2 : 0;
     this.rift({ o: tmpV.set(c.x, fy + 2.0, c.z), yaw, roll: Math.PI / 2, kind: 'line', len: 4.2, w: 0.2, life: 2.6, sweep: 0.12, pal, own: false, glass: 26 });
@@ -1393,7 +1708,8 @@ export default class DesgarradorFx {
     }
     const P = g.player?.pos;
     if (P) g.fx.addShake(Math.max(0, 0.7 * (1 - P.distanceTo(c) / 22)));
-    this.play('desg-ruptura', { pos: own ? null : c, gain: 1.1 });
+    // (v4: un poco más bajo: suena junto con el agujero negro del medio)
+    this.play('desg-ruptura', { pos: own ? null : c, gain: 0.85 });
   }
 
   // La burbuja del tiempo: una esfera de luz con el borde encendido que tiembla.
@@ -1442,7 +1758,8 @@ export default class DesgarradorFx {
     w.shell.position.copy(p);
     w.core.scale.setScalar(0.01);
     w.shell.scale.setScalar(0.01);
-    w.core.visible = w.shell.visible = true;
+    w.core.visible = true;
+    w.shell.visible = OLD_BUBBLES;
     w.U.uCol.value.setRGB(...(PAL[pal] || PAL.base).edge);
     // el disco que gira alrededor (un anillo de grieta casi acostado)
     w.ring = this.rift({ o: p, yaw: 0, roll: 0.25, kind: 'arc', R: W.core * 0.7, half: Math.PI, w: 0.12, life: W.time + 0.2, sweep: 0.2, pal, own: false });
@@ -1624,6 +1941,11 @@ export default class DesgarradorFx {
       any = true;
       this.stepWell(w, dt);
     }
+    for (const h of this.holes) {
+      if (!h.on) continue;
+      any = true;
+      this.stepHole(h, dt);
+    }
     if (any) this.attach();
   }
 
@@ -1641,6 +1963,10 @@ export default class DesgarradorFx {
     for (const w of this.wells) {
       w.on = false;
       w.core.visible = w.shell.visible = false;
+    }
+    for (const h of this.holes) {
+      h.on = false;
+      h.grp.visible = false;
     }
     this.light.intensity = 0;
   }
@@ -1719,9 +2045,10 @@ export default class DesgarradorFx {
     // se hunde, el vidrio que revienta, el coro y la catedral
     B('desg-ruptura', 3.8, function (o0, t) {
       const o = hall(this, o0, 3.2, 0.65);
-      tearL(this, o, t, { dur: 0.75, f0: 200, f1: 3600, gain: 0.9, n: 26 });
-      subL(this, o, t, { f0: 68, f1: 17, dur: 1.8, gain: 0.75 });
-      this.noise(o, { t, dur: 1.2, type: 'lowpass', freq: 900, freqEnd: 80, gain: 0.7, attack: 0.005, brown: true });
+      // (v4: un poco más bajo: con el agujero negro arriba saturaba)
+      tearL(this, o, t, { dur: 0.75, f0: 200, f1: 3600, gain: 0.72, n: 26 });
+      subL(this, o, t, { f0: 68, f1: 17, dur: 1.8, gain: 0.6 });
+      this.noise(o, { t, dur: 1.2, type: 'lowpass', freq: 900, freqEnd: 80, gain: 0.55, attack: 0.005, brown: true });
       shatterL(this, o, t + 0.05, { n: 24, span: 0.7, gain: 0.35 });
       this.choir?.(o, t + 0.1, [38, 50, 57, 62, 65], { dur: 1.4, gain: 0.04, attack: 0.08, release: 1.4 });
       crystalL(this, o, t + 0.2, [587.3, 880, 1174.7, 1396.9], { gain: 0.025, dur: 1.8, spread: 0.05 });
@@ -1970,6 +2297,10 @@ export default class DesgarradorFx {
       for (const [f, d] of [[261.6, 0], [329.6, 5], [392, -5], [523.3, 3], [659.3, -3], [784, 0]]) this.tone(o, { t: t + 0.1, dur: 2.3, type: 'triangle', freq: f, gain: 0.05, attack: 0.4, detune: d });
       this.noise(o, { t, dur: 2.0, type: 'bandpass', freq: 800, freqEnd: 6000, q: 1.2, gain: 0.35, attack: 0.6 });
     });
+    // (v4) el agujero negro, el golpe cargado, la Furia divina y el Cazador (weapons/desgarradorSfx.js)
+    bakeV4(B, { hall, tearL, subL, crystalL, shatterL, bellL });
+    // (guadana5) el agujero negro que se oye y el rugido del rayo de vacío
+    bakeV5(B, { hall, crystalL });
   }
 
   // Un sonido horneado. pos: dónde (null: en la cabeza). Null si no está.

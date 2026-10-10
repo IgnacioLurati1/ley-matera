@@ -28,7 +28,11 @@ import RamFx from './penalRams';
 // aprieta) y cada uno se sienta en su compu sobre su copia del bote.
 
 const WATER = -0.55;
+const tmpR = new THREE.Vector3();
 const DECK = -0.4;
+// la tarima del timonel, en la popa: va parado y más alto que los que van
+// sentados adelante (en línea le tapaban el río: usuario, 2026-10-07)
+const HELM_UP = 0.34;
 const EDECK = -0.42;
 // los dos amarres: el muelle chico del penal y el muellecito del islote
 // (yaw: para dónde queda la proa, hacia el río; pier: dónde queda parado el de
@@ -163,16 +167,16 @@ export default class PenalBoat {
     }
     // bancos, timón y mástil con la vela recogida
     for (const z of [-0.8, 0.6]) body.add(mesh(boxGeo(1.95, 0.06, 0.34), wood, 0, DECK + 0.38, z));
-    body.add(mesh(boxGeo(0.7, 0.06, 0.34), wood, 0, DECK + 0.38, -2.05));
+    body.add(mesh(boxGeo(1.5, HELM_UP, 1.05), wood, 0, DECK + HELM_UP / 2, -2.02));
     body.add(mesh(boxGeo(0.06, 0.5, 0.9), dark, 0, DECK + 0.05, -3.0));
     body.add(mesh(cylGeo(0.03, 0.03, 1.1, 6), wood, 0, DECK + 0.72, -2.55, 0.9, 0, 0));
     body.add(mesh(cylGeo(0.06, 0.07, 3.4, 8), dark, 0, DECK + 1.7, 1.55));
     body.add(mesh(cylGeo(0.12, 0.12, 1.5, 8), M.rope || wood, 0, DECK + 1.1, 1.55, 0, 0, Math.PI / 2));
     // la rueda del timón (la de la capilla), adelante del timonel
-    const post = mesh(cylGeo(0.04, 0.05, 0.8, 6), dark, 0, DECK + 0.4, -1.45);
+    const post = mesh(cylGeo(0.04, 0.05, 0.8 + HELM_UP, 6), dark, 0, DECK + 0.4 + HELM_UP / 2, -1.45);
     body.add(post);
     const wheel = this.wheelModel(0.26);
-    wheel.position.set(0, DECK + 0.86, -1.5);
+    wheel.position.set(0, DECK + 0.86 + HELM_UP, -1.5);
     body.add(wheel);
     this.planks.push(post, wheel);
     // el farol de proa
@@ -400,7 +404,6 @@ export default class PenalBoat {
     this.timon = 'held';
     this.g.audio.powerupGrab();
     this.egg.toastAll('Conseguiste: el timón del bote');
-    this.egg.announce('Con el timón se arma el bote del muelle chico. Del otro lado del río, en el islote, espera una ermita.', 5);
     this.egg.netSync();
   }
 
@@ -412,7 +415,7 @@ export default class PenalBoat {
     this.showBuilt(true);
     g.audio.boardRepair(this.pos);
     g.fx.dust(tmpV.set(this.pos.x, DECK + 0.3, this.pos.z), { x: 0, y: 1, z: 0 }, [0.5, 0.42, 0.3], 14);
-    this.egg.announce('El bote está armado. Para cruzar al islote se suben todos, y el primero que sube va al timón.', 4, true);
+    this.egg.announce('', 3, true);
     this.egg.netSync();
   }
 
@@ -497,11 +500,14 @@ export default class PenalBoat {
   placeLocal(i) {
     const p = this.g.player;
     this.seatWorld(i, tmpV);
-    p.pos.set(tmpV.x, DECK + this.bobY, tmpV.z);
+    // (el timonel, parado en su tarima: ve el río por arriba de los sentados;
+    // globalThis.__mduHelmLow: sentado como antes, para comparar)
+    const up = i === 0 && globalThis.__mduHelmLow !== true;
+    p.pos.set(tmpV.x, DECK + this.bobY + (up ? HELM_UP : 0), tmpV.z);
     p.vel.set(0, 0, 0);
     p.onGround = true;
     p.airTop = p.pos.y;
-    p.crouching = true;
+    p.crouching = !up;
     p.sprinting = false;
     p.lungeT = 0;
   }
@@ -518,6 +524,40 @@ export default class PenalBoat {
     if (f === this.sent.f && s === this.sent.s && g.time - this.sent.t < 0.5) return;
     this.sent = { f, s, t: g.time };
     g.net.net.send({ t: 'pee', a: 'helm', f, s });
+  }
+
+  // Los compañeros a bordo se ven en su asiento: con el bote andando su
+  // posición de red llega atrasada y se los veía corridos para atrás, encima
+  // del timonel (el usuario, 2026-10-07: "el que maneja ve muy poquito porque
+  // los personajes se le aparecen delante"). Net/Session los pone con r.fix.
+  fixRiders() {
+    const g = this.g;
+    const on = this.state === 'moored' || this.state === 'sail';
+    // (Session los pone antes de que el bote se mueva en el cuadro: se los
+    // adelanta lo que se movió el bote en el cuadro anterior, si no quedan un
+    // paso atrás, ~25 cm a 30 cuadros)
+    const P = (this.fixPrev ||= { x: this.pos.x, z: this.pos.z, yaw: this.yaw });
+    const step = (this.fixStep ||= { x: 0, z: 0, yaw: 0 });
+    step.x = this.pos.x - P.x;
+    step.z = this.pos.z - P.z;
+    step.yaw = this.yaw - P.yaw;
+    P.x = this.pos.x;
+    P.z = this.pos.z;
+    P.yaw = this.yaw;
+    this.riderFix ||= (r) => {
+      const i = this.seats.indexOf(r.id);
+      if (i < 0 || (this.state !== 'moored' && this.state !== 'sail')) return;
+      const st = this.fixStep;
+      this.toWorld(this.pos.x + st.x, this.pos.z + st.z, this.yaw + st.yaw, SEATS[i][0], SEATS[i][1], tmpR);
+      const up = i === 0 && globalThis.__mduHelmLow !== true;
+      r.pos.set(tmpR.x, DECK + this.bobY + (up ? HELM_UP : 0), tmpR.z);
+      r.speed = 0;
+    };
+    for (const r of g.net.remote.values()) {
+      const seated = on && this.seats.includes(r.id);
+      if (seated && !r.fix) r.fix = this.riderFix;
+      else if (!seated && r.fix === this.riderFix) r.fix = null;
+    }
   }
 
   // Cambió el asiento de este jugador (sube, baja o llegaron al otro muelle).
@@ -581,12 +621,7 @@ export default class PenalBoat {
       g.zombies.free(z);
       if (g.rounds.state === 'active') g.rounds.requeue(1);
     }
-    const text = water
-      ? '¡Al río! En el medio se llena la damajuana... si los muertos dejan.'
-      : this.dest === 'isle'
-        ? '¡Al islote! ¡Botes de frente!'
-        : '¡Al penal! ¡Botes de frente!';
-    this.egg.announce(text, 5, true);
+    // (sin cartel al zarpar: el usuario, 2026-10-07, "evitemos tantos textos al pedo")
     if (water) g.audio.bossArrive();
     this.egg.netSync();
   }
@@ -616,7 +651,7 @@ export default class PenalBoat {
       T.wave = 2;
       if (T.water) {
         this.fillT = 0;
-        this.egg.announce('¡El río se puso verde y agarró el bote! Aguanten mientras se llena la damajuana.', 4, true);
+        this.egg.announce('', 3, true);
         g.audio.bossArrive();
         this.spawnWave(Math.min(5, 3 + n - 1), 3);
       } else this.spawnWave(1 + Math.floor(n / 2), crew);
@@ -925,7 +960,6 @@ export default class PenalBoat {
     this.swampT = 0;
     this.fillT = null;
     for (const b of this.enemies) if (b.state === 'charge') this.setE(b, 'loop');
-    this.egg.announce('¡Se hunde el bote!', 2.5, true);
     this.g.net?.event('pee', { bp: this.poseArr(), hp: 0, hm: this.hpMax, sw: 1 });
     this.swampFx();
     this.egg.netSync();
@@ -1090,7 +1124,6 @@ export default class PenalBoat {
       const ids = this.players();
       const all = ids.length && ids.every((id) => this.seats.includes(id));
       if (all) {
-        if (this.departT === 0) this.egg.announce('Están todos a bordo. Zarpan en 3 segundos...', 3);
         this.departT += dt;
         if (this.departT > 3) this.depart();
       } else this.departT = 0;
@@ -1191,6 +1224,7 @@ export default class PenalBoat {
     this.exWheel.visible = this.timon === 'chapel';
     // el que va sentado: se lo acomoda al asiento después de mover el bote
     this.syncLocalSeat();
+    if (g.net && globalThis.__mduNoRiderFix !== true) this.fixRiders();
     const i = this.seats.indexOf(this.myId());
     if (i >= 0 && g.player.ride && g.player.alive) {
       g.player.yaw += this.dyaw;
@@ -1354,7 +1388,7 @@ export default class PenalBoat {
     this.magic();
     g.net?.event('pee', { magic: 1 });
     this.egg.toastAll('Conseguiste: la damajuana con agua del río');
-    this.egg.announce('¡La damajuana está llena y el río soltó el bote! Hay que dejarla en el Pack-a-Pava de la ermita.', 5, true);
+    this.egg.announce('', 4, true);
     this.egg.netSync();
   }
 
@@ -1412,8 +1446,8 @@ export default class PenalBoat {
     }
     if (wrecked) {
       this.rams.black(false, 1.1);
-      this.egg.announce('¡Se hundió! Arreglen el bote en el muelle.', 3.5, true);
-    } else this.egg.announce(k === 'land' ? 'De vuelta en el penal.' : first ? 'El islote de las ánimas. El Pack-a-Pava está en la ermita de San La Muerte.' : 'En el islote. El bote los espera en el muellecito.', 4, true);
+      this.egg.announce('', 3, true);
+    }
     this.egg.netSync();
     g.net?.event('pee', { bp: [D.x, D.z, this.yaw, 0, 0], hp: Math.round(this.hp), hm: this.hpMax, eb: [] });
   }

@@ -6,6 +6,7 @@ import { shieldModel } from '../world/shieldModels';
 import { CAMO_BY_ID, camoable } from '../weapons/camos';
 import { VM } from '../weapons/viewmodels';
 import { gauchoSkin, whenGaucho, TWO_HAND } from './gauchoSkin';
+import { gilVincha, crewBandana, bandanaColor, BANDANA_MAPS } from './gilLook';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // Los otros jugadores: un gaucho con sombrero, cara con bigote, poncho de
@@ -182,6 +183,10 @@ export default class Avatars {
     this.list = new Map();
     this.root = new THREE.Group();
     game.scene.add(this.root);
+    // (2026-10-10) las bandanas de los compañeros del Gil (net/gilLook.js
+    // crewBandana), en Mate no Numa y Eclipse: los muñecos de los jugadores
+    // siempre; los de las escenas, los juegos que lo piden (ui/cineActors).
+    this.bandanas = !!session;
     // (las pruebas de cinemáticas, Tools/mdu-blender/t_cineqa.mjs, revisan a todos los muñecos)
     if (globalThis.__mduCineQA) (globalThis.__mduAvatarSets ||= new Set()).add(this);
   }
@@ -693,6 +698,14 @@ export default class Avatars {
       // los que esperan la próxima ronda no se ven (como en el original)
       a.group.visible = !r.dead || !!r.corpse;
       if (!a.group.visible) continue;
+      // la vincha del Gil que quedó pedida y las bandanas de sus compañeros
+      if (a.gs?.on) {
+        if (a.wantVincha && !a.vincha) gilVincha(a);
+        else if (this.bandanas === true && !a.vincha && !a.wantVincha && BANDANA_MAPS.has(g.mapId) && globalThis.__mduNoBandanas !== true) {
+          if (!a.bandana) crewBandana(a);
+          else bandanaColor(a);
+        }
+      }
       if (cull) {
         cullS.center.set(r.pos.x, (r.pos.y || 0) + 1, r.pos.z);
         const off = !cullFr.intersectsSphere(cullS);

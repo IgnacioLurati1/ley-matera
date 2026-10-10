@@ -43,7 +43,10 @@ export const ATMOS = {
   castillo: { fog: [0.05, 0.08, 0.13], dens: 0.005, hemi: [0.56, 0.72, 0.98], ground: [0.22, 0.15, 0.4], hemiI: 1.5, amb: [0.4, 0.48, 0.64], ambI: 0.55, moon: [0.78, 0.9, 1.0], moonI: 1.85 },
   // El Desgarro: violeta
   // La Disformidad: otra dimensión, niebla violeta espesa y luz de abajo
-  desgarro: { fog: [0.1, 0.02, 0.17], dens: 0.011, hemi: [0.62, 0.34, 0.9], ground: [0.36, 0.1, 0.42], hemiI: 1.55, amb: [0.52, 0.36, 0.62], ambI: 0.55, moon: [0.96, 0.76, 1.0], moonI: 1.95 },
+  // (v5: la Disformidad es otra dimensión, al rincón y bien arriba: con 0,03 a 40 m
+  // queda el 24 % y a 60 m el 4 %: desde adentro no se ve ninguna otra isla)
+  // (mundo, it. 4: ahora es El Nudo, la zona central, grande y ya no otra dimensión: niebla menos espesa, que se vea entero)
+  desgarro: { fog: [0.1, 0.02, 0.17], dens: globalThis.__mduNoHubFog === true ? 0.03 : 0.015, hemi: [0.62, 0.34, 0.9], ground: [0.36, 0.1, 0.42], hemiI: 1.55, amb: [0.52, 0.36, 0.62], ambI: 0.55, moon: [0.96, 0.76, 1.0], moonI: 1.95 },
 };
 // cuánto tarda en llegar a la isla nueva (s): al cruzar un portal, un fundido corto
 const FADE = 0.7;
@@ -55,6 +58,18 @@ const MOON0 = [0.62, 0.7, 1.0];
 const VOID_UNDER = -20;
 
 const N = ISLE_IDS.length;
+// (mundo, it. 4) el aire de La Disformidad, la dimensión de afuera: negro y violeta
+const ABYSS = {
+  fog: new THREE.Color().setRGB(0.028, 0.004, 0.05),
+  dens: 0.042,
+  hemi: new THREE.Color().setRGB(0.42, 0.18, 0.75),
+  ground: new THREE.Color().setRGB(0.12, 0.02, 0.2),
+  hemiI: 0.5,
+  amb: new THREE.Color().setRGB(0.3, 0.14, 0.5),
+  ambI: 0.22,
+  moon: new THREE.Color().setRGB(0.6, 0.35, 1.0),
+  moonI: 0.35,
+};
 const smooth = (a, b, x) => {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -178,6 +193,36 @@ export class EclipseAtmos {
         wb = q;
       }
     }
+    // (mundo, it. 4) La Disformidad: la dimensión de afuera (isla 'abismo' del config,
+    // que no está en ISLE_IDS). Con la cámara allá, todo se va a su aire: niebla
+    // negra violácea y espesa (no se ve nada a 30 m), luz casi nada, el cielo de la
+    // dimensión (uDim) y el cenit del Desgarro. `this.abyss` (0-1) lo leen el ánimo
+    // de cada isla y los susurros. __mduNoAbyssAir: sin esto.
+    const AB = ISLANDS.abismo?.box;
+    // (2026-10-10) los jirones de las grietas (isla 'grietas'): el mismo aire. `this.rift`
+    // dice que es uno de ellos: ahí los susurros van más bajo (world/papDesgarro.js)
+    const GR = ISLANDS.grietas?.box;
+    const inGr = !!GR && globalThis.__mduNoAbyssAir !== true && cam.y > 125 && cam.x > GR[0] - 20 && cam.x < GR[2] + 21 && cam.z > GR[1] - 20 && cam.z < GR[3] + 21;
+    this.rift = inGr ? 1 : 0;
+    const inAb = inGr || (!!AB && globalThis.__mduNoAbyssAir !== true && cam.y > 125 && cam.x > AB[0] - 20 && cam.x < AB[2] + 21 && cam.z > AB[1] - 20 && cam.z < AB[3] + 21);
+    this.abyss = (this.abyss || 0) + ((inAb ? 1 : 0) - (this.abyss || 0)) * (this.first2 ? 1 : Math.min(1, dt * 3));
+    this.first2 = false;
+    const ab = this.abyss;
+    if (ab > 0.001) {
+      f.lerp(ABYSS.fog, ab);
+      hc.lerp(ABYSS.hemi, ab);
+      gc.lerp(ABYSS.ground, ab);
+      ac.lerp(ABYSS.amb, ab);
+      mc.lerp(ABYSS.moon, ab);
+      dens += (ABYSS.dens - dens) * ab;
+      hemiI += (ABYSS.hemiI - hemiI) * ab;
+      ambI += (ABYSS.ambI - ambI) * ab;
+      moonI += (ABYSS.moonI - moonI) * ab;
+      if (ab > 0.5) {
+        ia = ib = ISLE_IDS.indexOf('desgarro');
+        wb = 0;
+      }
+    }
     // el cenit: la isla de más peso y, si se están mezclando, la otra
     const U = w.sky?.material?.uniforms;
     if (U?.uCapA) {
@@ -194,7 +239,7 @@ export class EclipseAtmos {
       let dim = 0;
       for (let i = 0; i < N; i++) if (this.dimOf[i]) dim += this.w[i] / (sum || 1);
       // (el Desgarro Cósmico: la oscuridad invade la isla que sea)
-      U.uDim.value = Math.max(dim, this.dimForce || 0);
+      U.uDim.value = Math.max(dim, this.dimForce || 0, ab);
     }
     this.dim = U?.uDim ? U.uDim.value : 0;
     // el eclipse: cuánto se tapó (la luz) y la sacudida de un pulso

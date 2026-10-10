@@ -40,6 +40,10 @@ function mergeByMaterial(group, keep = []) {
 //  · Trotadora (Stamin-Up): la cinta del gimnasio parada, con las cintas de
 //    los costados que corren, las barandas con la toalla, la consola con el
 //    reloj de km/h y la alpargata con alas girando arriba.
+//  · CaoSé (Catalizador Caótico, solo Eclipse): el monolito de obsidiana
+//    torcido, rajado de grietas violetas que titilan, los dos tubos del caldo
+//    y arriba el eclipse: la luna negra con la corona de oro que gira, un aro
+//    violeta torcido y tres esquirlas que orbitan.
 // Devuelve { group, sign, bulbs, front, anim }: sign (lo que se prende con la
 // luz), bulbs (los foquitos que titilan), front (el material de la etiqueta) y
 // anim(t, dt, on) para lo que se mueve (solo corre con el jugador cerca).
@@ -793,6 +797,98 @@ const BUILD = {
         eyes.scale.y = blink < 0 ? 0.1 : 1;
         eyes.position.x = Math.sin(t * 0.6) * 0.02;
         if (on) eyeMat.emissiveIntensity = 1.6 + Math.sin(t * 2.3) * 0.3;
+      },
+    };
+  },
+  catal(g, P, label) {
+    const obsid = std({ color: 0x0d0a14, roughness: 0.22, metalness: 0.25 });
+    const stone = std({ color: 0x1c1626, roughness: 0.85 });
+    const gold = std({ color: 0xc99a3a, metalness: 0.9, roughness: 0.3 });
+    const glass = std({ color: 0xd8c8ff, roughness: 0.05, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false });
+    // las grietas violetas: lo que se prende con la luz (y titila desparejo)
+    const crackM = glow(0xa45cff);
+    const brew = glow(0x8a3cff, { transparent: true, opacity: 0.85 });
+    // la tarima de piedra negra y el monolito de obsidiana, torcido de un lado
+    // (la disformidad): seis lados, el hombro izquierdo más alto
+    g.add(mesh(boxGeo(1.12, 0.12, 0.78), stone, 0, 0.06, 0));
+    const prof = [[-0.44, 0.12], [0.44, 0.12], [0.5, 1.2], [0.4, 1.98], [-0.36, 2.04], [-0.53, 1.35]];
+    g.add(shape(prof, 0.6, obsid, 0, 0, -0.03));
+    const { front } = common(g, label, { z: 0.275, frame: gold, frameW: 0.03, w: 0.66, h: 1.26, y: 1.0 });
+    // las grietas: rajas chicas en las esquinas del frente y por los costados
+    const crack = (pts, z, rx = 0, ry = 0) => {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [x0, y0] = pts[i];
+        const [x1, y1] = pts[i + 1];
+        g.add(mesh(boxGeo(Math.hypot(x1 - x0, y1 - y0) + 0.01, 0.011, 0.008), crackM, (x0 + x1) / 2, (y0 + y1) / 2, z, rx, ry, Math.atan2(y1 - y0, x1 - x0)));
+      }
+    };
+    crack([[-0.47, 1.76], [-0.4, 1.86], [-0.3, 1.82]], 0.275);
+    crack([[0.43, 0.3], [0.38, 0.46], [0.42, 0.6], [0.36, 0.8]], 0.275);
+    for (const sx of [-1, 1]) {
+      const side = new THREE.Group();
+      side.position.set(sx * 0.47, 0, 0);
+      side.rotation.y = sx * Math.PI / 2;
+      g.add(side);
+      for (const [a, b] of [[[-0.2, 0.4], [-0.05, 0.62]], [[-0.05, 0.62], [0.12, 0.58]], [[0.12, 0.58], [0.22, 0.9]], [[0.22, 0.9], [0.08, 1.15]]]) {
+        side.add(mesh(boxGeo(Math.hypot(b[0] - a[0], b[1] - a[1]) + 0.01, 0.011, 0.008), crackM, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0.012, 0, 0, Math.atan2(b[1] - a[1], b[0] - a[0])));
+      }
+    }
+    // los dos tubos del catalizador a los costados: el vidrio, el caldo violeta y las virolas de oro
+    for (const sx of [-1, 1]) {
+      g.add(mesh(cylGeo(0.06, 0.06, 1.1, 14, true), glass, sx * 0.43, 0.82, 0.34));
+      g.add(mesh(cylGeo(0.048, 0.048, 0.75 + (sx > 0 ? 0.18 : 0), 12), brew, sx * 0.43, 0.27 + (0.75 + (sx > 0 ? 0.18 : 0)) / 2, 0.34));
+      for (const y of [0.27, 1.37]) g.add(mesh(cylGeo(0.072, 0.072, 0.05, 14), gold, sx * 0.43, y, 0.34));
+    }
+    // arriba, el eclipse: la luna negra con la corona de oro detrás (gira) y un
+    // aro violeta torcido que da vueltas alrededor
+    const top = new THREE.Group();
+    top.position.set(0, 2.28, 0.0);
+    g.add(top);
+    g.add(mesh(cylGeo(0.12, 0.18, 0.12, 8), gold, 0, 2.04, 0));
+    const moon = sphere(0.17, std({ color: 0x050308, roughness: 0.35, metalness: 0.1 }), 0, 0, 0, 1, 1, 1, 20);
+    top.add(moon);
+    const coronaM = glow(0xffc65a, { emissiveIntensity: 1.1 });
+    const corona = new THREE.Group();
+    corona.add(torus(0.2, 0.018, coronaM, 0, 0, -0.02, 0, 0, 0, Math.PI * 2, 32));
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const len = 0.07 + ((i * 5) % 3) * 0.03;
+      corona.add(mesh(new THREE.ConeGeometry(0.02, len, 4), coronaM, Math.cos(a) * (0.22 + len / 2), Math.sin(a) * (0.22 + len / 2), -0.02, 0, 0, a - Math.PI / 2));
+    }
+    mergeByMaterial(corona);
+    top.add(corona);
+    const orbit = torus(0.25, 0.01, crackM, 0, 0, 0, 1.1, 0.4, 0, Math.PI * 2, 32);
+    top.add(orbit);
+    // tres esquirlas de obsidiana que flotan alrededor
+    const shards = [];
+    for (let i = 0; i < 3; i++) {
+      const s = mesh(new THREE.OctahedronGeometry(0.045), obsid, 0, 0, 0);
+      s.scale.set(0.7, 1.5, 0.7);
+      top.add(s);
+      shards.push(s);
+    }
+    // los foquitos violetas en el marco de la etiqueta
+    const bulbs = bulbRow(g, [[-0.3, 0.34, 0.29], [0.3, 0.34, 0.29], [0.32, 1.69, 0.29]], 0xb070ff);
+    mergeByMaterial(g, [top, ...bulbs]);
+    let flick = 0;
+    return {
+      sign: { material: crackM },
+      bulbs,
+      front,
+      anim: (t, dt, on) => {
+        // la corona gira despacio, el aro torcido da vueltas, las esquirlas
+        // orbitan a destiempo; las grietas laten desparejo (el caos)
+        corona.rotation.z = t * 0.35;
+        orbit.rotation.z = t * 1.3;
+        shards.forEach((s, i) => {
+          const a = t * (0.9 + i * 0.25) + i * 2.1;
+          s.position.set(Math.cos(a) * 0.33, Math.sin(t * 1.7 + i) * 0.08, Math.sin(a) * 0.33);
+          s.rotation.y = t * 2 + i;
+        });
+        top.position.y = 2.28 + Math.sin(t * 1.1) * 0.012;
+        flick -= dt;
+        if (flick <= 0) flick = 0.05 + Math.random() * 0.4;
+        if (on) crackM.emissiveIntensity = flick < 0.06 ? 0.25 : 0.8 + Math.sin(t * 5.3) * 0.25;
       },
     };
   },

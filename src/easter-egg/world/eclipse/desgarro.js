@@ -268,6 +268,66 @@ export function bake(w, gb, mats, extra = [], { noShadow = [], isla = '' } = {})
 }
 
 // Junta geometrías sueltas (ya puestas en el mundo) en una malla.
+// Las grietas de luz del piso, con los bordes suaves (sesión 1f, el usuario:
+// "el piso del medio titila los bordes": las tiras eran de canto duro, y
+// finitas y con tanto contraste titilaban al moverse). Cada tramo lleva tres
+// filas de vértices (borde, medio, borde) y el borde se apaga en el alfa: la
+// luz y el labio oscuro de abajo, más ancho. Una malla para todas.
+// strips: [px, pz, nx, nz, ux, uz, pw, nw, fy]. globalThis.__mduOldCracks: como antes.
+const CRACK_COL = new THREE.Color(0.62, 0.2, 1.45);
+export function softCracks(strips, fy0 = 0) {
+  const pos = [];
+  const col = [];
+  const lip = 0x07030c;
+  const lc = new THREE.Color(lip);
+  const lane = (px, pz, nx, nz, ux, uz, pw, nw, y, k, c, a) => {
+    // seis triángulos: de un borde al medio y del medio al otro borde
+    const L = [[px - ux * pw * k, pz - uz * pw * k, nx - ux * nw * k, nz - uz * nw * k, 0], [px, pz, nx, nz, a], [px + ux * pw * k, pz + uz * pw * k, nx + ux * nw * k, nz + uz * nw * k, 0]];
+    for (let s = 0; s < 2; s++) {
+      const A = L[s];
+      const B = L[s + 1];
+      const v = [[A[0], A[1], A[4]], [B[0], B[1], B[4]], [B[2], B[3], B[4]], [A[0], A[1], A[4]], [B[2], B[3], B[4]], [A[2], A[3], A[4]]];
+      for (const [x, z, al] of v) {
+        pos.push(x, y, z);
+        col.push(c.r, c.g, c.b, al);
+      }
+    }
+  };
+  for (const S of strips) {
+    const [px, pz, nx, nz, ux, uz, pw, nw] = S;
+    const y = S[8] ?? fy0;
+    lane(px, pz, nx, nz, ux, uz, pw, nw, y - 0.006, 2.6, lc, 0.85);
+  }
+  const lipGeo = new THREE.BufferGeometry();
+  lipGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos.slice(), 3));
+  lipGeo.setAttribute('color', new THREE.Float32BufferAttribute(col.slice(), 4));
+  pos.length = 0;
+  col.length = 0;
+  const white = new THREE.Color(1, 1, 1);
+  for (const S of strips) {
+    const [px, pz, nx, nz, ux, uz, pw, nw] = S;
+    const y = S[8] ?? fy0;
+    lane(px, pz, nx, nz, ux, uz, pw, nw, y, 1.25, white, 1);
+  }
+  const coreGeo = new THREE.BufferGeometry();
+  coreGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  coreGeo.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  const g = new THREE.Group();
+  g.name = 'eclipse:grietas';
+  const lipM = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const coreM = new THREE.MeshBasicMaterial({ color: CRACK_COL, vertexColors: true, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  for (const [geo, m, ro] of [[lipGeo, lipM, 1], [coreGeo, coreM, 2]]) {
+    geo.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geo, m);
+    mesh.renderOrder = ro;
+    mesh.matrixAutoUpdate = false;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    g.add(mesh);
+  }
+  return g;
+}
+
 export function mergedMesh(list, mat, { castShadow = true } = {}) {
   const geos = list.map((g) => (g.index ? g.toNonIndexed() : g));
   for (const g of geos) for (const nm of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(nm)) g.deleteAttribute(nm);
@@ -567,11 +627,16 @@ export function build(w, g, isl) {
   // los manojos grandes que alumbran (las luces 'cristal' de desgarro.py)
   for (const L of LIGHTS.filter((l) => l.zone === 'U' && l.tag === 'cristal')) {
     const ox = Math.sign(L.pos[0] - isl.center[0]);
-    cluster(crystals, L.pos[0], y + 1.2, L.pos[2], rnd, { n: 7, size: 1.1, dir: [ox * 0.9, 0] });
+    // (mundo, it. 4: con el Nudo grande las luces 'cristal' están adentro, en el piso: el manojo
+    // nace del piso; arriba del cerco, solo si la luz cae en el borde. Antes flotaban a 1,2 m)
+    const onFloor = isFloor(Math.floor(L.pos[0]), Math.floor(L.pos[2])) && globalThis.__mduNoCristalFloor !== true;
+    cluster(crystals, L.pos[0], onFloor ? w.floorAt(L.pos[0], L.pos[2]) - 0.05 : y + 1.2, L.pos[2], rnd, { n: 7, size: 1.1, dir: [ox * 0.9, 0] });
   }
   // el telón de atrás del Pack-a-Pava: cristales altos que se abren hacia atrás
   // (sobre el cerco, del lado de afuera: la máquina queda adelante, libre)
-  for (const [t, s, n] of [[-1.2, 1.3, 5], [0.4, 1.9, 6], [2.0, 1.5, 5], [3.6, 1.1, 4]]) {
+  // (mundo, it. 4: solo si el Pack-a-Pava está en esta isla: ahora vive en La Disformidad)
+  const papHere = isFloor(pcx + pfx, pcz + pfz);
+  for (const [t, s, n] of papHere ? [[-1.2, 1.3, 5], [0.4, 1.9, 6], [2.0, 1.5, 5], [3.6, 1.1, 4]] : []) {
     const bx = pfz ? pcx + t : pcx + 0.5 - pfx * 0.25;
     const bz = pfz ? pcz + 0.5 - pfz * 0.25 : pcz + t;
     cluster(crystals, bx, y + 1.1, bz, rnd, { n, size: s, dir: [-pfx, -pfz], lean: 0.35 });
@@ -617,7 +682,8 @@ export function build(w, g, isl) {
     crack(MC[0] + Math.cos(a) * markR, MC[1] + Math.sin(a) * markR, a, 7 + rnd() * 8, 0.06 + rnd() * 0.03, 0);
   }
   // cada tramo: el labio oscuro (más ancho) y la luz adentro, 6 mm más arriba
-  for (const [px, pz, nx, nz, ux, uz, pw, nw] of strips) {
+  if (globalThis.__mduOldCracks !== true) w.root.add(softCracks(strips, fy));
+  else for (const [px, pz, nx, nz, ux, uz, pw, nw] of strips) {
     const S = (k, yy) => [[px - ux * pw * k, yy, pz - uz * pw * k], [px + ux * pw * k, yy, pz + uz * pw * k], [nx + ux * nw * k, yy, nz + uz * nw * k], [nx - ux * nw * k, yy, nz - uz * nw * k]];
     quad(gb, 'crackLip', S(2.4, fy - 0.006), [0, 1, 0]);
     quad(gb, 'crack', S(1, fy), [0, 1, 0]);
@@ -678,13 +744,20 @@ export function build(w, g, isl) {
   live.name = 'eclipseDesgarroLive';
   const knot = new THREE.Mesh(new THREE.OctahedronGeometry(0.9, 0), M.knot);
   knot.scale.set(1, 1.9, 1);
-  knot.position.set(NUDO[0], y + 6.6, NUDO[1]);
+  // (mundo, it. 4: en el Nudo grande nada flota: el cristal del nudo se para en el piso de
+  // la terraza, quieto, sin la corona que giraba ni las piedras que rondaban)
+  const grounded = globalThis.__mduNoNudoGround !== true;
+  // (a 2,6 m del nudo, al este: en el nudo se clava la guadaña del Temple)
+  const kX = NUDO[0] + (grounded ? 2.6 : 0);
+  const kY = grounded ? w.floorAt(kX, NUDO[1], y + 4) + 1.71 * 0.92 : y + 6.6;
+  knot.position.set(kX, kY, NUDO[1]);
   knot.castShadow = false;
   live.add(knot);
   // la corona del nudo: tres astillas chicas de cristal que giran pegadas
   const shard = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.22, 0), M.knot, 3);
   shard.scale.set(1, 1, 1);
   shard.frustumCulled = false;
+  shard.visible = !grounded;
   live.add(shard);
   // las piedras negras que flotan alrededor (un dibujo)
   const N = 22;
@@ -707,11 +780,15 @@ export function build(w, g, isl) {
       rs: 0.2 + rnd() * 0.5,
     });
   }
+  flo.visible = !grounded;
   live.add(flo);
   w.root.add(live);
-  LIVE = { w, knot, shard, flo, orb, y, NUDO, ojos, orb9, m: new THREE.Matrix4(), q: new THREE.Quaternion(), qs: new THREE.Quaternion(), v: new THREE.Vector3(), s: new THREE.Vector3(), crack: M.crack, base: M.crack.color.clone() };
+  LIVE = { w, knot, shard, flo, orb, y, NUDO, ojos, orb9, grounded, kY, m: new THREE.Matrix4(), q: new THREE.Quaternion(), qs: new THREE.Quaternion(), v: new THREE.Vector3(), s: new THREE.Vector3(), crack: M.crack, base: M.crack.color.clone() };
   update(0, 0);
 }
+
+// (mundo, it. 4) para La Disformidad (world/eclipse/abismo.js): la misma piedra y los mismos cristales
+export { mats as riftMats, cluster, rockGeo, crystalGeo, monoliths };
 
 export function update(dt, t) {
   const L = LIVE;
@@ -726,6 +803,12 @@ export function update(dt, t) {
   const { knot, shard, flo, orb, m, q, qs, v, s } = L;
   if (L.ojos) L.ojos.uniforms.uTime.value = t;
   L.orb9?.update(t);
+  if (L.grounded) {
+    // (parado: late la luz, no se mueve)
+    const k = 0.82 + 0.18 * Math.sin(t * 1.7) + 0.08 * Math.sin(t * 4.3);
+    L.crack.color.copy(L.base).multiplyScalar(k);
+    return;
+  }
   knot.rotation.y = t * 0.35;
   knot.position.y = L.y + 6.6 + Math.sin(t * 0.8) * 0.18;
   for (let k = 0; k < 3; k++) {

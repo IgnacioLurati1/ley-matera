@@ -2021,3 +2021,6 @@ export const ROOMS = {
     return { obj: g, boxes: [[-0.3, 0, 0, 0.3, 0.6, 0.9]] };
   },
 };
+
+// (Eclipse Matero, world/eclipse/v5.js: arma la biblioteca y las fachadas en sus secciones iguales)
+export { library, busyWalls, booksMat, facades, windowMats };

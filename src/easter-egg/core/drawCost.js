@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { ownToArray, ownUniforms } from './uniformKinds';
+
+ownToArray(THREE.Matrix4);
 
 // Lo que three hace en cada dibujo y se puede ahorrar sin cambiar nada de lo
 // que se ve. Con zombies, el límite del cuadro es la CPU de dibujar: ~350
@@ -53,6 +56,12 @@ import * as THREE from 'three';
 //    con 23 puntuales, ahora ~23).
 //    globalThis.__mduNoLightVer: como antes. (__mduLightVerCheck: compara lo que
 //    se saltea con lo último subido; las diferencias en __mduLightVerBad.)
+// 6. Un InstancedMesh sin copias (count 0: los zombies de un tipo que no está,
+//    los calcos y pedazos sin usar...) se mandaba igual: programa, uniforms y
+//    una llamada que no dibuja nada (~10-20 µs). En Eclipse eran ~9 por cuadro
+//    en la pantalla y ~20 por pasada del espejo del agua. Sin copias no se
+//    manda (su onBeforeRender ya corrió: si pone copias, se dibuja).
+//    globalThis.__mduNoEmptyInst: como antes.
 
 const SHADOW_MATS = ['sunShadowMatrix', 'directionalShadowMatrix', 'spotLightMatrix', 'pointShadowMatrix'];
 // las que three marca en markUniformsLightsNeedsUpdate (sin los samplers: sus
@@ -137,43 +146,55 @@ function check(upload, gl, seq, values, textures) {
 // (5) cada lista de luces, resumida en números una vez por render: su versión
 // sube si cambió algo desde el render anterior (NaN o algo raro: siempre cambia)
 const lver = new WeakMap();
-const tmp = [];
+// (un arreglo común vaciado con length = 0 suelta su memoria y la vuelve a
+// pedir al llenarse, en cada lista de cada pasada: acá va uno fijo, de
+// decimales, con su contador)
+let tmp = new Float64Array(512);
+let tn = 0;
+function tpush(v) {
+  if (tn === tmp.length) {
+    const b = new Float64Array(tn * 2);
+    b.set(tmp);
+    tmp = b;
+  }
+  tmp[tn++] = v;
+}
 function flat(v) {
   if (typeof v === 'number') {
-    tmp.push(v);
+    tpush(v);
     return;
   }
   if (typeof v === 'boolean') {
-    tmp.push(v ? 1 : 0);
+    tpush(v ? 1 : 0);
     return;
   }
   if (v === null || typeof v !== 'object' || v.isTexture === true) {
-    tmp.push(NaN);
+    tpush(NaN);
     return;
   }
   if (v.elements !== undefined) {
     const e = v.elements;
-    for (let i = 0; i < e.length; i++) tmp.push(e[i]);
+    for (let i = 0; i < e.length; i++) tpush(e[i]);
     return;
   }
   if (v.isColor === true) {
-    tmp.push(v.r, v.g, v.b);
+    tpush(v.r); tpush(v.g); tpush(v.b);
     return;
   }
   if (v.isVector3 === true) {
-    tmp.push(v.x, v.y, v.z);
+    tpush(v.x); tpush(v.y); tpush(v.z);
     return;
   }
   if (v.isVector2 === true) {
-    tmp.push(v.x, v.y);
+    tpush(v.x); tpush(v.y);
     return;
   }
   if (v.isVector4 === true || v.isQuaternion === true) {
-    tmp.push(v.x, v.y, v.z, v.w);
+    tpush(v.x); tpush(v.y); tpush(v.z); tpush(v.w);
     return;
   }
   if (Array.isArray(v)) {
-    tmp.push(v.length);
+    tpush(v.length);
     for (let i = 0; i < v.length; i++) flat(v[i]);
     return;
   }
@@ -185,16 +206,16 @@ function verOf(val) {
   if (d === undefined) lver.set(val, (d = { pass: -1, ver: 0, snap: null }));
   if (d.pass === pass) return d.ver;
   d.pass = pass;
-  tmp.length = 0;
+  tn = 0;
   flat(val);
   const s = d.snap;
-  const n = tmp.length;
+  const n = tn;
   let same = s !== null && s.length === n;
   for (let i = 0; same && i < n; i++) if (s[i] !== tmp[i]) same = false;
   if (!same) {
     d.ver++;
     if (s !== null && s.length === n) for (let i = 0; i < n; i++) s[i] = tmp[i];
-    else d.snap = Float64Array.from(tmp);
+    else d.snap = tmp.slice(0, tn);
   }
   return d.ver;
 }
@@ -214,34 +235,34 @@ function fieldsOf(val) {
   if (e0 !== undefined && e0 !== null && typeof e0 === 'object') for (const k in e0) keys.push(k);
   for (let q = 0; q < keys.length; q++) {
     const k = keys[q];
-    tmp.length = 0;
-    tmp.push(val.length);
+    tn = 0;
+    tpush(val.length);
     for (let i = 0; i < val.length; i++) flat(val[i]?.[k]);
     const s = d.snap[k];
-    const n = tmp.length;
+    const n = tn;
     let same = s !== undefined && s.length === n;
     for (let i = 0; same && i < n; i++) if (s[i] !== tmp[i]) same = false;
     if (!same) {
       d.ver[k] = (d.ver[k] || 0) + 1;
       if (s !== undefined && s.length === n) for (let i = 0; i < n; i++) s[i] = tmp[i];
-      else d.snap[k] = Float64Array.from(tmp);
+      else d.snap[k] = tmp.slice(0, tn);
     }
   }
   return d;
 }
 // (pruebas) lo que se saltea, ¿es igual a lo último subido a ese programa?
 function chkField(u, k, val, skip) {
-  tmp.length = 0;
-  tmp.push(val.length);
+  tn = 0;
+  tpush(val.length);
   for (let i = 0; i < val.length; i++) flat(val[i]?.[k]);
   const C = (u.__mduChkF ||= Object.create(null));
   const c = C[k];
   if (skip && c) {
-    let bad = c.length !== tmp.length;
-    for (let j = 0; !bad && j < tmp.length; j++) if (c[j] !== tmp[j]) bad = true;
+    let bad = c.length !== tn;
+    for (let j = 0; !bad && j < tn; j++) if (c[j] !== tmp[j]) bad = true;
     if (bad) globalThis.__mduLightVerBad = (globalThis.__mduLightVerBad || 0) + 1;
     globalThis.__mduLightVerSkip = (globalThis.__mduLightVerSkip || 0) + 1;
-  } else C[k] = Float64Array.from(tmp);
+  } else C[k] = tmp.slice(0, tn);
 }
 // un struct de la lista: todos sus campos tienen que ser uniforms comunes
 function structList(u, val) {
@@ -303,15 +324,15 @@ function lightVer(seq, values, gl, textures) {
     const ver = verOf(val);
     if (u.__mduS === val && u.__mduV === ver) {
       if (chk) {
-        tmp.length = 0;
+        tn = 0;
         flat(val);
         const c = u.__mduChk;
         if (c) {
-          let bad = c.length !== tmp.length;
-          for (let j = 0; !bad && j < tmp.length; j++) if (c[j] !== tmp[j]) bad = true;
+          let bad = c.length !== tn;
+          for (let j = 0; !bad && j < tn; j++) if (c[j] !== tmp[j]) bad = true;
           if (bad) globalThis.__mduLightVerBad = (globalThis.__mduLightVerBad || 0) + 1;
           globalThis.__mduLightVerSkip = (globalThis.__mduLightVerSkip || 0) + 1;
-        } else u.__mduChk = Float64Array.from(tmp);
+        } else u.__mduChk = tmp.slice(0, tn);
       }
       v.needsUpdate = false;
     } else {
@@ -319,9 +340,9 @@ function lightVer(seq, values, gl, textures) {
       u.__mduV = ver;
       u.__mduF = undefined;
       if (chk) {
-        tmp.length = 0;
+        tn = 0;
         flat(val);
-        u.__mduChk = Float64Array.from(tmp);
+        u.__mduChk = tmp.slice(0, tn);
       }
     }
   }
@@ -385,11 +406,13 @@ export function drawCost(renderer) {
       const pr = renderer.properties.get(material).currentProgram;
       if (pr) {
         gateShadowMatrices(pr.getUniforms().constructor);
+        ownUniforms(pr.getUniforms().constructor);
         gated = true;
       }
     }
   };
   renderer.renderBufferDirect = function (camera, scene, geometry, material, object, group) {
+    if (object.isInstancedMesh === true && object.count === 0 && globalThis.__mduNoEmptyInst !== true) return;
     if (material.transparent === true) {
       if (material.__mdu2p === true) {
         if (material.side === THREE.DoubleSide) {

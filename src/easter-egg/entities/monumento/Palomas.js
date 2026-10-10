@@ -33,6 +33,8 @@ export default class PalomaRig {
     this.g = game;
     this.max = max;
     this.small = true;
+    // (no sangran: plumas. entities/Zombies.js dry)
+    this.noBlood = true;
     const feather = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, flatShading: true });
     const neckM = new THREE.MeshStandardMaterial({ color: 0x5a7a6a, roughness: 0.3, metalness: 0.5, emissive: 0x10241c, flatShading: true });
     const beakM = new THREE.MeshStandardMaterial({ color: 0x3a3230, roughness: 0.6 });

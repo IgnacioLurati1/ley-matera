@@ -4,6 +4,7 @@ import Avatars from '../net/Avatars';
 import { EE } from '../config/map';
 import { warmScene } from './cineWarm';
 import { prefetchTrack } from '../core/music';
+import { gilVincha } from '../net/gilLook';
 
 // (La versión de antes, con las poses de piezas: queda por si los clips de
 // Blender no bajaron o con globalThis.__mduBlend = false. La de ahora es
@@ -18,9 +19,9 @@ import { prefetchTrack } from '../core/music';
 //    por uno (Cirilo con el mate en la mano, Benito que retrocede, Anacleto
 //    de rodillas). Queda ensangrentado; se guarda algo para él (la hoja del
 //    códice, si la arrancó, o la cinta colorada del facón) y se va a cosechar
-//    almas de gauchos. "El ciclo continúa".
+//    almas de gauchos. "La ronda continúa".
 //  · negarse: le apunta al árbol con el facón, los tres se le ponen al lado y
-//    la voz se va con un trueno. Los cuatro se van juntos. "El ciclo se ha roto".
+//    la voz se va con un trueno. Los cuatro se van juntos. "La ronda se ha roto".
 // Los compañeros de la escena son siempre tres (Anacleto, Cirilo y Benito),
 // juegue quien juegue. Pasa adentro del juego (EsterosEgg.scene). Todo lo que
 // hacen es una pose que se mezcla de a poco (pose/anim), nunca un salto.
@@ -89,6 +90,8 @@ export default class EsterosEnding extends CastleCine {
     g.weapons.clearProjectiles();
     g.weapons.clearStuck();
     this.npc = new Avatars(g, null);
+    // (2026-10-10: las bandanas de los compañeros del Gil y su vincha, net/gilLook.js)
+    this.npc.bandanas = true;
     this.people = {};
     for (const P of [GIL, ...MATES]) {
       const pos = this.spots[P.key].clone();
@@ -96,6 +99,7 @@ export default class EsterosEnding extends CastleCine {
       this.npc.add(r);
       const a = this.npc.list.get(P.id);
       a.M.poncho.color.set(P.color).multiplyScalar(1.7);
+      if (P.key === 'gil' && globalThis.__mduNoBandanas !== true) gilVincha(a);
       const person = { r, a, pose: { v: {}, want: {}, speed: 6 } };
       r.poseFn = (Q) => this.applyPose(person.pose, Q);
       this.people[P.key] = person;
@@ -532,7 +536,7 @@ export default class EsterosEnding extends CastleCine {
         return 2.4;
       }],
       [0, () => {
-        this.title('El ciclo continúa');
+        this.title('La ronda continúa');
         return 6;
       }],
     ];
@@ -609,7 +613,7 @@ export default class EsterosEnding extends CastleCine {
         return 2.4;
       }],
       [0, () => {
-        this.title('El ciclo se ha roto');
+        this.title('La ronda se ha roto');
         return 6;
       }],
     ];

@@ -223,7 +223,7 @@ void main(){
 // (vUv.y: 0 abajo, 1 arriba; sin normalizar vectores nulos: un NaN en la
 // placa AMD apaga la pantalla)
 const PILLAR_FS = `
-uniform float uK, uTime, uGrow; uniform vec3 uCol;
+uniform float uK, uTime, uGrow, uDim; uniform vec3 uCol;
 varying vec2 vUv; varying vec3 vN; varying vec3 vV;
 void main(){
   vec3 n = vN / max(length(vN), 1e-4);
@@ -237,10 +237,10 @@ void main(){
   float top = 1.0 - smoothstep(0.75, 1.0, y);
   vec3 col = mix(uCol, vec3(1.0, 0.98, 0.92), core * 0.7) * (1.0 + core * 1.5);
   float a = (0.25 + core * 0.95) * streaks * reach * top * (1.0 - uK);
-  gl_FragColor = vec4(col * a, a);
+  gl_FragColor = vec4(col * a * uDim, a);
 }`;
 const SHELL_FS = `
-uniform float uK, uTime; uniform vec3 uA, uB;
+uniform float uK, uTime, uDim; uniform vec3 uA, uB;
 varying vec2 vUv; varying vec3 vN; varying vec3 vV;
 void main(){
   vec3 n = vN / max(length(vN), 1e-4);
@@ -250,12 +250,12 @@ void main(){
   float bands = 0.6 + 0.4 * sin(vUv.y * 60.0 - uTime * 6.0);
   vec3 col = mix(uA, uB, rim) * (0.5 + rim * 2.2) * bands;
   float a = (0.05 + rim * 0.9) * (1.0 - uK);
-  gl_FragColor = vec4(col * a, a);
+  gl_FragColor = vec4(col * a * uDim, a);
 }`;
 // la muralla de la ola: fuerte abajo, se apaga hacia arriba, con franjas que
 // corren y un arcoíris suave alrededor (vUv.y: 1 arriba)
 const BAND_FS = `
-uniform float uK, uTime; uniform vec3 uA, uB;
+uniform float uK, uTime, uDim; uniform vec3 uA, uB;
 varying vec2 vUv; varying vec3 vN; varying vec3 vV;
 void main(){
   float low = 1.0 - vUv.y;
@@ -265,7 +265,7 @@ void main(){
   vec3 hue = 0.5 + 0.5 * cos(6.2832 * (vec3(0.0, 0.33, 0.67) + vUv.x * 6.0 + uTime * 0.5));
   vec3 col = mix(uB, uA, low) * (0.5 + edge * 1.1) + hue * 0.3 * body;
   float a = (body * (0.18 + 0.4 * stripes) + edge * 0.45) * (1.0 - uK);
-  gl_FragColor = vec4(col * a, a);
+  gl_FragColor = vec4(col * a * uDim, a);
 }`;
 const FLAT_FS = `
 uniform float uK, uSpin; uniform vec3 uCol; uniform sampler2D uMap;
@@ -290,6 +290,14 @@ const prep = (o) => {
   o.userData.reflect = false;
   return o;
 };
+
+// El color de un material de los de acá (uCol), por `dim` (1: el de siempre).
+function dimCol(mat, dim = 1) {
+  const u = mat?.uniforms?.uCol;
+  if (!u) return;
+  u.base ||= u.value.clone();
+  u.value.copy(u.base).multiplyScalar(dim ?? 1);
+}
 
 export default class SupremoFx {
   // home: donde viven escondidos (weapons.warm); dot: el punto suave; game:
@@ -321,7 +329,7 @@ export default class SupremoFx {
     this.pillars = [];
     for (let i = 0; i < PILLARS; i++) {
       const root = new THREE.Group();
-      const mat = additive({ uK: { value: 0 }, uTime: this.TIME, uGrow: { value: 0 }, uCol: { value: new THREE.Color(SIX[i % 6]) } }, PILLAR_FS);
+      const mat = additive({ uK: { value: 0 }, uTime: this.TIME, uGrow: { value: 0 }, uDim: { value: 1 }, uCol: { value: new THREE.Color(SIX[i % 6]) } }, PILLAR_FS);
       const col = prep(new THREE.Mesh(colGeo, mat));
       const ringMat = additive({ uK: { value: 0 }, uSpin: { value: 0 }, uCol: { value: new THREE.Color(SIX[i % 6]).multiplyScalar(2) }, uMap: { value: ringTexture() } }, FLAT_FS);
       const ring = prep(new THREE.Mesh(flatGeo, ringMat));
@@ -345,11 +353,11 @@ export default class SupremoFx {
     this.waves = [];
     for (let i = 0; i < WAVES; i++) {
       const group = new THREE.Group();
-      const shell = prep(new THREE.Mesh(shellGeo, additive({ uK: { value: 0 }, uTime: this.TIME, uA: { value: new THREE.Color(0xffb040) }, uB: { value: new THREE.Color(0xfff6dc) } }, SHELL_FS, THREE.FrontSide)));
+      const shell = prep(new THREE.Mesh(shellGeo, additive({ uK: { value: 0 }, uTime: this.TIME, uDim: { value: 1 }, uA: { value: new THREE.Color(0xffb040) }, uB: { value: new THREE.Color(0xfff6dc) } }, SHELL_FS, THREE.FrontSide)));
       shell.position.y = 1;
       const ring = prep(new THREE.Mesh(flatGeo, additive({ uK: { value: 0 }, uSpin: { value: 0 }, uCol: { value: new THREE.Color(0xffd070).multiplyScalar(1.1) }, uMap: { value: ringTexture() } }, FLAT_FS)));
       ring.position.y = 0.06;
-      const band = prep(new THREE.Mesh(bandGeo, additive({ uK: { value: 0 }, uTime: this.TIME, uA: { value: new THREE.Color(0xffd070) }, uB: { value: new THREE.Color(0xff9a30) } }, BAND_FS)));
+      const band = prep(new THREE.Mesh(bandGeo, additive({ uK: { value: 0 }, uTime: this.TIME, uDim: { value: 1 }, uA: { value: new THREE.Color(0xffd070) }, uB: { value: new THREE.Color(0xff9a30) } }, BAND_FS)));
       group.add(shell, ring, band);
       home.add(group);
       this.waves.push({ group, shell, ring, band, t: 0, R: 1, dur: 0.7, H: 0, busy: false });
@@ -363,6 +371,9 @@ export default class SupremoFx {
   // ---------------- soles ----------------
   // Un sol en `at` (s: el tamaño; mini: solo la estrella y los rayos; life:
   // cuánto dura, si no el de siempre).
+  // (dim: cuánto brillan los soles, las columnas, los sellos y las olas que
+  // salen desde ahora; 1 el de siempre. Lo baja la escena del armado del
+  // penal, entities/penalForge.js, y lo vuelve a 1 al terminar)
   sun(at, up, s = 1, mini = false, life = 0) {
     const list = this.suns.filter((x) => x.up === up);
     const it = list.find((x) => !x.busy) || list.reduce((a, b) => (a.t / a.life > b.t / b.life ? a : b));
@@ -384,7 +395,7 @@ export default class SupremoFx {
   applySun(it, k) {
     const s = it.s;
     const out = 1 - (1 - k) * (1 - k);
-    const fade = 1 - k;
+    const fade = (1 - k) * (this.dim ?? 1);
     it.rays.scale.setScalar(s * (1 + out * (it.mini ? 1.4 : 4.6)));
     it.rays.material.opacity = Math.min(1, fade * 1.3);
     it.star.scale.setScalar(s * (0.7 + out * (it.mini ? 1.2 : 3.4)));
@@ -404,9 +415,11 @@ export default class SupremoFx {
     it.w = w * (up ? 1.3 : 1);
     it.root.position.copy(at);
     const c = new THREE.Color(color);
+    const D = this.dim ?? 1;
     it.col.material.uniforms.uCol.value.copy(c).lerp(new THREE.Color(0xffe6a0), 0.25);
-    it.ring.material.uniforms.uCol.value.copy(c).multiplyScalar(2.2);
-    it.tip.material.color.copy(c).lerp(new THREE.Color(0xffffff), 0.6).multiplyScalar(2.4);
+    it.col.material.uniforms.uDim.value = D;
+    it.ring.material.uniforms.uCol.value.copy(c).multiplyScalar(2.2 * D);
+    it.tip.material.color.copy(c).lerp(new THREE.Color(0xffffff), 0.6).multiplyScalar(2.4 * D);
     this.scene.add(it.root);
     this.applyPillar(it);
   }
@@ -440,6 +453,7 @@ export default class SupremoFx {
     it.mesh.position.copy(at);
     it.mesh.scale.setScalar(R * 2);
     it.mesh.material.uniforms.uK.value = 0;
+    dimCol(it.mesh.material, this.dim);
     this.scene.add(it.mesh);
     return it;
   }
@@ -460,6 +474,10 @@ export default class SupremoFx {
     it.dur = dur;
     it.H = H;
     it.band.visible = H > 0;
+    for (const m of [it.shell, it.ring, it.band]) {
+      dimCol(m?.material, this.dim);
+      if (m?.material.uniforms?.uDim) m.material.uniforms.uDim.value = this.dim ?? 1;
+    }
     it.group.position.copy(at);
     it.group.scale.setScalar(0.01);
     this.scene.add(it.group);

@@ -5,7 +5,7 @@ import { granadero } from '../skins/granadero';
 import { Caballos } from '../skins/caballo';
 import { Montura, POSE, prepararPersonas, addPerson } from './montar';
 import { belgranoSkin, whenBelgrano } from '../monumento/belgranoSkin';
-import { toWorld, toLocal, hLoc, yawOf, dirWorld, edgeU, F } from '../../world/eclipse/sanlorenzoCampo';
+import { toWorld, toLocal, hLoc, yawOf, dirWorld, edgeU, F, avoidProps, propCyls } from '../../world/eclipse/sanlorenzoCampo';
 
 // Los de nuestro lado en San Lorenzo (entities/eclipse/SanLorenzo.js):
 //  · San Martín (skins/sanmartin.js, sobre el zaino de skins/caballo.js con
@@ -26,6 +26,7 @@ import { toWorld, toLocal, hLoc, yawOf, dirWorld, edgeU, F } from '../../world/e
 
 const tmpV = new THREE.Vector3();
 const tmpW = new THREE.Vector3();
+const tmpU = new THREE.Vector3();
 const L = {};
 const UP = new THREE.Vector3(0, 1, 0);
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -34,9 +35,22 @@ const ease = (x) => {
   return x * x * (3 - 2 * x);
 };
 const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+// lleva P hacia T (k: 0..1), como montar.js
+const toward = (P, T, k) => {
+  for (const key in T) P[key] = (P[key] ?? 0) + (T[key] - (P[key] ?? 0)) * k;
+};
 const angLerp = (a, b, k) => a + wrapPi(b - a) * k;
+// El caballo que monta San Martín. (Sesión 1f, el usuario: "el caballo muerto
+// sigue cabalgando acostado": después de la escena de Cabral monta el de
+// repuesto (mh), pero las cargas que encabezaba movían su zaino caído (h).
+// __mduOldDeadLead: como antes)
+const leadHorse = (M) => (globalThis.__mduOldDeadLead === true ? M.h : M.mh || M.h);
 // el yaw de un muñeco de Avatars (mira a -z con yaw 0) para un caballo/dirección con yaw del mundo h
 const puppetYaw = (h) => h + Math.PI;
+// San Martín a pie hasta su caballo (m/s) y lo que tarda en subir (s)
+const SM_WALK = 1.35;
+const SM_MOUNT = 1.25;
+const sv = new THREE.Vector3();
 
 // los escuadrones: dónde forman (u, v del primero; v crece hacia afuera) y cuántos
 const FORM_U = -48.3;
@@ -49,7 +63,10 @@ const V_GAL = 11.5;
 const V_TRO = 6.2;
 const V_VUELTA = 8;
 // San Martín a caballo, esperando: adelante del portón norte
-const SM_WAIT = [-40.8, 13.4];
+// (sesión 1f, el usuario: "San Martín atraviesa la muralla": el lugar de espera
+// estaba a 2 m del costado del portón norte —iba derecho y cruzaba el muro—;
+// ahora, delante del portón. __mduOldSmWall: como antes)
+const SM_WAIT = globalThis.__mduOldSmWall === true ? [-40.8, 13.4] : [-40.8, 9.5];
 // Belgrano y la bandera: dónde está en cada fase (0 llega; 1 cerca del muro; 2 el medio; 3 adelante)
 export const FLAG_SPOTS = [
   [-49.6, -8.2],
@@ -143,8 +160,27 @@ export default class Aliados {
     if (S.mode !== 'pie') return 0;
     S.mode = 'recibe';
     S.t = 0;
-    if (giver) S.r.yaw = puppetYaw(Math.atan2(giver.x - S.r.pos.x, giver.z - S.r.pos.z));
-    return 5.2;
+    // (se da vuelta hacia el que se lo da de a poco: antes, de golpe)
+    if (giver) S.face = puppetYaw(Math.atan2(giver.x - S.r.pos.x, giver.z - S.r.pos.z));
+    // (y después camina hasta el costado de su caballo y monta: el que espera
+    // a que esté arriba —el desembarco— cuenta también eso)
+    if (globalThis.__mduOldSmMount === true) return 5.2;
+    const st = this.smStirrup(S.h);
+    return 5.2 + Math.hypot(st.x - S.r.pos.x, st.z - S.r.pos.z) / SM_WALK + 0.6 + SM_MOUNT;
+  }
+
+  // El estribo: al costado de la montura, del lado más cerca de San Martín, en el piso.
+  smStirrup(h) {
+    const S = this.sm;
+    h.seatAt(sv);
+    const sx = Math.cos(h.yaw);
+    const sz = -Math.sin(h.yaw);
+    const a = { x: sv.x + sx * 0.78, z: sv.z + sz * 0.78 };
+    const b = { x: sv.x - sx * 0.78, z: sv.z - sz * 0.78 };
+    const p = S.r.pos;
+    const T = Math.hypot(a.x - p.x, a.z - p.z) <= Math.hypot(b.x - p.x, b.z - p.z) ? a : b;
+    T.face = Math.atan2(sv.x - T.x, sv.z - T.z);
+    return T;
   }
 
   smPose(P) {
@@ -153,6 +189,22 @@ export default class Aliados {
     const u = S.t;
     if (S.mode === 'pie') {
       POSE.firme(P, t);
+      // (sesión 1f, el usuario: "San Martín, animaciones rígidas": mira al que
+      // se le acerca, llama con la mano, señala el campo. __mduOldSmStatue: quieto)
+      if (globalThis.__mduOldSmStatue !== true) {
+        const rel = S.lookRel || 0;
+        P.torsoY = Math.max(-0.4, Math.min(0.4, rel * 0.4));
+        P.headY = Math.max(-0.7, Math.min(0.7, rel * 0.6)) + 0.06 * Math.sin(t * 0.6);
+        P.headP = -0.05 + 0.03 * Math.sin(t * 0.4);
+        P.torsoR += 0.025 * Math.sin(t * 0.35);
+        const G = S.gest;
+        if (G) {
+          const u2 = (t - G.t0) / G.dur;
+          const k = ease(Math.min(1, u2 / 0.18)) * (1 - ease(Math.max(0, (u2 - 0.78) / 0.22)));
+          if (G.kind === 'llama') toward(P, { shLp: -2.25, shLr: -0.35, elL: -0.95 - 0.45 * Math.sin(t * 7), headP: -0.12 }, k);
+          else toward(P, { shLp: -1.5, shLr: -0.25, elL: -0.05, headP: -0.06, torsoY: P.torsoY + 0.12 }, k);
+        }
+      }
       return;
     }
     if (S.mode === 'recibe') {
@@ -175,9 +227,14 @@ export default class Aliados {
       if (down > 0) POSE.guardia(P, t);
       return;
     }
+    if (S.mode === 'acerca') {
+      // camina hasta el estribo con el sable abajo, el brazo colgando (las piernas, de Avatars)
+      POSE.firme(P, t, false);
+      return;
+    }
     if (S.mode === 'monta') {
       // del suelo a la montura: el cuerpo pasa de parado a sentado
-      const k = ease(u / 0.95);
+      const k = ease(u / (S.mountDur || 0.95));
       const A = {};
       POSE.firme(A, t);
       POSE.guardia(A, t);
@@ -192,26 +249,114 @@ export default class Aliados {
     }
   }
 
-  // Monta (de donde está a la montura de su caballo h).
-  smMount(h = this.sm.h) {
+  // Monta (de donde está a la montura de su caballo h). walk: primero camina
+  // hasta el estribo (la del sable; las otras —el que entra tarde, las
+  // pruebas, la escena de Cabral— suben de una).
+  smMount(h = this.sm.h, walk = false) {
     const S = this.sm;
-    S.mode = 'monta';
-    S.t = 0;
-    S.from = { pos: S.r.pos.clone(), yaw: S.r.yaw };
     S.mh = h;
     if (!S.mont || S.mont.h !== h) {
       this.monts = this.monts.filter((m) => m.a !== S.a);
-      const m = new Montura(S.a, h, { brazos: 'sable' });
+      const m = new Montura(S.a, h, { brazos: 'sable', life: true, gestos: true });
+      m.lookAt = () => this.lookTarget();
       S.mont = m;
     }
     // (Montura ya puso su pose: mientras sube, la de acá)
     S.r.poseFn = (P) => this.smPose(P);
+    S.t = 0;
+    S.mountDur = 0.95;
+    if (walk && globalThis.__mduOldSmMount !== true) {
+      // (2026-10-07, el usuario: "se sube al caballo de un teleport": volaba 3,7 m en un segundo)
+      S.to = this.smStirrup(h);
+      S.mode = 'acerca';
+      S.waitT = 0;
+      return;
+    }
+    S.mode = 'monta';
+    S.from = { pos: S.r.pos.clone(), yaw: S.r.yaw };
+  }
+
+  // Adónde miran los nuestros: El Eclipse si está, si no el medio del campo.
+  lookTarget() {
+    const boss = this.sl.boss?.R?.root;
+    if (boss?.visible) return boss.position;
+    return toWorld(10, 0, null, this.lookV || (this.lookV = new THREE.Vector3()));
+  }
+
+  // (San Martín a pie: a quién mira y qué gesto hace; lo llama smUpdate)
+  smLife(dt) {
+    const S = this.sm;
+    if (globalThis.__mduOldSmStatue === true || S.mode !== 'pie') {
+      S.gest = null;
+      return;
+    }
+    const t = this.t;
+    const g = this.g;
+    // el jugador más cerca (si hay uno a menos de 30 m); si no, El Eclipse
+    let best = null;
+    let bd = 30;
+    const cands = [g.player?.pos];
+    for (const a of g.net?.avatars?.list?.values?.() || []) cands.push(a?.r?.pos);
+    for (const p of cands) {
+      if (!p) continue;
+      const d = Math.hypot(p.x - S.r.pos.x, p.z - S.r.pos.z);
+      if (d < bd) {
+        bd = d;
+        best = p;
+      }
+    }
+    const T = best || this.lookTarget();
+    const rel = wrapPi(Math.atan2(T.x - S.r.pos.x, T.z - S.r.pos.z) - (S.r.yaw + Math.PI));
+    S.lookRel = (S.lookRel || 0) + (rel - (S.lookRel || 0)) * Math.min(1, dt * 1.8);
+    if (S.gest && t - S.gest.t0 > S.gest.dur) S.gest = null;
+    if (!S.gest) {
+      S.nextG = S.nextG ?? t + 2.5;
+      if (t >= S.nextG) {
+        const kind = best && bd < 16 ? 'llama' : 'senala';
+        S.gest = { kind, t0: t, dur: kind === 'llama' ? 2.2 : 2.0 };
+        S.nextG = t + S.gest.dur + 3.5 + Math.random() * 4;
+      }
+    }
   }
 
   smUpdate(dt) {
     const S = this.sm;
     S.t += dt;
-    if (S.mode === 'recibe' && S.t >= 5.2) this.smMount();
+    this.smLife(dt);
+    if (S.mode === 'recibe' && S.face != null) {
+      S.r.yaw = angLerp(S.r.yaw, S.face, Math.min(1, dt * 5));
+      if (Math.abs(wrapPi(S.r.yaw - S.face)) < 0.01) S.face = null;
+    }
+    if (S.mode === 'recibe' && S.t >= 5.2) this.smMount(S.h, true);
+    if (S.mode === 'acerca') {
+      const T = S.to;
+      const dx = T.x - S.r.pos.x;
+      const dz = T.z - S.r.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.04) {
+        const st = Math.min(d, SM_WALK * dt);
+        S.r.pos.x += (dx / d) * st;
+        S.r.pos.z += (dz / d) * st;
+        toLocal(S.r.pos.x, S.r.pos.z, L);
+        S.r.pos.y = hLoc(L.u, L.v);
+        S.r.yaw = angLerp(S.r.yaw, puppetYaw(Math.atan2(dx, dz)), Math.min(1, dt * 6));
+        S.r.moving = true;
+        S.r.speed = SM_WALK;
+      } else {
+        // de cara al caballo y sube
+        S.r.moving = false;
+        S.r.speed = 0;
+        const fy = puppetYaw(T.face);
+        S.r.yaw = angLerp(S.r.yaw, fy, Math.min(1, dt * 7));
+        S.waitT += dt;
+        if (Math.abs(wrapPi(S.r.yaw - fy)) < 0.05 || S.waitT > 0.6) {
+          S.mode = 'monta';
+          S.t = 0;
+          S.mountDur = SM_MOUNT;
+          S.from = { pos: S.r.pos.clone(), yaw: S.r.yaw };
+        }
+      }
+    }
     if (S.mode === 'recibe' && S.t > 0.85 && !S.sable) {
       S.sable = true;
       this.g.audio?.whoosh?.(S.r.pos);
@@ -219,11 +364,14 @@ export default class Aliados {
     if (S.mode === 'monta') {
       const m = S.mont;
       const seat = m.seat({});
-      const k = ease(S.t / 0.95);
+      const dur = S.mountDur || 0.95;
+      const k = ease(Math.min(1, S.t / dur));
       const F0 = S.from;
-      S.r.pos.set(F0.pos.x + (seat.x - F0.pos.x) * k, F0.pos.y + (seat.y - F0.pos.y) * k + Math.sin(Math.PI * k) * 0.35, F0.pos.z + (seat.z - F0.pos.z) * k);
+      // (desde el estribo: sube primero —el pie en el estribo— y después pasa la pierna)
+      const ky = dur > 1 ? ease(Math.min(1, S.t / (dur * 0.6))) : k;
+      S.r.pos.set(F0.pos.x + (seat.x - F0.pos.x) * k, F0.pos.y + (seat.y - F0.pos.y) * ky + Math.sin(Math.PI * k) * (dur > 1 ? 0.12 : 0.35), F0.pos.z + (seat.z - F0.pos.z) * k);
       S.r.yaw = angLerp(F0.yaw, seat.yaw - Math.PI, k);
-      if (S.t >= 0.95) {
+      if (S.t >= dur) {
         S.mode = 'montado';
         S.r.poseFn = (P) => m.pose(P);
         this.monts.push(m);
@@ -326,7 +474,61 @@ export default class Aliados {
       P.shRr = 0.2;
       P.elR = -0.9;
       P.headY = 0.25 * Math.sin(t * 0.3);
+      // (sesión 1f, el usuario: "Belgrano se queda estatua toda la pelea": mira
+      // a El Eclipse con la cabeza y el cuerpo, grita con el puño en alto,
+      // señala, alza la bandera y la sacude. __mduOldBelStatue: como antes)
+      if (globalThis.__mduOldBelStatue !== true) {
+        const rel = B.lookRel || 0;
+        P.torsoY = Math.max(-0.45, Math.min(0.45, rel * 0.45));
+        P.headY = Math.max(-0.6, Math.min(0.6, rel * 0.55)) + 0.08 * Math.sin(t * 0.7);
+        P.headP = -0.06 + 0.04 * Math.sin(t * 0.45);
+        const G = B.gest;
+        if (G) {
+          const u = (t - G.t0) / G.dur;
+          const k = ease(Math.min(1, u / 0.18)) * (1 - ease(Math.max(0, (u - 0.78) / 0.22)));
+          if (G.kind === 'grita') {
+            toward(P, { shLp: -2.75 + 0.12 * Math.sin(t * 9), shLr: -0.18, elL: -0.55, headP: -0.3, torsoP: -0.06 }, k);
+          } else if (G.kind === 'senala') {
+            toward(P, { shLp: -1.55, shLr: -0.3, elL: -0.06, headP: -0.08, torsoY: P.torsoY + 0.15 }, k);
+          } else if (G.kind === 'alza') {
+            // las dos manos en el asta, la sube y la sacude
+            toward(P, { shRp: -1.75 + 0.18 * Math.sin(t * 6), shRr: 0.1, elR: -0.55, shLp: -1.6 + 0.18 * Math.sin(t * 6), shLr: 0.25, elL: -0.7, headP: -0.25 }, k);
+          }
+        }
+      }
     }
+  }
+
+  // (Belgrano vivo: a quién mira y qué gesto hace; lo llama belUpdate)
+  belLife(dt) {
+    const B = this.bel;
+    if (globalThis.__mduOldBelStatue === true || !B.planted || B.r.moving) {
+      B.gest = null;
+      B.lift = 0;
+      return;
+    }
+    const t = this.t;
+    // mira a El Eclipse (o al medio del campo)
+    const boss = this.sl.boss?.R?.root;
+    const tx = boss?.visible ? boss.position.x : toWorld(10, 0, null, tmpU).x;
+    const tz = boss?.visible ? boss.position.z : toWorld(10, 0, null, tmpU).z;
+    const want = Math.atan2(tx - B.r.pos.x, tz - B.r.pos.z);
+    // (el cuerpo de Belgrano mira a r.yaw + PI)
+    const rel = wrapPi(want - (B.r.yaw + Math.PI));
+    B.lookRel = (B.lookRel || 0) + (rel - (B.lookRel || 0)) * Math.min(1, dt * 1.5);
+    if (B.gest && t - B.gest.t0 > B.gest.dur) B.gest = null;
+    if (!B.gest) {
+      B.nextG = B.nextG ?? t + 3;
+      if (t >= B.nextG) {
+        const kinds = ['grita', 'senala', 'alza', 'grita', 'alza'];
+        const kind = kinds[Math.floor(Math.random() * kinds.length)];
+        B.gest = { kind, t0: t, dur: kind === 'alza' ? 3.2 : kind === 'grita' ? 2.4 : 2.0 };
+        B.nextG = t + B.gest.dur + 4 + Math.random() * 5;
+      }
+    }
+    const G = B.gest;
+    const lift = G?.kind === 'alza' ? ease(Math.min(1, (t - G.t0) / 0.5)) * (1 - ease(Math.max(0, (t - G.t0 - G.dur + 0.6) / 0.6))) : 0;
+    B.lift = lift * (0.55 + 0.08 * Math.sin(t * 6));
   }
 
   belUpdate(dt) {
@@ -362,6 +564,7 @@ export default class Aliados {
       if (B.planted) r.yaw = angLerp(r.yaw, puppetYaw(yawOf(1, 0.15)), Math.min(1, dt * 2));
     }
     B.unfurl = Math.min(1, Math.max(0, B.unfurl + (B.planted ? dt / 1.3 : -dt / 0.6)));
+    this.belLife(dt);
   }
 
   // Después de people.update: la bandera en la mano o clavada.
@@ -386,6 +589,11 @@ export default class Aliados {
     }
     if (B.planted && B.plantAt) {
       F2.position.copy(B.plantAt);
+      // (la alza con las dos manos: la bandera sube y se sacude)
+      if (B.lift) {
+        F2.position.y += B.lift;
+        F2.rotation.z = 0.12 * Math.sin(this.t * 6) * (B.lift / 0.55);
+      }
       // (flamea hacia el norte del campo, con el viento del río)
       const d = dirWorld(-0.25, 1, tmpV);
       F2.rotation.set(0, yawX(d.x, d.z), 0);
@@ -437,7 +645,8 @@ export default class Aliados {
         const cabral = si === 0 && i === 0;
         const a = granadero(this.people, { id: 480 + si * 10 + i, pos: new THREE.Vector3(), yaw: 0, cabral });
         const h = this.C.add({ x: 0, y: 0, z: 0, yaw: 0 });
-        const m = new Montura(a, h, { brazos: 'riendas' });
+        const m = new Montura(a, h, { brazos: 'riendas', life: true });
+        m.lookAt = () => this.lookTarget();
         this.monts.push(m);
         riders.push({ a, h, m, i, cabral, slot: null, lat: 0, along: 0, k: 0 });
       }
@@ -446,13 +655,15 @@ export default class Aliados {
     this.cabral = this.sq[0].riders[0];
   }
 
-  // Todos a formar (en la huerta, mirando al muro).
-  formAll() {
+  // Todos a formar (en la huerta, mirando al muro). skipScene: los que maneja
+  // una escena (Cabral y el que pasa barriendo) quedan donde están.
+  formAll(skipScene = false) {
     for (const S of this.sq) {
       S.state = 'formed';
       S.path = null;
       S.lead = false;
       S.riders.forEach((R, i) => {
+        if (skipScene && R.scene) return;
         const v = S.side * (FORM_V0 + i * FORM_DV);
         R.slot = { u: FORM_U, v };
         this.placeHorse(R.h, FORM_U, v, yawOf(1, 0));
@@ -463,7 +674,9 @@ export default class Aliados {
         R.m.brazos = 'riendas';
         // en dos filas al cargar: el lugar de cada uno en la columna
         const k = Math.ceil(S.riders.length / 2);
-        const rank = Math.floor(i / k);
+        // (la fila de adelante: los que forman más afuera, que es para donde
+        // sale la columna; al revés se cruzaban al salir. __mduOldColumnStart)
+        const rank = globalThis.__mduOldColumnStart === true ? Math.floor(i / k) : Math.floor((S.riders.length - 1 - i) / k);
         const file = i % k;
         R.lat = (file - (k - 1) / 2) * 2.5 * S.side;
         R.along = -rank * 3.6;
@@ -473,12 +686,21 @@ export default class Aliados {
 
   // El camino de una carga del lado `side` por el carril v = lane.
   chargePath(side, lane) {
+    // (2026-10-07: la columna pasaba por arriba de los cañones de la barranca;
+    // el carril, a 6 m de cada uno. __mduOldChargeSmooth: como antes)
+    if (globalThis.__mduOldChargeSmooth !== true) {
+      for (const [, cv] of F.cannons) if (Math.abs(lane - cv) < 6) lane = cv + (lane >= cv ? 6 : -6);
+    }
     const e = edgeU(lane);
     const s = side;
+    // (sesión 1f, el usuario: "San Martín atraviesa la muralla": la fila de
+    // adentro de la columna pasaba por la punta del muro (|v| 31, el muro llega
+    // a 32). Rodea 2,5 m más afuera. __mduOldWallEnd: como antes)
+    const W2 = globalThis.__mduOldWallEnd === true ? 0 : 1;
     const P = [
       [FORM_U, s * (FORM_V0 + FORM_DV * 1.5)],
-      [FORM_U + 0.4, s * 29.5],
-      [-41.5, s * 35.5],
+      [FORM_U + 0.4, s * (29.5 + 2.5 * W2)],
+      [-41.5, s * (35.5 + 2.5 * W2)],
       [-34.5, s * 31],
       [-28, lane + s * 4],
       [-22, lane],
@@ -486,8 +708,8 @@ export default class Aliados {
       [e - 10, lane + s * 9],
       [e - 16, s * 41],
       [-28, s * 41.8],
-      [-39.5, s * 38.5],
-      [FORM_U + 0.6, s * 31.5],
+      [-39.5, s * (38.5 + 1.5 * W2)],
+      [FORM_U + 0.6, s * (31.5 + 2.5 * W2)],
       [FORM_U, s * (FORM_V0 + FORM_DV * 1.5)],
     ];
     const pts = P.map(([u, v]) => toWorld(u, v, 0, new THREE.Vector3()).setY(0));
@@ -525,10 +747,25 @@ export default class Aliados {
       R.k = 0;
       R.from = { pos: R.h.pos.clone(), yaw: R.h.yaw };
     }
+    // (sesión 1f: los caballos se atravesaban al salir y al volver. La fila de
+    // adelante es la de los que forman más afuera —para allá sale la columna— y
+    // al volver cada uno va al lugar que le queda en orden. __mduOldColumnStart)
+    S.reslot = false;
+    if (globalThis.__mduOldColumnStart !== true) {
+      const k = Math.ceil(S.riders.length / 2);
+      [...S.riders]
+        .filter((R) => R.slot)
+        .sort((a, b) => Math.abs(b.slot.v) - Math.abs(a.slot.v))
+        .forEach((R, j) => {
+          R.lat = ((j % k) - (k - 1) / 2) * 2.5 * S.side;
+          R.along = -Math.floor(j / k) * 3.6;
+        });
+    }
     // (el que vuelve de la escena de Cabral se suma)
     if (S.lead) {
       const M = this.sm;
-      M.lead = { from: { pos: M.h.pos.clone(), yaw: M.h.yaw }, k: 0 };
+      const mh = leadHorse(M);
+      M.lead = { from: { pos: mh.pos.clone(), yaw: mh.yaw }, k: 0 };
     }
     this.laneDust(path);
     this.clarin();
@@ -537,6 +774,57 @@ export default class Aliados {
 
   busy(side) {
     return this.sq[side > 0 ? 0 : 1].state !== 'formed';
+  }
+
+  // Cuánto se corre de costado el caballo h (en el camino en B, con la
+  // tangente T, a lat del medio) para pasar lejos de lo que tiene adelante.
+  dodge(h, B, T, lat, dt) {
+    const nx = -T.z;
+    const nz = T.x;
+    const rx = B.x + nx * lat;
+    const rz = B.z + nz * lat;
+    toLocal(rx, rz, L);
+    const u0 = L.u;
+    const v0 = L.v;
+    toLocal(rx + T.x, rz + T.z, L);
+    const tu = L.u - u0;
+    const tv = L.v - v0;
+    toLocal(rx + nx, rz + nz, L);
+    const nu = L.u - u0;
+    const nv = L.v - v0;
+    // (todo lo que tiene adelante como un solo estorbo —el cañón con sus
+    // ruedas y cestones—: se pasa por un costado, el del lado contrario a donde
+    // está la mayor parte, y lo que hay que correrse alcanza para todo)
+    let wsum = 0;
+    let first = true;
+    for (const [cu, cv, cr] of propCyls()) {
+      const du = cu - u0;
+      const dv = cv - v0;
+      const ahead = du * tu + dv * tv;
+      if (ahead < -2.5 || ahead > 10) continue;
+      const side = du * nu + dv * nv;
+      const w = ahead < 4 ? 1 : 1 - (ahead - 4) / 6;
+      if (Math.abs(side) > cr + 1.6 + 3) continue;
+      wsum += side * cr * w;
+      first = false;
+      (this._dz ||= []).push([side, cr, w]);
+    }
+    let want = 0;
+    if (!first) {
+      const away = wsum > 0.01 ? -1 : wsum < -0.01 ? 1 : lat >= 0 ? 1 : -1;
+      // lo justo para dejar todos del otro lado: la punta más saliente de ese lado + margen
+      let m = 0;
+      for (const [side, cr, w] of this._dz) {
+        const edge = away < 0 ? side - cr - 1.6 : side + cr + 1.6;
+        const sh = away < 0 ? Math.min(0, edge) : Math.max(0, edge);
+        if (Math.abs(sh * w) > Math.abs(m)) m = sh * w;
+      }
+      want = m;
+      this._dz.length = 0;
+    }
+    const d = h.dodgeK || 0;
+    h.dodgeK = d + (want - d) * Math.min(1, dt * 3.5);
+    return h.dodgeK;
   }
 
   // La velocidad de la columna en el punto s del camino.
@@ -569,9 +857,54 @@ export default class Aliados {
       tmpW.y = 0;
       tmpW.normalize();
       // (a la derecha del camino: -z de la tangente girada)
-      const x = tmpV.x + -tmpW.z * lat;
-      const z = tmpV.z + tmpW.x * lat;
+      // (2026-10-07: lo que tiene adelante —cañones, carretas, troncos— lo
+      // esquiva corriéndose de costado de a poco, desde unos metros antes;
+      // __mduOldChargeSmooth: como antes, de golpe al llegar)
+      if (globalThis.__mduOldChargeSmooth !== true && dt > 0) lat += this.dodge(h, tmpV, tmpW, lat, dt);
+      let x = tmpV.x + -tmpW.z * lat;
+      let z = tmpV.z + tmpW.x * lat;
+      // (sesión 1f: al salir, la segunda fila iba al mismo punto que la primera
+      // —el camino empieza en 0— y los caballos se atravesaban: atrás del
+      // arranque, sobre la tangente. __mduOldColumnStart: como antes)
+      const back = S.s + along;
+      if (back < 0 && globalThis.__mduOldColumnStart !== true) {
+        x += tmpW.x * back;
+        z += tmpW.z * back;
+      }
       toLocal(x, z, L);
+      // (sesión 1f: nadie más allá de 3 m antes de la barranca —"casi se salen
+      // del mapa"—; __mduNoCavEdge: como antes)
+      // (2026-10-07, el usuario: "los caballos se caen por el barranco y se
+      // teletransportan arriba": en la vuelta junto a la barranca pasaban por
+      // las bajadas al río y bajaban hasta 5 m por la rampa. Ahí, 11 m antes del
+      // borde. __mduOldChargeSmooth: como antes)
+      const SM2 = globalThis.__mduOldChargeSmooth !== true;
+      const lim = edgeU(L.v) - (SM2 && F.bajadas.some((b) => Math.abs(L.v - b) < F.bajW + 5) ? 11 : 3);
+      if (globalThis.__mduNoCavEdge !== true && L.u > lim) {
+        L.u = lim;
+        const Wp = toWorld(L.u, L.v, 0, tmpU);
+        x = Wp.x;
+        z = Wp.z;
+      }
+      // (los cañones, las carretas, el pozo y los troncos del campo: los rodean; __mduNoSlEsquiva)
+      if (globalThis.__mduNoSlEsquiva !== true && avoidProps(L, 1.3)) {
+        const Wp = toWorld(L.u, L.v, 0, tmpU);
+        x = Wp.x;
+        z = Wp.z;
+      }
+      // (y al esquivar los cañones y los árboles saltaban 1-5 m de un cuadro al
+      // otro: ahora no se mueven más rápido que la columna, rodean de a poco)
+      if (SM2 && kIn >= 1 && dt > 0) {
+        const dx = x - h.pos.x;
+        const dz = z - h.pos.z;
+        const d = Math.hypot(dx, dz);
+        const max = Math.max(2, v) * dt * 1.45 + 0.02;
+        if (d > max && d < 30) {
+          x = h.pos.x + (dx / d) * max;
+          z = h.pos.z + (dz / d) * max;
+          toLocal(x, z, L);
+        }
+      }
       const y = hLoc(L.u, L.v);
       const yaw = Math.atan2(tmpW.x, tmpW.z);
       // al salir, de su lugar en la fila a la columna; al volver, de la columna a su lugar
@@ -591,6 +924,16 @@ export default class Aliados {
       if (h.speed > 25) h.speed = v;
       return y;
     };
+    // (al empezar la vuelta a formar: los lugares, en el orden en que vienen)
+    if (!S.reslot && globalThis.__mduOldColumnStart !== true && S.s > P.len - 9) {
+      S.reslot = true;
+      const live = S.riders.filter((R) => R.slot && !R.scene);
+      const slots = live.map((R) => R.slot).sort((a, b) => Math.abs(a.v) - Math.abs(b.v));
+      live
+        .map((R) => [R, toLocal(R.h.pos.x, R.h.pos.z, {}).v])
+        .sort((a, b) => Math.abs(a[1]) - Math.abs(b[1]))
+        .forEach(([R], j) => (R.slot = slots[j]));
+    }
     for (const R of S.riders) {
       // (el que se llevó la escena de Cabral)
       if (R.scene) continue;
@@ -611,8 +954,22 @@ export default class Aliados {
     }
     if (lead) {
       const M = this.sm;
-      M.lead.k = Math.min(1, M.lead.k + dt / 1.6);
-      place(M.h, 4.2, 0, M.lead.from, ease(M.lead.k));
+      // (sesión 1f: si San Martín espera del lado del campo y la columna todavía
+      // va por atrás del muro, espera a que la columna salga: si no, se iba
+      // derecho a ella atravesando el muro. __mduOldSmWall: como antes)
+      let hold = false;
+      if (globalThis.__mduOldSmWall !== true && M.lead.k === 0) {
+        P.curve.getPointAt(Math.max(0, Math.min(1, (S.s + 4.2) / P.len)), tmpU);
+        const fu = toLocal(M.lead.from.pos.x, M.lead.from.pos.z, {}).u;
+        const tu = toLocal(tmpU.x, tmpU.z, {}).u;
+        hold = fu > F.wallU && tu < F.wallU + 1.5;
+      }
+      if (!hold) M.lead.k = Math.min(1, M.lead.k + dt / 1.6);
+      const mh = leadHorse(M);
+      if (hold) {
+        mh.speed = 0;
+        M.lead.from.pos.copy(mh.pos);
+      } else place(mh, 4.2, 0, M.lead.from, ease(M.lead.k));
       const inLane = S.s + 4 > P.laneA - 10 && S.s + 4 < P.laneB + 4;
       M.mont.brazos = inLane ? 'carga' : 'sable';
     }
@@ -632,7 +989,7 @@ export default class Aliados {
       if (S.lead) {
         S.lead = false;
         this.sm.lead = null;
-        this.smToWait(true);
+        this.smToWait(globalThis.__mduOldWallEnd === true);
       }
     }
   }
@@ -757,7 +1114,17 @@ export default class Aliados {
       S.walk = null;
       return;
     }
-    S.walk = { to: toWorld(u, v, null, new THREE.Vector3()), yaw: yawOf(1, -0.1) };
+    S.walk = { to: toWorld(u, v, null, new THREE.Vector3()), yaw: yawOf(1, -0.1), via: [] };
+    // (del otro lado del muro: por el portón del norte, adentro y afuera)
+    const h = S.mh || S.h;
+    toLocal(h.pos.x, h.pos.z, L);
+    if (globalThis.__mduOldWallEnd !== true && L.u < F.wallU !== u < F.wallU) {
+      const gv = (F.gates[1][0] + F.gates[1][1]) / 2;
+      const inU = F.wallU - 2.2;
+      const outU = F.wallU + 2.2;
+      const [a, b] = L.u < F.wallU ? [inU, outU] : [outU, inU];
+      S.walk.via.push(toWorld(a, gv, null, new THREE.Vector3()), toWorld(b, gv, null, new THREE.Vector3()));
+    }
   }
 
   smWalk(dt) {
@@ -765,16 +1132,19 @@ export default class Aliados {
     const W = S.walk;
     const h = S.mh || S.h;
     if (!W || S.mode !== 'montado' || S.lead || S.scene) return;
-    const dx = W.to.x - h.pos.x;
-    const dz = W.to.z - h.pos.z;
+    // (los puntos de paso: el portón)
+    if (W.via?.length && Math.hypot(W.via[0].x - h.pos.x, W.via[0].z - h.pos.z) < 0.6) W.via.shift();
+    const T = W.via?.length ? W.via[0] : W.to;
+    const dx = T.x - h.pos.x;
+    const dz = T.z - h.pos.z;
     const d = Math.hypot(dx, dz);
-    if (d < 0.2) {
+    if (d < 0.2 && T === W.to) {
       h.speed = 0;
       h.yaw = angLerp(h.yaw, W.yaw, Math.min(1, dt * 2));
       if (Math.abs(wrapPi(h.yaw - W.yaw)) < 0.02) S.walk = null;
       return;
     }
-    const sp = Math.min(2.2, d);
+    const sp = T === W.to ? Math.min(2.2, d) : 2.2;
     h.yaw = angLerp(h.yaw, Math.atan2(dx, dz), Math.min(1, dt * 2.5));
     const f = Math.max(0, Math.cos(wrapPi(Math.atan2(dx, dz) - h.yaw)));
     h.pos.x += Math.sin(h.yaw) * sp * f * dt;

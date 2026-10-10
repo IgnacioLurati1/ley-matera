@@ -226,7 +226,7 @@ export default class QuestRayo {
       if (this.prog >= this.seq.length) {
         this.ph = 2;
         this.gourdPos.copy(this.gourdHome);
-        announce(g, 'Illapa escuchó. La campana grande soltó algo.', 4, true);
+        announce(g, '', 4, true);
         this.egg.say('fierro', LINES.calabaza);
         this.dropFx();
         g.net?.event('ee', { q: 'rayo', drop: 1 });
@@ -297,7 +297,6 @@ export default class QuestRayo {
     this.carrier = id;
     if (this.mark < 0) this.nextMark();
     const who = id === myId(g) ? 'Llevás' : `${g.net?.nameOf(id) || 'Alguien'} lleva`;
-    announce(g, `${who} la calabaza de Illapa. Parate en la marca de la tormenta hasta que caiga el rayo (${this.charges} de ${CATCH}).`, 5);
     this.egg.netSync();
     return true;
   }
@@ -321,11 +320,11 @@ export default class QuestRayo {
     if (this.charges >= CATCH) {
       this.ph = 4;
       this.mark = -1;
-      announce(g, 'La calabaza está llena de tormenta. Al altar del campanario.', 4, true);
+      announce(g, '', 4, true);
       this.egg.say('fierro', LINES.llena);
     } else {
       this.nextMark();
-      announce(g, `¡Rayo adentro! (${this.charges} de ${CATCH}). La tormenta marca otro lugar.`, 3);
+      announce(g, `¡Rayo adentro! (${this.charges} de ${CATCH})`, 3);
     }
     this.egg.netSync();
   }
@@ -337,7 +336,6 @@ export default class QuestRayo {
     if (p) this.gourdPos.copy(p.pos).setY(g.world.floorAt(p.pos.x, p.pos.z, p.pos.y + 0.5) + 0.15);
     this.carrier = -1;
     this.ph = this.ph === 3 ? 2 : this.ph;
-    announce(g, 'Se cayó la calabaza de Illapa. Alguien que la levante.', 3);
     this.egg.netSync();
   }
 
@@ -455,7 +453,6 @@ export default class QuestRayo {
     // la primera vez que uno llega al campanario sin el rezo: la pista (solo para él)
     if (!this.toldTower && this.ph === 0 && bells[1] && g.player.alive && g.player.pos.distanceTo(bells[1].center) < 7) {
       this.toldTower = true;
-      g.hud.subtitle('Tres campanas para Illapa. Dicen que solo escucha a los que le rezan en el altar de la capilla.', 5);
     }
     // la calabaza cayendo de la campana grande
     const GF = this.gourdFall;
@@ -514,7 +511,6 @@ export default class QuestRayo {
       else if (this.markT > 70 && !inside) {
         // la tormenta se cansa de esperar: marca otro lugar
         this.nextMark();
-        announce(g, 'La tormenta se movió. Otra marca.', 3);
         this.egg.netSync();
       }
       this.markSend = (this.markSend || 0) - dt;

@@ -53,7 +53,7 @@ export default class Levels {
   }
 
   // Los easter eggs hechos antes de que hubiera niveles (core/eggs) valen
-  // igual: se acreditan una vez, como primera vez, y el super si están los seis.
+  // igual: se acreditan una vez, como primera vez, y el super si están todos.
   retro() {
     const d = P.profile();
     const miss = eggsDone().filter((m) => !d.eggs[m]);
@@ -136,7 +136,7 @@ export default class Levels {
   }
 
   // Terminó el easter egg (Game.win). `first`: primera vez en este mapa en el
-  // perfil. `superEgg`: con este se completaron los seis (una sola vez).
+  // perfil. `superEgg`: con este se completaron todos (una sola vez).
   egg({ challenge = false } = {}) {
     const g = this.g;
     if (g.cheated) return;

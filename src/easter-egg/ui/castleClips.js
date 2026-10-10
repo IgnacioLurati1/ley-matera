@@ -151,6 +151,8 @@ export default class CastleClips {
         const w = S.fade > 0 ? Math.min(1, (this.now - S.at) / S.fade) : 1;
         const k = w * w * (3 - 2 * w);
         S.avs.forEach((a) => {
+          // (el que está fuera de cuadro y congelado —net/Avatars offCull— no se posa: nadie lo ve)
+          if (a.group?.mcFrozen === true) return;
           const o = { loop: S.loop };
           if (k < 1 && S.from) {
             o.from = { c: S.from.c, t: this.clipT(S.from), loop: S.from.loop };

@@ -238,7 +238,7 @@ export default class QuestFuego {
     this.yesca[i] = 1;
     const n = this.yesca.filter(Boolean).length;
     this.g.fx.sparkle(this.yescaObjs[i].position, ELEM_RGB.fuego, 14, 0.5);
-    announce(this.g, n < 3 ? `Yesca de cardón: ${n} de 3.` : 'Las tres yescas. A la fragua de la herrería.', 3);
+    announce(this.g, `Yesca de cardón: ${n} de 3.`, 3);
     if (n === 1) this.egg.say('fierro', LINES.yesca);
     this.egg.netSync();
     return true;
@@ -249,7 +249,6 @@ export default class QuestFuego {
     this.ph = 1;
     this.placed = 1;
     this.g.fx.fire(this.forge, 0.5, 20);
-    announce(this.g, 'La yesca prendió en la fragua. Ahora, el fuelle.', 3);
     this.egg.netSync();
     return true;
   }
@@ -260,7 +259,7 @@ export default class QuestFuego {
     this.b = 0;
     this.souls = 0;
     this.egg.say('fierro', LINES.salamandra);
-    announce(this.g, '¡La Salamandra del Pillán! Va a un brasero. Denle almas ahí.', 4, true);
+    announce(this.g, '', 4, true);
     this.egg.netSync();
     this.startLeap(this.forge, this.braseros[0]);
     return true;
@@ -290,7 +289,7 @@ export default class QuestFuego {
     } else {
       this.ph = 3;
       this.hits = 0;
-      announce(this.g, 'La salamandra se metió en el mate crudo del yunque. Forjalo con el cuchillo cuando brille blanco.', 5, true);
+      announce(this.g, '', 5, true);
       this.egg.say('fierro', LINES.yunque);
       this.startLeap(from, this.anvil);
     }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { makeNoise, rng } from '../core/noise';
-import { toTexture } from '../core/textures';
+import { toTexture, takePre } from '../core/textures';
 
 // Texturas del Monumento a la Bandera (se pintan solo cuando se arma ese
 // mapa). El monumento es de travertino: piedra clara, tibia, con vetas
@@ -40,7 +40,8 @@ const streakS = (S, x, y, pxX, pxY, off = 0) => {
 };
 
 function paint(w, h, fn) {
-  const c = document.createElement('canvas');
+  // (en un worker —core/textureWorker.js— no hay document: OffscreenCanvas)
+  const c = typeof document !== 'undefined' ? document.createElement('canvas') : new OffscreenCanvas(w, h);
   c.width = w;
   c.height = h;
   const ctx = c.getContext('2d');
@@ -763,22 +764,31 @@ function granito({ seed }) {
   return c;
 }
 
+// Las que se pueden pintar en otro hilo (core/texturePool.js las pide al abrir
+// el juego; acá se toman con takePre). Sesión 1f, el usuario: "la pantalla de
+// cambio de mapa tarda una eternidad": eran ~2,7 s en el hilo principal al
+// elegir Eclipse o el Monumento. __mduNoMonuWorker: se pintan acá, como antes.
+export const MONU_PAINT = {
+  'monu:travertino': () => travertino({ seed: 1812 }),
+  'monu:travertinoBig': () => travertino({ seed: 1813, rows: 3, stain: 0.8 }),
+  'monu:travPave': () => travPave({ seed: 1957 }),
+  'monu:travStepTex': () => travPave({ seed: 1958, rows: 1 }),
+  'monu:revoque': () => revoque({ seed: 1880 }),
+  'monu:granito': () => granito({ seed: 1930 }),
+  'monu:bronze': () => bronze({ seed: 1810 }),
+  'monu:baldosa': () => baldosa({ seed: 64 }),
+  'monu:adoquin': () => adoquin({ seed: 1900 }),
+  'monu:asfalto': () => asfalto({ seed: 27 }),
+  'monu:cryptMarble': () => marmol({ seed: 1820, base: 0x3e4440, vein: 0x9aa49a, joint: 0x1c1e1c }),
+  'monu:salaMarble': () => marmol({ seed: 1853, base: 0xd8ccb4, vein: 0xa8884a, joint: 0x8a7a62 }),
+  'monu:salaFloor': () => marmol({ seed: 1816, base: 0xb8aa92, vein: 0x6a5a44, joint: 0x4a4036, rows: 4 }),
+};
+
 // Las texturas del Monumento (una vez).
 export function monumentoTextures(T) {
   if (T.travertino) return T;
-  T.travertino = toTexture(travertino({ seed: 1812 }));
-  T.travertinoBig = toTexture(travertino({ seed: 1813, rows: 3, stain: 0.8 }));
-  T.travPave = toTexture(travPave({ seed: 1957 }));
-  T.travStepTex = toTexture(travPave({ seed: 1958, rows: 1 }));
-  T.revoque = toTexture(revoque({ seed: 1880 }));
-  T.granito = toTexture(granito({ seed: 1930 }));
-  T.bronze = toTexture(bronze({ seed: 1810 }));
-  T.baldosa = toTexture(baldosa({ seed: 64 }));
-  T.adoquin = toTexture(adoquin({ seed: 1900 }));
-  T.asfalto = toTexture(asfalto({ seed: 27 }));
-  T.cryptMarble = toTexture(marmol({ seed: 1820, base: 0x3e4440, vein: 0x9aa49a, joint: 0x1c1e1c }));
-  T.salaMarble = toTexture(marmol({ seed: 1853, base: 0xd8ccb4, vein: 0xa8884a, joint: 0x8a7a62 }));
-  T.salaFloor = toTexture(marmol({ seed: 1816, base: 0xb8aa92, vein: 0x6a5a44, joint: 0x4a4036, rows: 4 }));
+  const pre = globalThis.__mduNoMonuWorker !== true;
+  for (const [k, fn] of Object.entries(MONU_PAINT)) T[k.slice(5)] = toTexture((pre && takePre(k)) || fn());
   const f1 = fachada({ seed: 11, base: 0x9a9284, cols: 5, rows: 8, lit: 0.32 });
   const f2 = fachada({ seed: 12, base: 0x7a7a7e, cols: 4, rows: 7, lit: 0.26, warm: false });
   const f3 = fachada({ seed: 13, base: 0xb0a48e, cols: 6, rows: 9, lit: 0.4 });
