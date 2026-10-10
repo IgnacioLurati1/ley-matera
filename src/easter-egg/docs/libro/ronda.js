@@ -1,3 +1,7 @@
+// (primero: este módulo lee globalThis.__mduEclipse al cargarse, y en el
+// paquete publicado el orden de carga lo da quién importa a quién. Sin esta
+// línea la marca se ponía después y Eclipse no aparecía)
+import '../../core/eclipseFlag';
 // "La Ronda Eterna": la historia de fondo del juego, tal cual el Claude Doc
 // (https://claude.ai/code/artifact/803de952-87ff-42bf-a6db-b2b6a5504add, rev 39).
 // Lo carga solo el libro (ui/BookReader.js) al abrirse: no pesa en el arranque.

@@ -1,3 +1,7 @@
+// (primero: este módulo lee globalThis.__mduEclipse al cargarse, y en el
+// paquete publicado el orden de carga lo da quién importa a quién. Sin esta
+// línea la marca se ponía después y Eclipse no aparecía)
+import '../core/eclipseFlag';
 import * as THREE from 'three';
 import { PERKS } from '../config/perks';
 import { VM } from './viewmodels';

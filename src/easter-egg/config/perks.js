@@ -1,3 +1,7 @@
+// (primero: este módulo lee globalThis.__mduEclipse al cargarse, y en el
+// paquete publicado el orden de carga lo da quién importa a quién. Sin esta
+// línea la marca se ponía después y Eclipse no aparecía)
+import '../core/eclipseFlag';
 // Perks: máquinas con forma de paquete gigante de yerba. Cada una imita el
 // paquete de una yerba mítica (colores y estilo), con una marca en joda.
 
