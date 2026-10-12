@@ -703,9 +703,23 @@ export default class Tower {
     const w = this.w;
     const T = this.T;
     const gb = new GeoBuilder();
+    // (los escalones eran dos cajas macizas: su tapa, a 12 y a 24 cm, tapaba todo el
+    // piso de entrada, que se pisa en 0: los personajes caminaban hundidos hasta el
+    // tobillo y la rosa de los vientos no se veía. Ahora van solo por afuera de las
+    // paredes, en cuatro tiras. El usuario, 2026-10-12: "la hitbox del piso está más
+    // baja que el propio piso". globalThis.__mduTorreBaseVieja: como antes)
+    const [a0, a1, b0, b1] = [T.x0 - 1, T.x1 + 2, T.z0 - 1, T.z1 + 2];
     for (let s = 0; s < 2; s++) {
       const e = 1.6 - s * 0.6;
-      gb.box('towerStone', T.x0 - 1 - e, -0.02, T.z0 - 1 - e, T.x1 + 2 + e, 0.12 + s * 0.12, T.z1 + 2 + e, 2);
+      const h = 0.12 + s * 0.12;
+      if (globalThis.__mduTorreBaseVieja === true) {
+        gb.box('towerStone', a0 - e, -0.02, b0 - e, a1 + e, h, b1 + e, 2);
+        continue;
+      }
+      gb.box('towerStone', a0 - e, -0.02, b0 - e, a1 + e, h, b0, 2);
+      gb.box('towerStone', a0 - e, -0.02, b1, a1 + e, h, b1 + e, 2);
+      gb.box('towerStone', a0 - e, -0.02, b0, a0, h, b1, 2);
+      gb.box('towerStone', a1, -0.02, b0, a1 + e, h, b1, 2);
     }
     w.root.add(gb.build(w.M));
     this.llano = new Llano(w);

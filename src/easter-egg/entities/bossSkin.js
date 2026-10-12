@@ -646,6 +646,10 @@ export function updateBossSkin(zs, dt) {
     R.rig.traverse((o) => o.layers.set(on ? HIDE : 0));
     R.skinHidden = on;
     if (S) S.handPart = null;
+    // (el sombrero del Capataz es la pieza 13 del de piezas, que se vuelve a mostrar sobre el modelo:
+    // entities/skins/capataz.js. Acá se acaba de esconder todo de nuevo y su marca seguía en "ya está":
+    // la segunda vez que aparecía, venía sin sombrero. El usuario, 2026-10-12. __mduNoHatFix: como antes)
+    if (S && globalThis.__mduNoHatFix !== true) S.hatOn = false;
   }
   shown = on ? S : null;
   if (!on) return;

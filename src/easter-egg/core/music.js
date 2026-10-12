@@ -251,7 +251,9 @@ export default class Music {
     const b = zb && !zb.dead ? zb : cz?.active && !cz.dead ? cz : null;
     // (g.defense.quiet: el asedio del castillo no lleva música, ni esta)
     if (!this.cur && b && g.state === 'playing' && !g.arena?.active && !g.ee?.scene && !g.intro?.active && !songOn() && !g.defense?.quiet) {
-      this.play(Math.random() < 0.5 ? 'jefe-generico' : 'jefe-generico-2', { loop: true, while: (G) => (G.zombies?.boss === b || (G.crow?.z === b && b.active)) && !b.dead && (G.state === 'playing' || G.state === 'paused') });
+      // (y se va si arranca una escena con el jefe todavía vivo: seguía sonando arriba de la cinemática
+      // final del Challenge de la torre. El usuario, 2026-10-12. globalThis.__mduJefeEnEscena: como antes)
+      this.play(Math.random() < 0.5 ? 'jefe-generico' : 'jefe-generico-2', { loop: true, while: (G) => (G.zombies?.boss === b || (G.crow?.z === b && b.active)) && !b.dead && (G.state === 'playing' || G.state === 'paused') && (!G.ee?.scene || globalThis.__mduJefeEnEscena === true) });
     }
     // (Alt+I) arrancó la partida: se salta a la escena elegida
     const J = this.jump;

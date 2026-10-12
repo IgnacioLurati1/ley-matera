@@ -2213,7 +2213,17 @@ export default class Zombies {
     }
     let mx = 0;
     let mz = 0;
-    if ((dist < 1.6 && vert) || z.los || wander) {
+    // a menos de 1,6 m y a su altura va derecho. En la torre, solo si pasa el
+    // cuerpo: con el jugador arriba, al lado de la baranda del hueco, los que
+    // venían por los últimos escalones se le iban derecho y se quedaban
+    // caminando contra la baranda en vez de terminar de subir y dar la vuelta
+    // (y lo mismo los de abajo, contra el costado de la escalera, con el jugador
+    // en los primeros escalones). El usuario, 2026-10-12: "se quedan trabados en
+    // las esquinas de las escaleras en lugar de bordearlas y subir por ellas".
+    // Con algo en el medio siguen el camino. globalThis.__mduNoCercaLibre: como antes.
+    let near = dist < 1.6 && vert;
+    if (near && g.world.tower && globalThis.__mduNoCercaLibre !== true) near = g.world.sweepFree(z.pos.x, z.pos.z, tx, tz, 0.26, (z.baseY || 0) + 0.15, (z.baseY || 0) + 1.6);
+    if (near || z.los || wander) {
       mx = dx / (dist || 1);
       mz = dz / (dist || 1);
     } else if (nav.direction(z.pos.x, z.pos.z, dirOut, z.baseY)) {

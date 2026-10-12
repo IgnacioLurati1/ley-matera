@@ -148,6 +148,7 @@ varying vec3 vDir;
 void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 const SKY_FS = `
 uniform float uTime;
+uniform float uLin;
 varying vec3 vDir;
 void main(){
   vec3 d = vDir / max(length(vDir), 1e-4);
@@ -158,6 +159,9 @@ void main(){
   vec3 sun = normalize(vec3(0.6, 0.42, -0.68));
   float s = max(dot(d, sun), 0.0);
   col += vec3(1.0, 0.82, 0.45) * (pow(s, 12.0) * 0.3 + pow(s, 220.0) * 0.9);
+  // (los colores de arriba son los que se quieren ver; la pasada final los toma como luz y los
+  // aclaraba hasta casi blanco: uLin los pasa a luz antes)
+  col = mix(col, pow(col, vec3(2.2)), uLin);
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -209,10 +213,19 @@ export default class ChallengeHeaven {
       water: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xbfe8ff).multiplyScalar(1.4), transparent: true, opacity: 0.75, depthWrite: false, toneMapped: false, ...noFog }),
     };
     this.M = M;
+    // (2026-10-12, el usuario: "la cinemática final te deja ciego". Toda la escena daba casi blanco
+    // puro 18 segundos: el cielo aclarado por la pasada final —uLin, en su shader— y las nubes y el
+    // mármol, blancos. Ahora el cielo sale con sus colores (azul arriba, naranja en el horizonte) y
+    // las nubes y el mármol un poco más bajos. globalThis.__mduCieloBlanco: como antes)
+    const suave = globalThis.__mduCieloBlanco !== true;
+    if (suave) {
+      M.cloud.color.setScalar(0.74);
+      M.marble.color.setScalar(0.86);
+    }
     // el cielo: una esfera que escribe profundidad (tapa todo lo de afuera)
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(140, 40, 20),
-      new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 } }, vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: true, fog: false }),
+      new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uLin: { value: suave ? 1 : 0 } }, vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: true, fog: false }),
     );
     sky.position.set(CX, HY, CZ);
     sky.renderOrder = -10;
@@ -572,7 +585,8 @@ export default class ChallengeHeaven {
     this.title.classList.toggle('is-on', t > TL.title[0] && t < TL.title[1]);
     // el fogonazo blanco: al subir, al llegar y al final
     const white = t < TL.up ? smooth(seg(t, 0.35, TL.up)) : t < TL.up + 1.2 ? 1 - smooth(seg(t, TL.up, TL.up + 1.05)) : smooth(seg(t, TL.slurp - 0.8, TL.slurp));
-    this.white.style.opacity = white.toFixed(3);
+    // (el fogonazo, hasta el 82%: a pantalla llena y en blanco pleno era lo que más encandilaba)
+    this.white.style.opacity = (white * (globalThis.__mduCieloBlanco === true ? 1 : 0.82)).toFixed(3);
     // lo que se mueve
     this.animate(dt, t);
     if (t < TL.up) {

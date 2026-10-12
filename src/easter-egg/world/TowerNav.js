@@ -105,11 +105,62 @@ export default class TowerNav {
     return k < 0 ? Infinity : this.dist[k];
   }
 
+  // ¿Se llega caminando derecho desde (x, z), parado en el nodo `from`, al
+  // centro del nodo `to`? Por los mismos enlaces del campo: no hay enlace a
+  // través de una baranda, ni de costado a un escalón, ni sobre un agujero.
+  straight(from, x, z, to) {
+    const T = this.T;
+    const L = T.links;
+    const i = to % T.WH;
+    const tx = i % T.W;
+    const tz = (i - tx) / T.W;
+    let cx = Math.floor(x);
+    let cz = Math.floor(z);
+    const dx = tx + 0.5 - x;
+    const dz = tz + 0.5 - z;
+    const sx = dx > 0 ? 1 : -1;
+    const sz = dz > 0 ? 1 : -1;
+    const tdx = Math.abs(1 / (dx || 1e-9));
+    const tdz = Math.abs(1 / (dz || 1e-9));
+    let tmx = dx > 0 ? (cx + 1 - x) * tdx : (x - cx) * tdx;
+    let tmz = dz > 0 ? (cz + 1 - z) * tdz : (z - cz) * tdz;
+    let node = from;
+    for (let k = 0; k < 6 && (cx !== tx || cz !== tz); k++) {
+      let d;
+      if (tmx < tmz) {
+        d = sx > 0 ? 0 : 1;
+        tmx += tdx;
+        cx += sx;
+      } else {
+        d = sz > 0 ? 2 : 3;
+        tmz += tdz;
+        cz += sz;
+      }
+      node = L[node * 4 + d];
+      if (node < 0 || this.isBlocked(node)) return false;
+    }
+    return node === to;
+  }
+
   // Dirección (en out.x, out.z) para ir hacia el objetivo desde (x, z, y).
+  // Mira dos pasos adelante para suavizar el recorrido, pero solo si a esa
+  // celda se llega derecho (straight). Si no, apunta a la celda siguiente.
+  // El usuario, 2026-10-12: "los zombies cuando quieren subir se quedan medio
+  // bug y se quedan trabados en las esquinas de las escaleras en lugar de
+  // bordearlas y subir por ellas". Al pie de cada escalera hay que dar la
+  // vuelta a la punta de la baranda (entrar por el primer escalón y volver
+  // para el otro lado): de un lado de la punta, la celda de dos pasos adelante
+  // quedaba del otro lado de la baranda, y del otro lado, también; el muerto
+  // iba y venía contra la punta hasta que lo sacaba el paso al costado
+  // (Zombies.unstick). Medido de a uno, al lado de la baranda: 2 a 4,5 s
+  // quietos los que caminan y los que trotan; ahora, nada.
+  // globalThis.__mduNoNavVista: como antes (siempre dos pasos).
   direction(x, z, out, y) {
     const T = this.T;
     let cur = this.node(x, z, y);
     if (cur < 0) return false;
+    const from = cur;
+    let first = -1;
     let found = false;
     for (let step = 0; step < 2; step++) {
       let best = this.dist[cur];
@@ -122,10 +173,12 @@ export default class TowerNav {
       });
       if (next < 0) break;
       cur = next;
+      if (step === 0) first = next;
       found = true;
       if (step === 0 && best === 0) break;
     }
     if (!found) return false;
+    if (cur !== first && globalThis.__mduNoNavVista !== true && !this.straight(from, x, z, cur)) cur = first;
     const i = cur % T.WH;
     const cx = i % T.W;
     const cz = (i - cx) / T.W;
