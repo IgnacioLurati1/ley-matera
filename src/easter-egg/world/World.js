@@ -91,6 +91,9 @@ const mapCenter = () => new THREE.Vector3(SKY.center?.[0] ?? MAP_W / 2, 0, SKY.c
 const SURFACE = { planks: 'wood', parquet: 'wood', planksDark: 'wood', dirt: 'dirt', dirtDark: 'dirt', grass: 'dirt', calcareo: 'tile', terracotta: 'tile', concrete: 'concrete', snow: 'dirt', snowPave: 'dirt' };
 
 // Mapa: grilla, arquitectura, utilería, luces, cielo; colisiones y rayos.
+// Cuánto tapa el sonido cada tipo de caja (World.soundBlock; lo demás, 0,4)
+const SOUND_BLOCK = { wall: 1, slab: 1, ground: 1, door: 0.7, window: 0.35, prop: 0.4, rail: 0, fence: 0, corn: 0, arch: 1 };
+
 export default class World {
   constructor(game) {
     this.g = game;
@@ -672,10 +675,12 @@ export default class World {
     return this.g.player?.pos.y ?? 0;
   }
 
-  openDoor(i) {
+  // later: el que abre varias de una (las que arrancan abiertas, Interactables.applyPreDoors) rehace
+  // el paso una sola vez, al final: son 11 ms por puerta en Eclipse
+  openDoor(i, later = false) {
     this.doorOpen[i] = 1;
     for (const b of DOORS[i].boxes) b.active = false;
-    this.computeNavBlock();
+    if (!later) this.computeNavBlock();
   }
 
   // ---------------- arquitectura ----------------
@@ -1421,6 +1426,68 @@ export default class World {
     this.extraUpdate?.(dt, t);
     // el viento en el pasto y en las copas (fx/grassPush.js)
     updateWind(dt);
+  }
+
+  // ---------------- el sonido contra el mapa ----------------
+  // Cuánto tapan las paredes un sonido que va de a a b: 0, nada; 1, dos
+  // paredes o más. Camina las celdas de la recta y suma las cajas sólidas que
+  // cruza a la altura por donde pasa (una reja, una baranda o el maíz no
+  // tapan; una ventana o un mueble, poco; una puerta abierta no está). Lo usa
+  // core/audio.js `out`, una vez por sonido.
+  soundBlock(ax, ay, az, bx, by, bz) {
+    const dx = bx - ax;
+    const dz = bz - az;
+    const L = Math.hypot(dx, dz);
+    // (en la torre los pisos también tapan)
+    let sum = this.tower ? Math.min(2, Math.floor(Math.abs(by - ay) / 2.6)) * 0.6 : 0;
+    if (L < 0.5 || L > 70) return Math.min(1, sum / 2);
+    const stamp = (this.sndStamp = (this.sndStamp || 0) + 1);
+    const n = Math.ceil(L * 2);
+    const ix = dx !== 0 ? 1 / dx : Infinity;
+    const iz = dz !== 0 ? 1 / dz : Infinity;
+    let last = -1;
+    for (let i = 0; i <= n && sum < 2; i++) {
+      const cx = Math.floor(ax + (dx * i) / n);
+      const cz = Math.floor(az + (dz * i) / n);
+      if (!this.inside(cx, cz)) continue;
+      const c = this.idx(cx, cz);
+      if (c === last) continue;
+      last = c;
+      for (const b of this.cellBoxes[c]) {
+        if (b.snd === stamp) continue;
+        b.snd = stamp;
+        if (!b.active || !b.solid) continue;
+        const w = SOUND_BLOCK[b.kind] ?? 0.4;
+        if (!w) continue;
+        // (lo que suena o el que oye, adentro de la caja: no se tapa a sí mismo)
+        if ((bx > b.x0 && bx < b.x1 && bz > b.z0 && bz < b.z1) || (ax > b.x0 && ax < b.x1 && az > b.z0 && az < b.z1)) continue;
+        let t0 = 0;
+        let t1 = 1;
+        const xa = (b.x0 - ax) * ix;
+        const xb = (b.x1 - ax) * ix;
+        if (dx !== 0) {
+          t0 = Math.max(t0, Math.min(xa, xb));
+          t1 = Math.min(t1, Math.max(xa, xb));
+        } else if (ax < b.x0 || ax > b.x1) continue;
+        const za = (b.z0 - az) * iz;
+        const zb = (b.z1 - az) * iz;
+        if (dz !== 0) {
+          t0 = Math.max(t0, Math.min(za, zb));
+          t1 = Math.min(t1, Math.max(za, zb));
+        } else if (az < b.z0 || az > b.z1) continue;
+        if (t0 > t1) continue;
+        const y = ay + (by - ay) * ((t0 + t1) / 2);
+        if (y <= b.y0 || y >= b.y1) continue;
+        sum += w;
+      }
+    }
+    return Math.min(1, sum / 2);
+  }
+
+  // Si (x, z) es bajo techo: true o false; null fuera de las zonas.
+  indoorAt(x, z, y) {
+    const k = this.zoneAt(x, z, y);
+    return k && ZONES[k] ? !ZONES[k].outdoor : null;
   }
 
   // ---------------- colisiones ----------------

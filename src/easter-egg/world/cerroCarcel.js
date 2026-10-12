@@ -251,7 +251,7 @@ export function buildCarcel(game, A) {
       if (rnd() > 0.5) continue;
       const a = ((i + 0.5 + (rnd() - 0.5) * 0.35) / BAYS) * Math.PI * 2;
       const d = R0 + 0.28;
-      soulData.push({ x: x + Math.cos(a) * d, y: y + t * TIER_H, z: z + Math.sin(a) * d, yaw: Math.atan2(-Math.cos(a), -Math.sin(a)), s: 0.95 + rnd() * 0.15, ph: rnd() * 6.28, rise: 0.6 + rnd() * 0.8 });
+      soulData.push({ tier: t, x: x + Math.cos(a) * d, y: y + t * TIER_H, z: z + Math.sin(a) * d, yaw: Math.atan2(-Math.cos(a), -Math.sin(a)), s: 0.95 + rnd() * 0.15, ph: rnd() * 6.28, rise: 0.6 + rnd() * 0.8 });
     }
   // (el cuerpo y el brillo de ánima: world/soulLook.js)
   const souls = new THREE.InstancedMesh(soulGeometry('stand'), soulMaterial({ top: 1.78, tail: 0.95 }), soulData.length);
@@ -320,6 +320,10 @@ export function buildCarcel(game, A) {
   // dónde va su origen
   const pins = new Float32Array(soulData.length * 3);
   const pinOn = new Uint8Array(soulData.length);
+  // las coloradas que protegen al Gil (world/Cerro.js, 2026-10-10): 1 colorada
+  // (se sacude en su celda), 2 suelta (sube y se apaga, como todas al final)
+  const mark = new Uint8Array(soulData.length);
+  const relT = new Float32Array(soulData.length);
   const sm = (x) => x * x * (3 - 2 * x);
   const update = (dt, t) => {
     SOUL_TIME.value = t;
@@ -358,7 +362,10 @@ export function buildCarcel(game, A) {
         continue;
       }
       // (cada una arranca un poquito después que la otra)
-      const f = freed ? Math.max(0, freeT - S.ph * 0.12) : 0;
+      const mk = freed ? 0 : mark[i];
+      if (mk === 2) relT[i] += dt;
+      const loose = freed || mk === 2;
+      const f = freed ? Math.max(0, freeT - S.ph * 0.12) : mk === 2 ? relT[i] * 1.6 : 0;
       const lift = f * f * 0.32 * S.rise + f * 0.4;
       const inward = Math.min(1, f / 3) * 0.45;
       const spin = f * 0.35 * (S.ph > 3.14 ? 1 : -1);
@@ -367,17 +374,23 @@ export function buildCarcel(game, A) {
       const px = x + (dx * Math.cos(spin) - dz * Math.sin(spin)) * (1 - inward);
       const pz = z + (dx * Math.sin(spin) + dz * Math.cos(spin)) * (1 - inward);
       // se sacuden contra los barrotes; sueltas, suben y se apagan
-      const shake = freed ? 0 : Math.max(0, Math.sin(t * 0.7 + S.ph * 3)) * 0.05;
+      const shake = loose ? 0 : mk === 1 ? 0.07 : Math.max(0, Math.sin(t * 0.7 + S.ph * 3)) * 0.05;
       p.set(px + Math.sin(t * 17 + S.ph) * shake, S.y + Math.sin(t * 1.3 + S.ph) * 0.04 + lift, pz + Math.cos(t * 13 + S.ph) * shake);
       e.set(Math.sin(t * 0.9 + S.ph) * 0.05 - Math.min(1, f) * 0.5, S.yaw + spin, Math.sin(t * 0.7 + S.ph) * 0.05);
       s3.setScalar(S.s * (1 + Math.min(1, f) * 0.25));
       m.compose(p, q.setFromEuler(e), s3);
       souls.setMatrixAt(i, m);
       // (se prenden al soltarse y se apagan en el último tramo)
-      const out = freed ? Math.max(0, 1 - Math.max(0, f - FREE_T * 0.55) / (FREE_T * 0.4)) : 1;
-      const glow = (0.85 + Math.sin(t * 2.3 + S.ph) * 0.15) * (freed ? out * (1 + Math.min(1, f * 2) * 0.9) : 1);
-      souls.setColorAt(i, c.setScalar(glow));
-      if (freed && out > 0.05 && Math.random() < dt * 7) g.fx.add.spawn(p.x, p.y + 1, p.z, (Math.random() - 0.5) * 0.4, -0.3 - Math.random() * 0.4, (Math.random() - 0.5) * 0.4, { color: [0.35, 0.65, 1], size: 0.2, size1: 0.02, life: 1.4, gravity: 0 });
+      const out = loose ? Math.max(0, 1 - Math.max(0, f - FREE_T * 0.55) / (FREE_T * 0.4)) : 1;
+      const glow = (0.85 + Math.sin(t * 2.3 + S.ph) * 0.15) * (loose ? out * (1 + Math.min(1, f * 2) * 0.9) : 1);
+      // (la colorada: más prendida y con el verde de más, world/soulLook.js;
+      // al soltarse vuelve a su color en un segundo)
+      if (mk === 1) c.setRGB(glow * 1.7, glow * 1.7 + 1, 0);
+      else if (mk === 2) c.setRGB(glow, glow + Math.max(0, 1 - relT[i]), 0);
+      else c.setScalar(glow);
+      souls.setColorAt(i, c);
+      if (mk === 1 && Math.random() < dt * 9) g.fx.add.spawn(p.x + (Math.random() - 0.5) * 0.5, p.y + 0.3 + Math.random() * 1.5, p.z + (Math.random() - 0.5) * 0.5, 0, 0.5 + Math.random() * 0.6, 0, { color: [1, 0.16, 0.1], size: 0.16, size1: 0.02, life: 1.1, gravity: 0 });
+      if (loose && out > 0.05 && Math.random() < dt * 7) g.fx.add.spawn(p.x, p.y + 1, p.z, (Math.random() - 0.5) * 0.4, -0.3 - Math.random() * 0.4, (Math.random() - 0.5) * 0.4, { color: [0.35, 0.65, 1], size: 0.2, size1: 0.02, life: 1.4, gravity: 0 });
     }
     souls.instanceMatrix.needsUpdate = true;
     if (souls.instanceColor) souls.instanceColor.needsUpdate = true;
@@ -412,6 +425,16 @@ export function buildCarcel(game, A) {
       grab = null;
       grabT = 0;
       pinOn.fill(0);
+      mark.fill(0);
+      relT.fill(0);
+    },
+    // las del piso de abajo, las que se alcanzan desde el redondel (a: su
+    // ángulo alrededor del centro)
+    ground: soulData.map((S, i) => ({ i, tier: S.tier, x: S.x, y: S.y, z: S.z, a: Math.atan2(S.z - z, S.x - x) })).filter((S) => S.tier === 0),
+    // El alma i: 1 colorada, 2 suelta, 0 como las demás.
+    mark(i, v) {
+      mark[i] = v;
+      relT[i] = 0;
     },
     // El alma i va a (x, y, z) (su origen: los pies de la cola) en vez de dar vueltas.
     pin(i, x, y, z) {

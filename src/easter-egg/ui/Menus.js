@@ -187,6 +187,7 @@ export default class Menus {
          <div class="mdu-custom__col">
          <p class="mdu-small mdu-custom__head">Voces y efectos</p>
          <label class="mdu-field">Voces <select data-set="voiceMode"><option value="auto">Automática</option><option value="murmur">Murmullos</option><option value="off">Solo subtítulos</option></select></label>
+         <label class="mdu-field" title="En 0 los murmullos suenan como siempre. Hasta la mitad se marcan más las consonantes. De la mitad para arriba, además, los que hablan rápido van más despacio y las voces llevan menos eco">Claridad de las voces <input type="range" min="0" max="1" step="0.1" data-set="voiceClarity"><output></output></label>
          <label class="mdu-field" title="Con poca vida se tapan los oídos (la respiración y el corazón suenan igual)">Oídos tapados al caer <input type="checkbox" data-set="muffleLow"></label>
          <label class="mdu-field" title="Abajo del agua todo se oye ahogado (las burbujas suenan igual)">Sonido bajo el agua <input type="checkbox" data-set="muffleWater"></label>
          <label class="mdu-field" title="Si pasás a otra ventana o pestaña, el juego se calla">Silenciar en segundo plano <input type="checkbox" data-set="muteBg"></label>
@@ -482,7 +483,7 @@ export default class Menus {
       }
       const k = input.dataset.set;
       const v = Number(input.value);
-      out.textContent = ['master', 'music', 'sfx', 'voice', 'volWeapons', 'volZombies', 'volWorld', 'volPlayer', 'volUi', 'reverb', 'shake', 'subSize', 'adsSens', 'sharp', 'fsrPct'].includes(k) ? `${Math.round(v * 100)}%` : k === 'fov' ? `${v}°` : v.toFixed(2);
+      out.textContent = ['master', 'music', 'sfx', 'voice', 'voiceClarity', 'volWeapons', 'volZombies', 'volWorld', 'volPlayer', 'volUi', 'reverb', 'shake', 'subSize', 'adsSens', 'sharp', 'fsrPct'].includes(k) ? `${Math.round(v * 100)}%` : k === 'fov' ? `${v}°` : v.toFixed(2);
     });
   }
 
@@ -638,7 +639,8 @@ export default class Menus {
     // el usuario, 2026-10-06. Por código largo, "manual", no hay)
     const room = s.querySelector('[data-room]');
     // (también si el anfitrión quedó solo: justo cuando se le cayó el amigo)
-    const code = this.g.net?.code || null;
+    // (el código lo tiene la conexión, net/Net.js: con g.net.code no salía nunca)
+    const code = this.g.net?.net?.code || null;
     room.textContent = code ? `Código de la sala: ${code}` : '';
     room.hidden = !code;
     btn('resume').hidden = mode === 'hostPaused';
@@ -695,7 +697,12 @@ export default class Menus {
     // el fast restart queda para cuando te matan)
     btn('restart').hidden = won || role === 'guest' || lost;
     btn('restart').textContent = role === 'host' ? 'Fast restart (todos)' : 'Fast restart';
-    btn('endMenu').hidden = !won;
+    // (2026-10-11, el usuario: en la derrota, "volver al menú" y no "salir a la
+    // tienda". Jugando solo va el de volver al menú; en línea ya está el de la
+    // sala, que vuelve al menú. El de la tienda queda en el menú del juego y,
+    // al ganar, como estaba)
+    btn('endMenu').hidden = !(won || role === 'solo');
+    btn('exit').hidden = !won;
     btn('leaveRoom').hidden = role === 'solo' || won;
     btn('leaveRoom').textContent = role === 'host' ? 'Cerrar la sala' : lost ? 'Volver al título' : 'Salir de la sala';
     wait.hidden = role !== 'guest' || lost || won;

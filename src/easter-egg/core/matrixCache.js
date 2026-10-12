@@ -101,7 +101,16 @@ function cached(force) {
     this.matrixWorldNeedsUpdate = true;
   }
   // (la raíz movida ya quedó marcada arriba por updateMatrix)
-  if (this.mcFrozen === true && !force && !this.matrixWorldNeedsUpdate) return;
+  // (mcDirty: algo de adentro de un congelado cambió —un muñeco fuera de cámara
+  // al que mueve un clip, net/gauchoSkin poseCineClip—: se rehace entero una
+  // vez. No alcanza con matrixWorldNeedsUpdate: un getWorldPosition de un hijo
+  // rehace los padres y se la apaga antes de que llegue el dibujo)
+  if (this.mcFrozen === true) {
+    if (this.mcDirty === true) {
+      this.mcDirty = false;
+      this.matrixWorldNeedsUpdate = true;
+    } else if (!force && !this.matrixWorldNeedsUpdate) return;
+  }
   if (this.matrixWorldNeedsUpdate || force) {
     if (this.matrixWorldAutoUpdate === true) {
       if (this.parent === null) this.matrixWorld.copy(this.matrix);

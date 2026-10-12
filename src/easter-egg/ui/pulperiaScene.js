@@ -978,9 +978,13 @@ export default class PulperiaScene {
       const fl = 0.85 + Math.sin(t * 17 + O.i * 3) * 0.08 + Math.sin(t * 29 + O.i) * 0.07;
       const k = O.k * fl;
       O.fireMat.color.setRGB(0.12 + k * 2.2, 0.05 + k * 1.1, 0.03 + k * 0.35);
-      O.light.intensity = Math.max(0, (O.k - 0.08) * 7 * fl);
+      // (con la puerta cerrada las llamitas asomaban a través de la chapa y la
+      // luz, que está afuera, la alumbraba de frente: el fuego se veía por la
+      // tapa. Ahora siguen a la puerta. El usuario, 2026-10-10)
+      const open = clamp(-O.door.rotation.y / 1.2);
+      O.light.intensity = Math.max(0, (O.k - 0.08) * 7 * fl) * (0.18 + 0.82 * open);
       O.fl.forEach((sp, j) => {
-        sp.material.opacity = clamp((O.k - 0.12) * 1.2) * (0.7 + Math.sin(t * 13 + j * 2) * 0.3);
+        sp.material.opacity = clamp((O.k - 0.12) * 1.2) * (0.7 + Math.sin(t * 13 + j * 2) * 0.3) * open;
         sp.scale.set(0.1, 0.16 + 0.08 * Math.sin(t * 11 + j * 1.7) + O.k * 0.06, 1);
       });
       // humo de la chimenea mientras está prendido

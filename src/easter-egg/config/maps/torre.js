@@ -159,13 +159,15 @@ const BASE_PERKS = [
   { perk: 'doubletap', ...W(33, 7) },
   { perk: 'phd', ...S(26, 10) },
   { perk: 'mule', ...N(26, 12) },
-  { perk: 'deadshot', ...E(26, 13) },
   // Stamin-Up (la Trotadora), en el 8 (entre el 7 y el 10 no había ninguno)
   { perk: 'stamin', ...N(33, 8) },
 ];
 // y en la historia, dos más: el Chisporé (Electric Cherry) en los Calabozos
 // Altos (el penal también subió) y la Extremaunión (Dying Wish) en la Capilla
-export const PERK_SPOTS = [...BASE_PERKS, { perk: 'cherry', ...N(33, 11) }, { perk: 'wish', ...S(33, 13) }];
+// (2026-10-10, el usuario: un perk por piso como mucho. El Deadshot estaba en
+// la Capilla, con la Extremaunión: en la historia sube al 14; en el Challenge
+// se queda en el 13, que ahí la Extremaunión está en el 9)
+export const PERK_SPOTS = [...BASE_PERKS, { perk: 'cherry', ...N(33, 11) }, { perk: 'wish', ...S(33, 13) }, { perk: 'deadshot', ...N(33, 14) }];
 
 // La llave de la luz de la torre, en la Plaza de las Ánimas.
 export const POWER = E(33, 5);
@@ -558,16 +560,13 @@ const RADIOS = [
     ],
   },
 ];
-const SHIELD_PARTS = [
-  { id: 'tapa', name: 'Tapa de pava', pos: [37.6, yOf(6) + 0.03, 38.4], zone: 'P6' },
-  { id: 'cuero', name: 'Cuero de potro', pos: [22.4, yOf(8) + 0.03, 38.6], zone: 'P8' },
-  { id: 'correa', name: 'Correa de rebenque', pos: [38.4, yOf(11) + 0.03, 22.2], zone: 'P11' },
-];
+// (2026-10-10, el usuario: el escudo de la torre no tiene piezas: está armado
+// en la mesa del piso 10 y se agarra gratis. world/Activities.js buildShield)
 export const ACT = {
   jars: JARS,
   traps: [],
   radios: RADIOS,
-  parts: SHIELD_PARTS,
+  parts: [],
   bench: { pos: [19.3, 33.5], rot: Math.PI / 2, y: yOf(10) },
   shield: { name: 'Escudo de Tapa de Pava', hp: 1100, where: 'la mesa del Patio del Sello (piso 10)', plan: 'ESCUDO: tapa + cuero + correa', up: { name: 'Escudo de la Pava Silbadora', hp: 1750, prop: 'steam', kind: 'pava', pos: [40.23, 20.73], y: yOf(9), rot: Math.PI / 2, need: 3, secs: 9 } },
   radioAch: ['Oyente del Remolino', 'Escuchaste las tres transmisiones de la torre'],
@@ -582,7 +581,16 @@ export const TITLE_CAM = { at: [46, 8, 8], amp: [3, 1.5], look: [30, 34, 30], lo
 // tower: la torre de pisos apilados (world/Tower.js). levels: los zombies
 // usan las alturas de verdad. Los bichos especiales de todos los mapas
 // salen mezclados en las rondas (special/boss 'mixed', entities/Rounds.js).
-export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: 'mixed', boss: 'mixed', egg: 'revelaciones', tower: true, levels: true, vida: false };
+// (2026-10-10, el usuario: los minijefes recién desde la ronda 7, más
+// espaciados y por turno, el Cuervo primero. En la historia el Cuervo viene
+// con la Noche del Remolino (rondas 7, 14, 21...: entities/towerNoche.js) y
+// los de a pie entre medio (11, 18, 25...: bossFrom, bossEvery), una vez el
+// Capataz y otra el Alcaide. Antes: 5, 10, 15... al azar y, desde la 15, uno
+// de a pie con el Cuervo, además del de la Noche: el Cuervo venía casi siempre.
+// Y la caja (boxTune, config/weapons.js boxWeight): los fuertes, el 40,4% (como
+// estaba: el usuario lo volvió a bajar), el Mark III el 5% (salía el 1,5%) y la
+// pava silbadora el 2% (era el 3,8%). En el Challenge, lo mismo.)
+export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: 'mixed', boss: 'mixed', egg: 'revelaciones', tower: true, levels: true, vida: false, bossFrom: 11, bossEvery: 7, boxTune: { strong: 1.033, set: { mk3: 6.75, pava: 2.7 } } };
 export const TEXT = {
   soul: (many) => `El remolino se llevó ${many ? 'sus almas' : 'tu alma'}.`,
   won: (team, r) => `${team ? 'Vencieron' : 'Venciste'} a Francisco en la ronda ${r}. El Chiquitijuein se acerca...`,
@@ -614,7 +622,7 @@ export function challenge() {
     // los perks de los otros mapas, repartidos a lo alto (Electric Cherry del
     // penal, el Acuanauta del estero, el Aliento Dragónico del castillo) y el
     // Dying Wish, que es de acá (entre el piso 6 y el 12), y el Maizaster de La Tapera
-    PERK_SPOTS: [...BASE_PERKS, { perk: 'cherry', ...W(26, 2) }, { perk: 'aqua', ...E(26, 4) }, { perk: 'wish', ...S(33, 9) }, { perk: 'dragon', ...N(33, 14) }, { perk: 'maiz', ...S(33, 6) }],
+    PERK_SPOTS: [...BASE_PERKS, { perk: 'deadshot', ...E(26, 13) }, { perk: 'cherry', ...W(26, 2) }, { perk: 'aqua', ...E(26, 4) }, { perk: 'wish', ...S(33, 9) }, { perk: 'dragon', ...N(33, 14) }, { perk: 'maiz', ...S(33, 6) }],
     // (lo de la historia no va: el Mark III se compra en la pared de la cima
     // y todos los escombros se pagan)
     WALL_BUYS: [...WALL_BUYS, MK3_WALL],
@@ -632,7 +640,10 @@ export function challenge() {
     // la caja de su mapa: el usuario, 2026-10-08)
     // (y los potenciadores: balas infinitas y botas; en lugar del Admin Mate,
     // el especial de cualquier mapa: entities/Powerups.js)
-    FEATURES: { ...FEATURES, egg: 'reto', boxAll: { skip: ['gut', 'caotico', 'llamarada'] }, pups: ['infinito', 'botas'], anySpecial: true },
+    FEATURES: { ...FEATURES, egg: 'reto', boxTune: { strong: 0.923, set: { mk3: 8.17, pava: 3.27 } }, boxAll: { skip: ['gut', 'caotico', 'llamarada'] }, pups: ['infinito', 'botas'], anySpecial: true, ammoBag: 2, bossAmmo: true },
+    // (ammoBag: copias de más de la munición máxima en la bolsa de potenciadores: 3 de cada 11 en vez
+    // de 1 de cada 9. bossAmmo: el minijefe que cae suelta siempre munición máxima. entities/Powerups.js.
+    // El usuario, 2026-10-12)
     EE: {
       // (towerDecor deja libres los dos lugares)
       altar,

@@ -157,7 +157,16 @@ export function liveBone(S, d) {
 }
 
 // Con los huesos ya puestos: la mandíbula, los párpados y el poncho.
+// Los gauchos vivos de la escena (net/gauchoSkin ponchoArms: las manos de los otros).
+export const liveSet = () => live;
+
 export function liveAfter(G, S) {
+  // (el poncho contra los brazos: net/gauchoSkin ponchoArms, al dibujarlo.
+  // APAGADO por defecto: comparado en el juego, 2026-10-11, donde el antebrazo
+  // sale por el frente del poncho —el Miedoso rezando— deja un borde dentado
+  // de tela sobre la manga, peor que sin nada. globalThis.__mduPonchoBrazos =
+  // true lo prende para seguir probando)
+  G.armOn = globalThis.__mduPonchoBrazos === true;
   if (G.jawU) G.jawU.value = S.jaw * JAW_MAX;
   if (G.lidU) G.lidU.value = S.lid;
   // el poncho: un resorte contra lo que acelera el pecho (en el mundo), pasado
@@ -195,5 +204,7 @@ export function liveRest(G) {
   if (G.jawU) G.jawU.value = 0;
   if (G.lidU) G.lidU.value = 0;
   if (G.swayU) G.swayU.value.set(0, 0, 0);
+  G.armOn = false;
+  G.armRU?.value.set(0, 0, 0, 0);
   live.delete(G);
 }

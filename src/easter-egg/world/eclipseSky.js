@@ -169,7 +169,7 @@ const FRAG = /* glsl */ `
   uniform float uTime, uCloud, uFlash, uBlood, uFogAmt, uDay;
   uniform vec3 uFogColor, uSun, uHorizon, uZenith, uGlow;
   uniform vec3 uE, uEU, uEV;
-  uniform float uK, uPulse, uCrack, uQ, uDark, uNight, uDim, uSunSoft;
+  uniform float uK, uPulse, uCrack, uQ, uDark, uNight, uDim, uSunSoft, uDimOld, uNebOn;
   // la pelea: cuánto dura el choque (1 → 0), hacia dónde se lanza la sombra y el ángulo del rayo
   uniform float uClash, uClashA;
   uniform vec2 uClashD;
@@ -220,10 +220,112 @@ const FRAG = /* glsl */ `
     return mix(c, n, uNight);
   }
 
+  // La nebulosa de la noche del eclipse (2026-10-11, el usuario: el cielo del
+  // mapa "se ve sin profundidad ni movimiento"; era negro con estrellas quietas
+  // y las grietas. La primera versión —dos ruidos girando— le pareció "medio
+  // básica"). Ahora el eclipse se traga el cielo: un remolino alrededor de él,
+  // detrás de las grietas (que quedan quietas, como un vidrio roto adelante).
+  //  · Las cuentas van en log-polar alrededor del eclipse (el logaritmo del
+  //    ángulo hasta él, y la vuelta): ahí una espiral es una recta y "caer
+  //    hacia el eclipse" es correrse de costado, sin que nada se enrosque con
+  //    el tiempo. El ruido es periódico en la vuelta (fbmP): no hay costura.
+  //  · Dos brazos en espiral que giran despacio; entre ellos, cielo negro.
+  //  · Lejos, corrientes anchas de gas; más cerca, filamentos finos estirados
+  //    a lo largo de los brazos, que caen más rápido: el paralaje da el fondo.
+  //  · El color lo da la distancia al eclipse: oro contra la corona, rosa,
+  //    violeta y, lejos, azul; algún canto turquesa. Canales de polvo oscuro.
+  //  · Pulsos de luz que salen del eclipse y van prendiendo los filamentos.
+  //  · Chispas que corren por los brazos hacia el eclipse (se las traga).
+  // Devuelve el color y cuánto tapa (las estrellas de atrás se apagan ahí).
+  // th: el ángulo desde el eclipse; psi: alrededor de él.
+  float vnP(vec2 p, float per) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float y0 = mod(i.y, per);
+    float y1 = mod(i.y + 1.0, per);
+    return mix(mix(h2(vec2(i.x, y0)), h2(vec2(i.x + 1.0, y0)), f.x), mix(h2(vec2(i.x, y1)), h2(vec2(i.x + 1.0, y1)), f.x), f.y);
+  }
+  // (cada octava al doble justo: sigue siendo periódico)
+  float fbmP(vec2 p, float per, float fw, int oct) {
+    float s = 0.0, a = 0.5, n = 0.0, f = 1.0;
+    for (int i = 0; i < 4; i++) {
+      if (i >= oct) break;
+      float lod = 1.0 - smoothstep(0.25, 0.7, fw * f);
+      s += a * mix(0.5, vnP(p * f + vec2(float(i) * 17.3, 0.0), per * f), lod);
+      n += a;
+      f *= 2.0;
+      a *= 0.5;
+    }
+    return s / n;
+  }
+  vec4 nightNebula(float th, float psi, float px, int oct) {
+    float t = uTime;
+    int o4 = oct > 4 ? 4 : oct;
+    float r = max(th, 0.05);
+    float lr = log(r);
+    float kS = 6.0 / TAU;
+    // (lo que mide un píxel acá: cerca del eclipse todo se aprieta)
+    float fw = px / r * 2.2;
+    // la espiral: s constante es un brazo; gira entera, despacio
+    float s1 = psi + 1.5 * lr + t * 0.012;
+    // lejos: corrientes anchas, que caen despacio
+    float n1 = fbmP(vec2(lr * 0.9 + t * 0.012 + 3.7, s1 * kS), 6.0, fw, o4);
+    // más cerca: filamentos finos a lo largo de los brazos; giran y caen más rápido
+    float s2 = psi + 1.5 * lr + t * 0.021;
+    float n2 = fbmP(vec2(lr * 2.5 + t * 0.075 + 11.3 + (n1 - 0.5) * 0.8, s2 * kS * 3.0 + (n1 - 0.5) * 1.6), 18.0, fw * 2.2, o4);
+    // los dos brazos (el gas los deforma) y, entre ellos, casi nada
+    float arm = smoothstep(0.2, 0.85, 0.5 + 0.5 * cos(2.0 * s1 + (n1 - 0.5) * 3.2));
+    float veil = smoothstep(0.38, 0.82, n1) * (0.22 + 0.78 * arm);
+    float rid = 1.0 - abs(2.0 * n2 - 1.0);
+    float fil = smoothstep(0.6, 1.0, rid);
+    fil = fil * fil * (0.16 + 0.84 * arm);
+    float knot = pow(smoothstep(0.66, 0.95, n2), 3.0) * arm;
+    float lane = smoothstep(0.44, 0.2, n2) * veil;
+    // el color, por la distancia al eclipse (y el gas la corre un poco)
+    float cr = th + (n1 - 0.5) * 0.5;
+    vec3 tint = mix(vec3(1.0, 0.52, 0.14), vec3(0.95, 0.2, 0.45), smoothstep(0.12, 0.42, cr));
+    tint = mix(tint, vec3(0.42, 0.14, 0.95), smoothstep(0.35, 0.85, cr));
+    tint = mix(tint, vec3(0.08, 0.2, 0.75), smoothstep(0.8, 1.5, cr));
+    tint = mix(tint, vec3(0.05, 0.5, 0.55), smoothstep(0.55, 0.9, n2) * 0.25);
+    // más prendida cerca del eclipse; y los pulsos que salen de él
+    float fall = 0.2 + 0.36 * exp(-th * 1.5);
+    float pulse = 0.5 + 0.5 * sin(lr * 5.0 - t * 0.7 + n1 * 3.0);
+    pulse = 1.0 + 0.5 * pulse * pulse * pulse * pulse;
+    vec3 c = tint * (veil * 0.085 + fil * 0.27 * pulse + knot * 0.22 * pulse) * fall;
+    c *= 1.0 - lane * 0.8;
+    // las chispas que se traga: puntos que corren por los brazos hacia el eclipse
+    vec2 ps = vec2(lr * 6.0 + t * 0.5, s1 * kS * 4.0);
+    vec2 ci = floor(ps);
+    ci.y = mod(ci.y, 24.0);
+    float hh = h2(ci + 91.0);
+    if (hh > 0.8) {
+      vec2 cf = fract(ps) - vec2(h2(ci + 13.0), h2(ci + 29.0)) * 0.6 - 0.2;
+      // (en ángulo de cielo; estiradas hacia donde caen)
+      float ds = length(vec2(cf.x * r / 6.0 * 0.45, cf.y * r * 0.2618));
+      float re = max(0.0016, px * 0.8);
+      float sp = exp(-ds * ds / (re * re)) * (hh - 0.8) * 5.0;
+      c += mix(vec3(1.0, 0.8, 0.5), tint + 0.25, 0.4) * sp * (0.25 + 0.75 * arm) * smoothstep(0.1, 0.22, th) * 0.9;
+    }
+    // (contra el disco no: ahí manda la corona)
+    float inK = smoothstep(0.06, 0.16, th);
+    return vec4(c * inK, clamp(veil * 0.5 + fil * 0.4 + lane * 0.7, 0.0, 1.0) * inK);
+  }
+
   // La Disformidad (la isla del Pack-a-Pava es otra dimensión): un cielo de
   // nebulosa oscura y violeta que se revuelve, con ojos que se abren y cierran;
   // sin grietas ni eclipse. uDim: cuánto de ella (la atmósfera lo pone por isla).
-  vec3 dimSky(vec3 d, float px, int oct) {
+  // (2026-10-10, el usuario: "se ve sin profundidad ni movimiento". Eran dos
+  // ruidos en un mismo plano que tardaban 40 s en correrse lo que mide una
+  // nube. Ahora, tres distancias que se mueven distinto —el paralaje es lo que
+  // da el fondo—: atrás, nubes grandes índigo que giran despacio (1 grado por
+  // segundo); en el medio, las violetas, que van para el otro lado, más rápido,
+  // y se revuelven con las de atrás; adelante, jirones de polvo oscuro que
+  // pasan y tapan lo demás, con el canto apenas prendido. Las estrellas quedan
+  // atrás de todo: se ven en los claros y las nubes las tapan. Los nudos más
+  // vivos laten. Cuesta lo mismo: los dos ruidos fractales de antes y dos
+  // ruidos simples para el polvo. (uniform uDimOld > 0.5: la de antes)
+  vec3 dimSkyOld(vec3 d, float px, int oct) {
     float t = uTime;
     vec2 p = d.xz / (abs(d.y) + 0.35) * 1.6;
     float fw = px * 3.0;
@@ -231,6 +333,49 @@ const FRAG = /* glsl */ `
     float n2 = fbm(p * 2.3 - vec2(t * 0.03, 0.0) + n, fw * 2.5, oct);
     vec3 c = mix(vec3(0.008, 0.0, 0.018), vec3(0.14, 0.025, 0.28), smoothstep(0.35, 0.8, n));
     c += vec3(0.45, 0.1, 0.85) * pow(smoothstep(0.55, 0.95, n2), 3.0) * 0.6;
+    vec2 g = p * 3.0;
+    float e = h2(floor(g));
+    float blink = smoothstep(0.6, 0.9, sin(t * (0.4 + e) + e * 30.0));
+    float ed = length(fract(g) - 0.5);
+    c += vec3(1.0, 0.2, 0.9) * exp(-ed * 30.0) * blink * step(0.93, e) * 1.4;
+    c *= 0.4 + 0.6 * smoothstep(-0.6, 0.1, d.y);
+    return c;
+  }
+  vec3 dimSky(vec3 d, float px, int oct, vec3 stars) {
+    if (uDimOld > 0.5) return dimSkyOld(d, px, oct);
+    float t = uTime;
+    vec2 p = d.xz / (abs(d.y) + 0.35) * 1.6;
+    float fw = px * 3.0;
+    // atrás: nubes grandes, lejos; giran despacio alrededor del cenit
+    float ca = cos(t * 0.012);
+    float sa = sin(t * 0.012);
+    vec2 pf = vec2(ca * p.x - sa * p.y, sa * p.x + ca * p.y);
+    float n = fbm(pf * 0.8 + vec2(t * 0.014, -t * 0.009), fw, oct);
+    // en el medio: más chicas; giran para el otro lado, van más rápido y las
+    // de atrás las revuelven (y ese revoltijo también cambia con el tiempo)
+    vec2 pm = vec2(ca * p.x + sa * p.y, -sa * p.x + ca * p.y);
+    float n2 = fbm(pm * 2.1 + vec2(-t * 0.085, t * 0.045) + (n - 0.5) * 1.7 + vec2(0.0, sin(t * 0.13 + n * 6.0) * 0.12), fw * 2.5, oct);
+    // adelante: jirones de polvo oscuro que pasan
+    vec2 pd = p * 1.25 + vec2(t * 0.08, t * 0.043);
+    float dust = vn(pd) * 0.62 + vn(pd * 2.3 + 7.1 - n2) * 0.38;
+    float lane = smoothstep(0.5, 0.72, dust);
+    float far = smoothstep(0.32, 0.78, n);
+    float mid = smoothstep(0.42, 0.86, n2);
+    float core = pow(smoothstep(0.6, 0.97, n2), 3.0);
+    // el fondo, índigo; un resplandor más azul donde es más denso
+    vec3 c = mix(vec3(0.006, 0.0, 0.016), vec3(0.075, 0.02, 0.2), far);
+    c += vec3(0.02, 0.03, 0.1) * smoothstep(0.55, 0.9, n);
+    // las estrellas, atrás de todo: en los claros
+    c += stars * (1.0 - far * 0.8) * (1.0 - mid) * 1.2;
+    // el medio, violeta; más prendido delante de lo denso de atrás
+    c += vec3(0.2, 0.04, 0.4) * mid * (0.35 + 0.65 * far);
+    // los nudos, que laten (cada uno a su tiempo), y lo más vivo casi rosa
+    float beat = 0.8 + 0.2 * sin(t * 0.6 + n * 9.0);
+    c += vec3(0.55, 0.13, 0.95) * core * 0.7 * beat;
+    c += vec3(1.0, 0.55, 0.9) * core * core * core * 0.45;
+    // el polvo de adelante lo tapa; su canto, apenas prendido por lo de atrás
+    float rim = smoothstep(0.4, 0.5, dust) * (1.0 - lane);
+    c = c * (1.0 - lane * 0.86) + vec3(0.14, 0.045, 0.28) * rim * mid * 0.6;
     vec2 g = p * 3.0;
     float e = h2(floor(g));
     float blink = smoothstep(0.6, 0.9, sin(t * (0.4 + e) + e * 30.0));
@@ -650,12 +795,31 @@ const FRAG = /* glsl */ `
       vec3 haze = nightSky(secSky(wid, dh, uFc[wid], px, 2).rgb, 0.0) * uDark;
       col = voidSky(d, haze, pA, pB, pC, tB, fw, oct);
     }
-    if (stars > 0.002) col += starLayer(d, px) * stars;
+    // la nebulosa de la noche, atrás de las grietas (no en la Disformidad, que tiene la suya)
+    float nebK = uNebOn * uNight * (1.0 - uDim) * smoothstep(-0.05, 0.15, d.y);
+    if (nebK > 0.002) {
+      vec4 nb = nightNebula(th, psi, px, oct) * nebK;
+      col += nb.rgb * uDark;
+      stars *= 1.0 - nb.a * 0.65;
+    }
+    // (las estrellas, una vez: también las usa la Disformidad, atrás de sus nubes)
+    vec3 sl = vec3(0.0);
+    if (stars > 0.002 || uDim > 0.002) sl = starLayer(d, px);
+    if (stars > 0.002) {
+      col += sl * stars * (1.0 - 0.15 * uNebOn);
+      // (otra capa de estrellas, más cerca: gira despacio alrededor del eclipse
+      // —un cuarto de grado por segundo— delante de las quietas)
+      if (uNebOn > 0.5) {
+        float sa = 1.3 + uTime * 0.0045;
+        vec3 dr = d * cos(sa) + cross(uE, d) * sin(sa) + uE * dot(uE, d) * (1.0 - cos(sa));
+        col += starLayer(dr, px) * stars * 0.5;
+      }
+    }
     // las grietas: núcleo blanco violáceo (con brillo) y el resplandor violeta
     col += vec3(1.3, 1.05, 1.9) * crack * uCrack * 1.25 + vec3(0.42, 0.13, 0.8) * glow * uCrack;
     // el eclipse
     if (th < 0.75 && uDim < 0.999) col = eclipse(col, xe / max(x0, 0.2), px);
-    if (uDim > 0.002) col = mix(col, dimSky(d, px, oct), uDim);
+    if (uDim > 0.002) col = mix(col, dimSky(d, px, oct, sl), uDim);
     // relámpagos del clima, la luna roja (poco: los cielos son de cada isla) y la niebla
     col += uFlash * vec3(0.35, 0.4, 0.55) * 0.6 * smoothstep(-0.1, 0.3, d.y);
     col = mix(col, col * vec3(1.35, 0.7, 0.65), uBlood * 0.45);
@@ -749,6 +913,10 @@ export function buildEclipseSky(w) {
     uPulse: { value: 0 },
     uCrack: { value: 1 },
     uDark: { value: 1 },
+    // (la nebulosa de la Disformidad de antes: globalThis.__mduDimOld)
+    uDimOld: { value: globalThis.__mduDimOld === true ? 1 : 0 },
+    // (la nebulosa de la noche y la segunda capa de estrellas: globalThis.__mduNebOld las saca)
+    uNebOn: { value: globalThis.__mduNebOld === true ? 0 : 1 },
     uNight: { value: SKY_NIGHT() },
     uDim: { value: 0 },
     // el sol de La Tapera, más suave (globalThis.__mduOldTaperaSun: como antes)

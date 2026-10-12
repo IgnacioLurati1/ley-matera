@@ -504,7 +504,7 @@ export const ACT = {
 // levels: pisos a distintas alturas. vida: el modo gaucho life (se arranca así
 // y la electricidad prende las máquinas). No hay ronda especial: el alcaide
 // aparece de vez en cuando entre los muertos, como un Brutus porteño.
-export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: null, boss: 'alcaide', egg: 'gauchos', penal: true, levels: true, vida: true };
+export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: null, boss: 'alcaide', egg: 'gauchos', penal: true, levels: true, vida: true, boxSkip: ['pava'] };
 export const TEXT = {
   soul: (many) => `El penal se quedó con ${many ? 'sus almas' : 'tu alma'}.`,
   won: (team, r) => `${team ? 'Vencieron' : 'Venciste'} al Gauchito Gil en la ronda ${r}. Las almas del penal son libres... por ahora.`,

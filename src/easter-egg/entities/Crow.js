@@ -538,7 +538,7 @@ export default class Crow {
     g.hud.setBossBar(null);
     g.fx.explosion(tmpV.set(z.pos.x, z.pos.y, z.pos.z), 2.5, [0.15, 0.1, 0.2]);
     const at = new THREE.Vector3(z.pos.x, g.world.tower ? g.world.floorAt(z.pos.x, z.pos.z, z.pos.y) : 0, z.pos.z);
-    g.later(1.2, () => g.powerups.drop(at, true));
+    g.later(1.2, () => g.powerups.drop(at, true, g.powerups.bossType()));
     g.ee?.onCrowDead?.(at);
   }
 

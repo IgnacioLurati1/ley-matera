@@ -892,7 +892,10 @@ export default class TowerChallenge {
     R.capBonus = 6 + (players - 1) * 2;
     // (2026-09-27: especiales y minijefes recién desde la 5, pedido del usuario)
     R.specials = n >= 5 ? Math.floor((1 + n / 3) * (1 + (players - 1) * 0.5)) : 0;
-    R.bossPending = n >= 5 && (n % 2 === 1 || n >= 11);
+    // (2026-10-10, el usuario: minijefes recién desde la 7 y más espaciados:
+    // cada 3 rondas, de a uno y por turno, Rounds.mixedBoss. Antes: 5, 7, 9 y
+    // desde la 11 en todas, con el Cuervo. __mduMixedAzar: como antes)
+    R.bossPending = globalThis.__mduMixedAzar === true ? n >= 5 && (n % 2 === 1 || n >= 11) : n >= 7 && (n - 7) % 3 === 0;
     R.bothFrom = 11;
     this.ev.tuneRound(R);
     // con los guardianes del cielo en pie, ni el jefe de la ronda ni la noche de minijefes

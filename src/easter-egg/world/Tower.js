@@ -44,6 +44,17 @@ const ARCH_TOP = 2.95;
 const LIGHTS = 8;
 const LIGHT_IN = 0.55;
 const LIGHT_OUT = 0.4;
+// Cada farol (2026-10-10, el usuario: "las luces no iluminan hasta que te pegás
+// a ellas" y los de la escalera encandilan): `dist` y `decay`, hasta dónde
+// llega y cuánto cae con la distancia; `base` y `top`, la fuerza (la cima);
+// `floor`, cuánto pesa que el farol sea de otro piso al repartir las luces
+// (antes 160 por piso: se las llevaban los faroles de arriba y de abajo y el
+// otro lado del piso quedaba negro). Antes: 16 m, 1,7, 26 y 30: de cerca encandilaba y
+// a 7 m ya no alumbraba. (__mduTorreLuzVieja: como antes)
+// `k`: los pisos de baldosa clara (la plaza del 5, el patio del 10 y la
+// enfermería del 12) devuelven mucha luz: ahí los faroles van más bajos.
+const LAMP = { dist: 26, decay: 1.2, base: 13, top: 15, floor: 600, k: { 5: 0.7, 10: 0.55, 12: 0.45 } };
+const LAMP_OLD = { dist: 16, decay: 1.7, base: 26, top: 30, floor: 160, k: {} };
 
 export default class Tower {
   constructor(world) {
@@ -888,11 +899,17 @@ export default class Tower {
       const n = l + 1;
       // el color de la luz, el de cada piso (towerDecor.FLOOR_TINTS)
       const color = FLOOR_TINTS[l] ?? 0xffb070;
+      // (del lado de la escalera que sube de este piso, el farol quedaba a la
+      // altura de la cara del que sube y encandilaba: va al pilar de la otra
+      // mitad de esa pared. El usuario, 2026-10-10. Lados: 0 norte, 1 este,
+      // 2 sur, 3 oeste. __mduTorreLuzVieja: como antes)
+      const stair = globalThis.__mduTorreLuzVieja === true ? -1 : (T.stairs.find((s) => s.n === n)?.side ?? -1);
+      const off = (side) => (stair === side ? -3.5 : 3.5);
       const pts = [
-        [T.x0 + 0.35, T.cz + 3.5, y],
-        [T.x1 + 0.65, T.cz - 3.5, y],
-        [T.cx - 3.5, T.z0 + 0.35, y],
-        [T.cx + 3.5, T.z1 + 0.65, y],
+        [T.x0 + 0.35, T.cz + off(3), y],
+        [T.x1 + 0.65, T.cz - off(1), y],
+        [T.cx - off(0), T.z0 + 0.35, y],
+        [T.cx + off(2), T.z1 + 0.65, y],
       ];
       // (el giro de cada brazo: de la pared hacia adentro)
       [0, Math.PI, -Math.PI / 2, Math.PI / 2].forEach((rot, k) => arms.push([pts[k][0] - Math.cos(rot) * 0.35, pts[k][2], pts[k][1] + Math.sin(rot) * 0.35, rot]));
@@ -932,10 +949,11 @@ export default class Tower {
     // las luces de verdad: cada una con su farol (`a`), cuánto está prendida
     // (`k`, 0 a 1), si se está yendo (`out`) y su fuerza (`base`)
     this.lightPool = [];
+    this.lamp = { ...(globalThis.__mduTorreLuzVieja === true ? LAMP_OLD : LAMP) };
     // (las que sobran en esta calidad nacen apagadas: la misma cuenta al cargar y al jugar)
     const nOn = Math.min(LIGHTS, w.maxLamps());
     for (let i = 0; i < LIGHTS; i++) {
-      const L = new THREE.PointLight(0xffb070, 0, 16, 1.7);
+      const L = new THREE.PointLight(0xffb070, 0, this.lamp.dist, this.lamp.decay);
       L.visible = i < nOn;
       L.userData = { a: null, k: 0, out: false, base: 0 };
       w.scene.add(L);
@@ -980,7 +998,9 @@ export default class Tower {
       const cy = cam.position.y;
       const held = new Set();
       for (const L of pool) if (L.userData.a) held.add(L.userData.a);
-      for (const a of this.anchors) a.d = (a.pos.distanceToSquared(cam.position) + Math.abs(a.pos.y - cy - 1.4) * 40) * (held.has(a) ? 0.6 : 1);
+      // (en qué piso está la cámara, con decimales: subiendo una escalera, entre dos)
+      const cf = (cy - 1.65) / this.T.fh;
+      for (const a of this.anchors) a.d = (a.pos.distanceToSquared(cam.position) + Math.abs(a.l - cf) * this.lamp.floor) * (held.has(a) ? 0.6 : 1);
       const want = new Set([...this.anchors].sort((p, q) => p.d - q.d).slice(0, n));
       // las que sobran se van apagando (y vuelven si las quieren de nuevo)
       for (const L of pool) L.userData.out = !!L.userData.a && !want.has(L.userData.a);
@@ -993,7 +1013,7 @@ export default class Tower {
         u.a = a;
         u.k = 0;
         u.out = false;
-        u.base = a.l === this.L - 1 ? 30 : 26;
+        u.base = (a.l === this.L - 1 ? this.lamp.top : this.lamp.base) * (this.lamp.k[a.l + 1] ?? 1);
         L.position.copy(a.pos);
         L.color.set(a.color);
       }

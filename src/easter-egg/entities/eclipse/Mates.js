@@ -19,7 +19,8 @@ const SPOTS = [
   { isla: 'penal', zone: 'pK', pos: [120.5, 336.5], name: 'los calabozos' },
   { isla: 'monumento', zone: 'mD', pos: [307.5, 247.5], name: 'la cripta de Belgrano' },
   { isla: 'torre', zone: 'tP13', pos: [238.5, 113.5], name: 'la Capilla Torcida' },
-  { isla: 'castillo', zone: 'kR', pos: [186.3, 49.3], name: 'la bodega' },
+  // (estaba en [186.3, 49.3], adentro de dos cajones: el usuario, 2026-10-10)
+  { isla: 'castillo', zone: 'kR', pos: [184.6, 49.3], name: 'la bodega' },
 ];
 const TOTAL = SPOTS.length;
 

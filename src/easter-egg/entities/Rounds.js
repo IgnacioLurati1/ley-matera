@@ -15,6 +15,9 @@ const FLOOD_RISE = 2.6;
 // Sistema de rondas de BO1: cuántos zombies, con cuánta vida, cada cuánto
 // aparecen, pausa entre rondas y el Capataz cada 5 rondas.
 
+// los minijefes de la torre, en el orden en que salen (mixedBoss)
+const MIXED = ['crow', 'capataz', 'alcaide'];
+
 export default class Rounds {
   constructor(game) {
     this.g = game;
@@ -25,6 +28,7 @@ export default class Rounds {
   start() {
     this.round = 0;
     this.lastBoss = 0;
+    this.mixedTurn = 0;
     this.flood = false;
     this.state = 'break';
     this.breakT = 3;
@@ -98,7 +102,7 @@ export default class Rounds {
     this.health = zombieHealth(this.round);
     this.delay = spawnDelay(this.round);
     this.spawnT = this.round === 1 ? 1 : 2.5;
-    this.bossPending = FEATURES.boss === 'alcaide' ? this.alcaideRound() : bossRound(this.round, FEATURES.bossFrom);
+    this.bossPending = FEATURES.boss === 'alcaide' ? this.alcaideRound() : bossRound(this.round, FEATURES.bossFrom, FEATURES.bossEvery);
     // (el cuerpo de verdad del minijefe se baja desde que empieza la ronda)
     if (this.bossPending) preloadBossSkin(this.g.zombies, FEATURES.boss === 'mixed' ? ['capataz', 'alcaide'] : FEATURES.boss);
     // el penal no tiene ronda especial (como Mob of the Dead); la torre los mezcla en cada ronda
@@ -162,10 +166,23 @@ export default class Rounds {
     if (g.net && !g.player.alive) g.player.respawn();
   }
 
-  // La torre: el Capataz, el Alcaide o el Cuervo; desde la ronda 15, un jefe
-  // de a pie y el Cuervo juntos.
+  // La torre: el Cuervo, el Capataz y el Alcaide, de a uno y por turno (el
+  // primero es siempre el Cuervo). En la historia el Cuervo ya viene con la
+  // Noche del Remolino (entities/towerNoche.js): acá se turnan los de a pie.
+  // Antes salían al azar y, desde la ronda 15, un jefe de a pie y el Cuervo
+  // juntos: el Cuervo venía en todas (el usuario, 2026-10-10; __mduMixedAzar:
+  // como antes).
   mixedBoss() {
     const g = this.g;
+    if (globalThis.__mduMixedAzar !== true) {
+      // (si al que le toca todavía anda por ahí, pasa el turno al que sigue)
+      const order = g.ee?.noche ? MIXED.slice(1) : MIXED;
+      for (let i = 0; i < order.length; i++) {
+        const kind = order[this.mixedTurn++ % order.length];
+        if (kind === 'crow' ? g.crow?.spawn(this.round) : !g.zombies.boss && g.zombies.spawnBoss(this.round, { kind })) return;
+      }
+      return;
+    }
     const both = this.round >= (this.bothFrom || 15);
     const ground = Math.random() < 0.5 ? 'capataz' : 'alcaide';
     const crow = both || Math.random() < 0.34;
@@ -261,7 +278,10 @@ export default class Rounds {
       this.bossPending = false;
     }
     const players = this.players || 1;
-    const cap = this.dogs ? 3 + players * 2 : hold ? Math.min(maxAlive(players), 16 + (players - 1) * 4) : maxAlive(players) + (this.capBonus || 0);
+    // (holdCap, holdPace, holdSpot: el mapa puede pedir otro tope, otro ritmo y
+    // de dónde salen mientras aguantan; el estero, en la creciente de las almas
+    // y con la luz en camino: EsterosEgg)
+    const cap = this.dogs ? 3 + players * 2 : hold ? g.ee.holdCap?.(players) ?? Math.min(maxAlive(players), 16 + (players - 1) * 4) : maxAlive(players) + (this.capBonus || 0);
     if (this.toSpawn > 0 && this.spawnT <= 0 && g.zombies.alive < cap) {
       // en la torre, cada tanto sale un especial en vez de un muerto
       const special = this.specials > 0 && !(this.specialT > 0) && Math.random() < Math.min(0.5, (this.specials * 1.4) / this.toSpawn);
@@ -281,9 +301,9 @@ export default class Rounds {
             this.specFail = 0;
           }
         }
-      } else if (this.dogs ? g.zombies.spawnDog(this.health) : g.zombies.spawn(this.round, this.health)) {
+      } else if (this.dogs ? g.zombies.spawnDog(this.health) : g.zombies.spawn(this.round, this.health, (hold && g.ee.holdSpot?.()) || null)) {
         this.toSpawn--;
-        this.spawnT = this.delay;
+        this.spawnT = this.delay * ((hold && g.ee.holdPace?.(players)) || 1);
       } else this.spawnT = 0.5;
     }
     if (this.bossPending && this.total - this.toSpawn >= this.total * 0.4) {

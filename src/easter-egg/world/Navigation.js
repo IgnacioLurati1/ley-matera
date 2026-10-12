@@ -6,6 +6,19 @@ import TowerNav from './TowerNav';
 const SOLVE_GAP = 110;
 // cuántas celdas como mucho recorre un cálculo en Eclipse (~ 45-60 m alrededor)
 const NAV_BUDGET = 6000;
+// Cuánto tiene que mejorar un camino para anotarlo (metros). Las distancias se
+// guardan en 32 bits y se comparaban contra la suma en 64: dos caminos igual de
+// largos daban números distintos en el último decimal, la celda volvía a la
+// cola y con ella todo lo que cuelga de ella. En tierra (costos 1 y raíz de 2)
+// casi no pasaba; con el agua (1,35 y 1,8) pasaba en todos lados: en la
+// creciente del estero, con el mapa entero bajo el agua, un cálculo sacaba
+// 223 000 celdas de la cola para 2 880 alcanzables (69 ms, 120 el peor, contra
+// 1 ms), la cola se llenaba y se tiraban anotaciones: el campo quedaba mal
+// (3 090 celdas sin camino) y los muertos no llegaban. El usuario, 2026-10-10,
+// de a 4: "durante la inundación, al anfitrión le fue como el orto, totalmente
+// injugable" (el anfitrión rehace un campo por jugador) y "no salían casi
+// zombies". globalThis.__mduNoNavEps: como antes.
+const NAV_EPS = 1e-3;
 
 // Campo de flujo: distancia (Dijkstra, 8 vecinos) desde la celda del jugador a
 // todas las celdas caminables. Todos los zombies lo comparten: cada uno solo
@@ -103,6 +116,7 @@ export default class Navigation {
     // Se corta en las NAV_BUDGET celdas más cercanas: los muertos aparecen
     // cerca; más lejos van derecho. globalThis.__mduNoNavBudget: como antes)
     const budget = FEATURES.eclipse && globalThis.__mduNoNavBudget !== true ? NAV_BUDGET : Infinity;
+    const eps = globalThis.__mduNoNavEps === true ? 0 : NAV_EPS;
     let popped = 0;
     while (heap.size) {
       // (sin armar un arreglo por celda: era basura de memoria en cada cálculo)
@@ -123,7 +137,7 @@ export default class Navigation {
         if (!this.edgeOpen(x, z, dx, dz)) continue;
         const ni = nz * W + nx;
         const nd = d + (cost ? c * cost[ni] : c);
-        if (nd < dist[ni]) {
+        if (nd < dist[ni] - eps) {
           dist[ni] = nd;
           heap.push(ni, nd);
         }
@@ -134,7 +148,7 @@ export default class Navigation {
       if (links) {
         for (const [ni, c] of links) {
           const nd = d + c;
-          if (nd < dist[ni]) {
+          if (nd < dist[ni] - eps) {
             dist[ni] = nd;
             heap.push(ni, nd);
           }

@@ -4,6 +4,7 @@ import Avatars from '../net/Avatars';
 import { buildVoz, updateVoz } from './voz';
 import { warmScene } from './cineWarm';
 import { PENAL_PEACE, PENAL_FROM } from '../core/music';
+import { shownChars } from '../core/voice';
 import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
 import { SIX, flareTexture } from '../weapons/supremoFx';
 import { arm, leg } from '../entities/zombieGaits';
@@ -535,7 +536,7 @@ export default class PenalCinematic {
     this.textEl.classList.add('is-on');
     this.el.classList.toggle('is-gil', who === 'gil');
     this.el.classList.toggle('is-anima', who === 'anacleto' || who === 'benito');
-    this.sub = { text, t0: this.t, rev: Math.max(0.5, cut ? d * 0.95 : Math.min(d * 0.85, text.length * 0.045)), k: -1 };
+    this.sub = { text, t0: this.t, rev: Math.max(0.5, cut ? d * 0.95 : Math.min(d * 0.85, text.length * 0.045)), marks: globalThis.__mduSubViejo === true ? null : this.g.audio.sayMarks, k: -1 };
     // (cortada: lo que sigue entra un pelito antes de que termine, así le
     // muerde la última sílaba en vez de dejar un silencio)
     return cut ? Math.max(0.5, d - 0.05) : d;
@@ -1470,7 +1471,7 @@ export default class PenalCinematic {
     // el subtítulo, letra por letra
     const sub = this.sub;
     if (sub) {
-      const k = Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
+      const k = sub.marks ? shownChars(sub.text, sub.marks, t - sub.t0) : Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
       if (k !== sub.k) {
         sub.k = k;
         this.span.textContent = sub.text.slice(0, k);

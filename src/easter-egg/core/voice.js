@@ -101,7 +101,8 @@ export function renderVoice(segs, P, rand = Math.random) {
     if ((idx & 31) === 0) {
       for (let i = 0; i < 4; i++) {
         F[i] += (Ft[i] - F[i]) * Math.min(1, kGlide * 32);
-        setRes(i, Math.min(RATE * 0.45, F[i]), BW[i] * (P.bwMul ?? 1));
+        // (bwK: los formantes de arriba, apagados: el murmullo de una m o una n)
+        setRes(i, Math.min(RATE * 0.45, F[i]), BW[i] * (P.bwMul ?? 1) * (i > 0 && !done && s.bwK ? s.bwK : 1));
       }
     }
     const ks = s.soft ?? 0.004;
@@ -148,6 +149,8 @@ export function renderVoice(segs, P, rand = Math.random) {
     const breath = (rand() * 2 - 1) * (P.breath ?? 0.08) * (0.35 + 0.65 * flow) * (1 + by * 3);
     const asp = wh ? (rand() * 2 - 1) * wh * 0.5 : 0;
     let x = (tilt * 18 * growl * (1 - by * 0.4) * (1 - wh * 0.85) + breath + asp) * voicedS;
+    // (s.asp: soplo que pasa por la boca aunque no haya voz: la j, la g suave)
+    if (!done && s.asp) x += (rand() * 2 - 1) * s.asp;
 
     // ---- tracto vocal ----
     for (let i = 0; i < 4; i++) {
@@ -339,6 +342,32 @@ if (globalThis.__mduOldVoces10 !== true) {
   Object.assign(SPEAKERS.gil, { f0: 60, rate: 0.72, shift: 0.8, sub: 0.46, drawl: 1.25 });
 }
 
+// La perilla "Claridad de las voces" (opciones → sonido): 0 = el murmullo de
+// siempre, 0,5 = lo normal, 1 = lo más marcado. globalThis.__mduMurmulloViejo
+// la deja en 0. baseClarity: la de cuenta (las cinemáticas en línea duran lo
+// mismo en todas las compus, tenga cada una la perilla donde la tenga).
+let clarity = 0.5;
+export const setClarity = (v) => {
+  clarity = Math.max(0, Math.min(1, Number.isFinite(+v) ? +v : 0.5));
+};
+export const baseClarity = () => (globalThis.__mduMurmulloViejo === true ? 0 : 0.5);
+export const clarityNow = () => (globalThis.__mduMurmulloViejo === true ? 0 : clarity);
+// Los lentos no se alargan con las consonantes nuevas: su frase dura lo de
+// siempre (2026-10-11, el usuario: "volvelo a la velocidad original").
+for (const k of ['anunciador', 'gil', 'caballeroHielo', 'abuelo', 'entidad']) SPEAKERS[k].pace = true;
+// Cirilo hablaba rapidísimo (el usuario, 2026-10-11): un poco más lento.
+// (globalThis.__mduCiriloViejo: como antes)
+if (globalThis.__mduCiriloViejo !== true) SPEAKERS.cirilo.rate = 1.12;
+// Martín Fierro, a la velocidad del Abuelo (el usuario, 2026-10-11; es el
+// mismo, más firme): su mismo ritmo y, como él, sin alargarse.
+// (globalThis.__mduFierroViejo: como antes)
+if (globalThis.__mduFierroViejo !== true) Object.assign(SPEAKERS.fierro, { rate: SPEAKERS.abuelo.rate, pace: true });
+// Belgrano tampoco se alarga: su juramento en el final del Monumento va a
+// reloj (la escena sigue 4,4 s después de que empieza a decirlo) y con la
+// frase más larga la cámara lo dejaba 1 s antes de que terminara; así, los
+// 0,4 s de siempre. (globalThis.__mduBelgranoLargo: se alarga como los demás)
+if (globalThis.__mduBelgranoLargo !== true) SPEAKERS.belgrano.pace = true;
+
 const VOWELS_RE = /[aeiouáéíóúü]/;
 const STRIP = { á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ü: 'u' };
 
@@ -488,8 +517,40 @@ function numWords(n) {
 }
 const sayNumbers = (t) => (globalThis.__mduOldVoiceNum === true ? t : t.replace(/\d{1,4}/g, (d) => numWords(+d)));
 
-export function speechSegments(text, S, r = Math.random) {
+export function speechSegments(text, S, r = Math.random, clear = clarityNow()) {
   const segs = [];
+  // (2026-10-11, el usuario: "que se entienda más lo que dicen", en equilibrio
+  // con que suene bien: consonantes más fuertes y más largas, la m y la n con
+  // su murmullo, y entre palabra y palabra la voz afloja un instante —sin
+  // silencio: no es un corte—. globalThis.__mduMurmulloViejo: como antes)
+  // (cl: la perilla "Claridad de las voces". 0 es el sonido de antes. Hasta
+  // la mitad se marcan las consonantes —m—; de la mitad para arriba solo se
+  // frenan los que hablan rápido —cap— y las voces llevan menos eco
+  // —core/audio.js—: medido, marcarlas más todavía les bajaba lo que se
+  // entiende a los lentos)
+  const cl = clear;
+  const CLEAR = cl > 0;
+  const m = Math.min(cl, 0.5) * 2;
+  // (pace: los lentos no se alargan —su frase dura lo de siempre—: las
+  // consonantes ganan fuerza pero no tiempo, y no llevan el valle entre
+  // palabras. Medido con el reconocedor: sacarle ese instante al sonido de
+  // antes les bajaba lo que se entiende; sin el valle quedan como los demás)
+  const keep = CLEAR && !!S.pace;
+  const kStop = keep ? 0.72 : 0.72 + 0.08 * m;
+  const kHold = keep ? 0.72 : 0.72 + 0.16 * m;
+  const kFric = 0.3 + 0.12 * m;
+  const burstD = keep ? 0.012 : 0.012 + 0.006 * m;
+  const burstA = 0.22 + 0.12 * m;
+  const nasalBw = 1 + 1.6 * m;
+  const valleyD = 0.024 * m;
+  const valleyA = 1 - 0.58 * m;
+  const cap = cl > 0.5 ? 1.35 - (cl - 0.5) * 0.7 : Infinity;
+  // (cada segmento anota de qué palabra es, para el subtítulo: wordTimes)
+  let wAll = 0;
+  // (la última vocal dicha: la r antes de consonante la repite un instante)
+  let lastVow = 'y';
+  // (los lentos no se alargan: lo que suma la r se lo saca a la vocal que sigue)
+  let debt = 0;
   const clean = sayNumbers(text).toLowerCase().replace(/[¡¿"«»()]/g, '');
   const phrases = clean.split(/([,.;:!?…]+)/);
   const base = S.f0;
@@ -510,7 +571,7 @@ export function speechSegments(text, S, r = Math.random) {
     // cada frase a su velocidad (las cortas, más rápido)
     // (rateVar: cuánto cambia de una frase a otra; el que está medio loco, mucho)
     const rv = S.rateVar ?? 0.14;
-    const rate = (S.rate ?? 1) * (1 - rv / 2 + r() * rv) * (words.length <= 3 ? 1.06 : 1);
+    const rate = Math.min(S.rate ?? 1, cap) * (1 - rv / 2 + r() * rv) * (words.length <= 3 ? 1.06 : 1);
     const sounds = words.map((w) => [...phon(w)]);
     const vowelsTotal = sounds.reduce((n, L) => n + L.filter((c) => VOWELS_RE.test(c)).length, 0) || 1;
     let vi = 0;
@@ -523,6 +584,12 @@ export function speechSegments(text, S, r = Math.random) {
     prevPunct = punct;
     words.forEach((word, wi) => {
       const letters = sounds[wi];
+      // entre palabra y palabra, la voz afloja un instante (no se corta)
+      const pv = CLEAR && wi > 0 && segs.length ? segs[segs.length - 1] : null;
+      if (pv && !keep) {
+        segs.push({ dur: valleyD / rate, f0: [pv.f0[1], pv.f0[1] * 0.98], v: pv.v, amp: [valleyA, valleyA], voiced: (pv.voiced ?? 1) > 0.5 ? 1 : 0, soft: 0.014, gap: 1 });
+      }
+      const w0 = segs.length;
       const { at, glides } = stressOf(word, letters);
       const lastWord = wi === words.length - 1 && p !== lastBody;
       // jump: cada palabra salta a otra altura (la melodía que se le escapa)
@@ -532,6 +599,7 @@ export function speechSegments(text, S, r = Math.random) {
         const next = letters[i + 1] || '';
         if (VOWELS_RE.test(c)) {
           const v = STRIP[c] || c;
+          lastVow = v;
           const prog = vi / vowelsTotal;
           const stressed = i === at;
           const glide = glides.has(i);
@@ -544,6 +612,11 @@ export function speechSegments(text, S, r = Math.random) {
           dur *= 1 + prog * 0.12;
           // (drawl: el que arrastra el final de la frase, bien de campo)
           if (lastWord && !glide) dur *= (stressed ? 1.45 : lastV ? 1.35 : 1.1) * (S.drawl ?? 1);
+          if (debt > 0) {
+            const take = Math.min(debt, dur * 0.5);
+            dur -= take;
+            debt -= take;
+          }
           const glideTo = f * (stressed ? 1 - 0.06 * R : 0.98);
           if (lastV && ends && !glide) {
             // la última vocal: se apaga, y al cerrar la frase se quiebra un poco
@@ -559,27 +632,74 @@ export function speechSegments(text, S, r = Math.random) {
         const k = consonant(c, next, letters[i - 1] || (wi > 0 ? sounds[wi - 1][sounds[wi - 1].length - 1] : ''), i === letters.length - 1);
         if (!k) continue;
         const prevF = segs.length ? segs[segs.length - 1].f0[1] : base;
-        const d = (k.dur * 0.72) / rate;
+        // (las consonantes, más largas; las que se sostienen —s, f, m, n, l—, más)
+        // (la f y la p eran las que menos se notaban —el usuario: "fogón",
+        // "patio"—: más largas, y abajo la f con más soplo y la p con más golpe)
+        const fp = keep ? 1 : c === 'f' ? 1 + 0.3 * m : c === 'p' ? 1 + 0.25 * m : 1;
+        const d = (k.dur * (k.k === 'stop' || k.k === 'affr' || k.k === 'tap' || k.k === 'trill' ? kStop : kHold) * fp) / rate;
         const L = k.at ? LOCUS[k.at] : 'y';
-        if (k.k === 'fric') segs.push({ dur: d, f0: [prevF, prevF], v: L, amp: [0.5, 0.5], voiced: 0, noise: { f: k.f, bw: k.bw, amp: k.amp * 0.3 } });
+        // (el paladar cerrado atrás: F2 y F3 juntos; más adelante si sigue e o i)
+        const front = 'eiéí'.includes(next);
+        if (k.k === 'fric' && k.at === 'vel' && m > 0) {
+          // la j (y la g de "gente"): sonaba a f ("alfibe"). El soplo pasa por la
+          // boca —asp— y encima va un roce angosto, más fuerte y un poco más largo.
+          // Y raspa ("la rosca" de la jota): sube y baja unas 29 veces por segundo
+          const dj = d * (keep ? 1 : 1 + 0.25 * m);
+          const nc = Math.max(2, Math.round(dj / 0.034));
+          const aj = 0.5 + 0.2 * m;
+          const jv = front ? [400, 2100, 2500, 3400] : [450, 1400, 2100, 3300];
+          const jn = { f: front ? 2600 : 1500, bw: 900, amp: k.amp * kFric * (1 + 0.5 * m) };
+          for (let j = 0; j < nc; j++) {
+            segs.push({ dur: (dj / nc) * 0.6, f0: [prevF, prevF], v: jv, amp: [aj, aj], voiced: 0, asp: 0.35 * m, noise: jn, soft: 0.003 });
+            segs.push({ dur: (dj / nc) * 0.4, f0: [prevF, prevF], v: jv, amp: [aj * (1 - 0.55 * m), aj * (1 - 0.55 * m)], voiced: 0, asp: 0.35 * m, noise: jn, soft: 0.003 });
+          }
+        } else if (k.k === 'fric') segs.push({ dur: d, f0: [prevF, prevF], v: L, amp: [0.5, 0.5], voiced: 0, noise: { f: k.f, bw: k.bw, amp: k.amp * kFric * (c === 'f' ? 1 + 1.2 * m : 1) } });
         else if (k.k === 'stop' || k.k === 'affr') {
           segs.push({ dur: d * 0.7, f0: [prevF, prevF], v: L, amp: [k.voiced ? 0.15 : 0, k.voiced ? 0.15 : 0], voiced: k.voiced ? 1 : 0, soft: 0.003 });
-          segs.push({ dur: 0.012, f0: [prevF, prevF], v: L, amp: [0.5, 0.5], voiced: k.voiced ? 0.6 : 0, noise: { f: k.k === 'affr' ? 3600 : k.f, bw: 2500, amp: 0.22 }, soft: 0.001 });
+          segs.push({ dur: burstD, f0: [prevF, prevF], v: L, amp: [0.5, 0.5], voiced: k.voiced ? 0.6 : 0, noise: { f: k.k === 'affr' ? 3600 : k.f, bw: 2500, amp: burstA * (c === 'p' ? 1 + 0.5 * m : 1) }, soft: 0.001 });
           // la ch: después del golpe, un "sh" cortito
-          if (k.k === 'affr') segs.push({ dur: d * 0.6, f0: [prevF, prevF], v: L, amp: [0.5, 0.4], voiced: 0, noise: { f: k.f, bw: k.bw, amp: k.amp * 0.3 } });
+          if (k.k === 'affr') segs.push({ dur: d * 0.6, f0: [prevF, prevF], v: L, amp: [0.5, 0.4], voiced: 0, noise: { f: k.f, bw: k.bw, amp: k.amp * kFric * (c === 'f' ? 1 + 1.2 * m : 1) } });
         } else if (k.k === 'approx') {
           // b, d, g suaves: la boca casi no se cierra, la voz no se corta
-          segs.push({ dur: d, f0: [prevF, prevF * 0.99], v: [Math.max(L[0], 340), L[1], L[2], L[3]], amp: [k.amp, k.amp], soft: 0.008 });
-        } else if (k.k === 'nasal' || k.k === 'liquid') segs.push({ dur: d, f0: [prevF, prevF * 0.99], v: k.v, amp: [k.k === 'nasal' ? 0.45 : 0.65, k.k === 'nasal' ? 0.45 : 0.65] });
-        else if (k.k === 'tap') segs.push({ dur: d, f0: [prevF, prevF], v: LOCUS.alv, amp: [0.3, 0.3], soft: 0.002 });
+          // (la g suave —"fogón"—: más cerrada, con el paladar atrás y algo de soplo)
+          if (k.at === 'vel' && m > 0) segs.push({ dur: d * (keep ? 1 : 1 + 0.35 * m), f0: [prevF, prevF * 0.99], v: front ? [330, 1900, 2350, 3400] : [350, 1300, 2000, 3300], amp: [k.amp - 0.1 * m, k.amp - 0.1 * m], soft: 0.008, asp: 0.08 * m });
+          else segs.push({ dur: d, f0: [prevF, prevF * 0.99], v: [Math.max(L[0], 340), L[1], L[2], L[3]], amp: [k.amp, k.amp], soft: 0.008 });
+        } else if (k.k === 'nasal' || k.k === 'liquid') segs.push({ dur: d, f0: [prevF, prevF * 0.99], v: k.v, amp: [k.k === 'nasal' ? 0.45 : 0.65, k.k === 'nasal' ? 0.45 : 0.65], ...(CLEAR && k.k === 'nasal' ? { bwK: nasalBw } : {}) });
+        else if (k.k === 'tap') {
+          // la r: el golpe, más cerrado, y con voz de los dos lados para que se
+          // note ("hervida" sonaba "hevida"; "no mete la rosca"). Antes de
+          // consonante o al final, después del golpe suena un pedacito de la
+          // vocal de antes; pegada a otra consonante ("gracias", "tres"), antes
+          // del golpe suena un pedacito de la vocal que viene. Como al hablar.
+          const tapA = 0.3 - 0.12 * m;
+          const ev = (0.032 * m) / rate;
+          const prevL = letters[i - 1] || '';
+          const coda = m > 0 && (!next || !VOWELS_RE.test(next));
+          const cluster = m > 0 && !coda && !!prevL && !VOWELS_RE.test(prevL);
+          if (cluster) {
+            segs.push({ dur: ev, f0: [prevF, prevF], v: STRIP[next] || next, amp: [0.5, 0.5], soft: 0.004 });
+            if (keep) debt += ev;
+          }
+          segs.push({ dur: d * (keep ? 1 : 1 + 0.3 * m), f0: [prevF, prevF], v: LOCUS.alv, amp: [tapA, tapA], soft: 0.002 });
+          if (coda) {
+            segs.push({ dur: ev, f0: [prevF, prevF], v: lastVow, amp: [0.62, 0.62], soft: 0.004 });
+            if (keep) debt += ev;
+          }
+        }
         else if (k.k === 'trill') {
-          // la rr: tres golpecitos de lengua
+          // la rr: tres golpecitos de lengua. (Iban a 50 por segundo y sonaba a
+          // zumbido, sin "la rosca": ahora a unos 27 por segundo, que es lo que
+          // vibra una rr, y más marcados. Los lentos, a su ritmo de siempre.)
+          const tc = keep ? d * 0.18 : d * 0.18 + (0.016 / rate - d * 0.18) * m;
+          const to = keep ? d * 0.15 : d * 0.15 + (0.021 / rate - d * 0.15) * m;
           for (let j = 0; j < 3; j++) {
-            segs.push({ dur: d * 0.18, f0: [prevF, prevF], v: LOCUS.alv, amp: [0.2, 0.2], soft: 0.001 });
-            segs.push({ dur: d * 0.15, f0: [prevF, prevF], v: [420, 1600, 2500, 3400], amp: [0.55, 0.55], soft: 0.001 });
+            segs.push({ dur: tc, f0: [prevF, prevF], v: LOCUS.alv, amp: [0.2 - 0.08 * m, 0.2 - 0.08 * m], soft: 0.001 });
+            segs.push({ dur: to, f0: [prevF, prevF], v: [420, 1600, 2500, 3400], amp: [0.55 + 0.1 * m, 0.55 + 0.1 * m], soft: 0.001 });
           }
         }
       }
+      for (let j = w0; j < segs.length; j++) segs[j].w = wAll;
+      wAll++;
     });
     if (p === lastBody) continue;
     // pausa según la puntuación
@@ -590,12 +710,51 @@ export function speechSegments(text, S, r = Math.random) {
   return segs;
 }
 
+// Cuándo arranca cada palabra ESCRITA de `text` (segundos desde que empieza a
+// hablar), con los segmentos de speechSegments: para que el subtítulo avance
+// al ritmo de lo que se dice. Un número escrito ("1813") son varias dichas.
+export function wordTimes(text, segs) {
+  const starts = [];
+  let t = 0;
+  for (const s of segs) {
+    if (s.w != null && starts[s.w] == null) starts[s.w] = t;
+    t += s.dur;
+  }
+  const out = [];
+  let w = 0;
+  let last = 0;
+  for (const tok of text.trim().split(/\s+/)) {
+    const n = sayNumbers(tok).toLowerCase().replace(/[¡¿"«»()]/g, '').split(/[,.;:!?…]+/).join(' ').trim().split(/\s+/).filter(Boolean).length;
+    let st = null;
+    for (let j = w; j < w + n && st == null; j++) st = starts[j] ?? null;
+    last = st ?? last;
+    out.push(last);
+    w += n;
+  }
+  return out;
+}
+
+// Cuántas letras de `text` se muestran a los `t` segundos de voz: hasta la
+// última palabra que ya empezó a decirse (marks: lo de wordTimes).
+export function shownChars(text, marks, t) {
+  const re = /\S+\s*/g;
+  const lead = text.length - text.trimStart().length;
+  let n = lead;
+  let i = 0;
+  re.lastIndex = lead;
+  for (let m = re.exec(text); m; m = re.exec(text), i++) {
+    if ((marks[i] ?? 0) > t) break;
+    n = m.index + m[0].length;
+  }
+  return n;
+}
+
 // Lo que dice un personaje, listo para renderizar (segmentos y perfil): el
 // audio lo renderiza en un worker para no trabar el juego.
-export function speechPlan(text, speaker = 'abuelo', r = Math.random, { cut = false } = {}) {
+export function speechPlan(text, speaker = 'abuelo', r = Math.random, { cut = false, clear = clarityNow() } = {}) {
   const S0 = SPEAKERS[speaker] || SPEAKERS.abuelo;
   const S = cut ? { ...S0, cut: true, tail: 0 } : S0;
-  return { segs: speechSegments(text, S, r), P: { ...S, glide: 0.022 } };
+  return { segs: speechSegments(text, S, r, clear), P: { ...S, glide: 0.022 } };
 }
 
 // Cuánto dura lo que renderVoice arma con esos segmentos (la misma cuenta).

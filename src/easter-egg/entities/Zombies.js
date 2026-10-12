@@ -22,7 +22,7 @@ import { SILL_Y } from '../world/HighWindows';
 import { RISERS, FEATURES, MAP_ID, WATER_Y, ZONES } from '../config/map';
 import { ATTIC, SKYLIGHTS, STAIR_BOTTOM, STAIR_TOP, STAIR_TURN, UP_Y, atticNavWorld, inAtticRect, inStair, levelOf, stairY } from '../world/Attic';
 import { walkLine } from '../world/Levels';
-import { SPEEDS, rollSpeed, rollSpeedHold, walkPace, runShare, ZOMBIE_DAMAGE, DOG_DAMAGE, BOSS_DAMAGE, PUP_LUISON, POINTS, bossHealth, bossScale } from '../config/rules';
+import { SPEEDS, rollSpeed, rollSpeedHold, walkPace, runShare, ZOMBIE_DAMAGE, DOG_DAMAGE, BOSS_DAMAGE, PUP_LUISON, POINTS, bossHealth, bossScale, PLAYER } from '../config/rules';
 import { rng } from '../core/noise';
 import BossMoves from './bossMoves';
 import { reelStep, reelPose } from './zombieReel';
@@ -82,6 +82,13 @@ const SARGENTO = [
 ];
 // El nombre del jefe que anda suelto por el mapa (no el del final).
 // (el Capataz Maldito: con la última luz mala adentro, entities/LuzMala.js)
+// Hasta dónde llega el Luisón (2026-10-10, el usuario: "aumentale un poco el
+// rango de ataque, así si te quedás pegado y corrés te llega a pegar"). El
+// zarpazo: desde qué distancia lo larga (era 2.9), a cuánto adelante cae (1.4)
+// y el radio del golpe (2.4); el tajo: largo (3.4) y ancho (1.8).
+// (enfurecido llega como mucho a esta parte de la velocidad del jugador corriendo: 5,9 de 6,4)
+const LUISON_RAGE = 0.92;
+const LUISON_REACH = { start: 3.3, ahead: 1.9, radius: 2.9, saber: 4, saberSide: 2.1 };
 const bossLabel = (z) => (z?.maldito ? 'El Capataz Maldito' : z?.kind === 'surubi' ? 'El Surubí' : z?.kind === 'luison' ? 'El Luisón' : z?.kind === 'sargento' ? 'El Sargento' : z?.kind === 'alcaide' ? 'El Alcaide' : z?.kind === 'caballero' ? 'El Caballero Negro' : 'El Capataz');
 
 const HIDE_HEAD = (1 << 2) | (1 << 13) | (1 << 14) | (1 << 15);
@@ -444,7 +451,7 @@ export default class Zombies {
         const along = dx * fx + dz * fz;
         const side = Math.abs(dx * fz - dz * fx);
         const big = z.kind === 'luison';
-        if (along > -0.3 && along < (big ? 3.4 : 2.8) && side < (big ? 1.8 : 1.5) && Math.abs((p.pos.y || 0) - (z.baseY || 0)) < 1.6) g.damagePlayer(p, big ? 80 : 70, z.pos);
+        if (along > -0.3 && along < (big ? LUISON_REACH.saber : 2.8) && side < (big ? LUISON_REACH.saberSide : 1.5) && Math.abs((p.pos.y || 0) - (z.baseY || 0)) < 1.6) g.damagePlayer(p, big ? 80 : 70, z.pos);
       }
     }
   }
@@ -1154,11 +1161,13 @@ export default class Zombies {
     if (z.kind === 'luison') {
       z.lockT = Infinity;
       z.scale = 2.2;
-      z.speed = 4.4;
+      // (2026-10-10, el usuario después de ganarle de a 4: +10% de vida, +15% de
+      // velocidad —era 4.4— y un poco más de alcance, LUISON_REACH)
+      z.speed = 5.06;
       // (con 60.000 caía enseguida con un arma mejorada: el usuario lo quiso más duro)
       // En co-op, +80% por jugador extra (no el +100% de los otros jefes): se
       // esconde en el pajonal y en el estero cuesta tirarle cómodo.
-      z.maxHp = (opts.hp || 100000) * (1 + ((g.rounds?.players || 1) - 1) * 0.8);
+      z.maxHp = (opts.hp || 110000) * (1 + ((g.rounds?.players || 1) - 1) * 0.8);
       z.hp = z.maxHp;
       z.hatHp = 0;
       z.howlCd = 6;
@@ -2412,7 +2421,11 @@ export default class Zombies {
         if (!z.enraged && !z.mandinga && z.hp < z.maxHp * 0.5) {
           z.enraged = true;
           // (el Alcaide no apura el paso: llama a la guardia)
-          if (z.kind !== 'alcaide') z.speed *= 1.3;
+          // (el Luisón enfurecido: nunca tan rápido como el que corre —6,4—; con el
+          // +15% de base se pasaba: "que no supere ni alcance la velocidad del
+          // player", el usuario 2026-10-10)
+          if (z.kind === 'luison') z.speed = Math.min(z.speed * 1.3, PLAYER.sprint * LUISON_RAGE);
+          else if (z.kind !== 'alcaide') z.speed *= 1.3;
           this.setState(z, 'enrage');
           this.callPeones(z, 3 + Math.min(3, (g.rounds?.players || 1) - 1));
           if (z.kind === 'luison') this.howlSound(z, { prep: true });
@@ -2513,7 +2526,7 @@ export default class Zombies {
         // (el Luisón, si ya está encima, pega sin dar un paso más: era un cuadro
         // corrido de 15 cm entre el tirón y el zarpazo; solo con el de Blender, __mduLuisonBlend)
         if (!(z.kind === 'luison' && distP < 2.9 && z.stateT < 0.05 && globalThis.__mduLuisonBlend === true)) this.moveBoss(z, mx, mz, z.speed, dt, t);
-        if (distP < (z.kind === 'luison' ? 2.9 : 2.3) && levelOf(pp.y) === 0 && Math.abs((pp.y || 0) - (z.baseY || 0)) < 1.5 && (player.canBeHit ? player.canBeHit() : !player.downed && !player.dead) && !g.defense?.shielded?.(z, pp)) {
+        if (distP < (z.kind === 'luison' ? LUISON_REACH.start : 2.3) && levelOf(pp.y) === 0 && Math.abs((pp.y || 0) - (z.baseY || 0)) < 1.5 && (player.canBeHit ? player.canBeHit() : !player.downed && !player.dead) && !g.defense?.shielded?.(z, pp)) {
           this.setState(z, 'slam');
           z.attackHit = false;
         }
@@ -2566,11 +2579,13 @@ export default class Zombies {
         this.poseSlam(z, z.stateT);
         if (!z.attackHit && z.stateT > 0.75) {
           z.attackHit = true;
-          const hit = tmpV.set(z.pos.x + Math.sin(z.yaw) * 1.4, (z.baseY || 0) + 0.05, z.pos.z + Math.cos(z.yaw) * 1.4);
+          const lu = z.kind === 'luison';
+          const ahead = lu ? LUISON_REACH.ahead : 1.4;
+          const hit = tmpV.set(z.pos.x + Math.sin(z.yaw) * ahead, (z.baseY || 0) + 0.05, z.pos.z + Math.cos(z.yaw) * ahead);
           g.audio.bossSlam(hit);
           g.fx.dust(hit, { x: 0, y: 1, z: 0 }, [0.4, 0.35, 0.3], 14);
           g.fx.addShake(0.5);
-          if (Math.hypot(pp.x - hit.x, pp.z - hit.z) < (capataz ? 2.1 : 2.4) && levelOf(pp.y) === 0 && Math.abs((pp.y || 0) - (z.baseY || 0)) < 1.5 && !g.defense?.shielded?.(z, pp)) g.damagePlayer(player, BOSS_DAMAGE, z.pos);
+          if (Math.hypot(pp.x - hit.x, pp.z - hit.z) < (capataz ? 2.1 : lu ? LUISON_REACH.radius : 2.4) && levelOf(pp.y) === 0 && Math.abs((pp.y || 0) - (z.baseY || 0)) < 1.5 && !g.defense?.shielded?.(z, pp)) g.damagePlayer(player, BOSS_DAMAGE, z.pos);
         }
         if (z.stateT > 1.4) this.setState(z, 'chase');
         break;
@@ -4187,7 +4202,7 @@ export default class Zombies {
       g.audio.growl(tmpV.set(z.pos.x, (z.baseY || 0) + 3, z.pos.z), 'boss');
       g.arena?.onBossDead();
     } else if (z.boss) {
-      g.powerups.drop(spot, true);
+      g.powerups.drop(spot, true, g.powerups.bossType());
       g.ee.dropHat(spot, z, info);
       // (el último aullido, más grave)
       if (z.kind === 'luison') g.audio.luisonHowl?.(tmpV.set(z.pos.x, (z.baseY || 0) + 2, z.pos.z), { rate: 0.85 });

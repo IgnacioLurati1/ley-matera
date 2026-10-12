@@ -72,9 +72,83 @@ const OUT_KEYS = [
   [CONC.hit + 0.26, CONC_REB, 'l'],
   [CONC.hit + CONC.out, REST_P, 'io'],
 ];
+// furia12 (2026-10-10, el usuario: "La animación de cargar la furia no me
+// convence. Sugiero que la guadaña se levante de las manos (siguiendo la pose
+// horizontal) como volando, parezca que se está cargando y vuelva a caer a la
+// posición original"). Ya no se para como un báculo ni golpea el piso: queda
+// acostada como en la quieta, las manos la sueltan (bajan apenas) y sube
+// flotando; arriba se mece y tiembla cada vez más mientras se le meten las
+// chispas (FuriaGather, que sigue a la cabeza del arma); toma un poco más de
+// altura y cae de golpe a las manos, que ceden con el peso y vuelven. La Furia
+// prende cuando cae (los mismos tiempos de CONC: el sonido no cambia).
+//  · floatPose: las manos (la pose de siempre, un poco abajo).
+//  · concFloat: cuánto se separa la guadaña de las manos (weapons/Desgarrador
+//    lo pone en el grupo del arma, después de la pose).
+// (globalThis.__mduFuriaBaculo: el báculo y el golpe de furia11)
+export const CONC_FLOAT = () => globalThis.__mduFuriaBaculo !== true;
+// up: cuánto sube; rise: en cuánto; more: la toma de altura del final y desde
+// cuándo antes de caer (air); fall: cuánto antes de CONC.time empieza a caer;
+// hands: cuánto bajan las manos al soltarla; give: cuánto ceden al atajarla
+const FLOAT = { up: 0.085, rise: 0.55, more: 0.024, air: 0.42, fall: 0.07, hands: 0.016, give: 0.034 };
+const _open = new Array(NP).fill(0);
+const _catch = new Array(NP).fill(0);
+const _back = new Array(NP).fill(0);
+const FLOAT_UP = [
+  [0, _from],
+  [0.34, _open, 'io'],
+  [CONC.time, _open, 'l'],
+];
+const FLOAT_OUT = [
+  [0, _open],
+  [CONC.hit, _open, 'l'],
+  [CONC.hit + 0.09, _catch, 'o'],
+  [CONC.hit + 0.3, _back, 'io'],
+  [CONC.hit + CONC.out, REST_P, 'io'],
+];
+function floatPose(t, from, P) {
+  for (let j = 0; j < NP; j++) {
+    _from[j] = from?.[j] ?? REST_P[j];
+    _open[j] = _catch[j] = _back[j] = REST_P[j];
+  }
+  _open[1] -= FLOAT.hands;
+  _catch[1] -= FLOAT.give;
+  _back[1] += 0.004;
+  if (t < CONC.time) {
+    sample(FLOAT_UP, t, P);
+    return clamp01(t / CONC.time);
+  }
+  sample(FLOAT_OUT, Math.min(t - CONC.time, CONC.hit + CONC.out), P);
+  return 1;
+}
+// Cuánto se separa la guadaña de las manos a los t s de la H (en la mano: x a
+// la derecha, y arriba, z hacia uno) y cuánto se ladea (radianes): out = [x, y,
+// z, cabeceo, ladeo]. Después de caer, todo en cero.
+export function concFloat(t, time, out) {
+  const T = CONC.time;
+  const end = T + CONC.hit;
+  out[0] = out[1] = out[2] = out[3] = out[4] = 0;
+  if (t >= end) return out;
+  // (despacio al despegar y al frenar: levita, no salta)
+  const rise = smooth(clamp01(t / FLOAT.rise));
+  const more = smooth(clamp01((t - (T - FLOAT.air)) / (FLOAT.air - FLOAT.fall)));
+  // (cae acelerando: llega a las manos justo cuando prende)
+  const q = clamp01((t - (T - FLOAT.fall)) / (FLOAT.fall + CONC.hit));
+  const held = 1 - q * q;
+  const k = clamp01(t / T);
+  // se mece despacio y tiembla cada vez más (el poder que no entra)
+  const a = (0.0005 + 0.0032 * k * k) * held;
+  out[0] = Math.sin(time * 61) * a + Math.sin(time * 1.7) * 0.004 * rise * held;
+  out[1] = (FLOAT.up * rise + FLOAT.more * more + Math.sin(time * 3.1) * 0.005 * rise) * held + Math.sin(time * 53 + 1.3) * a;
+  out[2] = Math.sin(time * 47 + 2.1) * a * 0.5;
+  out[3] = Math.sin(time * 2.3) * 0.022 * rise * held;
+  out[4] = Math.sin(time * 1.9 + 1) * 0.03 * rise * held;
+  return out;
+}
+
 // t: segundos desde la H; from: la pose en la que estaba (sin salto); time:
 // para el temblor. Devuelve cuánto giran los aros (0..1, para el que lo quiera).
 export function concPose(t, from, time, P) {
+  if (CONC_FLOAT()) return floatPose(t, from, P);
   if (t < CONC.time) {
     for (let j = 0; j < NP; j++) _from[j] = from?.[j] ?? REST_P[j];
     sample(UP_KEYS, t, P);

@@ -48,6 +48,31 @@ function savePostcard(id, url) {
     /* sin IndexedDB: la postal vale solo esta vez */
   }
 }
+// Las postales, bajadas y decodificadas de antemano (el usuario, 2026-10-10:
+// "cuando cambiás a un mapa en el menú, la postal tiende a tardar en cargar...
+// se ve la postal blanca de mientras"). El fondo de la tapa recién pedía la
+// foto al abrirse y enseguida armar el mapa trababa todo: quedaba vacía hasta
+// el final. Ahora se piden todas en el título (son 8 fotos chicas) y el cambio
+// de mapa espera a la suya antes de armar (switchMap).
+// globalThis.__mduNoPostalWarm: como antes.
+const postalImgs = new Map();
+function postalReady(id) {
+  const url = postalOf(id);
+  let e = postalImgs.get(id);
+  if (!e || e.url !== url) {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+    const p = (img.decode ? img.decode() : new Promise((r) => (img.onload = img.onerror = r))).catch(() => {});
+    e = { url, img, p };
+    postalImgs.set(id, e);
+  }
+  return e.p;
+}
+function warmPostcards() {
+  if (globalThis.__mduNoPostalWarm === true) return;
+  for (const m of MAP_LIST) postalReady(m.id);
+}
 // (las de esta vez mandan sobre las guardadas)
 function loadPostcards() {
   try {
@@ -56,15 +81,22 @@ function loadPostcards() {
         const rq = db.transaction('p').objectStore('p').openCursor();
         rq.onsuccess = () => {
           const c = rq.result;
-          if (!c) return db.close();
+          if (!c) {
+            warmPostcards();
+            return db.close();
+          }
           if (!postcards.has(c.key) && typeof c.value === 'string') postcards.set(c.key, c.value);
           c.continue();
         };
-        rq.onerror = () => db.close();
+        rq.onerror = () => {
+          warmPostcards();
+          db.close();
+        };
       })
-      .catch(() => {});
+      .catch(warmPostcards);
   } catch {
     /* sin IndexedDB */
+    warmPostcards();
   }
 }
 // Si alguien no termina de cargar, se arranca igual pasado este tiempo.
@@ -521,6 +553,8 @@ export default class Arrival {
         const t0 = performance.now();
         this.screen.open({ name: info.name, sub: info.sub, image: postalOf(id), quick: true });
         this.screen.progress(0.1, `Viajando a ${info.name}…`);
+        // (la postal ya decodificada antes de trabar armando el mapa: postalReady)
+        if (globalThis.__mduNoPostalWarm !== true) await Promise.race([postalReady(id), later(1500)]);
         await frame();
         await frame();
         // (Eclipse: armarlo traba ~3-4 s; que la postal termine de aparecer

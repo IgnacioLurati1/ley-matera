@@ -176,6 +176,10 @@ function mergeParts(root) {
   }
 }
 
+// Todos los grupos de muñecos vivos (los jugadores y los de cada escena):
+// la lente de cine mira cuáles están en cuadro (ui/cineLens.js).
+export const AVATAR_SETS = new Set();
+
 export default class Avatars {
   constructor(game, session) {
     this.g = game;
@@ -189,6 +193,7 @@ export default class Avatars {
     this.bandanas = !!session;
     // (las pruebas de cinemáticas, Tools/mdu-blender/t_cineqa.mjs, revisan a todos los muñecos)
     if (globalThis.__mduCineQA) (globalThis.__mduAvatarSets ||= new Set()).add(this);
+    AVATAR_SETS.add(this);
   }
 
   materials(id) {
@@ -961,6 +966,7 @@ export default class Avatars {
     for (const id of [...this.list.keys()]) this.remove(id);
     this.root.removeFromParent();
     globalThis.__mduAvatarSets?.delete(this);
+    AVATAR_SETS.delete(this);
   }
 }
 

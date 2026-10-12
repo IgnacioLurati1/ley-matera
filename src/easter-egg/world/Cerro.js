@@ -43,6 +43,8 @@ const SWEEP_JUMP = 0.3;
 // con el pantallazo blanco: world/gilHeld.js), y cuánto se miran las almas del
 // cerro antes del final
 const HOME_AT = HELD_HOME;
+// las almas coloradas que lo protegen en la cárcel (buildRedSouls)
+const RED_SOULS = 3;
 const HOME_WATCH = 6;
 
 const tmpV = new THREE.Vector3();
@@ -122,6 +124,7 @@ export default class Cerro extends Arena {
     );
     this.wardMesh.visible = false;
     this.g.scene.add(this.wardMesh);
+    this.buildRedSouls();
     this.rainGeo = new THREE.RingGeometry(0.82, 1, 40).rotateX(-Math.PI / 2);
     this.rainFill = new THREE.CircleGeometry(1, 40).rotateX(-Math.PI / 2);
     // las cadenas que caen sobre cada círculo
@@ -392,6 +395,8 @@ export default class Cerro extends Arena {
     // la cárcel se arma ya (escondida) y se compila: así el traslado no traba
     if (!this.carcel) this.carcel = buildCarcel(g, this.A2);
     this.carcel.reset();
+    this.clearRed();
+    this.redUsed.clear();
     this.carcel.root.visible = true;
     warmObject(g, this.carcel.root);
     this.carcel.root.visible = false;
@@ -417,6 +422,7 @@ export default class Cerro extends Arena {
       }
     }
     this.updateSouls(dt);
+    this.updateRed(dt);
     this.updateSweep(dt);
     if (this.carcel?.root.visible) this.carcel.update(dt, g.time);
     this.held.update(dt);
@@ -617,6 +623,184 @@ export default class Cerro extends Arena {
       this.sweepChain.setMatrixAt(i, m4);
     }
     this.sweepChain.instanceMatrix.needsUpdate = true;
+  }
+
+  // ---------------- las almas coloradas ----------------
+  // (pedido del usuario, 2026-10-10) En el cerro, la primera parte, el Gil no
+  // se cubre: los presos vienen igual, pero se le puede tirar. En la cárcel no
+  // lo protegen los presos: cada vez que se cubre, tres almas de las celdas de
+  // abajo se ponen coloradas; hay que acercarse a cada una y soltarla (F).
+  // Sueltas las tres, se le cae la protección (no se cae sola ni matando
+  // presos). El anfitrión elige cuáles ('gsoul' m) y avisa cada una que sueltan
+  // ('gsoul' r). (__mduGilViejo: como antes, con los presos)
+  buildRedSouls() {
+    const g = this.g;
+    this.red = [];
+    this.redUsed = new Set();
+    // (los tres carteles nacen acá, en el mismo orden en todas las compus: la F
+    // de un invitado le llega al anfitrión por el número del cartel)
+    this.redSlots = Array.from({ length: RED_SOULS }, (_, k) => {
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: g.textures.dot, color: 0xff2a1a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0 }));
+      glow.visible = false;
+      glow.renderOrder = 3;
+      g.scene.add(glow);
+      const it = g.interact.add({
+        kind: 'ee',
+        pos: new THREE.Vector3(0, -999, 0),
+        radius: 3.4,
+        prompt: () => (this.redOpen(k) ? { text: 'liberar el alma', noCost: true } : null),
+        cost: () => 0,
+        use: () => {
+          if (!this.redOpen(k)) return false;
+          this.releaseRed(k);
+          return true;
+        },
+      });
+      return { glow, it, t: 0, out: false };
+    });
+  }
+
+  redOpen(k) {
+    return this.active && this.stage === 2 && this.ward && !!this.red[k] && !this.red[k].done;
+  }
+
+  // En el cerro no se cubre; en la cárcel, con las almas.
+  setWard(on) {
+    const neu = globalThis.__mduGilViejo !== true;
+    if (neu && on && this.stage === 1) return;
+    const was = this.ward;
+    super.setWard(on);
+    if (!neu || this.stage !== 2 || was === this.ward) return;
+    if (on) {
+      this.wardMax0 ??= this.wardMax;
+      this.waveUntil = Infinity;
+      this.wardMax = Infinity;
+      if (!this.g.net?.guest) this.pickRed();
+    } else {
+      this.wardMax = this.wardMax0 ?? this.wardMax;
+      this.waveUntil = 0;
+      this.clearRed();
+    }
+  }
+
+  // (anfitrión) Tres de las de abajo, repartidas alrededor (y que no repitan
+  // las de la vez anterior, que ya se fueron).
+  pickRed() {
+    const all = this.carcel.ground;
+    const fresh = all.filter((S) => !this.redUsed.has(S.i));
+    const pool = fresh.length >= RED_SOULS ? fresh : all;
+    const a0 = Math.random() * Math.PI * 2;
+    const list = [];
+    for (let k = 0; k < RED_SOULS; k++) {
+      const want = a0 + (k / RED_SOULS) * Math.PI * 2;
+      let best = null;
+      let bd = 9;
+      for (const S of pool) {
+        if (list.includes(S.i)) continue;
+        const d = Math.abs(Math.atan2(Math.sin(S.a - want), Math.cos(S.a - want)));
+        if (d < bd) {
+          bd = d;
+          best = S;
+        }
+      }
+      if (best) list.push(best.i);
+    }
+    this.setRed(list);
+    this.g.net?.event('gsoul', { m: list });
+  }
+
+  // (todos) Estas son las coloradas de esta vez.
+  setRed(list) {
+    const g = this.g;
+    this.clearRed();
+    this.red = list.map((i) => ({ i, done: false }));
+    for (const [k, R] of this.red.entries()) {
+      const S = this.carcel.ground.find((x) => x.i === R.i);
+      const slot = this.redSlots[k];
+      if (!S || !slot) continue;
+      this.redUsed.add(R.i);
+      this.carcel.mark(R.i, 1);
+      slot.it.pos.set(S.x, S.y + 1.1, S.z);
+      slot.glow.position.set(S.x, S.y + 1.3, S.z);
+      slot.glow.visible = true;
+      slot.t = 0;
+      slot.out = false;
+      // un rayo colorado le cae a cada una: se ve desde toda la cárcel cuáles son
+      g.fx.lightning(new THREE.Vector3(S.x, S.y + 12, S.z), new THREE.Vector3(S.x, S.y + 1.4, S.z), 0xff2a1a, 0.5);
+      g.fx.sparkle(new THREE.Vector3(S.x, S.y + 1.3, S.z), [1, 0.2, 0.12], 26, 0.9);
+    }
+    g.audio.chain?.(g.player.pos);
+    g.hud.subtitle('Tres almas coloradas lo protegen: acercate y soltalas', 5);
+  }
+
+  // (anfitrión; al invitado le llega por onSouls) Soltaron el alma k: sube y
+  // se apaga (world/cerroCarcel.js). Con las tres, se le cae la protección.
+  releaseRed(k) {
+    const g = this.g;
+    const R = this.red[k];
+    const slot = this.redSlots[k];
+    if (!R || R.done || !slot) return;
+    R.done = true;
+    this.carcel.mark(R.i, 2);
+    slot.it.pos.y = -999;
+    slot.out = true;
+    slot.t = 0;
+    const at = slot.glow.position.clone();
+    g.fx.sparkle(at, [0.5, 0.8, 1], 46, 1.5);
+    g.fx.lightning(at, new THREE.Vector3(at.x, at.y + 11, at.z), 0x9ad8ff, 0.4);
+    g.audio.chain?.(at);
+    const n = this.red.filter((x) => x.done).length;
+    g.hud.toast(`Almas liberadas: ${n} de ${this.red.length}`);
+    if (g.net?.guest) return;
+    g.net?.event('gsoul', { r: k });
+    if (n >= this.red.length) {
+      g.later(0.7, () => {
+        if (!this.active || this.stage !== 2 || !this.ward) return;
+        this.setWard(false);
+        g.hud.subtitle('Se le cayó la protección', 3);
+      });
+    }
+  }
+
+  // (invitado) Lo que avisa el anfitrión (net/Session: 'gsoul').
+  onSouls(m) {
+    if (!this.active || !this.carcel) return;
+    if (m.m) this.setRed(m.m);
+    else if (m.r != null) this.releaseRed(m.r);
+  }
+
+  // Ya no hay coloradas (las que no soltaron vuelven a su color).
+  clearRed() {
+    for (const [k, slot] of (this.redSlots || []).entries()) {
+      const R = this.red[k];
+      if (R && !R.done) this.carcel?.mark(R.i, 0);
+      slot.it.pos.y = -999;
+      if (slot.glow.visible && !slot.out) {
+        slot.out = true;
+        slot.t = 0;
+      }
+    }
+    this.red = [];
+  }
+
+  // El resplandor de cada colorada: late mientras espera y se abre y se apaga
+  // cuando la sueltan.
+  updateRed(dt) {
+    for (const slot of this.redSlots || []) {
+      const s = slot.glow;
+      if (!s.visible) continue;
+      slot.t += dt;
+      if (slot.out) {
+        const k = Math.min(1, slot.t / 0.9);
+        s.material.opacity = 0.6 * (1 - k);
+        s.scale.setScalar(2.6 + k * 3);
+        if (k >= 1) s.visible = false;
+      } else {
+        const beat = Math.sin(slot.t * 5);
+        s.material.opacity = Math.min(1, slot.t / 0.5) * (0.42 + beat * 0.14);
+        s.scale.setScalar(2.6 + beat * 0.25);
+      }
+    }
   }
 
   // ---------------- el traslado a la cárcel ----------------
@@ -903,5 +1087,6 @@ export default class Cerro extends Arena {
     this.sweepChain.removeFromParent();
     this.carcel?.root.removeFromParent();
     this.blackEl?.remove();
+    for (const slot of this.redSlots || []) slot.glow.removeFromParent();
   }
 }

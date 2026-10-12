@@ -855,7 +855,8 @@ export default class Arena {
     b.castHold = false;
     if (CAST[b.kind]) b.holdT = Math.max(b.holdT || 0, CAST[b.kind][1]);
     this.fireball(hand, n);
-    if (k < 0.5) g.later(0.35, () => !b.dead && this.fireball(hand, n));
+    // (oneVolley: Francisco tira una sola tanda, world/Infierno.js)
+    if (k < 0.5 && !this.oneVolley) g.later(0.35, () => !b.dead && this.fireball(hand, n));
   }
 
   wave(n) {

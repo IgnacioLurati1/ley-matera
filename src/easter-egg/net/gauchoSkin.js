@@ -4,7 +4,7 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import { assetUrl } from '../../lib/assets';
 import { makePose, solvePose } from '../entities/skeleton';
 import { skinLook, cullList, cullAt } from '../entities/bossSkin';
-import { liveOn, liveBegin, liveBone, liveAfter, liveRest } from '../ui/cineLife';
+import { liveOn, liveBegin, liveBone, liveAfter, liveRest, liveSet } from '../ui/cineLife';
 
 // El gaucho de verdad (low poly facetado, Meshy) en lugar del muñeco de piezas
 // de net/Avatars: los compañeros de la red y los gauchos de todas las
@@ -208,6 +208,70 @@ export function whenGaucho(fn) {
   );
 }
 
+// El poncho contra los brazos (el usuario, 2026-10-11: "tela con colisión"):
+// dónde están los antebrazos de este gaucho y las manos de los otros que lo
+// tocan, para el shader (material: uArm, uArmR, uChest). Una vez por cuadro.
+// APAGADO por defecto (ui/cineLife liveAfter, globalThis.__mduPonchoBrazos):
+// en este poncho de pocos polígonos el empuje deja un borde dentado sobre la
+// manga donde el brazo lo atraviesa.
+// Radios en cm del modelo: PON_ARM_R, el antebrazo con un dedo de aire (más
+// grande inflaba el poncho en reposo);
+// PON_HAND_R, lo que se hunde bajo una mano ajena; PON_NEAR, hasta dónde se mira.
+const PON_ARM_R = 5;
+const PON_HAND_R = 4.5;
+const PON_NEAR = 60;
+const paM = new THREE.Matrix4();
+const paA = new THREE.Vector3();
+const paB = new THREE.Vector3();
+const paC = new THREE.Vector3();
+function ponchoArms(G) {
+  const now = performance.now();
+  if (now - (G.armAt || 0) < 4) return;
+  G.armAt = now;
+  const U = G.armU.value;
+  const R = G.armRU.value;
+  const Bn = G.bones;
+  paM.copy(G.mesh.matrixWorld).invert();
+  const seg = (i, elbow, hand, tip) => {
+    U[2 * i].setFromMatrixPosition(elbow.matrixWorld).applyMatrix4(paM);
+    U[2 * i + 1].setFromMatrixPosition(hand.matrixWorld).applyMatrix4(paM);
+    // (hasta la punta de los dedos)
+    paC.subVectors(U[2 * i + 1], U[2 * i]).normalize();
+    U[2 * i + 1].addScaledVector(paC, tip);
+  };
+  let i = 0;
+  for (const s of ['Left', 'Right']) {
+    const e = Bn[`${s}ForeArm`];
+    const h = Bn[`${s}Hand`];
+    if (e && h) {
+      seg(i, e, h, 9);
+      R.setComponent(i, PON_ARM_R);
+    } else R.setComponent(i, 0);
+    i++;
+  }
+  const chest = Bn.Spine01 || Bn.Spine || Bn.Hips;
+  G.chestU.value.setFromMatrixPosition(chest.matrixWorld).applyMatrix4(paM);
+  // las manos de otros cerca del pecho (las dos más cercanas)
+  R.z = 0;
+  R.w = 0;
+  paA.setFromMatrixPosition(chest.matrixWorld);
+  const near = PON_NEAR * G.meshScale;
+  for (const O of liveSet()) {
+    if (O === G || !O.armOn || i > 3) continue;
+    for (const s of ['Left', 'Right']) {
+      const h = O.bones[`${s}Hand`];
+      const e = O.bones[`${s}ForeArm`];
+      if (!h || !e || i > 3) continue;
+      if (paB.setFromMatrixPosition(h.matrixWorld).distanceTo(paA) > near) continue;
+      seg(i, e, h, 9);
+      // (solo la mano: del medio del antebrazo para adelante)
+      U[2 * i].lerp(U[2 * i + 1], 0.55);
+      R.setComponent(i, PON_HAND_R);
+      i++;
+    }
+  }
+}
+
 // El material de cada gaucho: la textura compartida, el poncho del color de
 // a.M.poncho (lo que la textura tenía de claro y oscuro queda: la guarda) y
 // la luz de los personajes (bossSkin skinLook).
@@ -222,6 +286,23 @@ function material(a) {
   // (uBandGold: lo colorado de la textura —la cinta del sombrero— del color
   // del poncho; el hombre dorado del final de Eclipse, ui/EclipseEnding goldLook)
   const life = { uJaw: { value: 0 }, uLid: { value: 0 }, uSway: { value: new THREE.Vector3() }, uLidCol: { value: T.lidCol }, uEyeGlow: { value: new THREE.Color(0, 0, 0) }, uFill: { value: new THREE.Color(0, 0, 0) }, uBandGold: { value: 0 } };
+  // el poncho contra los brazos (ponchoArms): cuatro cápsulas (los dos
+  // antebrazos propios y hasta dos manos ajenas), de punta a punta, en las
+  // unidades de la malla; el radio de cada una (0: no está) y el pecho
+  life.uArm = { value: Array.from({ length: 8 }, () => new THREE.Vector3()) };
+  life.uArmR = { value: new THREE.Vector4() };
+  life.uChest = { value: new THREE.Vector3() };
+  // la luz de cine, solo para este gaucho (ui/blendScene: la pone la escena
+  // por toma; jugando, todo en 0): la principal (uKey) y el contraluz (uRim),
+  // cada una con su color y de dónde viene, vista desde la cámara. (Con
+  // nombres propios: uKeyDir, uKeyCol y uRimCol son de la luz de luna de los
+  // personajes, entities/bossSkin skinLook; repetidos, el shader no compilaba
+  // y el gaucho quedaba invisible. El borde, como el de skinLook: lo que mira
+  // para arriba o para abajo, no, o el ala del sombrero brillaba)
+  life.uCineKey = { value: new THREE.Color(0, 0, 0) };
+  life.uCineKeyDir = { value: new THREE.Vector3(0, 1, 0) };
+  life.uCineRim = { value: new THREE.Color(0, 0, 0) };
+  life.uCineRimDir = { value: new THREE.Vector3(0, 0, -1) };
   m.userData.life = life;
   const F = T.face;
   const f = (x) => x.toFixed(2);
@@ -230,7 +311,7 @@ function material(a) {
     sh.uniforms.uPonRef = ref;
     Object.assign(sh.uniforms, life);
     sh.vertexShader = sh.vertexShader
-      .replace('void main() {', 'attribute float poncho;\nvarying float vPoncho;\nvarying vec3 vBind;\nuniform float uJaw;\nuniform vec3 uSway;\nvoid main() {\n\tvPoncho = poncho;\n\tvBind = position;')
+      .replace('void main() {', 'attribute float poncho;\nvarying float vPoncho;\nvarying vec3 vBind;\nuniform float uJaw;\nuniform vec3 uSway;\nuniform vec3 uArm[8];\nuniform vec4 uArmR;\nuniform vec3 uChest;\nvoid main() {\n\tvPoncho = poncho;\n\tvBind = position;')
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
@@ -242,8 +323,42 @@ function material(a) {
 		transformed.yz = vec2(${f(F.pivY)}, ${f(F.pivZ)}) + vec2(jp.x * jc - jp.y * js, jp.x * js + jp.y * jc);
 	}`,
       )
-      .replace('#include <skinning_vertex>', `#include <skinning_vertex>\n\ttransformed += uSway * (poncho * smoothstep(${f(F.swayTop)}, ${f(F.swayBot)}, position.y));`);
-    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform vec3 uPonTint;\nuniform float uBandGold;\nuniform float uPonRef;\nuniform float uLid;\nuniform float uJaw;\nuniform vec3 uLidCol;\nuniform vec3 uEyeGlow;\nuniform vec3 uFill;\nvarying float vPoncho;\nvarying vec3 vBind;\nvoid main() {').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += uEyeGlow * eyeGlow;\n\ttotalEmissiveRadiance += diffuseColor.rgb * uFill * (0.3 + 0.7 * max(dot(normal, normalize(vViewPosition)), 0.0));').replace(
+      .replace(
+        '#include <skinning_vertex>',
+        `#include <skinning_vertex>
+	transformed += uSway * (poncho * smoothstep(${f(F.swayTop)}, ${f(F.swayBot)}, position.y));
+	if (poncho > 0.5 && uArmR.x + uArmR.y + uArmR.z + uArmR.w > 0.0) {
+		// (el cuello no se mueve; hacia afuera: desde el pecho)
+		float pw = 1.0 - smoothstep(${f(F.swayTop - 8)}, ${f(F.swayTop + 10)}, position.y);
+		for (int i = 0; i < 4; i++) {
+			float R = uArmR[i];
+			if (R <= 0.0) continue;
+			vec3 ca = uArm[2 * i];
+			vec3 cab = uArm[2 * i + 1] - ca;
+			float ct = clamp(dot(transformed - ca, cab) / max(dot(cab, cab), 0.0001), 0.0, 1.0);
+			vec3 cd = transformed - (ca + cab * ct);
+			if (i < 2) {
+				// el antebrazo propio va por abajo: donde roza la tela o la pasa
+				// apenas, la tela queda apoyada encima. Acotado y sin saltos: lo más
+				// que se corre es 1,6 R, se apaga hacia los costados y, si el brazo
+				// ya la atravesó de lado a lado (la tela a más de 1,6 R por debajo),
+				// no se toca (levantarla tanto la estiraba: carpa y tela rota)
+				vec3 pn = normalize(transformed - uChest);
+				float ch = dot(cd, pn);
+				float cl = length(cd - pn * ch);
+				float dome = R * sqrt(max(0.0, 1.0 - (cl * cl) / (R * R * 4.84)));
+				float wl = 1.0 - smoothstep(1.1 * R, 2.2 * R, cl);
+				float wd = smoothstep(-1.6 * R, -0.6 * R, ch);
+				transformed += pn * (max(0.0, dome - ch) * wl * wd * pw);
+			} else {
+				// la mano de otro: la tela se hunde
+				float cL = length(cd);
+				if (cL < R && cL > 0.001) transformed += cd / cL * ((R - cL) * pw);
+			}
+		}
+	}`,
+      );
+    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform vec3 uPonTint;\nuniform float uBandGold;\nuniform float uPonRef;\nuniform float uLid;\nuniform float uJaw;\nuniform vec3 uLidCol;\nuniform vec3 uEyeGlow;\nuniform vec3 uFill;\nuniform vec3 uCineKey;\nuniform vec3 uCineKeyDir;\nuniform vec3 uCineRim;\nuniform vec3 uCineRimDir;\nvarying float vPoncho;\nvarying vec3 vBind;\nvoid main() {').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += uEyeGlow * eyeGlow;\n\ttotalEmissiveRadiance += diffuseColor.rgb * uFill * (0.3 + 0.7 * max(dot(normal, normalize(vViewPosition)), 0.0));\n\ttotalEmissiveRadiance += diffuseColor.rgb * uCineKey * max(dot(normal, uCineKeyDir), 0.0);\n\ttotalEmissiveRadiance += (diffuseColor.rgb * 0.8 + 0.2) * uCineRim * (pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 2.5) * smoothstep(-0.1, 0.6, dot(normal, uCineRimDir)) * (1.0 - 0.85 * abs(normal.y)));').replace(
       '#include <map_fragment>',
       `#include <map_fragment>
 	if (vPoncho > 0.5) {
@@ -328,6 +443,14 @@ function attach(a, blocky) {
     lidU: mat.userData.life.uLid,
     swayU: mat.userData.life.uSway,
     meshScale: mesh.getWorldScale(new THREE.Vector3()).x,
+    armU: mat.userData.life.uArm,
+    armRU: mat.userData.life.uArmR,
+    chestU: mat.userData.life.uChest,
+  };
+  // el poncho contra los brazos: al dibujarlo, con los huesos ya en su lugar
+  // (solo los de las escenas: ui/cineLife pone G.armOn)
+  mesh.onBeforeRender = () => {
+    if (G.armOn) ponchoArms(G);
   };
   // la silueta a través de las paredes (compañeros de la partida)
   if (a.xray) {
@@ -1362,6 +1485,14 @@ export function cineSnap(a) {
 export function poseCineClip(a, c, t, x, y, z, yaw, o = null) {
   const G = a.gs;
   if (!G?.on || !clipsReady()) return false;
+  // un muñeco fuera de cámara queda congelado (net/Avatars: mcFrozen, sus
+  // matrices no se rehacen). Si un clip lo mueve igual, los huesos se van y la
+  // mano con el mate quedaban donde estaban la última vez que se lo vio: el
+  // mate de Fierro flotando en planta baja con él en la cima (2026-10-11). El
+  // que se mueve por un clip rehace lo suyo ese cuadro.
+  // (globalThis.__mduNoFrozenClipFix: como antes)
+  // (mcDirty y no matrixWorldNeedsUpdate: core/matrixCache.js)
+  if (a.group?.mcFrozen && globalThis.__mduNoFrozenClipFix !== true) a.group.mcDirty = true;
   G.cb ||= CL.names.map((n) => G.bones[n]);
   G.cW ||= CL.names.map(() => new THREE.Quaternion());
   const W = G.cW;

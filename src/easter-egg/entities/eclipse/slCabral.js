@@ -60,6 +60,7 @@ const angTo = (a, b, k) => a + ((((b - a + Math.PI) % (Math.PI * 2)) + Math.PI *
 const CREW_COLOR = { gil: 0xb01c14, anacleto: 0x3a6a2a, cirilo: 0x2a3a7a, benito: 0x7a5a2a, nicasio: 0x5a2a6a };
 const MATES = ['anacleto', 'cirilo', 'benito', 'nicasio'];
 const tmpV = new THREE.Vector3();
+const tmpW = new THREE.Vector3();
 const L = {};
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const ease = (x) => smooth(clamp01(x));
@@ -254,11 +255,21 @@ export default class CabralScene extends CastleCine {
           if (this.v3) {
             // (de costado y cerca: llega al galope, salta y se planta adelante;
             // antes, desde 12 m atrás de los cuatro)
+            // (lo espera cerca de donde se va a plantar y lo sigue con retraso:
+            // clavada en él, que llega al galope y salta, era un latigazo)
+            const stand = this.P(1.9, -0.5, 1.1);
             this.shot(3.0, (u, lt, pos, look) => {
               const c = this.cabAt(tmpV);
-              pos.copy(this.P(-2.2 + u * 0.8, -3.4, 1.35));
-              look.copy(c);
-              look.y += 1.1;
+              c.y += 1.1;
+              pos.copy(this.P(-2.2 + smooth(u) * 0.8, -3.4, 1.35));
+              if (globalThis.__mduOldCabralPan === true) look.copy(c);
+              else {
+                // (de lejos apenas se corre hacia él —hasta 1,3 m—; cerca, lo acompaña)
+                tmpW.subVectors(c, stand);
+                const d = tmpW.length();
+                tmpW.multiplyScalar(d > 1e-4 ? (Math.min(d, 2.6) * 0.5) / d : 0).add(stand);
+                this.soft(look, tmpW, 4);
+              }
             });
             this.setFov(50);
             this.later(1.0, () => this.say('cabral', '¡Mi general!'));
@@ -425,7 +436,8 @@ export default class CabralScene extends CastleCine {
       const c = cabClip(n);
       if (c) actPerson(a, c, o);
     };
-    const guard = () => act('luGilGuard', { loop: true, fade: 0.22 });
+    const SOFT = globalThis.__mduOldCabralRun !== true;
+    const guard = () => act('luGilGuard', { loop: true, fade: SOFT ? 0.3 : 0.22 });
     // (a quién va cada sablazo: el del medio, el del lado de la cámara de
     // costado —que si no quedaba tapándolo— y el de atrás)
     const F = this.F;
@@ -478,7 +490,8 @@ export default class CabralScene extends CastleCine {
       g.audio?.knife?.(true);
     };
     const slash = (clip) => {
-      act(clip, { fade: 0.08 });
+      // (0,08 s de mezcla era un salto de pose: robótico. El usuario, 2026-10-10)
+      act(clip, { fade: SOFT ? 0.13 : 0.08 });
       this.g.audio?.whoosh?.(a.r.pos);
     };
     this.fseq = [
@@ -492,7 +505,7 @@ export default class CabralScene extends CastleCine {
       [1.15, () => cut(tmpV.copy(this.dir).addScaledVector(this.side, -0.6).normalize().clone())],
       [1.55, () => {
         this.hurt();
-        act('hitDouble', { fade: 0.08 });
+        act('hitDouble', { fade: SOFT ? 0.12 : 0.08 });
       }],
       [1.85, () => this.hurt()],
       // (dos más, de lejos: llegan cuando ya está de rodillas)
@@ -592,7 +605,8 @@ export default class CabralScene extends CastleCine {
       c0.y += 2.2;
       this.shot(2.65, (u, lt, pos, look) => {
         pos.copy(c0).addScaledVector(this.side, 2.5 * smooth(u));
-        const k = smooth(clamp01((lt - 0.2) / 0.6));
+        // (baja con el rayo en 1,1 s; en 0,6 era un cabezazo)
+        const k = smooth(clamp01((lt - 0.1) / (globalThis.__mduOldCabralPan === true ? 0.6 : 1.1)));
         look.lerpVectors(at, hit, k);
         look.y += 3.2 - 2.0 * k;
       });
@@ -686,8 +700,16 @@ export default class CabralScene extends CastleCine {
       cam.y = hLoc(L.u, L.v) + 1.0;
       this.shot(3.0, (u, lt, pos, look) => {
         pos.copy(cam);
-        look.copy(R.h.pos);
-        look.y += 1.5;
+        // (mira a donde pasa la columna y acompaña al jinete a medias, con
+        // retraso: clavada en él, que pasa al galope, era un latigazo)
+        tmpW.copy(R.h.pos).addScaledVector(tg, 2.2);
+        if (globalThis.__mduOldCabralPan !== true) {
+          // (solo de costado: el punto del camino no trae la altura del piso)
+          tmpW.x += (cp.x - tmpW.x) * 0.5;
+          tmpW.z += (cp.z - tmpW.z) * 0.5;
+        }
+        tmpW.y = R.h.pos.y + 1.5;
+        this.soft(look, tmpW, 3.2);
       });
       this.setFov(48);
     });
@@ -772,7 +794,10 @@ export default class CabralScene extends CastleCine {
       pos.copy(a0).lerp(aL, 0.14 * smooth(u));
       look.copy(aL);
     });
-    this.setFov(38);
+    // (el lente de esta toma y el de la que sigue eran 38 y 32: recién ahora se
+    // aplican —setFov— y, tan cerrados, cortaban a San Martín por el pecho y
+    // dejaban la cara de Cabral abajo del texto. Más abiertos: entran los dos)
+    this.setFov(globalThis.__mduOldCabralPan === true ? 38 : 58);
     this.later(0.7, () => this.say('cabral', 'Muero contento. Hemos batido al enemigo.'));
     // b. la cara de Cabral de perfil, y atrás San Martín que lo mira
     this.later(3.4, () => {
@@ -782,7 +807,7 @@ export default class CabralScene extends CastleCine {
         pos.copy(b0).lerp(bL, 0.1 * smooth(u));
         look.copy(bL);
       });
-      this.setFov(32);
+      this.setFov(globalThis.__mduOldCabralPan === true ? 32 : 60);
     });
     this.later(4.6, () => {
       this.cabDead = 1;
@@ -1119,10 +1144,39 @@ export default class CabralScene extends CastleCine {
   }
 
   // Cada cuadro (después de que el juego movió todo).
+  // (2026-10-10, el usuario: "la escena de Cabral sigue medio robótica y con
+  // paneos bruscos". Medido cuadro a cuadro:
+  //  · el lente de cada toma (de 32 a 72 grados) lo pisaba el de la partida
+  //    —Game.update lo llevaba a ~73° en 0,2 s—: cada corte arrancaba con un
+  //    zoom y los primeros planos se veían de lejos. Ahora la escena le dice al
+  //    juego qué lente quiere (wantFov, como ui/EclipseEnding);
+  //  · las tomas que miran a alguien que corre (Cabral que llega, el jinete de
+  //    la carga) lo seguían clavadas en él: hasta 170 grados por segundo y a
+  //    los tirones. Ahora la mirada lo sigue con retraso (soft).
+  // __mduOldCineFov, __mduOldCabralPan: como antes)
+  setFov(f) {
+    super.setFov(f);
+    this.wantFov = globalThis.__mduOldCineFov === true ? null : f;
+  }
+
+  shot(dur, fn) {
+    this.lkS = null;
+    super.shot(dur, fn);
+  }
+
+  // La mirada va hacia `target` de a poco (rate por segundo): no se clava.
+  soft(look, target, rate = 5) {
+    if (globalThis.__mduOldCabralPan === true) return look.copy(target);
+    if (!this.lkS) this.lkS = target.clone();
+    else this.lkS.lerp(target, 1 - Math.exp(-(this.dtC || 0.016) * rate));
+    return look.copy(this.lkS);
+  }
+
   tick(dt) {
     const g = this.g;
     const sl = this.sl;
     const al = sl.al;
+    this.dtC = dt;
     // el galope de San Martín hasta el golpe
     if (this.h.state === 'vivo' && !this.mont?.fall) {
       this.ride.t += dt;
@@ -1237,13 +1291,20 @@ export default class CabralScene extends CastleCine {
         this.cabT = 0;
         if (this.v8) this.fightSeq();
       } else {
-        const s = Math.min(d, (this.v8 ? RUN_V : 4.6) * dt);
+        // (frena en el último metro: llegaba a toda carrera y quedaba clavado en
+        // un cuadro. El clip de correr baja el paso con él. __mduOldCabralRun: como antes)
+        const brake = this.v8 && !this.cabWay && globalThis.__mduOldCabralRun !== true ? Math.max(0.45, Math.min(1, d / 1.0)) : 1;
+        const vel = (this.v8 ? RUN_V : 4.6) * brake;
+        const s = Math.min(d, vel * dt);
         r.pos.x += (dx / d) * s;
         r.pos.z += (dz / d) * s;
         toLocal(r.pos.x, r.pos.z, L);
         r.pos.y = hLoc(L.u, L.v);
         r.moving = true;
-        r.speed = this.v8 ? RUN_V : 4.6;
+        r.speed = vel;
+        const cc = R.a.gs?.cc;
+        if (this.v8 && cc && cc.rate0 == null) cc.rate0 = cc.rate ?? 1;
+        if (this.v8 && cc?.rate0 != null) cc.rate = cc.rate0 * Math.max(0.6, brake);
         if (this.v8) r.yaw = angTo(r.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 9));
         else r.yaw = Math.atan2(-dx, -dz);
       }

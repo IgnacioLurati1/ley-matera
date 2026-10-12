@@ -7,6 +7,7 @@ import { crewIds, personaOf, PERSONA_T } from './cineCrew';
 import { scarecrowProp, scarecrowPose, scarecrowFallEnd } from '../entities/skins/scarecrow';
 import { preloadBossSkin } from '../entities/bossSkin';
 import { prefetchTrack } from '../core/music';
+import { shownChars } from '../core/voice';
 import { cineClip, poseCineClip, gauchoClip, cineSnap, headProp, FACE_EYES } from '../net/gauchoSkin';
 import { assetUrl } from '../../lib/assets';
 
@@ -499,7 +500,7 @@ export default class FarmCinematic {
     // se leía; con sombra oscura, ui/style.css .mdu-fcine--granja.is-vozluz)
     this.el.classList.toggle('is-vozluz', who === 'entidad');
     this.el.classList.toggle('is-secreto', secret);
-    this.sub = { text, t0: this.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.05)), k: -1 };
+    this.sub = { text, t0: this.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.05)), marks: globalThis.__mduSubViejo === true ? null : this.g.audio.sayMarks, k: -1 };
     return d;
   }
 
@@ -907,7 +908,7 @@ export default class FarmCinematic {
     // el subtítulo, letra por letra
     const sub = this.sub;
     if (sub) {
-      const k = Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
+      const k = sub.marks ? shownChars(sub.text, sub.marks, t - sub.t0) : Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
       if (k !== sub.k) {
         sub.k = k;
         this.span.textContent = sub.text.slice(0, k);

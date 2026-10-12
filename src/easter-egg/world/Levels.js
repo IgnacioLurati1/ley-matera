@@ -784,6 +784,37 @@ export function buildLevelArchitecture(w, DOORS) {
           // (la zona con `lid` se tapa por arriba: la cripta del estero asoma
           // del suelo y desde afuera el techo, de una sola cara, no se veía)
           if (Z.lid && !FEATURES.castle) quadUV(gb, Z.lid, P.map((p) => [p[0], p[1] + 0.02, p[2]]), U, [0, 1, 0]);
+          // (fuera del castillo —su isla en Eclipse—: el hueco de una escalera
+          // 'shaft' sube más que el techo del cuarto y por los costados quedaba
+          // abierto: desde la escalera se veía el cielo por arriba del techo. Se
+          // cierra con sus paredes, de los dos lados, y una tapa arriba. El
+          // usuario, 2026-10-10. __mduNoShaftSkirt: como antes)
+          if (!FEATURES.castle && RAMPS[r].ceil === 'shaft' && globalThis.__mduNoShaftSkirt !== true) {
+            if (!Z.lid) quadUV(gb, Z.ext || Z.ceil, P.map((p) => [p[0], p[1] + 0.02, p[2]]), U, [0, 1, 0]);
+            DIRS.forEach(([dx, dz]) => {
+              const nx = x + dx;
+              const nz = z + dz;
+              if (!w.inside(nx, nz)) return;
+              const j = w.idx(nx, nz);
+              // (al lado sigue la escalera, o hay pared: las paredes ya suben hasta el hueco)
+              if (w.rampAt[j] === r || w.grid[j] !== FLOOR) return;
+              const lo = roofOf(w, j);
+              const mx = x + 0.5 + dx * 0.5;
+              const mz = z + 0.5 + dz * 0.5;
+              const ax = mx - dz * 0.5;
+              const az = mz + dx * 0.5;
+              const bx = mx + dz * 0.5;
+              const bz = mz - dx * 0.5;
+              const hA = Math.max(lo, ceilY(w, i, ax, az));
+              const hB = Math.max(lo, ceilY(w, i, bx, bz));
+              if (hA - lo < 0.01 && hB - lo < 0.01) return;
+              const Q = [[ax, lo, az], [bx, lo, bz], [bx, hB, bz], [ax, hA, az]];
+              const V = [[0, 0], [0.5, 0], [0.5, (hB - lo) / 2], [0, (hA - lo) / 2]];
+              // por adentro (lo que se ve desde la escalera) y por afuera
+              quadUV(gb, Z.wall || Z.ceil, Q, V, [-dx, 0, -dz]);
+              quadUV(gb, Z.ext || Z.wall || Z.ceil, Q, V, [dx, 0, dz]);
+            });
+          }
           if (FEATURES.castle && !Z.under) {
             // el pasillo cubierto lleva una losa de verdad (de lejos era una
             // hoja de un pixel): la pizarra 25 cm arriba y, donde queda a la

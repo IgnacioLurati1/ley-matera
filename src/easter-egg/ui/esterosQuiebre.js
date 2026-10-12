@@ -28,7 +28,8 @@ import { glow } from '../entities/castle/common';
 // Todo sale del segundo de la escena y de un azar fijo: en línea se ve igual.
 // Sin luces nuevas (ui/cineWarm): la del hueco pasa a ser la de la grieta.
 
-export const SNAP = 3;
+// (era 3: el tronco se partía con los cuatro todavía al lado. El usuario, 2026-10-10)
+export const SNAP = 5.5;
 export const LEN = SNAP + 3.4;
 // los tirones con que se abre (s después de SNAP): el último, justo antes del corte
 const JOLTS = [1.2, 2.25, 3.25];
@@ -465,7 +466,7 @@ export default class Quiebre {
       A.tone(o, { t, dur: LEN + 0.6, type: 'triangle', freq: 72, freqEnd: 99, gain: 0.13, attack: LEN });
       A.noise(o, { t, dur: SNAP + 0.1, type: 'bandpass', freq: 180, freqEnd: 1500, q: 1.4, gain: 0.2, attack: SNAP });
       const E = eclSfx(this.g);
-      if (E.buf?.['dim-susurro-1']) A.playBuffer(E.buf['dim-susurro-1'], { gain: 0.5, reverb: 0, bus, when: t + 0.3 });
+      // (sin el susurro de la disformidad, el "come closer": el usuario, 2026-10-10)
       if (E.buf?.['piedras-suben']) A.playBuffer(E.buf['piedras-suben'], { gain: 0.95, reverb: 0, bus, when: t + SNAP - 0.5 });
       const crack = (at, k) => {
         for (const d of [0, 0.045, 0.1]) A.noise(o, { t: at + d, dur: 0.035, type: 'highpass', freq: 2600 + d * 9000, gain: 0.9 * k, attack: 0.002 });

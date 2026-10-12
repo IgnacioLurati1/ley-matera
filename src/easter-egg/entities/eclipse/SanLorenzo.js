@@ -1166,7 +1166,13 @@ export default class SanLorenzo {
     this.chargeT -= dt;
     if ((ph === 1 || ph === 2) && this.chargeT <= 0 && this.leadT < 0) {
       const side = (this.nextSide = -(this.nextSide || -1));
-      if (!this.al.busy(side)) {
+      // (cerca de la vida de la carga de San Martín su escuadrón ya no sale: si
+      // andaba de carga, había que esperar a que volviera y formara —con El
+      // Eclipse clavado en esa vida— antes de la de Cabral. El usuario,
+      // 2026-10-10: "San Martín tardó mucho en caer". __mduOldSlLead: como antes)
+      const reserved = ph === 2 && side === 1 && S.unv && S.hp <= HP_CABRAL + 0.1 && globalThis.__mduOldSlLead !== true;
+      if (reserved) this.chargeT = 2;
+      else if (!this.al.busy(side)) {
         this.send({ a: 'ch', s: side, l: this.laneFor(side) });
         this.chargeT = ph === 1 ? 15 : 19;
       } else this.chargeT = 2;
@@ -1572,17 +1578,25 @@ export default class SanLorenzo {
     }
     this.vivo?.lightsOff();
     // (el cielo de las islas vuelve: la cinemática final cose el universo)
-    const SU = g.world.sky?.material?.uniforms;
-    if (SU?.uWid && this.widSaved) {
-      SU.uWid.value = this.widSaved;
-      this.widSaved = null;
-    }
+    // (2026-10-11, el usuario: "el cielo cambia de golpe entre la muerte del
+    // jefe y la cinemática". Volvía acá mismo, con el blanco recién empezando
+    // a subir —tarda 2,2 s—: se veía el salto. Ahora vuelve debajo del blanco,
+    // cuando ya tapó todo. __mduOldSlSkyBack: como antes)
+    const skyBack = () => {
+      const SU = g.world.sky?.material?.uniforms;
+      if (SU?.uWid && this.widSaved) {
+        SU.uWid.value = this.widSaved;
+        this.widSaved = null;
+      }
+    };
+    if (globalThis.__mduOldSlSkyBack === true) skyBack();
     const el = document.createElement('div');
     el.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:0;transition:opacity 2.2s;pointer-events:none;z-index:40';
     (g.root || document.body).appendChild(el);
     requestAnimationFrame(() => (el.style.opacity = '1'));
     this.white = el;
     g.later(2.4, () => {
+      skyBack();
       if (this.ee.arenaWon) this.ee.arenaWon();
       else {
         this.ee.done = true;

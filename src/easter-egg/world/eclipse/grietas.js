@@ -28,10 +28,10 @@ export const PILAR_TOP = 1.26;
 // glow: [x, z, tamaño] de los manojos de cristal; piece: su pedazo de
 // world/eclipse/abismoVida PIECES.
 export const JIRONES = {
-  rM: { floor: 'dirt', slab: [246.5, 11.9, 4.3], wall: { key: 'plasterWhite', axis: 'x', a: 242.7, b: 248.9, c: 7.05, t: 0.34, h: [1.1, 2.3, 2.7, 2.9, 2.5, 2.8, 1.9, 2.4, 1.2, 0.5] }, glow: [[251.3, 9.9, 1.5], [243.4, 18.3, 1.2]], piece: 'molino' },
-  rT: { floor: 'dirt', slab: [290.6, 12.6, 4.6], wall: { key: 'barn', axis: 'z', a: 9.1, b: 15.3, c: 283.05, t: 0.3, h: [0.9, 2.2, 3.0, 3.3, 3.1, 2.6, 2.9, 1.7, 2.1, 0.7] }, glow: [[296.4, 9.6, 1.4], [286.4, 18.6, 1.2]], piece: 'tapera' },
-  rP: { floor: 'planks', slab: [331.6, 14.6, 4.4], wall: { key: 'stoneWall', axis: 'x', a: 326.1, b: 332.3, c: 10.05, t: 0.42, h: [0.7, 2.7, 2.9, 3.2, 2.8, 3.1, 2.9, 2.6, 1.3, 0.6], bars: [2, 6] }, glow: [[338.6, 13.4, 1.4], [323.4, 16.2, 1.2]], piece: 'penal' },
-  rO: { floor: 'calcareo', slab: [316.4, 36.6, 4.5], wall: { key: 'stoneWall', axis: 'x', a: 312.5, b: 318.1, c: 30.05, t: 0.42, h: [1.0, 2.6, 3.4, 3.7, 3.6, 3.2, 2.4, 2.9, 1.4] }, glow: [[322.6, 34.6, 1.5], [311.4, 42.4, 1.2]], piece: 'torre' },
+  rM: { floor: 'dirt', slab: [14.5, 329.9, 4.3], wall: { key: 'plasterWhite', axis: 'x', a: 10.7, b: 16.9, c: 325.05, t: 0.34, h: [1.1, 2.3, 2.7, 2.9, 2.5, 2.8, 1.9, 2.4, 1.2, 0.5] }, glow: [[19.3, 327.9, 1.5], [11.4, 336.3, 1.2]], piece: 'molino' },
+  rT: { floor: 'dirt', slab: [58.6, 330.6, 4.6], wall: { key: 'barn', axis: 'z', a: 327.1, b: 333.3, c: 51.05, t: 0.3, h: [0.9, 2.2, 3.0, 3.3, 3.1, 2.6, 2.9, 1.7, 2.1, 0.7] }, glow: [[64.4, 327.6, 1.4], [54.4, 336.6, 1.2]], piece: 'tapera' },
+  rP: { floor: 'planks', slab: [99.6, 332.6, 4.4], wall: { key: 'stoneWall', axis: 'x', a: 94.1, b: 100.3, c: 328.05, t: 0.42, h: [0.7, 2.7, 2.9, 3.2, 2.8, 3.1, 2.9, 2.6, 1.3, 0.6], bars: [2, 6] }, glow: [[106.6, 331.4, 1.4], [91.4, 334.2, 1.2]], piece: 'penal' },
+  rO: { floor: 'calcareo', slab: [84.4, 354.6, 4.5], wall: { key: 'stoneWall', axis: 'x', a: 80.5, b: 86.1, c: 348.05, t: 0.42, h: [1.0, 2.6, 3.4, 3.7, 3.6, 3.2, 2.4, 2.9, 1.4] }, glow: [[90.6, 352.6, 1.5], [79.4, 360.4, 1.2]], piece: 'torre' },
 };
 let LIVE = null;
 

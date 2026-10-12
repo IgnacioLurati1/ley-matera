@@ -11,7 +11,7 @@ import { gripHand } from './desgarradorHands';
 import Cazador from './Cazador';
 import DesgarradorFx, { PAL } from './desgarradorFx';
 import { VoidBleed, OrbitShards } from './desgarradorAura';
-import { OLD_FURIA11, CONC, SND_OFF, FURIA_SND, concPose, FuriaGather, concWorld, concBurst, furiaSnd, stopSnd } from './desgarradorFuria';
+import { OLD_FURIA11, CONC, SND_OFF, FURIA_SND, concPose, concFloat, CONC_FLOAT, FuriaGather, concWorld, concBurst, furiaSnd, stopSnd } from './desgarradorFuria';
 import { eclSfx } from '../fx/eclipseSfx';
 import { VMS, ELBOW_R, ELBOW_L, ELBOW_FOLLOW, LEFT_OFF, shaftQuat, REST_P, MOVES, COMBO, THROW, THROW_KEYS, THROW_AT, DASH_KEYS, DRAW, DRAW_KEYS, INSPECT, INSPECT_KEYS, BEAM_P, CHARGE_P, SPIN_UP, SPIN_TURNS, NP, sample, mix, DESG_POSES } from './desgarradorMoves';
 
@@ -219,6 +219,30 @@ function setPose(m, P, spin = 0, ax = null) {
   _w.copy(m.atL).applyAxisAngle(Y_AXIS, rollL).applyQuaternion(m.handL.quaternion).add(m.handL.position);
   m.armL.position.copy(_w);
   m.armL.quaternion.setFromUnitVectors(Y_AXIS, _w2.subVectors(_eL, _w).normalize());
+}
+
+// (furia12) La guadaña suelta de las manos (juntando la Furia): F = [x, y, z,
+// cabeceo, ladeo] en la mano (weapons/desgarradorFuria.js concFloat); sin F,
+// vuelve a las manos. Solo se mueve el arma: las manos quedan donde las puso
+// la pose.
+const _fl = [0, 0, 0, 0, 0];
+const _fq = new THREE.Quaternion();
+const _fe = new THREE.Euler();
+function floatScythe(m, F) {
+  const on = !!F && (F[0] !== 0 || F[1] !== 0 || F[2] !== 0);
+  if (!on) {
+    if (m.floating) {
+      m.floating = false;
+      m.scy.position.set(0, 0, 0);
+      m.scy.quaternion.identity();
+    }
+    return;
+  }
+  m.floating = true;
+  // (lo de la mano, llevado al marco de la muñeca, que es donde cuelga el arma)
+  _fq.copy(m.wrist.quaternion).invert();
+  m.scy.position.set(F[0], F[1], F[2]).applyQuaternion(_fq);
+  m.scy.quaternion.copy(m.wrist.quaternion).premultiply(_qi.setFromEuler(_fe.set(F[3], 0, F[4]))).premultiply(_fq);
 }
 
 // (v4) el muñeco del compañero: cómo va la guadaña en su mano (base del giro
@@ -2231,6 +2255,7 @@ export default class Desgarrador {
     let snap = 0;
     let spin = 0;
     let ax = null;
+    let float = false;
     const g = this.g;
     for (let j = 0; j < NP; j++) P[j] = REST_P[j];
     const dbg = this.dbg;
@@ -2319,7 +2344,10 @@ export default class Desgarrador {
         case 'conc': {
           // (furia11) el báculo parado delante, el temblor que crece y el golpe
           // del regatón (desde la pose en la que estaba: sin salto)
+          // (furia12: acostada como en la quieta; la guadaña flota arriba de
+          // las manos y cae: floatScythe, después de la pose)
           concPose(this.t, this.concFrom, g.time, P);
+          float = CONC_FLOAT();
           lower = 0;
           snap = 1;
           break;
@@ -2352,6 +2380,7 @@ export default class Desgarrador {
     O[6] = lower;
     O[7] = snap;
     setPose(m, P, spin, ax);
+    floatScythe(m, float ? concFloat(this.t, g.time, _fl) : null);
     this.trailOn = trail && m.scy.visible;
     return O;
   }

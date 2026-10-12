@@ -363,8 +363,15 @@ export const EE = {
   // sobre el agua y el altar de la iglesia (encierro)
   pava: [45.5, 70.5],
   brasas: [33.6, 10.9],
+  // (la pava calentándose arriba del hogar de la locomóvil: x, z y la altura sobre el piso)
+  brasasPava: [31.9, 9.3, 1.82],
   luna: [41.2, 71.2],
   altar: [9.5, 34.7],
+  // las cuatro cruces que hay que prender a la vez (entities/esteros/Cruces.js):
+  // el Obraje, la Pesquería, la Reducción y la Laguna del Irupé
+  cruces: [[52, 14.5], [70.5, 45], [14, 29], [41.5, 64.5]],
+  // las velas del velorio, en el Embalsado (entities/esteros/Velorio.js)
+  velorio: [22.5, 72.5],
   // donde se junta la luz de los ahogados (en medio de la laguna)
   orbe: [47.5, 66.5],
   // por donde entra el Luisón
@@ -481,7 +488,10 @@ export const FIRES = [
 export const TITLE_CAM = { at: [42, 6, 60], amp: [2, 0.4], look: [42, 1, 44], lookAmp: 3 };
 // (bossFrom: el Sargento recién en la 8 y después cada 5 — nunca cae en una
 // creciente, que son las múltiplo de 10; pedido del usuario 2026-09-27)
-export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: 'yacare', boss: 'sargento', bossFrom: 8, egg: 'pacto', esteros: true, levels: true };
+// boxSkip: lo que no sale de la caja de este mapa (world/Interactables.js inBox).
+// La pava silbadora: con la creciente "carrearon de forma tremenda la partida"
+// (el usuario, 2026-10-10). Las de la Curandera y la Luz Mala siguen.
+export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: 'yacare', boss: 'sargento', bossFrom: 8, egg: 'pacto', esteros: true, levels: true, boxSkip: ['pava'] };
 export const TEXT = {
   soul: (many) => `El estero se quedó con ${many ? 'sus almas' : 'tu alma'}.`,
   won: (team, r) => `${team ? 'Terminaron' : 'Terminaste'} lo que pedía la voz en la ronda ${r}.`,

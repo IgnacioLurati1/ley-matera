@@ -95,8 +95,9 @@ export const dogCount = (round, players = 1) => 6 + (players - 1) * 4 + Math.flo
 
 // Jefe: el Capataz aparece en las rondas múltiplo de 5. (from: el mapa puede
 // arrancarlo más tarde, y sigue cada 5 desde ahí: FEATURES.bossFrom, el
-// Sargento del estero desde la 8)
-export const bossRound = (round, from = 5) => round >= from && (round - from) % 5 === 0;
+// Sargento del estero desde la 8; every: cada cuántas, FEATURES.bossEvery, la
+// torre cada 7)
+export const bossRound = (round, from = 5, every = 5) => round >= from && (round - from) % every === 0;
 // (x1,5 desde el 2026-09-27: morían antes de enfurecerse)
 export const bossHealth = (round) => Math.max(6000, zombieHealth(round) * 21);
 // En co-op los jefes aguantan más: +100% de vida por cada jugador extra (con

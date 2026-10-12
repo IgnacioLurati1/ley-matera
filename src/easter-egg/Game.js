@@ -44,6 +44,7 @@ import Critters from './world/Critters';
 import Secrets from './world/Secrets';
 import { songOn, silenceSongs } from './world/SongEgg';
 import Music, { SCENES, deathTrack } from './core/music';
+import { lensHull } from './ui/cineLens';
 import { markEgg, isKnight, toggleEggTest, eggsDone, eggsTotal } from './core/eggs';
 import { buildHighWindows } from './world/HighWindows';
 import MolinoCinematic from './ui/MolinoCinematic';
@@ -147,8 +148,8 @@ const MIN_FPS = 40;
 // volumen de cada tipo de efecto, la salida, el rango dinámico, el eco, el
 // rendimiento, los oídos tapados y el silencio con la ventana atrás.
 const SOUND_MIX = { volWeapons: 1, volZombies: 1, volWorld: 1, volPlayer: 1, volUi: 1, audioOut: 'phones', dynRange: 'normal', reverb: 1, audioPerf: 'auto', muffleLow: true, muffleWater: true, muteBg: false };
-const SOUND_KEYS = ['master', 'music', 'sfx', 'voice', 'voiceMode', ...Object.keys(SOUND_MIX)];
-const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.75, sfx: 0.9, shake: 1, quality: 'high', qualityMode: 'auto', invertY: false, voiceMode: 'murmur', showFps: false, fpsCap: '0', map: 'molino', v: 6, voice: 0.9, subSize: 1, adsSens: 1, adsMode: 'hold', crouchMode: 'hold', sprintMode: 'hold', calmFx: false, upscale: 'off', sharp: 0.8, fsrPct: 0.77, supremo: true, supremoAsked: false, ...SOUND_MIX };
+const SOUND_KEYS = ['master', 'music', 'sfx', 'voice', 'voiceMode', 'voiceClarity', ...Object.keys(SOUND_MIX)];
+const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.75, sfx: 0.9, shake: 1, quality: 'high', qualityMode: 'auto', invertY: false, voiceMode: 'murmur', voiceClarity: 0.5, showFps: false, fpsCap: '0', map: 'molino', v: 6, voice: 0.9, subSize: 1, adsSens: 1, adsMode: 'hold', crouchMode: 'hold', sprintMode: 'hold', calmFx: false, upscale: 'off', sharp: 0.8, fsrPct: 0.77, supremo: true, supremoAsked: false, ...SOUND_MIX };
 
 // Entrada vacía: el jugador sigue con su física pero no toca nada (menú abierto en línea).
 const IDLE_INPUT = { mouse: { dx: 0, dy: 0 }, sensitivity: 1, invertY: false, key: () => false, hit: () => false };
@@ -285,6 +286,9 @@ export default class Game {
     this.audio.setVolumes(this.settings);
     this.audio.setMix(this.settings);
     this.audio.voiceMode = this.settings.voiceMode;
+    this.audio.setVoiceClarity(this.settings.voiceClarity ?? 0.5);
+    // el sonido contra el mapa: las paredes tapan (World.soundBlock)
+    this.audio.block = (e, p) => this.world?.soundBlock?.(e.x, e.y, e.z, p.x, p.y, p.z) || 0;
     // (en línea, las frases de las cinemáticas duran lo mismo en todas las compus: audio.say)
     this.audio.online = () => !!this.net;
     // las voces del navegador pueden llegar después: se actualizan las opciones
@@ -651,6 +655,7 @@ export default class Game {
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, 1, 0.05, 400);
     this.camera.rotation.order = 'YXZ';
     this.activeZones = new Set([START_ZONE]);
+    this.quietZones = null;
     this.lures = [];
     this.timers = [];
     this.world = new World(this);
@@ -1099,6 +1104,8 @@ export default class Game {
     this.points = this.ee?.startPoints ?? START_POINTS;
     // la caja arranca en un lugar al azar cerca del comienzo (la del invitado la manda el anfitrión)
     if (!this.net?.guest) this.interact.newRun();
+    // (el invitado: las puertas que el anfitrión sorteó abiertas, si el aviso llegó antes que su mapa)
+    else if (this.net.preDoors?.map === this.mapId) this.interact.applyPreDoors(this.net.preDoors.l);
     this.hud.reset();
     this.hud.setPoints(this.points);
     this.weapons.updateHud();
@@ -1528,20 +1535,26 @@ export default class Game {
     const T = (this.talkT ||= {});
     T[speaker] = [...(T[speaker] || []).filter((x) => x[1] > this.time), [this.time + wait, this.time + wait + dur]];
     const label = { fierro: 'Martín Fierro', francisco: 'Francisco', abuelo: 'Abuelo', capataz: 'El Capataz', capatazJoven: 'Anselmo, el capataz (1911)', radio: FEATURES.penal ? 'Radio Nacional' : 'Radio Misiones', taza: 'La taza', anunciador: 'La Voz', entidad: 'La Voz de Arriba', espantapajaros: 'El Espantapájaros', alcaide: 'El Alcaide', gil: 'El Gauchito Gil', anacleto: 'Anacleto', cirilo: 'Cirilo', benito: 'Benito', nicanor: 'Nicanor', sargento: 'El Sargento', belgrano: 'Manuel Belgrano' }[speaker] || speaker;
-    if (wait > 0.1) this.later(wait, () => this.hud.speak(label, text, dur + 1.4, kind));
-    else this.hud.speak(label, text, dur + 1.4, kind);
+    // (el subtítulo avanza con las palabras del murmullo: audio.sayMarks)
+    const marks = this.audio.sayMarks;
+    if (wait > 0.1) this.later(wait, () => this.hud.speak(label, text, dur + 1.4, kind, marks));
+    else this.hud.speak(label, text, dur + 1.4, kind, marks);
     return wait + dur;
   }
 
-  activateZone(k) {
+  // quiet: se prendió sola, por una puerta que arrancó abierta (world/Interactables.js spreadZone):
+  // sin cartel; sale cuando alguien entra (update).
+  activateZone(k, quiet = false) {
     if (this.activeZones.has(k)) return;
     this.activeZones.add(k);
-    this.net?.event('zone', { z: k });
+    this.net?.event('zone', quiet ? { z: k, q: 1 } : { z: k });
     // los pisos de arriba sin puerta (el pajar, el barbacuá) se abren con la
     // zona de abajo; su cartel sale cuando alguien sube
-    if (!ZONES[k].with) this.hud.location(ZONES[k].name, ZONES[k].sub || '');
+    if (quiet) (this.quietZones ||= new Set()).add(k);
+    else if (!ZONES[k].with) this.hud.location(ZONES[k].name, ZONES[k].sub || '');
     this.ee?.onZone(k);
     for (const [j, Z] of Object.entries(ZONES)) if (Z.with === k) this.activateZone(j);
+    this.interact?.spreadZone(k);
     // las sombras son estáticas: se recalculan cuando termina de abrirse la puerta
     this.later(1.6, () => {
       this.renderer.shadowMap.needsUpdate = true;
@@ -1594,6 +1607,7 @@ export default class Game {
     if (k === 'subSize') this.hud.setSubScale(v);
     if (['master', 'music', 'sfx', 'voice'].includes(k)) this.audio.setVolumes(this.settings);
     if (k === 'voiceMode') this.audio.voiceMode = v;
+    if (k === 'voiceClarity') this.audio.setVoiceClarity(v);
     if (k in SOUND_MIX) this.audio.setMix(this.settings);
     if (k === 'fov') this.resize();
     if (k === 'quality' || k === 'gfx') {
@@ -1952,6 +1966,8 @@ export default class Game {
       this.atticSeen = true;
       this.hud.location(ATTIC_NAME, ATTIC_SUB);
     }
+    // (y el de la zona que se prendió sola, por una puerta que arrancó abierta)
+    if (zone && this.quietZones?.delete(zone) && !ZONES[zone].with) this.hud.location(ZONES[zone].name, ZONES[zone].sub || '');
     if (zone && ZONES[zone].with && !(this.upSeen ||= new Set()).has(zone)) {
       this.upSeen.add(zone);
       this.hud.location(ZONES[zone].name, ZONES[zone].sub || '');
@@ -1981,6 +1997,8 @@ export default class Game {
     // abajo del agua todo se oye ahogado (con el menú abierto o en una escena, no)
     this.audio.setUnder(active && p.alive && !!p.underwater);
     this.audio.setListener(this.camera.position, new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion));
+    // el eco de la sala: bajo techo o afuera (en una escena o en el título, el de siempre)
+    this.audio.setRoom(active && this.world?.indoorAt?.(this.camera.position.x, this.camera.position.z, this.camera.position.y) ? 1 : 0);
     this.audio.updateAmbience(dt);
   }
 
@@ -1996,6 +2014,9 @@ export default class Game {
     const vida = this.state !== 'title' && !cine && this.vida?.active ? 1 : 0;
     const clean = vida || cine;
     const hit = p && this.state !== 'title' && !clean ? p.hitK : 0;
+    // la lente de cine (fx/Lens.js): en las escenas, lo de atrás de los
+    // personajes fuera de foco. (globalThis.__mduNoLente: sin ella)
+    this.post.setLens(cine && this.state !== 'title' && globalThis.__mduNoLente !== true ? lensHull(this, this.camera) : null);
     this.post.render(dt, this.time, { hurt: clean ? 0 : hurt * 0.9, hit, hitX: p?.hitX || 0, hitY: p?.hitY || 0, down: clean ? 0 : down, crit: this.state === 'title' || clean ? 0 : this.critK || 0, pulse: cine ? 0 : pulse, vida });
   }
 

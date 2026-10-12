@@ -150,6 +150,10 @@ export default class DeathTour {
   // Tomas armadas con las zonas (las de adentro; cada una, cruzándola en diagonal).
   zoneShots(n) {
     const out = [];
+    // (la torre: en esa diagonal cuelga un farol de cada piso, a la altura de
+    // la cámara, que le pasaba por adentro. La toma va corrida para un costado:
+    // pasa a casi 2 m. El usuario, 2026-10-10)
+    const [sx, sz] = this.g.world?.tower ? [-0.053, 0.088] : [0, 0];
     const list = Object.entries(ZONES).filter(([, z]) => z.rects?.length && !z.with && !z.wild);
     list.sort(() => this.rand() - 0.5);
     for (const [, z] of list.slice(0, n)) {
@@ -174,7 +178,7 @@ export default class DeathTour {
         d: ZONE_D,
         where: z.name,
         fog: 1,
-        camAt: path([[x0 + w * 0.12, y + h, z0 + dd * 0.12], [x0 + w * 0.3, y + h * 0.85, z0 + dd * 0.22]]),
+        camAt: path([[x0 + w * (0.12 + sx), y + h, z0 + dd * (0.12 + sz)], [x0 + w * (0.3 + sx), y + h * 0.85, z0 + dd * (0.22 + sz)]]),
         lookAt: path([[x0 + w * 0.8, y + 0.9, z0 + dd * 0.8], [x0 + w * 0.75, y + 0.9, z0 + dd * 0.85]]),
       });
     }

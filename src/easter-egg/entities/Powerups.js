@@ -74,6 +74,9 @@ export default class Powerups {
       this.bag = sp && NAMES[sp] ? [...TYPES, sp] : [...TYPES];
       // (el Challenge de la torre suma los suyos: balas infinitas y botas)
       for (const k of FEATURES.pups || []) if (NAMES[k]) this.bag.push(k);
+      // (y la munición máxima le sale más seguido: FEATURES.ammoBag copias de más. El usuario,
+      // 2026-10-12. globalThis.__mduNoRetoAmmo: como antes)
+      if (globalThis.__mduNoRetoAmmo !== true) for (let k = 0; k < (FEATURES.ammoBag || 0); k++) this.bag.push('maxammo');
       for (let i = this.bag.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [this.bag[i], this.bag[j]] = [this.bag[j], this.bag[i]];
@@ -87,6 +90,13 @@ export default class Powerups {
       return all[Math.floor(Math.random() * all.length)];
     }
     return type;
+  }
+
+  // Lo que suelta un minijefe al caer: en el Challenge de la torre, siempre munición máxima
+  // (FEATURES.bossAmmo; el usuario, 2026-10-12); en lo demás, lo que toque de la bolsa (null).
+  // globalThis.__mduNoRetoAmmo: como antes.
+  bossType() {
+    return FEATURES.bossAmmo && globalThis.__mduNoRetoAmmo !== true ? 'maxammo' : null;
   }
 
   onKill(pos) {

@@ -77,8 +77,10 @@ export default class Encierro {
   // Una cortina por cada puerta de la habitación, del lado de adentro.
   buildCurtains() {
     const Z = ZONES[this.zone];
-    // (las zonas del penal tienen varios rectángulos: vale el primero)
-    const [x0, z0, x1, z1] = Z.rect || Z.rects[0];
+    // (las zonas del penal tienen varios rectángulos: vale el primero; las del
+    // estero hechas de manchas, como el Embalsado: la primera mancha)
+    const B = Z.blobs?.[0];
+    const [x0, z0, x1, z1] = Z.rect || Z.rects?.[0] || [B[0] - B[2], B[1] - B[2], B[0] + B[2], B[1] + B[2]];
     const cx = (x0 + x1 + 1) / 2;
     const cz = (z0 + z1 + 1) / 2;
     this.doors = DOORS.filter((d) => d.zones.includes(this.zone));

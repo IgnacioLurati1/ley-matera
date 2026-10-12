@@ -18,7 +18,7 @@ import { makeRift } from './eclipseCineSable';
 import { buildProp } from '../world/props';
 import { STAGE, SET, SET_AT, at, makeDome, setSky, buildSets, buildPrimerMate, buildLantern, tickFlags } from './eclipseCineSets';
 import { assetUrl } from '../../lib/assets';
-import { eclSfx } from '../fx/eclipseSfx';
+import { eclSfx, ahhPlay, ahhWarm } from '../fx/eclipseSfx';
 
 // El final de Eclipse Matero: "Todo tiene una razón de ser" (guion en el
 // scratchpad eclipse/CINEMATICAS.md §4). Lo arranca EclipseEgg.arenaWon() al
@@ -253,11 +253,61 @@ const CLARO_AWAY = /grieta|eclPools|portal|eclMood|eclMist|cristal|crystal|orbit
 const LAYER_OFF = 1 << 30;
 const CLARO_FAR = 105;
 
+// cuánto del viento de fondo queda (wind)
+const WIND_K = 0.25;
+
+// La mano que tiene el mate en la palma, con la palma para arriba (2026-10-10,
+// el usuario: "cuando el de azul está sosteniendo el mate, lo sostiene con la
+// mano en vertical y le clipea"). El clip de hablar ('cool') le va girando la
+// mano hasta 54 grados de canto y el mate, que queda derecho, la atravesaba.
+// Como quien habla con el mate en la mano: el brazo se mueve, la palma no se
+// vuelca. La normal de la palma en el hueso de la derecha de los gauchos es -x
+// (medido cebando). Hasta PALM_LEVEL[0] grados no se toca; desde PALM_LEVEL[1],
+// nivelada del todo. Devuelve cuánto estaba volcada (grados).
+// (globalThis.__mduFinPalmaVieja: como antes)
+const PALM_AXIS = new THREE.Vector3(-1, 0, 0);
+const PALM_LEVEL = [8, 22];
+const _pq = new THREE.Quaternion();
+const _pf = new THREE.Quaternion();
+const _pp = new THREE.Quaternion();
+const _pn = new THREE.Vector3();
+// (Belgrano: la palma de su modelo es +z en el hueso de la izquierda; la lleva
+// abierta y 30 grados volcada: se nivela siempre, BEL_PALM y lo = hi = 0)
+const BEL_PALM = new THREE.Vector3(0, 0, 1);
+// dónde va la base del mate en su palma (m, en el hueso de la mano: x hacia el
+// pulgar, y hacia los dedos, z afuera de la palma). Medido con los vértices
+// que mueve el hueso: antes la base quedaba 4 cm adentro de la mano.
+const BEL_HOLD = [+(globalThis.__mduBelHoldX ?? 0.022), +(globalThis.__mduBelHoldY ?? 0.115), +(globalThis.__mduBelHoldZ ?? 0.017)];
+function levelPalm(bone, axis = PALM_AXIS, lo = PALM_LEVEL[0], hi = PALM_LEVEL[1]) {
+  bone.getWorldQuaternion(_pq);
+  _pn.copy(axis).applyQuaternion(_pq);
+  const ang = (Math.acos(Math.max(-1, Math.min(1, _pn.y))) * 180) / Math.PI;
+  const w = hi <= lo ? 1 : smooth(Math.max(0, Math.min(1, (ang - lo) / (hi - lo))));
+  if (w <= 0 || !bone.parent || globalThis.__mduFinPalmaVieja === true) return ang;
+  // (el giro que la nivela, en el mundo; al hueso, en el marco de su padre)
+  _pf.setFromUnitVectors(_pn, UP);
+  if (w < 1) _pf.slerp(_pp.identity(), 1 - w);
+  bone.parent.getWorldQuaternion(_pp).invert();
+  bone.quaternion.copy(_pp.multiply(_pf.multiply(_pq)));
+  bone.updateMatrixWorld(true);
+  return ang;
+}
+
 export default class EclipseEnding extends CastleCine {
   constructor(ee) {
     super(ee.g, { drive: false, kind: 'eclipse' });
     this.ee = ee;
     loadFinClips();
+    ahhWarm(ee.g);
+    // (el ruido de fondo de la isla, fx/eclipseAmbience, a un tercio durante
+    // toda la escena: tapaba la música. El usuario, 2026-10-10)
+    this.ambK = globalThis.__mduFinViento === true ? 1 : 0.3;
+  }
+
+  // (en negro —entre escenas— tampoco suena el viento: windHush)
+  fade(on) {
+    this.blackOn = !!on;
+    super.fade(on);
   }
 
   // Habla Fierro: el texto se va solo un rato después de la voz.
@@ -1058,6 +1108,7 @@ export default class EclipseEnding extends CastleCine {
     } else if (o.kind === 'palm') {
       const B = o.r.a?.gs?.bones;
       if (!B) return (m.visible = false);
+      o.r.palmTilt = levelPalm(B.RightHand);
       B.RightHand.getWorldPosition(tmpV);
       B.RightForeArm.getWorldPosition(tmpW);
       tmpW.subVectors(tmpV, tmpW).normalize();
@@ -1074,6 +1125,20 @@ export default class EclipseEnding extends CastleCine {
       // El origen del mate es la base: el porongo baja para quedar en la palma)
       const B = o.a?.gs?.bones;
       if (!B?.LeftHand) return (m.visible = false);
+      // (2026-10-10, el usuario otra vez: "le atraviesa la mano". La lleva
+      // abierta: ahora la palma nivelada y el mate parado encima, con la base
+      // en la palma. __mduBelGripViejo: como antes)
+      if (globalThis.__mduBelGripViejo !== true) {
+        levelPalm(B.LeftHand, BEL_PALM, 0, 0);
+        B.LeftHand.getWorldPosition(tmpV);
+        B.LeftHand.getWorldQuaternion(_pq);
+        tmpV.addScaledVector(tmpW.set(1, 0, 0).applyQuaternion(_pq), BEL_HOLD[0]);
+        tmpV.addScaledVector(tmpW.set(0, 1, 0).applyQuaternion(_pq), BEL_HOLD[1]);
+        tmpV.addScaledVector(tmpW.set(0, 0, 1).applyQuaternion(_pq), BEL_HOLD[2]);
+        m.position.copy(tmpV);
+        m.quaternion.setFromAxisAngle(UP, o.r.yaw);
+        return;
+      }
       B.LeftHand.getWorldPosition(tmpV);
       B.LeftForeArm.getWorldPosition(tmpW);
       tmpW.subVectors(tmpV, tmpW).normalize();
@@ -1151,6 +1216,10 @@ export default class EclipseEnding extends CastleCine {
       A.show(false);
       this.at(0.6, () => this.modeK === 'campo' && A.show(true));
       this.wind(14);
+      // (el "ahhhh" del cielo, al arrancar la escena final y en ningún otro
+      // lado: el usuario, 2026-10-10. __mduFinSinAhh: sin él)
+      if (globalThis.__mduFinSinAhh !== true) this.at(0.5, () => ahhPlay(this.g, { gain: 0.8 }));
+      eclSfx(this.g).load?.(['portal-caos-abre', 'portal-cose']);
       this.at(0.4, () => this.fade(false));
       this.cut(10, F(1.2, -5.4, 1.85), F(2.6, -4.6, 1.75), F(9.6, 0.2, 1.25), F(9.8, 0.3, 1.3), 46);
       this.at(2.2, () => this.say('fierro', L.todo));
@@ -2012,8 +2081,11 @@ export default class EclipseEnding extends CastleCine {
         B.walkTo(by.valiente, to, 1.1, 'cool', { loop: true, fade: 0.4 });
       });
       this.at(15.3, () => B.turnTo(by.valiente, TO, 0.5));
-      this.at(14.7, () => {
-        B.act(fz, 'gilMateHold', { loop: true, fade: 0.4 });
+      // (apenas le llega el mate lo sostiene: antes seguía 1,3 s con el clip de
+      // recibir, que termina bajando los brazos, y los volvía a subir. El
+      // usuario, 2026-10-10. __mduFinFierroViejo: como antes)
+      this.at(globalThis.__mduFinFierroViejo === true ? 14.7 : 13.45, () => {
+        B.act(fz, 'gilMateHold', { loop: true, fade: 0.5 });
       });
       this.at(15.0, () => {
         const p0 = hF.clone().addScaledVector(fwF, 1.85).addScaledVector(sdF, -vs * 0.5);
@@ -2627,21 +2699,34 @@ export default class EclipseEnding extends CastleCine {
     if (FIN8()) this.at(25.6 + D9, () => g.music?.stop?.(3.6));
     else this.at(28.4 + D9, () => g.music?.stop?.(1.4));
     // en el silencio, su frase
+    // (en dos partes, con aire en el medio, para más drama: el usuario,
+    // 2026-10-10. __mduFraseEntera: de una, como antes)
+    const cut = globalThis.__mduFraseEntera === true ? -1 : L3.placa.indexOf(', ');
+    const p1 = cut > 0 ? `${L3.placa.slice(0, cut)}…` : L3.placa;
+    const D2 = cut > 0 ? 2.8 : 0;
     this.at(29.8 + D9, () => {
-      const d = super.say('fierro', L3.placa);
+      const d = super.say('fierro', p1);
       void d;
       this.quiet();
       this.cardEl.style.zIndex = '8';
       this.cardEl.style.top = '50%';
-      this.card(L3.placa, 5);
+      this.card(p1, 5 + D2);
     });
+    if (cut > 0) {
+      this.at(29.8 + D9 + D2, () => {
+        const d = super.say('fierro', `…${L3.placa.slice(cut + 2)}`);
+        void d;
+        this.quiet();
+        this.card(L3.placa, 5);
+      });
+    }
     // negro y la pantalla final
-    this.at(34.9 + D9, () => {
+    this.at(34.9 + D9 + D2, () => {
       const k = this.curtainEl?.children[3];
       if (k) k.style.opacity = '1';
       this.fade(true);
     });
-    return 38 + D9;
+    return 38 + D9 + D2;
   }
 
   // (2026-10-09, el usuario: "en la escena final del fogón, cuando Fierro
@@ -3035,7 +3120,9 @@ export default class EclipseEnding extends CastleCine {
     const T0 = 2 + 5;
     if (FIN11()) {
       this.hush = true;
-      if (chord) this.at(2.4, () => this.choir(0, chord, { dur: 2.3, gain: 0.045, attack: 1.5, release: 1.9 }));
+      // (el coro de "ahhh" en el negro quedaba fuera de lugar: el usuario,
+      // 2026-10-10. Ahora suena uno solo, el grabado, al empezar. __mduFinCoro: como antes)
+      if (chord && globalThis.__mduFinCoro === true) this.at(2.4, () => this.choir(0, chord, { dur: 2.3, gain: 0.045, attack: 1.5, release: 1.9 }));
     }
     this.at(T0, () => {
       el.textContent = text;
@@ -3209,6 +3296,7 @@ export default class EclipseEnding extends CastleCine {
     const R = this.rift;
     R.tick(dt, g.camera);
     if (this.portals) this.tickPortals(dt);
+    this.windHush();
     if (this.riftOpen && this.riftClose == null) {
       const k = (this.t - this.riftOpen.t) / 1.6;
       R.U.uCrack.value = Math.min(1, Math.max(0, k * 3));
@@ -3457,11 +3545,24 @@ export default class EclipseEnding extends CastleCine {
   }
 
   // ---------------- el sonido ----------------
+  // (2026-10-10, el usuario: el ruido de ambiente tapaba la música y seguía en
+  // las pantallas negras. Va a la cuarta parte (WIND_K) y en los negros —`hush`—
+  // se calla: windHush, cada cuadro. __mduFinViento: como antes)
   wind(dur, gain = 0.16) {
     const A = this.g.audio;
     if (!A?.ctx) return;
-    const o = (this.bus ||= A.out({ gain: 1, reverb: 0.5, bus: A.music }));
-    A.noise(o, { t: A.now, dur, type: 'bandpass', freq: 300, freqEnd: 220, q: 0.6, gain, attack: 2.5, brown: true });
+    const o = (this.windBus ||= A.out({ gain: 1, reverb: 0.5, bus: A.music }));
+    const k = globalThis.__mduFinViento === true ? 1 : WIND_K;
+    A.noise(o, { t: A.now, dur, type: 'bandpass', freq: 300, freqEnd: 220, q: 0.6, gain: gain * k, attack: 2.5, brown: true });
+  }
+  windHush() {
+    const A = this.g.audio;
+    const b = this.windBus;
+    if (!b || !A?.ctx || globalThis.__mduFinViento === true) return;
+    const want = this.hush || this.blackOn ? 0 : 1;
+    if (want === this.windWas) return;
+    this.windWas = want;
+    b.gain.setTargetAtTime(want, A.ctx.currentTime, want ? 0.6 : 0.2);
   }
   sfx(kind, p) {
     // (FIN8) el sable que sale de la vaina (grabado, del usuario) y el tajo
@@ -3477,6 +3578,12 @@ export default class EclipseEnding extends CastleCine {
         A.tone(o, { dur: 0.9, freq: 78, freqEnd: 30, gain: 0.5, attack: 0.005 });
         A.noise(o, { dur: 0.22, type: 'lowpass', freq: 600, freqEnd: 120, gain: 0.3 });
       }
+      return;
+    }
+    // (el desgarro y los portales que se abren: el grabado del usuario, no el
+    // armado de antes. 2026-10-10. __mduFinPortalViejo: como antes)
+    if (kind === 'tear' && globalThis.__mduFinPortalViejo !== true && eclSfx(this.g).has?.('portal-caos-abre')) {
+      eclSfx(this.g).play('portal-caos-abre', { pos: tmpV.copy(p).setY(p.y + 1.4).clone(), gain: 0.9, reverb: 0.5, ref: 8 });
       return;
     }
     const A = this.g.audio;

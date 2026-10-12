@@ -1,10 +1,13 @@
 import * as THREE from 'three';
-import { EE } from '../config/map';
+import { EE, RISERS } from '../config/map';
+import { maxAlive } from '../config/rules';
 import { setSleeveColor } from '../weapons/viewmodels';
 import { isHost, announce, glow } from './castle/common';
 import Saber from './esteros/Saber';
 import Poder from './esteros/Poder';
 import Ofrenda from './esteros/Ofrenda';
+import Cruces from './esteros/Cruces';
+import Velorio from './esteros/Velorio';
 import EsterosEnding, { prefetchEsterosClips, esterosClipsReady } from '../ui/EsterosEnding';
 import EsterosEndingClassic from '../ui/EsterosEndingClassic';
 import LuisonArrival, { prefetchSong, prefetchLuisonClips } from '../ui/LuisonArrival';
@@ -26,6 +29,16 @@ const HOWL_CUES = [
   [TRACKS['jefe-esteros'].boom - LUISON_FROM - LUISON_PREP, -1, 0],
 ];
 
+// La creciente que pide la voz: los muertos no se acaban por este tiempo como
+// mucho (si no juntan las almas, la ronda termina, el agua baja y la voz la
+// sube otra vez, como siempre).
+const FLOOD_HOLD = 180;
+// Con la luz en camino: cuántos salen del lado del algarrobo y hasta qué
+// distancia del hueco se cuenta un pozo.
+const OFRENDA_SHARE = 0.6;
+const OFRENDA_NEAR = 24;
+const tmpSpot = new THREE.Vector3();
+
 // Easter egg de "Mate no Numa": "El Pacto". La voz le habla solo a Gil y le
 // pide información y poder para enfrentar "los males del mundo" (nunca dice
 // cuáles). Los pasos:
@@ -34,8 +47,12 @@ const HOWL_CUES = [
 //     de los urutaú, al hueco del algarrobo (esteros/Saber.js).
 //  2. El Liquidificador: la pava de la laguna, brasas, agua de luna y el altar
 //     de la iglesia con encierro (esteros/Poder.js).
-//  3. La creciente: la voz sube el agua y hay que hervirla (almas).
-//  4. La luz de los ahogados: solo Gil la lleva al algarrobo (esteros/Ofrenda.js).
+//  3. Las cuatro cruces, prendidas a la vez (esteros/Cruces.js), y después la
+//     creciente: la voz sube el agua y hay que hervirla (almas).
+//  4. El velorio del Embalsado, con encierro (esteros/Velorio.js), y después
+//     la luz de los ahogados: solo Gil la lleva al algarrobo (esteros/Ofrenda.js).
+//     (Las cruces y el velorio, 2026-10-10: van adentro de los pasos 3 y 4,
+//     sin correr los números de los que siguen.)
 //  5. El Luisón.
 //  6. El final: Gil decide (ui/EsterosEnding.js).
 //
@@ -77,6 +94,8 @@ const VOZ = {
     'En el fondo de la laguna duerme una pava que no es de este mundo. Calentala con brasas de quebracho y llenala con agua de luna.',
     'Después, al altar de los padres. Que hierva donde ellos rezaban.',
   ],
+  cruces: ['Ya tienen con qué hervir. Pero antes, las cruces.', 'Hay cuatro, con cinta colorada: en el obraje, en la pesquería, en la reducción y en la laguna. Que ardan las cuatro a la vez.'],
+  velorio: ['Ya están todas las almas. Pero a los ahogados hay que velarlos.', 'Vayan todos a la isla que camina y prendan las velas.'],
   hervir: ['Eso que tienen en la mano hierve lo que toca. Cuando el agua suba... hiérvanla. Que los ahogados me alimenten.', 'La próxima noche el agua va a subir. De eso me encargo yo.'],
   creciente: ['Ahí está el agua, Antonio. Hiervan. Todo.'],
   otra: ['No alcanzó. El agua va a volver a subir. Y ustedes van a volver a hervirla.'],
@@ -89,6 +108,8 @@ const OTHERS = {
   llamado: 'Gil se da vuelta de golpe, como si alguien lo hubiera llamado.',
   pacto: 'Gil se quedó parado frente al algarrobo, hablando solo en voz baja.',
   poder: 'Gil vuelve del algarrobo pálido. Dice que hay una pava en el fondo de la laguna.',
+  cruces: 'Gil dice que hay que prender cuatro cruces a la vez: el Obraje, la Pesquería, la Reducción y la Laguna.',
+  velorio: 'Gil dice que hay que velar a los ahogados: todos al Embalsado.',
   hervir: 'Gil dice que esta noche el agua va a subir. No explica cómo lo sabe.',
   orbe: 'Gil mira la laguna. Algo brilla en el medio.',
   luison: 'Gil retrocede del algarrobo. Del oeste viene un aullido.',
@@ -115,6 +136,8 @@ export default class EsterosEgg {
     this.saber = new Saber(this);
     this.poder = new Poder(this);
     this.ofrenda = new Ofrenda(this);
+    this.cruces = new Cruces(this);
+    this.velorio = new Velorio(this);
     // easter egg musical: tres verduleras (world/SongEgg.js)
     this.song = new SongEgg(game, 'esteros');
     // el tocadiscos de la enramada: el baile de los muertos (entities/esteros/Thriller.js)
@@ -336,7 +359,15 @@ export default class EsterosEgg {
   // (anfitrión) El Liquidificador está listo: la creciente.
   onLiquid() {
     this.step = 3;
+    this.cruces.start();
+    this.voice('cruces');
+    this.netSync();
+  }
+
+  // (anfitrión) Las cuatro cruces arden a la vez: ahora sí, la creciente.
+  onCruces() {
     this.voice('hervir');
+    this.announce('', 5, true);
     this.netSync();
   }
 
@@ -348,7 +379,8 @@ export default class EsterosEgg {
   // La creciente empieza o termina (Rounds, en todas las compus).
   onFlood(on) {
     this.floodNow = on;
-    if (!isHost(this.g) || this.step !== 3) return;
+    if (on) this.floodAt = this.g.time;
+    if (!isHost(this.g) || this.step !== 3 || !this.cruces.done) return;
     if (on) {
       this.voice('creciente');
       this.announce('', 6, true);
@@ -361,6 +393,15 @@ export default class EsterosEgg {
   // (anfitrión) Se juntaron las almas.
   onSouls() {
     this.step = 4;
+    this.ofrenda.orb = 'wake';
+    this.velorio.start();
+    this.voice('velorio');
+    this.announce('', 5, true);
+    this.netSync();
+  }
+
+  // (anfitrión) Velaron a los ahogados: la luz queda lista en la laguna.
+  onVelorio() {
     this.ofrenda.ready();
     this.voice('orbe');
     this.announce('', 5, true);
@@ -375,7 +416,48 @@ export default class EsterosEgg {
     return !!this.g.rounds?.flood;
   }
 
+  // (anfitrión) Los dos tramos del pacto donde los muertos tampoco se acaban
+  // (el usuario, 2026-10-10, jugando de a 4: en la creciente de las almas "no
+  // salían casi zombies" y llevando la luz al algarrobo "no salieron zombies:
+  // deberían salir zombies infinitos, sobre todo de la zona a la que tenés que
+  // ir"). La creciente que pide la voz, hasta juntar las almas (con tope:
+  // FLOOD_HOLD), y la luz desde que Gil la agarra hasta que la entrega.
+  // globalThis.__mduNoPactHold: como antes (la ronda de siempre).
+  pactHold() {
+    if (globalThis.__mduNoPactHold === true) return false;
+    if (this.step === 3) return this.cruces.done && this.floodNow && this.poder.souls < this.poder.need() && this.g.time - (this.floodAt ?? -Infinity) < FLOOD_HOLD;
+    if (this.step === 4) return this.ofrenda.orb === 'carried' || this.ofrenda.orb === 'floor';
+    return false;
+  }
+
+  // (Rounds) En esos dos tramos el tope es el de una ronda cualquiera (en la
+  // pelea del Luisón sigue el suyo, más bajo) y salen más seguido cuantos más
+  // sean: de a 4, una vez y media más rápido que solo.
+  holdCap(players) {
+    return this.step === 3 || this.step === 4 ? maxAlive(players) : null;
+  }
+
+  holdPace(players) {
+    return this.step === 3 || this.step === 4 ? 1 / (1 + 0.5 * (players - 1)) : 1;
+  }
+
+  // (Rounds) Con la luz en camino, más de la mitad sale de los pozos del lado
+  // del algarrobo (los de zonas abiertas, a menos de OFRENDA_NEAR del hueco y
+  // sin nadie encima). null: del lugar de siempre.
+  holdSpot() {
+    if (this.step !== 4 || Math.random() > OFRENDA_SHARE) return null;
+    const g = this.g;
+    const [hx, hz] = EE.hueco;
+    const who = [g.player.pos];
+    if (g.net) for (const r of g.net.remote.values()) if (!r.dead) who.push(r.pos);
+    const list = RISERS.filter((r) => g.activeZones.has(r.zone) && Math.hypot(r.pos[0] - hx, r.pos[1] - hz) < OFRENDA_NEAR && who.every((p) => Math.hypot(r.pos[0] - p.x, r.pos[1] - p.z) > 5));
+    if (!list.length) return null;
+    const r = list[Math.floor(Math.random() * list.length)];
+    return tmpSpot.set(r.pos[0], g.world.floorAt(r.pos[0], r.pos[1]), r.pos[1]);
+  }
+
   get holding() {
+    if (this.pactHold()) return true;
     if (this.step !== 5) return false;
     // (cayó el Luisón y viene el final: la ronda queda quieta)
     if (this.endAt != null) return true;
@@ -589,6 +671,7 @@ export default class EsterosEgg {
       return { main: 'El saber', sub: gil ? 'Lo que saben los muertos del estero, al hueco del algarrobo' : 'Gil dice que el árbol pide esto (al hueco del algarrobo)', count: `${list.filter((l) => l[2]).length}/3`, list };
     }
     if (this.step === 2) return this.poder.line();
+    if (this.step === 3 && !this.cruces.done) return this.cruces.line();
     if (this.step === 3) {
       const P = this.poder;
       return {
@@ -661,7 +744,7 @@ export default class EsterosEgg {
   }
 
   fullState() {
-    return { s: this.step, roles: [...this.roles], sb: this.saber.state(), pd: this.poder.state(), of: this.ofrenda.state(), th: this.thriller.state() };
+    return { s: this.step, roles: [...this.roles], sb: this.saber.state(), pd: this.poder.state(), of: this.ofrenda.state(), th: this.thriller.state(), cz: this.cruces.state(), vl: this.velorio.state() };
   }
 
   applyRemote(m) {
@@ -669,7 +752,8 @@ export default class EsterosEgg {
     if (m.thr) return this.thriller.applyRemote(m.thr);
     if (m.vz) return this.playVoice(m.vz);
     if (m.wg) return this.playWhisper(m.wg);
-    if (m.wi) return this.poder.apply(m);
+    if (m.wi || m.lq != null) return this.poder.apply(m);
+    if (m.czq) return this.cruces.apply(m.czq);
     if (m.down) return this.downFx();
     if (m.cine === 'final') return this.playEnding(!!m.hoja);
     if (m.cine === 'llegada') return this.playArrival();
@@ -681,6 +765,10 @@ export default class EsterosEgg {
     if (m.sb) this.saber.apply(m.sb);
     if (m.pd) this.poder.apply(m.pd);
     if (m.of) this.ofrenda.apply(m.of);
+    if (m.cz) this.cruces.apply(m.cz);
+    if (m.vl) this.velorio.apply(m.vl);
+    // (la luz en camino: el agua baja, como en el anfitrión; Ofrenda.use)
+    if (this.step === 4 && (this.ofrenda.orb === 'carried' || this.ofrenda.orb === 'floor')) this.calmFlood();
     if (m.th) this.thriller.apply(m.th);
   }
 
@@ -696,6 +784,8 @@ export default class EsterosEgg {
     this.saber.update(dt);
     this.poder.update(dt);
     this.ofrenda.update(dt);
+    this.cruces.update(dt);
+    this.velorio.update(dt);
     this.song.update(dt);
     this.thriller.update(dt);
     // la llegada del Luisón, armada de antes (con la luz ya en la laguna)
@@ -746,9 +836,13 @@ export default class EsterosEgg {
     if (n >= 3) {
       P.pava = 'ready';
       P.sync();
+      // (el paso 3 arranca por las cruces; g.ee.cruces.finish() las da por prendidas)
+      if (n === 3) this.cruces.start();
+      else this.cruces.finish(false);
     }
     if (n >= 4) {
       P.souls = P.need();
+      this.velorio.finish(false);
       this.ofrenda.ready();
     }
     if (n >= 5) this.ofrenda.give();
@@ -806,6 +900,8 @@ export default class EsterosEgg {
     this.saber.dispose();
     this.poder.dispose();
     this.ofrenda.dispose();
+    this.cruces.dispose();
+    this.velorio.dispose();
     this.song.dispose();
     this.objEl?.remove();
     this.root.removeFromParent();

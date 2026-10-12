@@ -200,6 +200,9 @@ export default class TowerMk3Quest {
     this.calGlow = fireflies(g, GREEN, 1.2);
     this.calGlow.position.copy(this.calHome).setY(C.y + 0.3);
     this.root.add(this.calGlow);
+    // un destellito que se ve desde el otro lado del piso (el usuario,
+    // 2026-10-10: costaba encontrarlos; nada de columnas de luz)
+    this.calStar = this.star(GREEN, this.calHome, 0.5);
     // el del remolino, en un cajón del galpón
     this.porM = this.mate('R');
     const P = EE.porongo;
@@ -212,7 +215,37 @@ export default class TowerMk3Quest {
     this.porGlow = fireflies(g, AMBER, 1.2);
     this.porGlow.position.copy(this.porHome).setY(this.porHome.y + 0.2);
     this.root.add(this.porGlow);
+    this.porStar = this.star(AMBER, this.porHome, 0.4);
     this.trailPrev = new THREE.Vector3();
+  }
+
+  // El destello de un mate en su lugar: un punto de luz que titila y, cada
+  // tanto, un guiño en cruz (dos rayitas finas).
+  star(color, at, up) {
+    const grp = new THREE.Group();
+    grp.position.copy(at).setY(at.y + up);
+    const mk = () => {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.g.textures.dot, color, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0 }));
+      s.renderOrder = 3;
+      grp.add(s);
+      return s;
+    };
+    grp.dot = mk();
+    grp.rays = [mk(), mk()];
+    this.root.add(grp);
+    return grp;
+  }
+
+  twinkle(s, on, t, ph) {
+    s.visible = on;
+    if (!on) return;
+    const wink = Math.max(0, Math.sin(t * 1.1 + ph)) ** 14;
+    const beat = Math.sin(t * 2.3 + ph);
+    s.dot.material.opacity = 0.6 + beat * 0.15 + wink * 0.25;
+    s.dot.scale.setScalar(1.15 + beat * 0.1 + wink * 0.9);
+    s.rays[0].scale.set(0.5 + wink * 3.4, 0.16, 1);
+    s.rays[1].scale.set(0.16, 0.5 + wink * 3.4, 1);
+    for (const r of s.rays) r.material.opacity = wink * 0.9;
   }
 
   // ---------------- interacciones ----------------
@@ -518,6 +551,8 @@ export default class TowerMk3Quest {
     this.porGlow.visible = porHome || this.por === 'back';
     this.porM.grp.visible = porHome || this.por === 'orbit' || this.por === 'back' || this.por === 'rod';
     if (porHome) this.porM.grp.rotation.y = t * 0.4;
+    this.twinkle(this.calStar, calHome, t, 0);
+    this.twinkle(this.porStar, porHome, t, 1.7);
     // las cunas brillan mientras están vacías
     this.cradleGlow[0].material.opacity = this.cal === 'rod' || this.cal === 'charged' ? 0 : 0.2 + Math.sin(t * 2.5) * 0.12;
     this.cradleGlow[1].material.opacity = this.por === 'rod' ? 0 : 0.2 + Math.sin(t * 2.5 + 1) * 0.12;

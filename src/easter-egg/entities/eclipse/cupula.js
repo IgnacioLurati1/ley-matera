@@ -407,29 +407,103 @@ export default class Cupula {
         kz = sz / sa;
       }
     }
-    this.kc = new THREE.Vector3(kx, I.y, kz);
     const taken = [];
+    // (2026-10-11, el usuario: "en la zona de la torre los caballeros
+    // aparecieron fuera del mapa, puede haber otras zonas". El que no encontraba
+    // lugar hacia su lado caía a 2 m del medio de la ronda sin mirar si ahí
+    // había piso; y ese medio —el centro de lo abierto— a veces no pisa la
+    // isla: en la torre dos quedaban en el vacío, en el castillo uno, y en el
+    // penal dos flotando a 4 m. Ahora el medio de la ronda se elige sobre piso
+    // libre de la isla, con lugar alrededor, y ningún caballero se pone sin
+    // comprobar el lugar. __mduOldKnightSpot: como antes)
+    const OLD = globalThis.__mduOldKnightSpot === true;
+    let yRef = I.y;
+    // ¿se puede parar acá? (piso de esta isla, a la altura de la ronda, libre)
+    const okAt = (x, z, needOpen, far = 2.5) => {
+      const k = w.zoneAt(x, z, yRef + 1);
+      if (!k || ZONES[k]?.isla !== isla || (needOpen && !open(k))) return null;
+      // (no encima de otro)
+      if (taken.some((s) => Math.hypot(s[0] - x, s[2] - z) < far)) return null;
+      const y = w.floorAt(x, z, yRef + 2);
+      if (!Number.isFinite(y) || Math.abs(y - yRef) > 2.5) return null;
+      if (!w.circleFree(x, z, 0.6, y + 0.2, y + 1.8)) return null;
+      return [x, y, z];
+    };
     const find = (a, needOpen) => {
       for (const r of RADII) {
         for (const da of SPREAD) {
-          const x = kx + Math.cos(a + da) * r;
-          const z = kz + Math.sin(a + da) * r;
-          const k = w.zoneAt(x, z, I.y + 1);
-          if (!k || ZONES[k]?.isla !== isla || (needOpen && !open(k))) continue;
-          // (no encima de otro)
-          if (taken.some((s) => Math.hypot(s[0] - x, s[2] - z) < 2.5)) continue;
-          const y = w.floorAt(x, z, I.y + 2);
-          if (!Number.isFinite(y) || Math.abs(y - I.y) > 2.5) continue;
-          if (!w.circleFree(x, z, 0.6, y + 0.2, y + 1.8)) continue;
-          return [x, y, z];
+          const spot = okAt(kx + Math.cos(a + da) * r, kz + Math.sin(a + da) * r, needOpen);
+          if (spot) return spot;
         }
       }
       return null;
     };
+    // (sin lugar hacia su lado: a cualquier lado de la ronda; y si no, la
+    // baldosa libre más cercana al medio)
+    const around = (needOpen) => {
+      for (const r of RADII) {
+        for (let j = 0; j < 16; j++) {
+          const spot = okAt(kx + Math.cos((j * Math.PI) / 8) * r, kz + Math.sin((j * Math.PI) / 8) * r, needOpen);
+          if (spot) return spot;
+        }
+      }
+      return null;
+    };
+    const cells = [];
+    const nearest = () => {
+      for (const far of [2.5, 1.3]) for (const [x, z] of cells) {
+        const spot = okAt(x, z, false, far);
+        if (spot) return spot;
+      }
+      return null;
+    };
+    // Los cuatro lugares. strict: cada uno hacia su lado o nada (null).
+    const place4 = (strict) => {
+      taken.length = 0;
+      for (let i = 0; i < 4; i++) {
+        const a = Math.PI / 4 + (i * Math.PI) / 2;
+        let spot = find(a, true) || find(a, false);
+        if (!spot && !strict && !OLD) spot = around(true) || around(false) || nearest();
+        if (!spot) {
+          if (strict) return null;
+          spot = [kx + Math.cos(a) * 2, yRef, kz + Math.sin(a) * 2];
+        }
+        taken.push(spot);
+      }
+      return taken.slice();
+    };
+    // (donde la ronda de siempre entra entera, queda igual que antes)
+    let spots = OLD ? place4(false) : place4(true);
+    if (!spots) {
+      // las baldosas de la isla, de la más cercana al medio de la cúpula a la más lejana
+      for (const k of zs) {
+        for (const [a0, b0, a1, b1] of ZONES[k]?.rects || []) for (let x = a0; x <= a1; x++) for (let z = b0; z <= b1; z++) cells.push([x + 0.5, z + 0.5, Math.hypot(x + 0.5 - cx, z + 0.5 - cz)]);
+      }
+      cells.sort((p, q) => p[2] - q[2]);
+      // el medio de la ronda: la baldosa libre con más lugar alrededor (hasta
+      // 22 m del medio de la cúpula; a igual lugar, la más cercana)
+      taken.length = 0;
+      let best = null;
+      for (const [x, z, d] of cells) {
+        if (d > 22 && best) break;
+        const here = okAt(x, z, false);
+        if (!here) continue;
+        let n = 0;
+        for (let j = 0; j < 8; j++) if (okAt(x + Math.cos((j * Math.PI) / 4) * 5.5, z + Math.sin((j * Math.PI) / 4) * 5.5, false)) n++;
+        const score = n - d * 0.12 + (open(w.zoneAt(x, z, yRef + 1)) ? 1.5 : 0);
+        if (!best || score > best.score) best = { x, z, y: here[1], score };
+        if (n === 8 && d < 2) break;
+      }
+      if (best) {
+        kx = best.x;
+        kz = best.z;
+        yRef = best.y;
+      }
+      spots = place4(false);
+    }
+    this.kc = new THREE.Vector3(kx, OLD ? I.y : yRef, kz);
     this.knights.forEach((K, i) => {
-      const a = Math.PI / 4 + (i * Math.PI) / 2;
-      const spot = find(a, true) || find(a, false) || [kx + Math.cos(a) * 2, I.y, kz + Math.sin(a) * 2];
-      taken.push(spot);
+      const spot = spots[i];
       K.home.set(spot[0], spot[1], spot[2]);
       K.y0 = spot[1];
       // mirando al medio de la ronda (a los que cuidan)

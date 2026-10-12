@@ -214,7 +214,7 @@ export const WEAPONS = {
     recoil: 0.04,
     moveMult: 0.88,
     box: 10,
-    pap: { name: 'Camionero de Larga Distancia', damage: 210, mag: 150, reserve: 600, elem: 'ice' },
+    pap: { name: 'Camionero de Larga Distancia', damage: 242, mag: 150, reserve: 600, elem: 'ice' },
   },
   torpedo: {
     name: 'Mate Torpedo',
@@ -538,7 +538,7 @@ export const WEAPONS = {
     recoil: 0.03,
     box: 9,
     only: 'torre',
-    pap: { name: 'Campanario del Remolino', damage: 265, mag: 100, reserve: 500, rpm: 780, elem: 'ice' },
+    pap: { name: 'Campanario del Remolino', damage: 305, mag: 100, reserve: 500, rpm: 780, elem: 'ice' },
   },
   // Los cuatro de la caja nuevos (el usuario, 2026-10-08). Modelos en
   // weapons/nuevosMates.js; trazos, cohete y chispas en weapons/nuevosFx.js;
@@ -554,7 +554,8 @@ export const WEAPONS = {
     mag: 16,
     reserve: 64,
     reload: 2.4,
-    damage: 170,
+    // (2026-10-10, el usuario: +20% sin mejorar, de 170; el mejorado queda igual)
+    damage: 204,
     pellets: 6,
     headMult: 1.5,
     spread: 0.075,
@@ -563,7 +564,7 @@ export const WEAPONS = {
     sound: 'labrador',
     recoil: 0.1,
     box: 9,
-    pap: { name: 'Labrador de Sol a Sol', damage: 380, mag: 25, reserve: 125, rpm: 330, elem: 'fire' },
+    pap: { name: 'Labrador de Sol a Sol', damage: 400, mag: 25, reserve: 125, rpm: 330, elem: 'fire' },
   },
   // El lanzacohetes de cuatro (la L4 Siege de Black Ops 3): semiautomático,
   // cuatro cohetes y 60 de reserva. Revienta fuerte y te lastima si estás
@@ -885,7 +886,8 @@ export const WEAPONS = {
     chalk: 'tall',
     vortex: { cost: 6, speed: 11, radius: 5, life: 4, dps: 6000, fly: 1.2 },
     wall: 12000,
-    box: 2,
+    // (cuánto sale lo decide la caja de la torre: FEATURES.boxTune.set, el 5%)
+    box: 5,
     only: 'torre',
     pap: { name: 'Mark III Remolino Eterno', mag: 45, reserve: 270, damage: 5200, rpm: 380, vortex: { cost: 5, speed: 12, radius: 6.5, life: 5, dps: 12000, fly: 1.3 } },
   },
@@ -1381,15 +1383,23 @@ export const BOX_POOL = Object.entries(WEAPONS)
 // fuertes): ahí los fuertes de caja pesan la mitad y los de pared un poco más
 // (de ~28-36% a ~14-20% de fuertes; los de pared, de ~32% a ~45%; los wonder
 // casi igual). Pedido del usuario 2026-09-27.
-const BOX_TUNED = ['molino', 'granja', 'penal'];
-const BOX_STRONG = ['imperial', 'camionero', 'torpedo', 'asta', 'mate47', 'gut', 'labrador'];
+// (2026-10-10, el usuario: el castillo, como La Tapera; con su Llamarada
+// entre los fuertes, como el Asta de La Tapera y el Mate 47 del penal)
+const BOX_TUNED = ['molino', 'granja', 'penal', 'castillo'];
+const BOX_STRONG = ['imperial', 'camionero', 'torpedo', 'asta', 'mate47', 'gut', 'labrador', 'llamarada'];
 // Los especiales de la caja salen un poco más (de ~2% a ~3,4% cada uno), y en
 // el molino el Tronador bastante más (~5,8%). Pedido del usuario 2026-09-30.
 const WONDER_K = 1.75;
 const WONDER_MAP = { molino: { tronador: 3 } };
-export function boxWeight(w, map) {
+// `tune`: lo del mapa (FEATURES.boxTune, la torre: 2026-10-10, pedido del
+// usuario): cuánto pesan ahí los de pared (`wall`) y los fuertes (`strong`),
+// y el peso fijo de alguno (`set`: el Mark III y la pava).
+const BOX_GOOD = [...BOX_STRONG, 'campanario'];
+export function boxWeight(w, map, tune = null) {
   const W = WEAPONS[w.id];
+  if (tune?.set?.[w.id] != null) return tune.set[w.id];
   if (W.wonder && !W.egg) return w.weight * (WONDER_MAP[map]?.[w.id] ?? WONDER_K);
+  if (tune) return w.weight * (BOX_GOOD.includes(w.id) ? tune.strong ?? 1 : W.wall && !W.box ? tune.wall ?? 1 : 1);
   if (!BOX_TUNED.includes(map)) return w.weight;
   if (BOX_STRONG.includes(w.id)) return w.weight * 0.5;
   if (W.wall && !W.box) return w.weight * 1.3;

@@ -21,8 +21,9 @@ export default class Ofrenda {
     const g = (this.g = egg.g);
     this.root = new THREE.Group();
     egg.root.add(this.root);
-    // la luz: none (todavía no hay almas), grow (se está juntando), lake (lista
-    // en la laguna), carried (la lleva Gil), floor (se le cayó), given
+    // la luz: none (todavía no hay almas), grow (se está juntando), wake (las
+    // almas están pero falta velarlas: esteros/Velorio.js), lake (lista en la
+    // laguna), carried (la lleva Gil), floor (se le cayó), given
     this.orb = 'none';
     this.carrier = null;
     this.dropPos = null;
@@ -60,6 +61,7 @@ export default class Ofrenda {
       radius: 2.2,
       wide: true,
       prompt: () => {
+        if (this.orb === 'wake') return { text: 'La luz todavía no cuajó: falta el velorio, en el Embalsado', noCost: true, info: true };
         if (this.orb !== 'lake' && this.orb !== 'floor') return null;
         if (!E.isGil()) return { text: 'La luz de los ahogados quema los dedos: solo Gil puede tocarla', noCost: true, info: true };
         return { text: 'agarrar la luz de los ahogados', noCost: true, hold: true };
@@ -70,6 +72,10 @@ export default class Ofrenda {
         if ((this.orb !== 'lake' && this.orb !== 'floor') || !E.isGil(from)) return false;
         this.orb = 'carried';
         this.carrier = from;
+        // (desde acá los muertos no se acaban y la ronda no pasa, EsterosEgg
+        // pactHold: si la agarra en plena creciente, el agua baja; si no,
+        // quedaba arriba hasta la pelea)
+        E.calmFlood();
         announce(g, '', 4, true);
         E.netSync();
         return true;
@@ -114,7 +120,7 @@ export default class Ofrenda {
 
   // Dónde está la luz ahora.
   where(v) {
-    if (this.orb === 'lake' || this.orb === 'grow') return this.lakePos(v);
+    if (this.orb === 'lake' || this.orb === 'grow' || this.orb === 'wake') return this.lakePos(v);
     if (this.orb === 'floor' && this.dropPos) return v.set(this.dropPos[0], this.dropPos[1] + 0.9, this.dropPos[2]);
     if (this.orb === 'carried') {
       const E = this.egg;
@@ -143,10 +149,12 @@ export default class Ofrenda {
       this.ball.position.copy(at);
       if (this.orb !== 'carried') this.ball.position.y += Math.sin(t * 1.4) * 0.12;
       const mine = this.orb === 'carried' && this.carrier === E.myId();
-      const s = (0.3 + grow * 0.7) * (mine ? 0.35 : 1);
+      // (sin velar tiembla, chica y apagada; con el velorio va cuajando)
+      const wake = this.orb === 'wake' ? 0.45 + E.velorio.k() * 0.55 : 1;
+      const s = (0.3 + grow * 0.7) * (mine ? 0.35 : 1) * wake;
       this.ball.scale.setScalar(s);
-      this.halo.material.opacity = 0.6 + Math.sin(t * 5) * 0.2;
-      this.halo2.material.opacity = 0.25 + Math.sin(t * 2.3) * 0.1;
+      this.halo.material.opacity = (0.6 + Math.sin(t * (this.orb === 'wake' ? 17 : 5)) * 0.2) * wake;
+      this.halo2.material.opacity = (0.25 + Math.sin(t * 2.3) * 0.1) * wake;
       this.it.pos.copy(at).setY(at.y - (this.orb === 'lake' ? 1 : 0.5));
       if (Math.random() < dt * 6 && !mine) g.fx.sparkle(at, [0.6, 1, 0.8], 1, 0.6);
     }
@@ -166,6 +174,7 @@ export default class Ofrenda {
   line() {
     const E = this.egg;
     const gil = E.isGil();
+    if (this.orb === 'wake') return E.velorio.line();
     if (this.orb === 'lake') return { main: 'La luz de los ahogados', sub: gil ? 'Flota en medio de la Laguna del Irupé. Solo vos podés tocarla: llevásela a la voz, al hueco del algarrobo' : 'Flota en medio de la Laguna del Irupé. Solo Gil puede llevarla al algarrobo: cúbranlo' };
     if (this.orb === 'floor') return { main: 'La luz se cayó', sub: gil ? 'Levantala de donde caíste y seguí hasta el algarrobo' : 'Quedó donde cayó Gil: solo él puede levantarla' };
     if (this.orb === 'carried') return { main: 'La ofrenda', sub: gil ? 'Al hueco del Algarrobo de los Colgados' : 'Gil lleva la luz al Algarrobo de los Colgados: cúbranlo' };

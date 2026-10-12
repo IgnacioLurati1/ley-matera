@@ -15,6 +15,7 @@ import TowerMk3Quest from './towerMk3Quest';
 import TowerShutters from '../world/towerShutters';
 import TowerDebris from '../world/towerDebris';
 import CineActors from '../ui/cineActors';
+import BlendScene, { loadBlendScene } from '../ui/blendScene';
 
 // Easter egg de la torre: "Las Revelaciones". Lo guía el ánima de Martín
 // Fierro (el que en el molino se hacía pasar por el Abuelo), que espera junto
@@ -227,6 +228,10 @@ export default class TowerEgg {
     this.fierroGlow = this.glowSprite(0x6a9aff, 2.6);
     this.root.add(this.fierroGlow);
     this.fierroSpot = 'base';
+    // el cañonazo, armado en Blender (ui/blendScene.js): se pide ya, para tenerlo
+    // cuando haga falta. (globalThis.__mduCanonViejo: la escena de antes)
+    this.canonD = null;
+    if (globalThis.__mduCanonViejo !== true) loadBlendScene('canon-torre').then((D) => (this.canonD = D)).catch(() => {});
   }
 
   // Dónde está Fierro: abajo, al lado del fogón, o arriba, junto al cañón.
@@ -1164,6 +1169,15 @@ export default class TowerEgg {
     const b = C.by;
     if (S.kind === 'cannon') {
       if (g.net?.avatars) g.net.avatars.root.visible = false;
+      // la escena armada en Blender (C:/Users/ignac/Tools/mdu-blender/canon_torre.py,
+      // aprobada en gris el 2026-10-11): los cuerpos, la cámara y las líneas
+      // salen de ahí; los efectos, de cannonFx. Si el archivo no llegó, la de antes.
+      if (this.canonD && globalThis.__mduCanonViejo !== true) {
+        S.blend = new BlendScene(g, this.canonD, { actors: C, on: { di: (e) => this.sceneSay(S, e.who, e.text) } });
+        // (el lente de la escena: Game.update no se lo pisa, cineFov)
+        S.cine = { wantFov: this.canonD.cam.fov[0] };
+        return;
+      }
       // del otro lado de la cámara que da la vuelta (y lejos de Fierro)
       const [cx, cz] = EE.canon.pos;
       S.crewA = -Math.PI * 0.75;
@@ -1259,19 +1273,79 @@ export default class TowerEgg {
     const t = S.t;
     const cam = g.camera;
     const lines = S.kind === 'cannon' ? CANNON_LINES : FALL_LINES;
-    while (S.said < lines.length && t >= lines[S.said][0]) {
+    // (en la escena de Blender las líneas vienen de su línea de tiempo)
+    while (!S.blend && S.said < lines.length && t >= lines[S.said][0]) {
       const [, who, text] = lines[S.said];
-      S.text.textContent = text;
-      S.text.classList.remove('is-on');
-      void S.text.offsetWidth;
-      S.text.classList.add('is-on');
-      g.audio.say(text, who, { cine: true });
+      this.sceneSay(S, who, text);
       S.said++;
+    }
+    if (S.blend) {
+      this.cannonBlend(S, t, sdt);
+      return true;
     }
     if (S.kind === 'cannon') this.cannonCam(t, dt, cam);
     else this.fallCam(t, dt, cam);
     if (S.crew && this.scene === S) S.crew.tick(sdt);
     return true;
+  }
+
+  // Una línea de la escena: el texto abajo y la voz.
+  sceneSay(S, who, text) {
+    S.text.textContent = text;
+    S.text.classList.remove('is-on');
+    void S.text.offsetWidth;
+    S.text.classList.add('is-on');
+    this.g.audio.say(text, who, { cine: true });
+  }
+
+  // El cañonazo armado en Blender: los cuatro y la cámara, de la escena
+  // (ui/blendScene.js); los efectos, a la misma hora que siempre (cannonFx).
+  cannonBlend(S, t, sdt) {
+    const Bl = S.blend;
+    S.crew.tick(sdt);
+    Bl.update(t);
+    S.cine.wantFov = Bl.fov;
+    this.cannonFx(t);
+    if (t > Bl.dur) this.endScene();
+  }
+
+  // Los efectos del cañonazo, sin la cámara (los mismos de cannonCam): la
+  // mecha, el disparo (3 s), la bala hasta el ojo, el golpe (6,2 s) y el cielo
+  // que se abre (8,5 s).
+  cannonFx(t) {
+    const g = this.g;
+    const C = this.cannon;
+    const eye = this.T.eye.position;
+    if (t < 3) {
+      if (t > 1.2 && Math.random() < 0.6) g.fx.fire(C.fuse.localToWorld(new THREE.Vector3(0.08, 0.3, 0)), 0.05, 1);
+      return;
+    }
+    if (!S2(this.scene, 'shot')) {
+      const mouth = C.barrel.localToWorld(tmpV.set(0, 1.6, 0)).clone();
+      g.fx.explosion(mouth, 2.2, [1, 0.7, 0.3]);
+      g.fx.flash(mouth, 0xffc070, 150, 0.6, 30);
+      g.audio.explosion(mouth, 1.6);
+      g.audio.thunder?.(mouth);
+      g.fx.addShake(0.8);
+      this.ball.visible = true;
+      this.ballFrom = mouth;
+    }
+    const k = Math.min(1, (t - 3) / 3.2);
+    this.ball.position.lerpVectors(this.ballFrom, eye, k * k);
+    if (Math.random() < 0.8) g.fx.fire(this.ball.position, 0.15, 1);
+    if (k < 1) return;
+    if (!S2(this.scene, 'hit')) {
+      this.ball.visible = false;
+      this.T.hurtEye(1.5);
+      g.post?.flash(1.4);
+      g.audio.explosion(eye, 2);
+      g.audio.thunder?.(null, true);
+      g.fx.lightning(eye.clone(), eye.clone().add(new THREE.Vector3(18, -30, 4)), 0xffe8ff, 0.8);
+      g.fx.lightning(eye.clone(), eye.clone().add(new THREE.Vector3(-14, -28, -10)), 0xc8a0ff, 0.8);
+      if (g.weather) g.weather.flash = 1;
+    }
+    // el cielo se abre de oro (la escalera baja recién cuando se paga)
+    if (t > 8.5 && !S2(this.scene, 'sky')) this.T.skyOpenK = 1;
   }
 
   // El cañonazo: la cámara mira el cañón, sigue la bala hasta el ojo y ve cómo se abre el cielo.
@@ -1427,6 +1501,7 @@ export default class TowerEgg {
     this.scene = null;
     S.el.remove();
     g.hud.show(true);
+    S.blend?.dispose();
     if (S.crew) {
       S.crew.dispose();
       if (g.net?.avatars) g.net.avatars.root.visible = true;

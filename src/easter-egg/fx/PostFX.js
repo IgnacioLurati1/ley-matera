@@ -11,6 +11,7 @@ import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 import Epic, { LEVELS, FOLIAGE_B } from './Epic';
 import Surfaces from './Surfaces';
 import TAAPass, { GRASS_JIT } from './TAA';
+import LensPass from './Lens';
 import FsrPass, { FSR_SCALE } from './Fsr';
 import { FEATURES, MAP_ID } from '../config/map';
 import SliceWalk from './sliceWalk';
@@ -321,6 +322,18 @@ class WorldPass extends RenderPass {
     this.msaa = null;
   }
 
+  // La lente de cine (fx/Lens) necesita la profundidad del mundo: sin MSAA ni
+  // Épica no la guarda nadie, y el mundo se dibuja a un blanco propio (sin
+  // muestras de más) que sí.
+  setDepth(on) {
+    if (on === !!this.needDepth) return;
+    this.needDepth = on;
+    if (!this.samples) {
+      this.msaa?.dispose();
+      this.msaa = null;
+    }
+  }
+
   setSize(w, h) {
     this.w = w;
     this.h = h;
@@ -339,7 +352,7 @@ class WorldPass extends RenderPass {
   }
 
   draw(renderer, writeBuffer, readBuffer, dt, mask) {
-    if (!this.samples || this.renderToScreen) return super.render(renderer, writeBuffer, readBuffer, dt, mask);
+    if ((!this.samples && !this.needDepth) || this.renderToScreen) return super.render(renderer, writeBuffer, readBuffer, dt, mask);
     // (con su profundidad: la usa el suavizado temporal para llevar lo de antes)
     if (!this.msaa) this.msaa = new THREE.WebGLRenderTarget(this.w, this.h, { type: THREE.HalfFloatType, samples: this.samples, depthTexture: new THREE.DepthTexture(this.w, this.h) });
     super.render(renderer, writeBuffer, this.msaa, dt, mask);
@@ -399,6 +412,10 @@ export default class PostFX {
     this.world.taa = this.taa;
     this.taa.enabled = false;
     this.composer.addPass(this.taa);
+    // la lente de cine (fx/Lens.js): solo en las escenas (setLens)
+    this.lens = new LensPass(camera, () => this.world.msaa?.depthTexture || (this.epic.on ? this.epic.gbuffer.depthTexture : null));
+    this.lensHull = null;
+    this.composer.addPass(this.lens);
     this.composer.addPass(this.vm);
     this.composer.addPass(this.bloom);
     this.composer.addPass(this.output);
@@ -435,6 +452,7 @@ export default class PostFX {
     this.world.scene = scene;
     this.world.camera = camera;
     this.taa.camera = camera;
+    this.lens.camera = camera;
     this.taa.valid = false;
     this.epic.setScenes(scene, camera);
     this.surfaces.setScene(scene, this.game?.world?.T);
@@ -516,6 +534,12 @@ export default class PostFX {
     this.grade.uniforms.uRes.value.set(w * p, h * p);
   }
 
+  // La lente de cine: hull = los muñecos en cuadro (ui/cineLens.js lensHull),
+  // o null fuera de las escenas. Lo pide Game cada cuadro.
+  setLens(hull) {
+    this.lensHull = hull;
+  }
+
   flash(v) {
     this.flashV = Math.max(this.flashV, v);
   }
@@ -578,6 +602,8 @@ export default class PostFX {
       this.vmT = 1;
       this.vm.scene?.traverse(sweepOne);
     }
+    this.lens.update(dt, this.lensHull);
+    this.world.setDepth(this.lens.enabled && !this.epic.on);
     this.taa.jitter();
     // las luces de evento a las del pool (World.adoptLight), antes que las
     // sombras de fuegos de Épica las miren; el pasto lejano (World.preRender)
@@ -610,6 +636,7 @@ export default class PostFX {
     this.epic.dispose();
     this.world.dispose();
     this.taa.dispose();
+    this.lens.dispose();
     this.fsr.dispose();
     this.composer.dispose();
   }

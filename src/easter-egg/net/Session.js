@@ -39,6 +39,9 @@ export default class Session {
   constructor(game, net) {
     this.g = game;
     this.net = net;
+    // (2026-10-10, el usuario: en la pelea final no entra nadie, para que no
+    // se sumen al final a cobrar el easter egg sin jugarlo)
+    net.busy = () => globalThis.__mduJoinSiempre !== true && this.bossFight();
     this.guest = net.guest;
     this.host = net.host;
     this.id = net.id;
@@ -749,6 +752,16 @@ export default class Session {
     this.boardKey = null;
   }
 
+  // ¿Están en la pelea final del mapa? (la arena del final, la de San Lorenzo
+  // y el Desgarro de Eclipse, el Luisón del estero, o el jefe del final vivo)
+  bossFight() {
+    const g = this.g;
+    if (g.state !== 'playing' && g.state !== 'paused') return false;
+    const ee = g.ee;
+    const b = g.zombies?.boss;
+    return !!(g.arena?.active || ee?.fight || ee?.arena?.active || ee?.d10?.holding || (g.mapId === 'esteros' && ee?.step === 5) || (b && !b.dead && b.mandinga));
+  }
+
   // Estado completo del mundo para el que entra (o para todos, si se arrancó otra).
   sendState(id, restart) {
     const g = this.g;
@@ -764,6 +777,10 @@ export default class Session {
       doors: [...g.world.doorOpen],
       zones: [...g.activeZones],
       box: { spot: g.interact.box.spot, state: g.interact.box.state },
+      // (Eclipse: la segunda caja)
+      box2: g.interact.boxes[1] ? { spot: g.interact.boxes[1].spot } : undefined,
+      // (las puertas que arrancaron abiertas: el que entra las abre sin ruido)
+      pre: g.interact.preDoors?.length ? g.interact.preDoors : undefined,
       locks: g.interact.list.filter((it) => it.locked).map((it) => it.index),
       weather: g.weather.name,
       arena: g.arena.active,
@@ -802,11 +819,16 @@ export default class Session {
       g.setMap(m.map, { save: false, mode: m.mode });
     }
     if (m.power && !g.world.power) g.turnOnPower();
+    if (m.pre) {
+      this.preDoors = { l: m.pre, map: m.map };
+      g.interact.applyPreDoors(m.pre);
+    }
     m.doors.forEach((open, i) => {
       if (open && !g.world.doorOpen[i]) g.interact.openDoor(g.interact.list.find((it) => it.kind === 'door' && it.door.index === i).door);
     });
     for (const z of m.zones) g.activeZones.add(z);
     g.interact.placeBox(m.box.spot);
+    if (m.box2 && g.interact.boxes[1]) g.interact.placeBox(m.box2.spot, g.interact.boxes[1]);
     for (const i of m.locks || []) if (g.interact.list[i]) g.interact.lock(g.interact.list[i], true);
     g.weather.set(m.weather, false);
     g.rounds.round = m.round;
@@ -986,7 +1008,7 @@ export default class Session {
     // la caja, o una de las de la liquidación (cada una anda por su cuenta)
     if (kind === 'box' || kind === 'salebox') {
       const sale = kind === 'salebox';
-      const box = sale ? g.interact.saleBoxes[it.saleIndex] : g.interact.box;
+      const box = sale ? g.interact.saleBoxes[it.saleIndex] : it.box || g.interact.box;
       if (!box || (sale && !box.group.visible)) return reply(false);
       if (box.state === 'closed') {
         // (lo que sale se sortea sin los mates que ya tiene el invitado)
@@ -1336,6 +1358,14 @@ export default class Session {
       case 'pasto':
         g.arena?.onPasto?.(m);
         break;
+      // las almas coloradas de la cárcel del Gil (world/Cerro.js) y los
+      // espantapájaros que cubren al de La Tapera (world/Prado.js)
+      case 'gsoul':
+        g.arena?.onSouls?.(m);
+        break;
+      case 'espanta':
+        g.arena?.onDummies?.(m);
+        break;
       case 'fireball':
         g.arena.spawnFireball(new THREE.Vector3(m.x, m.y, m.z), new THREE.Vector3(m.vx, m.vy, m.vz));
         break;
@@ -1346,11 +1376,19 @@ export default class Session {
         g.hostPause(!!m.on);
         break;
       case 'zone':
-        g.activateZone(m.z);
+        g.activateZone(m.z, !!m.q);
+        break;
+      // las puertas que arrancan abiertas (Eclipse): se guardan por si el mapa todavía no está
+      // armado acá (Game.newRun las vuelve a poner)
+      case 'predoors':
+        this.preDoors = { l: m.l, map: m.map };
+        if (g.mapId === m.map) g.interact?.applyPreDoors(m.l);
         break;
       case 'start':
         // pantalla de carga: se arma el mapa y se espera a los demás (rs: el
         // fast restart del anfitrión, que rearma aunque estén jugando)
+        // (otra partida: las puertas abiertas de la anterior ya no valen)
+        this.preDoors = null;
         if (g.state !== 'arriving' && (m.rs || g.state !== 'playing')) g.arriveAsGuest(m.map, m.mode, !!m.rs);
         break;
       case 'arrive':

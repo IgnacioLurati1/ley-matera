@@ -47,7 +47,7 @@ export const ZONES = {
   H2: { name: 'La Casa de la Tapera', sub: 'La casa de la familia', y: 12, roof: 16.5, rects: [[17, 262, 35, 272]], floor: 'planks', wall: 'adobe', ext: 'adobe', ceil: 'planksDark', isla: 'tapera' },
   G3: { name: 'El Yerbal', sub: 'Las plantas madre', y: 12, rects: [[37, 268, 55, 269], [37, 270, 58, 272], [37, 273, 57, 276], [37, 277, 56, 278], [37, 279, 37, 279], [46, 279, 54, 279]], floor: 'dirt', edge: 'fence', fence: true, cliff: 'rock', outdoor: true, isla: 'tapera' },
   I9: { name: 'El molino de viento, suelto', sub: '', y: 20, rects: [[70, 252, 73, 256]], floor: 'dirt', edge: 'fence', fence: true, cliff: 'rock', outdoor: true, frag: true, isla: 'tapera' },
-  G5: { name: 'La Tranquera', sub: 'El camino al patio de la granja', y: 12, rects: [[55, 230, 63, 236]], floor: 'dirt', edge: 'rail', outdoor: true, isla: 'tapera' },
+  G5: { name: 'La Tranquera', sub: 'El camino al patio de la granja', y: 12, with: 'G', rects: [[55, 230, 63, 236], [54, 232, 54, 233]], floor: 'dirt', edge: 'rail', outdoor: true, isla: 'tapera' },
   gA: { name: 'El Patio de la Tapera', sub: 'Chacra de los Cuervos · Misiones, 1987', y: 12, rects: [[78, 224, 82, 225], [65, 226, 90, 236], [62, 237, 90, 245]], floor: 'dirt', cliff: 'rock', edge: 'fence', fence: true, outdoor: true, tp: { src: 'granja', key: 'A' }, isla: 'tapera' },
   gD: { name: 'El Establo', sub: 'Los caballos se fueron. Algo volvió', y: 12, roof: 18.2, rects: [[92, 226, 111, 228], [92, 229, 116, 234], [92, 235, 102, 235], [112, 235, 116, 238], [92, 236, 96, 237], [92, 238, 102, 241], [97, 236, 102, 237, 12, 18.2]], floor: 'dirtDark', wall: 'barn', ext: 'barn', ceil: 'planksDark', cliff: 'barn', tp: { src: 'granja', key: 'D' }, isla: 'tapera' },
   gH: { name: 'El Pajar', sub: 'Arriba de los boxes, entre los fardos', y: 15.6, roof: 18.2, rects: [[103, 235, 111, 241]], floor: 'planks', wall: 'barn', ext: 'barn', ceil: 'planksDark', cliff: 'barn', tp: { src: 'granja', key: 'H' }, isla: 'tapera' },
@@ -105,10 +105,10 @@ export const ZONES = {
   // dimensión oscura, una por grieta, con pedazos de su mapa (world/eclipse/grietas.js). No se llega
   // caminando ni por portal: te lleva y te saca la grieta. `grieta`: la Disformidad acá no castiga
   // (entities/eclipse/Disformidad.js) y sus sonidos van más bajo (world/eclipseAtmos.js `rift`).
-  rM: { name: 'Un jirón del Molino', sub: 'Arrancado de Santa Ana', y: 160, rects: [[246, 5, 247, 5], [244, 6, 249, 6], [242, 7, 249, 7], [241, 8, 249, 8], [240, 9, 250, 9], [240, 10, 251, 10], [240, 11, 253, 11], [240, 12, 254, 14], [239, 15, 254, 15], [239, 16, 253, 16], [239, 17, 252, 17], [239, 18, 251, 18], [240, 19, 250, 19]], floor: 'caveFloor', cliff: 'caveRock', edge: 'rail', outdoor: true, dim: true, grieta: true, isla: 'grietas' },
-  rT: { name: 'Un jirón de La Tapera', sub: 'Arrancado de la Chacra de los Cuervos', y: 164, rects: [[284, 6, 285, 6], [283, 7, 288, 7], [282, 8, 294, 8], [282, 9, 296, 9], [282, 10, 297, 10], [282, 11, 298, 12], [282, 13, 299, 14], [282, 15, 298, 15], [282, 16, 297, 16], [282, 17, 295, 17], [284, 18, 291, 18], [285, 19, 291, 19], [287, 20, 290, 20]], floor: 'caveFloor', cliff: 'caveRock', edge: 'rail', outdoor: true, dim: true, grieta: true, isla: 'grietas' },
-  rP: { name: 'Un jirón del Penal', sub: 'Arrancado de la Isla del Ceibo', y: 168, rects: [[335, 8, 338, 8], [328, 9, 339, 9], [325, 10, 340, 10], [323, 11, 340, 11], [322, 12, 340, 12], [321, 13, 340, 13], [321, 14, 339, 14], [322, 15, 339, 16], [324, 17, 339, 17], [328, 18, 339, 18], [329, 19, 337, 19], [330, 20, 334, 20]], floor: 'caveFloor', cliff: 'caveRock', edge: 'rail', outdoor: true, dim: true, grieta: true, isla: 'grietas' },
-  rO: { name: 'Un jirón de la Torre', sub: 'Arrancado del ojo del remolino', y: 172, rects: [[313, 29, 317, 29], [312, 30, 318, 30], [311, 31, 318, 31], [311, 32, 319, 32], [310, 33, 322, 33], [309, 34, 324, 36], [310, 37, 324, 38], [310, 39, 323, 40], [310, 41, 322, 42], [310, 43, 320, 43], [310, 44, 315, 44], [312, 45, 313, 45]], floor: 'caveFloor', cliff: 'caveRock', edge: 'rail', outdoor: true, dim: true, grieta: true, isla: 'grietas' },
+  rM: { name: 'Un jirón del Molino', sub: 'Arrancado de Santa Ana', y: 160, rects: [[14, 323, 15, 323], [12, 324, 17, 324], [10, 325, 17, 325], [9, 326, 17, 326], [8, 327, 18, 327], [8, 328, 19, 328], [8, 329, 21, 329], [8, 330, 22, 332], [7, 333, 22, 333], [7, 334, 21, 334], [7, 335, 20, 335], [7, 336, 19, 336], [8, 337, 18, 337]], floor: 'caveFloor', cliff: 'caveRock', edge: 'rail', outdoor: true, dim: true, grieta: true, isla: 'grietas' },
+  rT: { name: 'Un jirón de La Tapera', sub: 'Arrancado de la Chacra de los Cuervos', y: 164, rects: [[52, 324, 53, 324], [51, 325, 56, 325], [50, 326, 62, 326], [50, 327, 64, 327], [50, 328, 65, 328], [50, 329, 66, 330], [50, 331, 67, 332], [50, 333, 66, 333], [50, 334, 65, 334], [50, 335, 63, 335], [52, 336, 59, 336], [53, 337, 59, 337], [55, 338, 58, 338]], floor: 'caveFloor', cliff: 'caveRock', edge: 'rail', outdoor: true, dim: true, grieta: true, isla: 'grietas' },
+  rP: { name: 'Un jirón del Penal', sub: 'Arrancado de la Isla del Ceibo', y: 168, rects: [[103, 326, 106, 326], [96, 327, 107, 327], [93, 328, 108, 328], [91, 329, 108, 329], [90, 330, 108, 330], [89, 331, 108, 331], [89, 332, 107, 332], [90, 333, 107, 334], [92, 335, 107, 335], [96, 336, 107, 336], [97, 337, 105, 337], [98, 338, 102, 338]], floor: 'caveFloor', cliff: 'caveRock', edge: 'rail', outdoor: true, dim: true, grieta: true, isla: 'grietas' },
+  rO: { name: 'Un jirón de la Torre', sub: 'Arrancado del ojo del remolino', y: 172, rects: [[81, 347, 85, 347], [80, 348, 86, 348], [79, 349, 86, 349], [79, 350, 87, 350], [78, 351, 90, 351], [77, 352, 92, 354], [78, 355, 92, 356], [78, 357, 91, 358], [78, 359, 90, 360], [78, 361, 88, 361], [78, 362, 83, 362], [80, 363, 81, 363]], floor: 'caveFloor', cliff: 'caveRock', edge: 'rail', outdoor: true, dim: true, grieta: true, isla: 'grietas' },
 };
 
 export const RAMPS = [
@@ -133,8 +133,8 @@ export const RAMPS = [
   { rect: [156, 29, 159, 34], dir: '-z', y0: 56, y1: 60, steps: true, own: 'kr0' },
   { rect: [156, 16, 159, 21], dir: '-z', y0: 60, y1: 64, steps: true, own: 'kr3' },
   { rect: [156, 46, 159, 53], dir: '+z', y0: 56, y1: 52, own: 'kr9' },
-  { rect: [142, 29, 143, 34], dir: '-z', y0: 56, y1: 60, steps: true, own: 'kr10' },
-  { rect: [172, 29, 173, 34], dir: '-z', y0: 56, y1: 60, steps: true, own: 'kr11' },
+  { rect: [142, 29, 143, 34], dir: '-z', y0: 56, y1: 60, steps: true, own: 'kr10', ceil: 'shaft', head: 3.3 },
+  { rect: [172, 29, 173, 34], dir: '-z', y0: 56, y1: 60, steps: true, own: 'kr11', ceil: 'shaft', head: 3.3 },
   { rect: [178, 41, 179, 46], dir: '+z', y0: 56, y1: 52, steps: true, own: 'kr12', ceil: 'shaft', head: 3.3 },
   { rect: [194, 33, 195, 38], dir: '-z', y0: 52, y1: 48, steps: true, own: 'kr13' },
   { rect: [157, 177, 159, 190], dir: '+x', y0: 30, y1: 28.3, own: 'playa' },
@@ -221,7 +221,8 @@ export const DOORS = [
   { id: 62, zones: ['nF', 'G2'], cells: [[51, 87], [52, 87]], cost: 1250, kind: 'debris' },
   { id: 63, zones: ['G2', 'nH'], cells: [[62, 95], [62, 96]], cost: 1000, kind: 'door' },
   { id: 64, zones: ['nH', 'nI'], cells: [[77, 96], [77, 97]], cost: 1250, kind: 'door' },
-  { id: 65, zones: ['G', 'G5'], cells: [[54, 232], [54, 233]], cost: 750, kind: 'gate' },
+  // (la tranquera 65, del Corral a La Tranquera, se sacó: eran dos seguidas, a 10 m, para llegar al mismo patio.
+  // El camino queda abierto desde el Corral —G5 va `with` G— y se paga la del patio. El usuario, 2026-10-10)
   { id: 66, zones: ['G5', 'gA'], cells: [[64, 232], [64, 233]], cost: 1000, kind: 'gate' },
   { id: 67, zones: ['tP14', 'tP15'], cells: [[268, 68], [268, 69]], cost: 1250, kind: 'debris' },
   { id: 68, zones: ['tP14', 'P2'], cells: [[250, 82], [251, 82]], cost: 1000, kind: 'debris' },
@@ -583,12 +584,14 @@ export const POWER = { cell: [16, 95], face: [1, 0] };
 export const PAP = { cell: [280, 295], face: [0, 1], out: 0.5, y: 152 };
 
 export const BOX_SPOTS = [
-  { cell: [34, 87], face: [0, 1], zone: 'C' },
-  { cell: [156, 291], face: [0, 1], zone: 'pA' },
-  { cell: [168, 25], face: [-1, 0], zone: 'kD' },
-  { cell: [26, 261], face: [0, -1], zone: 'H' },
-  { cell: [263, 231], face: [0, 1], out: 0.5, zone: 'mB' },
-  { cell: [276, 82], face: [0, -1], out: 0.5, zone: 'tP15' },
+  // (isle: la isla; side: de qué lado del mapa queda. Hay dos cajas a la vez, FEATURES.twoBoxes:
+  // arrancan una a la izquierda y otra a la derecha, y nunca caen las dos en la misma isla)
+  { cell: [34, 87], face: [0, 1], zone: 'C', isle: 'molino', side: 'izq' },
+  { cell: [156, 291], face: [0, 1], zone: 'pA', isle: 'penal' },
+  { cell: [168, 25], face: [-1, 0], zone: 'kD', isle: 'castillo' },
+  { cell: [26, 261], face: [0, -1], zone: 'H', isle: 'tapera', side: 'izq' },
+  { cell: [263, 231], face: [0, 1], out: 0.5, zone: 'mB', isle: 'monumento', side: 'der' },
+  { cell: [276, 82], face: [0, -1], out: 0.5, zone: 'tP15', isle: 'torre', side: 'der' },
 ];
 export const BOX_START = [0, 1];
 
@@ -748,18 +751,18 @@ export const LIGHTS = [
   { zone: 'kM', pos: [168.96, 53.7, 71.5], color: 0xffc080, intensity: 12, noPower: 1, kind: 'candle' },
   // ---- los jirones de las grietas (2026-10-10): dos violetas en los manojos de cristal de cada uno
   // (world/eclipse/grietas.js JIRONES.glow) y una del color de su mapa sobre lo arrancado
-  { zone: 'rM', pos: [251.3, 161.5, 9.9], color: 8007935, intensity: 15, noPower: 1, kind: 'candle', noHalo: 1 },
-  { zone: 'rM', pos: [243.4, 161.3, 18.3], color: 8007935, intensity: 12, noPower: 1, kind: 'candle', noHalo: 1 },
-  { zone: 'rM', pos: [245.8, 162.2, 9.6], color: 0xffc27a, intensity: 11, noPower: 1, kind: 'candle', noHalo: 1 },
-  { zone: 'rT', pos: [296.4, 165.5, 9.6], color: 8007935, intensity: 15, noPower: 1, kind: 'candle', noHalo: 1 },
-  { zone: 'rT', pos: [286.4, 165.3, 18.6], color: 8007935, intensity: 12, noPower: 1, kind: 'candle', noHalo: 1 },
-  { zone: 'rT', pos: [285.6, 166.4, 12.2], color: 0xffa66a, intensity: 11, noPower: 1, kind: 'candle', noHalo: 1 },
-  { zone: 'rP', pos: [338.6, 169.5, 13.4], color: 8007935, intensity: 15, noPower: 1, kind: 'candle', noHalo: 1 },
-  { zone: 'rP', pos: [323.4, 169.3, 16.2], color: 8007935, intensity: 12, noPower: 1, kind: 'candle', noHalo: 1 },
-  { zone: 'rP', pos: [329.2, 170.4, 12.4], color: 0xb8e0c0, intensity: 11, noPower: 1, kind: 'candle', noHalo: 1 },
-  { zone: 'rO', pos: [322.6, 173.5, 34.6], color: 8007935, intensity: 15, noPower: 1, kind: 'candle', noHalo: 1 },
-  { zone: 'rO', pos: [311.4, 173.3, 42.4], color: 8007935, intensity: 12, noPower: 1, kind: 'candle', noHalo: 1 },
-  { zone: 'rO', pos: [315.3, 174.2, 32.4], color: 0xffe08a, intensity: 11, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rM', pos: [19.3, 161.5, 327.9], color: 8007935, intensity: 15, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rM', pos: [11.4, 161.3, 336.3], color: 8007935, intensity: 12, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rM', pos: [13.8, 162.2, 327.6], color: 0xffc27a, intensity: 11, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rT', pos: [64.4, 165.5, 327.6], color: 8007935, intensity: 15, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rT', pos: [54.4, 165.3, 336.6], color: 8007935, intensity: 12, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rT', pos: [53.6, 166.4, 330.2], color: 0xffa66a, intensity: 11, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rP', pos: [106.6, 169.5, 331.4], color: 8007935, intensity: 15, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rP', pos: [91.4, 169.3, 334.2], color: 8007935, intensity: 12, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rP', pos: [97.2, 170.4, 330.4], color: 0xb8e0c0, intensity: 11, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rO', pos: [90.6, 173.5, 352.6], color: 8007935, intensity: 15, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rO', pos: [79.4, 173.3, 360.4], color: 8007935, intensity: 12, noPower: 1, kind: 'candle', noHalo: 1 },
+  { zone: 'rO', pos: [83.3, 174.2, 350.4], color: 0xffe08a, intensity: 11, noPower: 1, kind: 'candle', noHalo: 1 },
 ];
 
 export const FIRES = [
@@ -782,10 +785,10 @@ export const EE = {
   // en su mapa (x, z); face: hacia dónde sale el que vuelve; zone: su islita; land: dónde se cae
   // adentro (x, z) y hacia dónde mira; item: lo que suelta al coserse; pilar: su pilar del Nudo.
   grietas: [
-    { id: 'molino', zone: 'rM', at: [84.5, 97.5], face: [-1, 0], land: [247.5, 14.5], look: [-0.3, -1], item: 'pavita', pilar: [41.5, 27.5], lugar: 'el Cementerio de los Peones, en el Molino' },
-    { id: 'tapera', zone: 'rT', at: [76.5, 240.5], face: [0, -1], land: [290.5, 13.5], look: [-1, -0.1], item: 'tapa', pilar: [47.5, 27.5], lugar: 'el Patio de La Tapera' },
-    { id: 'penal', zone: 'rP', at: [150.5, 345.5], face: [0, -1], land: [332.5, 15.5], look: [-0.4, -1], item: 'llaves', pilar: [41.5, 35.5], lugar: 'el Muelle del Penal' },
-    { id: 'torre', zone: 'rO', at: [280.5, 72.5], face: [0, 1], land: [316.5, 39.5], look: [-0.1, -1], item: 'garrafa', pilar: [47.5, 35.5], lugar: 'la Cima del Remolino, piso 15 de la Torre' },
+    { id: 'molino', zone: 'rM', at: [84.5, 97.5], face: [-1, 0], land: [15.5, 332.5], look: [-0.3, -1], item: 'pavita', pilar: [41.5, 27.5], lugar: 'el Cementerio de los Peones, en el Molino' },
+    { id: 'tapera', zone: 'rT', at: [76.5, 240.5], face: [0, -1], land: [58.5, 331.5], look: [-1, -0.1], item: 'tapa', pilar: [47.5, 27.5], lugar: 'el Patio de La Tapera' },
+    { id: 'penal', zone: 'rP', at: [150.5, 345.5], face: [0, -1], land: [100.5, 333.5], look: [-0.4, -1], item: 'llaves', pilar: [41.5, 35.5], lugar: 'el Muelle del Penal' },
+    { id: 'torre', zone: 'rO', at: [280.5, 72.5], face: [0, 1], land: [84.5, 357.5], look: [-0.1, -1], item: 'garrafa', pilar: [47.5, 35.5], lugar: 'la Cima del Remolino, piso 15 de la Torre' },
   ],
   // el algarrobo partido (en la loma) y el fogón de Fierro (en el claro)
   algarrobo: [162.5, 150.5],
@@ -1268,36 +1271,36 @@ export const PROPS = [
   // ---- los jirones de las grietas (2026-10-10): pedazos de cada mapa, contra los bordes
   // (van al final de la lista: la semilla de cada pieza sale de su lugar en ella)
   // el del Molino: un rincón del Cementerio de los Peones, al pie de su paredón
-  { type: 'tumba', pos: [243.9, 9.0], rot: 0, tp: 'molino' },
-  { type: 'tumba', pos: [246.0, 9.0], rot: 0, kind: 'stone', tp: 'molino' },
-  { type: 'tumba', pos: [248.1, 9.0], rot: 0, tp: 'molino' },
-  { type: 'cruces', pos: [241.4, 12.4], rot: 1.5708, tp: 'molino' },
-  { type: 'arbolSeco', pos: [241.4, 16.4], tp: 'molino' },
-  { type: 'bigsacks', pos: [251.4, 16.2], rot: 0.5, tp: 'molino' },
-  { type: 'barrel', pos: [252.7, 12.7], tp: 'molino' },
-  { type: 'barrel', pos: [253.0, 13.8], tp: 'molino' },
+  { type: 'tumba', pos: [11.9, 327], rot: 0, tp: 'molino' },
+  { type: 'tumba', pos: [14, 327], rot: 0, kind: 'stone', tp: 'molino' },
+  { type: 'tumba', pos: [16.1, 327], rot: 0, tp: 'molino' },
+  { type: 'cruces', pos: [9.4, 330.4], rot: 1.5708, tp: 'molino' },
+  { type: 'arbolSeco', pos: [9.4, 334.4], tp: 'molino' },
+  { type: 'bigsacks', pos: [19.4, 334.2], rot: 0.5, tp: 'molino' },
+  { type: 'barrel', pos: [20.7, 330.7], tp: 'molino' },
+  { type: 'barrel', pos: [21, 331.8], tp: 'molino' },
   // el de La Tapera: un pedazo del patio de la chacra, contra la pared del establo
-  { type: 'espantajo', pos: [286.4, 10.2], rot: 0.9, tp: 'granja' },
-  { type: 'hay', pos: [284.4, 13.2], rot: 0, tp: 'granja' },
-  { type: 'hay', pos: [284.5, 14.6], rot: 0.2, tp: 'granja' },
-  { type: 'hay', pos: [294.6, 10.2], rot: 0.5, tp: 'granja' },
-  { type: 'cart', pos: [295.8, 14.6], rot: 2.1, tp: 'granja' },
-  { type: 'zapallos', pos: [289.6, 9.0], rot: 0.4, tp: 'granja' },
-  { type: 'trough', pos: [289.6, 18.4], rot: 0.15, tp: 'granja' },
+  { type: 'espantajo', pos: [54.4, 328.2], rot: 0.9, tp: 'granja' },
+  { type: 'hay', pos: [52.4, 331.2], rot: 0, tp: 'granja' },
+  { type: 'hay', pos: [52.5, 332.6], rot: 0.2, tp: 'granja' },
+  { type: 'hay', pos: [62.6, 328.2], rot: 0.5, tp: 'granja' },
+  { type: 'cart', pos: [63.8, 332.6], rot: 2.1, tp: 'granja' },
+  { type: 'zapallos', pos: [57.6, 327], rot: 0.4, tp: 'granja' },
+  { type: 'trough', pos: [57.6, 336.4], rot: 0.15, tp: 'granja' },
   // el del Penal: un pedazo del muelle y del patio, con su paredón de reja
-  { type: 'horca', pos: [336.2, 12.2], rot: -0.5, tp: 'penal' },
-  { type: 'cajones', pos: [328.4, 17.0], rot: 0.3, tp: 'penal' },
-  { type: 'bitas', pos: [337.8, 16.6], tp: 'penal' },
-  { type: 'sogas', pos: [334.2, 18.2], tp: 'penal' },
-  { type: 'tachos', pos: [323.6, 13.4], tp: 'penal' },
-  { type: 'escombros', pos: [327.2, 11.6], rot: 0.4, tp: 'penal' },
+  { type: 'horca', pos: [104.2, 330.2], rot: -0.5, tp: 'penal' },
+  { type: 'cajones', pos: [96.4, 335], rot: 0.3, tp: 'penal' },
+  { type: 'bitas', pos: [105.8, 334.6], tp: 'penal' },
+  { type: 'sogas', pos: [102.2, 336.2], tp: 'penal' },
+  { type: 'tachos', pos: [91.6, 331.4], tp: 'penal' },
+  { type: 'escombros', pos: [95.2, 329.6], rot: 0.4, tp: 'penal' },
   // el de la Torre: un pedazo de capilla de la cima
-  { type: 'altar', pos: [315.3, 31.4], rot: 0, tp: 'torre' },
-  { type: 'candles', pos: [313.5, 31.3], tp: 'torre' },
-  { type: 'candles', pos: [317.1, 31.3], tp: 'torre' },
-  { type: 'pew', pos: [313.8, 34.4], rot: 0, tp: 'torre' },
-  { type: 'pew', pos: [316.9, 34.5], rot: 0.12, tp: 'torre' },
-  { type: 'escombros', pos: [321.0, 41.2], rot: 1.9, tp: 'torre' },
+  { type: 'altar', pos: [83.3, 349.4], rot: 0, tp: 'torre' },
+  { type: 'candles', pos: [81.5, 349.3], tp: 'torre' },
+  { type: 'candles', pos: [85.1, 349.3], tp: 'torre' },
+  { type: 'pew', pos: [81.8, 352.4], rot: 0, tp: 'torre' },
+  { type: 'pew', pos: [84.9, 352.5], rot: 0.12, tp: 'torre' },
+  { type: 'escombros', pos: [89, 359.2], rot: 1.9, tp: 'torre' },
 ];
 
 const BENCH = { pos: [147.5, 177.5], rot: 0 };
@@ -1347,7 +1350,10 @@ export const SOMBRERO = {
 export const CRITTERS = { flocks: [], rats: [] };
 
 // Sin minijefe y sin ronda especial (entities/EclipseEgg.tuneRound limpia el jefe).
-export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: null, boss: null, egg: 'primermate', eclipse: true, levels: true };
+export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: null, boss: null, egg: 'primermate', eclipse: true, levels: true, twoBoxes: true, doorBudget: 16250 };
+// (doorBudget: lo que queda por pagar en puertas, sin los portales: lo que suman las de Der
+// Mateendrache, config/maps/castillo.js. Acá suman 61.000: las que sobran arrancan abiertas,
+// world/Interactables.js pickPreDoors. El usuario, 2026-10-11)
 
 export const TEXT = {
   soul: (many) => `El desgarro se llevó ${many ? 'sus almas' : 'tu alma'}.`,
@@ -1380,9 +1386,15 @@ export const ISLANDS = {
   castillo: { name: 'El Castillo', zones: ['kA', 'kB', 'kD', 'kE', 'kL', 'kC', 'kS', 'kO', 'kF', 'kK', 'kR', 'kP', 'kI', 'kM', 'Q9'], center: [169, 39.5], box: [122, 3, 215, 75], y: 56, top: 71.2, horizon: [0.1, 0.26, 0.38], zenith: [0.01, 0.03, 0.1], lamp: 0xbfe0ff },
   desgarro: { name: 'El Nudo', zones: ['U', 'U9'], center: [50.5, 33], box: [5, 4, 95, 61], y: 90, top: 96, horizon: [0.34, 0.1, 0.5], zenith: [0.06, 0.01, 0.12], lamp: 0xd89cff },
   abismo: { name: 'La Disformidad', zones: ['V'], center: [258, 320], box: [221, 295, 294, 344], y: 150, top: 150, horizon: [0.1, 0.02, 0.18], zenith: [0.02, 0, 0.05], lamp: 0xa060ff },
+  // (2026-10-11, el usuario: "las islas de arriba tapan el sol y la luna". Estaban en la esquina
+  // noreste, justo en la línea del eclipse desde el Claro —a 0,1 grados—; ahora, en la sudoeste,
+  // del lado de enfrente: a 57 grados o más del eclipse desde cualquier isla. Todo lo suyo se
+  // corrió igual: 232 al oeste y 318 al sur)
   // (2026-10-10) los cuatro jirones de las grietas: otra vez la dimensión de afuera, en la esquina
   // libre del mapa (como 'abismo': ni faroles, ni relleno, ni sombra de la luna; va última)
-  grietas: { name: 'Los Jirones', zones: ['rM', 'rT', 'rP', 'rO'], center: [290, 25], box: [238, 4, 341, 46], y: 160, top: 176, horizon: [0.1, 0.02, 0.18], zenith: [0.02, 0, 0.05], lamp: 0xa060ff },
+  grietas: { name: 'Los Jirones', zones: ['rM', 'rT', 'rP', 'rO'], center: [58, 343], box: [6, 322, 109, 364], y: 160, top: 176, horizon: [0.1, 0.02, 0.18], zenith: [0.02, 0, 0.05], lamp: 0xa060ff },
 };
+// La isla de cada zona (las puertas que arrancan abiertas se reparten por isla).
+FEATURES.zoneIsle = Object.fromEntries(Object.entries(ISLANDS).flatMap(([k, I]) => I.zones.map((z) => [z, k])));
 
 export const HORNO_SPOTS = [];

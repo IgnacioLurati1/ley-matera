@@ -13,7 +13,7 @@ import * as THREE from 'three';
 const VERT = /* glsl */ `
 uniform float uTime, uTail;
 varying vec3 vN, vV;
-varying float vLY, vPh, vGlow;
+varying float vLY, vPh, vGlow, vRed;
 void main() {
   vec3 p = position;
 #ifdef USE_INSTANCING
@@ -38,8 +38,12 @@ void main() {
   vPh = ph;
 #ifdef USE_INSTANCING_COLOR
   vGlow = instanceColor.r;
+  // (el verde de más que el rojo: cuánto de colorada, las que protegen al
+  // Gil en la cárcel. Las demás van en gris, verde = rojo: nada)
+  vRed = clamp(instanceColor.g - instanceColor.r, 0.0, 1.0);
 #else
   vGlow = 1.0;
+  vRed = 0.0;
 #endif
   gl_Position = projectionMatrix * mv;
 }`;
@@ -50,7 +54,7 @@ const FRAG = /* glsl */ `
 uniform float uTime, uTop, uTail;
 uniform vec3 uColor, uRim;
 varying vec3 vN, vV;
-varying float vLY, vPh, vGlow;
+varying float vLY, vPh, vGlow, vRed;
 void main() {
   vec3 v = vV / max(length(vV), 1e-4);
   vec3 n = vN / max(length(vN), 1e-4);
@@ -67,6 +71,7 @@ void main() {
   vec3 col = uColor * (0.15 + 0.18 * band) + uRim * (fr * 1.1);
   // la cara y los hombros, más prendidos
   col += uRim * 0.3 * smoothstep(0.78, 1.0, h);
+  col = mix(col, vec3(dot(col, vec3(0.35, 0.55, 0.9)) * 1.3, col.r * 0.22, col.r * 0.16), vRed);
   gl_FragColor = vec4(max(col, vec3(0.0)), clamp(fade * flick * vGlow, 0.0, 4.0));
 }`;
 

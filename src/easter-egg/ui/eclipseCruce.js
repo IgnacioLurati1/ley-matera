@@ -5,7 +5,7 @@ import { gilVincha } from '../net/gilLook';
 import { makeRift } from './eclipseCineSable';
 import { warmScene } from './cineWarm';
 import { toWorld } from '../world/eclipse/sanlorenzoCampo';
-import { eclSfx } from '../fx/eclipseSfx';
+import { eclSfx, ahhWarm, ahhPlay } from '../fx/eclipseSfx';
 
 // El camino a San Lorenzo (2026-10-08, ITERACION-7 C6). El usuario: "para
 // llegar a la pelea final no hay cinemática, cortás donde te dice que cortes
@@ -84,6 +84,15 @@ class CruceBase extends CastleCine {
     super(ee.g, { drive: false, kind: 'eclipse' });
     this.ee = ee;
     this.rift = rift;
+  }
+
+  // (2026-10-10, el usuario: "la cámara pega unos saltos medio raros". El lente
+  // de cada toma lo pisaba el de la partida —Game.update lo llevaba a ~73° en
+  // 0,2 s—: cada corte arrancaba con un zoom. Ahora la escena le dice al juego
+  // qué lente quiere (wantFov, como ui/EclipseEnding). __mduOldCineFov: como antes)
+  setFov(f) {
+    super.setFov(f);
+    this.wantFov = globalThis.__mduOldCineFov === true ? null : f;
   }
 
   hideField() {
@@ -469,6 +478,8 @@ export class CruceCine extends CruceBase {
             if (!g.music?.is('jefe-eclipse')) g.music?.play('jefe-eclipse', { loop: true, fadeIn: 2.5, while: keep });
           }
           this.later(0.25, () => this.white(false));
+          // (el "ahhhh" al aparecer San Lorenzo: el usuario, 2026-10-10)
+          this.later(0.3, () => ahhPlay(g, { gain: 0.85 }));
           this.later(0.4, () => g.audio.thunder?.(g.camera.position.clone(), true));
           this.later(1.4, () => this.title('San Lorenzo'));
           this.later(1.9, () => this.card('3 de febrero de 1813', 4.4));
@@ -487,6 +498,7 @@ export class CruceCine extends CruceBase {
   swap() {
     if (this.swapped) return;
     this.swapped = true;
+    ahhWarm(this.g);
     this.crew?.show?.(false);
     if (this.crew?.people?.root) this.crew.people.root.visible = false;
     this.rift.root.visible = false;
@@ -521,8 +533,14 @@ export class CruceCine extends CruceBase {
     const u = clamp01(lt / FLY);
     // (sale rápido del blanco y frena al llegar)
     const e = 1 - Math.pow(1 - u, 1.7);
-    this.curve.getPoint(Math.min(0.999, e), pos);
-    const ahead = this.curve.getPoint(Math.min(1, e + 0.05), tmpV);
+    // (por el largo del camino, no por tramos: los tramos miden de 14 a 70 m y
+    // con getPoint la cámara cambiaba de velocidad de golpe en cada punto. El
+    // usuario, 2026-10-10: "la cámara pega unos saltos medio raros".
+    // __mduOldCruceFly: como antes)
+    const old = globalThis.__mduOldCruceFly === true;
+    if (old) this.curve.getPoint(Math.min(0.999, e), pos);
+    else this.curve.getPointAt(Math.min(0.999, e), pos);
+    const ahead = old ? this.curve.getPoint(Math.min(1, e + 0.05), tmpV) : this.curve.getPointAt(Math.min(1, e + 0.05), tmpV);
     ahead.y -= 2;
     const want = ahead.clone();
     // al principio mira a El Eclipse; al final, a San Martín

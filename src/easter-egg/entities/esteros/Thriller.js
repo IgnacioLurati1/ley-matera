@@ -333,14 +333,16 @@ export default class Thriller {
   }
 
   // (anfitrión) Los mataron a todos mientras bailaban: la canción se corta, los
-  // que miraban vuelven a atacar y Francisco se ofende. Sin propina.
+  // que miraban vuelven a atacar y la voz se ofende. Sin propina. (La voz del
+  // estero, sin nombre: con el de Francisco era un adelanto de la torre; el
+  // usuario, 2026-10-10)
   cut() {
     const g = this.g;
     // (de golpe: la que apaga finish, de a poco, ya no la encuentra)
     g.music.stop(0);
     this.finish(false);
     g.net?.event('ee', { thr: { a: 'cut' } });
-    g.say('francisco', 'Qué falta de respeto...');
+    g.say('entidad', 'Qué falta de respeto...', 'entidad');
   }
 
   applyRemote(m) {

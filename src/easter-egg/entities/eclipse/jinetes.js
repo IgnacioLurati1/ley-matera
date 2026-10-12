@@ -695,7 +695,9 @@ export default class Jinetes {
     const c = J.hs[1].lengthSq() ? J.hs[1] : J.pos;
     g.fx.flash(c, 0xc060ff, 9, 0.45, 16);
     for (let i = 0; i < 40; i++) g.fx.add.spawn(c.x + rnd() * 1.4, c.y + rnd() * 1.6 - 0.4, c.z + rnd() * 1.4, rnd() * 4, 1 + Math.random() * 3, rnd() * 4, { color: i % 4 ? [0.75, 0.3, 1] : [1, 0.75, 1], size: 0.16, size1: 0, life: 0.8 + Math.random() * 0.7, gravity: -1.5, drag: 1 });
-    this.snd('d10Die', c, 1.4, 1, 14);
+    // (la risita grabada, la de los jinetes: el chillido armado sonaba malísimo. El
+    // usuario, 2026-10-10. Si la grabación todavía no bajó, el de antes)
+    if (!this.rec('jinete-risa', c, 1.15, 14, 0.5)) this.snd('d10Die', c, 1.4, 1, 14);
   }
 
   // (en todas) Se terminó: los que quedan se van para arriba, a la grieta.

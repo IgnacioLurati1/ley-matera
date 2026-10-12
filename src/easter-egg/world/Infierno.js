@@ -93,6 +93,9 @@ export default class Infierno extends Arena {
     // los muertos que lo protegen (entre ritual y ritual)
     this.wards = [0.86, 0.52, 0.18];
     this.speeds = [3.4, 4.4, 5.2];
+    // (2026-10-10, el usuario: al final tiraba dos tandas de tres cada 1,9 s y
+    // era imposible: una sola tanda. __mduFranOld: como antes)
+    this.oneVolley = globalThis.__mduFranOld !== true;
     this.rainColor = 0xffc040;
     this.fireColor = 0xffc860;
     this.rainBoom = [1, 0.8, 0.35];
@@ -1124,7 +1127,8 @@ export default class Infierno extends Arena {
     const tp = g.nearestPlayer(b.pos.x, b.pos.z, 0);
     if (tp) b.yaw = Math.atan2(tp.pos.x - b.pos.x, tp.pos.z - b.pos.z);
     this.ritFireT -= dt;
-    if (this.ritFireT <= 0) {
+    // (con el rayo de la bombilla dando vueltas, r2, no tira bolas: el usuario, 2026-10-10)
+    if (this.ritFireT <= 0 && (this.stage !== 'r2' || globalThis.__mduFranOld === true)) {
       this.ritFireT = this.stage === 'r2' ? 2.6 : 3.2;
       this.fireball(tmpV.set(b.pos.x + Math.sin(b.yaw) * 0.8, b.pos.y + 2.2, b.pos.z + Math.cos(b.yaw) * 0.8).clone(), this.stage === 'r2' ? 3 : 1);
     }

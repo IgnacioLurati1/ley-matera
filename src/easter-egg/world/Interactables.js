@@ -26,7 +26,23 @@ import { sableModel } from '../weapons/sableModels';
 
 // ¿Sale en la caja de este mapa? (`only`: los de un mapa solo; el Challenge de
 // la torre pone los de todos los mapas, menos los especiales de otro: FEATURES.boxAll)
-const inBox = (w) => !w.only || w.only.includes(MAP_ID) || (!!FEATURES.boxAll && !FEATURES.boxAll.skip.includes(w.id));
+// (FEATURES.boxSkip: lo que el mapa saca de su caja; el estero, la pava silbadora)
+// La torre: adónde se muda la caja desde el lugar i: al más cercano hacia
+// arriba y, si arriba no hay ninguno, al más cercano hacia abajo (el usuario,
+// 2026-10-10: antes iba a cualquiera y había que bajar media torre).
+function stackedNext(i) {
+  const y = BOX_SPOTS[i].y ?? 0;
+  for (const dir of [1, -1]) {
+    let best = -1;
+    for (const [k, s] of BOX_SPOTS.entries()) {
+      const d = ((s.y ?? 0) - y) * dir;
+      if (k !== i && d > 0.5 && (best < 0 || d < ((BOX_SPOTS[best].y ?? 0) - y) * dir)) best = k;
+    }
+    if (best >= 0) return best;
+  }
+  return -1;
+}
+const inBox = (w) => !FEATURES.boxSkip?.includes(w.id) && (!w.only || w.only.includes(MAP_ID) || (!!FEATURES.boxAll && !FEATURES.boxAll.skip.includes(w.id)));
 
 // Cuánto le convidás a un compañero por apretada.
 const SHARE = 500;
@@ -36,6 +52,12 @@ const SHARE = 500;
 // abren un poco más, así los mates que salen no la traspasan; el mate además
 // sube un poco adelantado (MODEL_FWD), lejos de la tapa.
 const BOX_OFF = 0.58;
+// Dos cajas a la vez (Eclipse Matero, FEATURES.twoBoxes): cada una en una isla distinta; al empezar,
+// una del lado izquierdo del mapa y otra del derecho (BOX_SPOTS `side`). El usuario, 2026-10-11.
+// globalThis.__mduUnaCaja: una sola, como antes.
+const twoBoxes = () => !!FEATURES.twoBoxes && globalThis.__mduUnaCaja !== true;
+// (la isla de un lugar de la caja; en los mapas de una sola pieza, su zona)
+const isleOf = (i) => BOX_SPOTS[i].isle ?? BOX_SPOTS[i].zone;
 const LID_OPEN = FEATURES.castle ? 1.12 : 1.32;
 const MODEL_FWD = 0.12;
 
@@ -351,11 +373,14 @@ export default class Interactables {
     return Math.round((d.cost * k) / 50) * 50;
   }
 
-  openDoor(door) {
+  // quiet: dada por abierta al empezar la partida (applyPreDoors): sin ruido, sin polvo y ya
+  // abierta del todo; no prende las zonas de los dos lados (ver spreadZone).
+  openDoor(door, quiet = false) {
     const g = this.g;
     if (door.open) return;
-    g.net?.event('door', { i: door.index });
+    if (!quiet) g.net?.event('door', { i: door.index });
     door.open = true;
+    door.pre = quiet;
     door.group.mcFrozen = false;
     // (el escombro: vuelven las piezas sueltas en lugar de la copia junta)
     if (door.closed) {
@@ -363,10 +388,11 @@ export default class Interactables {
       for (const p of door.pieces) door.group.add(p.obj);
       door.closed = null;
     }
-    g.world.openDoor(door.index);
-    for (const z of door.def.zones) g.activateZone(z);
-    g.audio.door(door.group.position, door.def.kind === 'debris' || door.def.kind === 'valla');
-    const start = g.time;
+    g.world.openDoor(door.index, quiet);
+    if (quiet) for (const z of door.def.zones) if (g.activeZones.has(z)) this.spreadZone(z);
+    if (!quiet) for (const z of door.def.zones) g.activateZone(z);
+    if (!quiet) g.audio.door(door.group.position, door.def.kind === 'debris' || door.def.kind === 'valla');
+    const start = quiet ? g.time - 99 : g.time;
     this.animations.push((t, dt) => {
       const k = Math.min(1, (t - start) / (door.def.kind === 'debris' ? 1.3 : door.def.kind === 'hielo' ? 2.6 : door.def.kind === 'puente' ? 1.5 : 0.9));
       for (const p of door.pieces) {
@@ -427,8 +453,74 @@ export default class Interactables {
       }
       return k < 1;
     });
-    g.fx.dust(door.group.position.clone().setY(door.group.position.y + 1), UP, [0.45, 0.4, 0.35], 16);
+    if (!quiet) g.fx.dust(door.group.position.clone().setY(door.group.position.y + 1), UP, [0.45, 0.4, 0.35], 16);
     if (door.def.lockGlow) door.def.lockGlow.material.emissiveIntensity = 0;
+  }
+
+  // ---------------- puertas que arrancan abiertas ----------------
+  // Eclipse Matero tiene las puertas de siete mapas: 61.000 puntos. El usuario, 2026-10-11: que lo
+  // que queda por pagar sea más o menos lo de Der Mateendrache (FEATURES.doorBudget), sin sacar
+  // puertas: las que sobran se dan por abiertas al empezar, parejo por isla (a cada isla le queda
+  // por pagar la misma parte de lo suyo), y cuáles son cambia de partida en partida.
+  // globalThis.__mduPuertasTodas: todas cerradas, como antes.
+  pickPreDoors() {
+    const budget = FEATURES.doorBudget;
+    if (!budget || globalThis.__mduPuertasTodas === true) return [];
+    const groups = new Map();
+    let total = 0;
+    DOORS.forEach((d, i) => {
+      if (!(d.cost > 0) || d.locked) return;
+      total += d.cost;
+      const k = FEATURES.zoneIsle?.[d.zones[0]] ?? '';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(i);
+    });
+    if (total <= budget) return [];
+    const shuffle = (a) => {
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    };
+    const open = [];
+    // (lo que a una isla le sobró o le faltó pasa a la siguiente: el total queda a menos de una puerta)
+    let carry = 0;
+    for (const list of shuffle([...groups.values()])) {
+      let left = (list.reduce((s, i) => s + DOORS[i].cost, 0) * budget) / total + carry;
+      for (const i of shuffle(list)) {
+        // (queda cerrada si con ella la isla se acerca a lo que le toca)
+        if (DOORS[i].cost / 2 <= left) left -= DOORS[i].cost;
+        else open.push(i);
+      }
+      carry = left;
+    }
+    return open.sort((a, b) => a - b);
+  }
+
+  // (list: los índices en DOORS. En línea las elige el anfitrión y las manda: 'predoors')
+  applyPreDoors(list) {
+    this.preDoors = list || [];
+    let n = 0;
+    for (const i of this.preDoors) {
+      const it = this.list.find((x) => x.kind === 'door' && x.door.index === i);
+      if (!it || it.door.open) continue;
+      this.openDoor(it.door, true);
+      n++;
+    }
+    // (el paso de los muertos, una sola vez para todas: world/World.js openDoor `later`)
+    if (n) this.g.world.computeNavBlock();
+  }
+
+  // La zona k quedó prendida: lo que tiene del otro lado de una puerta dada por abierta, también
+  // (sin cartel: sale cuando alguien entra, Game.update). Así una isla a la que todavía no llegó
+  // nadie sigue apagada aunque tenga puertas abiertas.
+  spreadZone(k) {
+    for (const it of this.list) {
+      if (it.kind !== 'door' || !it.door.pre) continue;
+      const z = it.door.def.zones;
+      if (z.includes(k)) this.g.activateZone(z[0] === k ? z[1] : z[0], true);
+    }
   }
 
   // ---------------- dibujos de tiza ----------------
@@ -957,6 +1049,7 @@ export default class Interactables {
     this.root.add(cup);
 
     const box = {
+      n: 0,
       group,
       lid,
       inner,
@@ -976,9 +1069,11 @@ export default class Interactables {
       models: new Map(),
     };
     this.box = box;
+    this.boxes = [box];
     this.placeBox(box.spot);
     const it = this.add({
       kind: 'box',
+      box,
       lockable: true,
       pos: new THREE.Vector3(),
       front: new THREE.Vector3(),
@@ -998,6 +1093,7 @@ export default class Interactables {
       },
     });
     this.boxIt = it;
+    box.it = it;
     this.placeBox(box.spot);
     // los mates que pueden salir, armados desde ya (escondidos) para que sus
     // shaders se compilen en la carga y la caja no trabe al girar
@@ -1007,7 +1103,69 @@ export default class Interactables {
       m.visible = false;
       this.root.add(m);
     }
+    if (twoBoxes()) this.buildBox2();
     this.buildSaleBoxes();
+  }
+
+  // La segunda caja: una copia de la primera (misma malla y materiales, como las de la
+  // liquidación) con su haz, su taza y su cartel. Anda por su cuenta.
+  buildBox2() {
+    const g = this.g;
+    const a = this.box;
+    const group = a.group.clone();
+    // (la copia trae el giro de la primera pasado por el cuaternión: si esa miraba para atrás, llega
+    // como media vuelta en x y en z. placeBox solo pone el de y, y al volver de la taza se le
+    // endereza z: quedaba dada vuelta, abajo del piso)
+    group.rotation.set(0, 0, 0);
+    const inner = group.children[a.group.children.indexOf(a.inner)];
+    // (la luz de adentro, propia: si no, se prendía en las dos a la vez)
+    inner.material = inner.material.clone();
+    const beam = a.beam.clone();
+    const cup = a.cup.clone();
+    cup.visible = false;
+    this.root.add(group, beam, cup);
+    const box = {
+      n: 1,
+      group,
+      lid: group.children[a.group.children.indexOf(a.lid)],
+      inner,
+      beam,
+      cup,
+      qMat: a.qMat,
+      glow: a.glow,
+      glowHex: a.glowHex,
+      glowMats: a.glowMats,
+      spot: this.startSpot(1),
+      state: 'closed',
+      t: 0,
+      uses: 0,
+      offer: null,
+      model: null,
+      locked: false,
+      models: new Map(),
+    };
+    this.boxes.push(box);
+    box.it = this.add({
+      kind: 'box',
+      box,
+      lockable: true,
+      pos: new THREE.Vector3(),
+      front: new THREE.Vector3(),
+      radius: 2.1,
+      prompt: () => this.boxPrompt(box),
+      cost: () => (box.state === 'offer' ? 0 : g.powerups.active.firesale ? 10 : 950),
+      use: () => {
+        if (box.state === 'closed') return this.openBox(box);
+        if (box.state === 'offer') {
+          g.weapons.give(box.offer, g.emp?.upFor('box', box.offer) || 0);
+          this.takeBoxWeapon(box);
+          g.dlg?.did('caja');
+          return true;
+        }
+        return false;
+      },
+    });
+    this.placeBox(box.spot, box);
   }
 
   // Liquidación: una caja en cada lugar posible mientras dura. Son copias
@@ -1101,7 +1259,7 @@ export default class Interactables {
     const sale = g.powerups.active.firesale > 0;
     for (const s of this.saleBoxes) {
       // (la que está en uso se queda hasta que la cierran)
-      const on = (sale && s.i !== box.spot) || (s.group.visible && s.state !== 'closed');
+      const on = (sale && !this.boxes.some((b) => b.spot === s.i)) || (s.group.visible && s.state !== 'closed');
       if (s.group.visible !== on) {
         s.group.visible = on;
         s.beam.visible = on;
@@ -1119,8 +1277,7 @@ export default class Interactables {
     }
   }
 
-  placeBox(i) {
-    const box = this.box;
+  placeBox(i, box = this.box) {
     const spot = BOX_SPOTS[i];
     box.spot = i;
     const a = this.anchor(spot.cell, spot.face, BOX_OFF);
@@ -1133,10 +1290,10 @@ export default class Interactables {
     box.beam.position.set(x, fy + 20, z);
     box.center = new THREE.Vector3(x, fy, z);
     box.face = new THREE.Vector3(spot.face[0], 0, spot.face[1]);
-    if (this.boxIt) {
-      this.boxIt.pos.set(x, fy + 0.8, z);
-      this.boxIt.front.set(x + spot.face[0] * 1.3, fy, z + spot.face[1] * 1.3);
-      this.boxIt.floorY = fy;
+    if (box.it) {
+      box.it.pos.set(x, fy + 0.8, z);
+      box.it.front.set(x + spot.face[0] * 1.3, fy, z + spot.face[1] * 1.3);
+      box.it.floorY = fy;
     }
     if (box.collider) box.collider.active = false;
     const half = spot.face[0] !== 0 ? [0.4, 0.85] : [0.85, 0.4];
@@ -1179,8 +1336,8 @@ export default class Interactables {
     // (b: una de las cajas de la liquidación)
     const sale = m.b != null ? this.saleBoxes[m.b] : null;
     if (m.b != null && !sale) return;
-    const box = sale || this.box;
-    if (!sale && m.spot !== undefined && m.spot !== box.spot) this.placeBox(m.spot);
+    const box = sale || this.boxes[m.n | 0] || this.box;
+    if (!sale && m.spot !== undefined && m.spot !== box.spot) this.placeBox(m.spot, box);
     if (sale && m.s === 'spinning') {
       sale.group.visible = true;
       sale.beam.visible = true;
@@ -1208,12 +1365,11 @@ export default class Interactables {
     // la caja volvió (o se está usando): si acá la taza todavía no había
     // terminado de llevársela cuando llegó el aviso, quedaba invisible, sin
     // su haz de luz, pero se podía usar igual
-    if (m.s === 'closed' || m.s === 'spinning') this.showBox();
+    if (m.s === 'closed' || m.s === 'spinning') this.showBox(box);
   }
 
   // La caja a la vista en su lugar (después de que se la llevó la taza).
-  showBox() {
-    const box = this.box;
+  showBox(box = this.box) {
     if (box.group.visible && !box.cup.visible && box.group.position.y === box.center.y) return;
     box.cup.visible = false;
     box.refunded = false;
@@ -1231,7 +1387,12 @@ export default class Interactables {
   // Dónde arranca la caja: al azar, cerca del comienzo (en la zona de
   // arranque o detrás de una puerta que se compra desde ahí; la del comienzo
   // sale la mitad de seguido). La torre, con sus pisos, usa su BOX_START.
-  startSpot() {
+  startSpot(n = 0) {
+    // (dos cajas: la primera, del lado izquierdo del mapa; la segunda, del derecho)
+    if (twoBoxes()) {
+      const side = BOX_SPOTS.map((s, i) => (s.side === (n ? 'der' : 'izq') ? i : -1)).filter((i) => i >= 0);
+      if (side.length) return side[Math.floor(Math.random() * side.length)];
+    }
     const pickStart = () => BOX_START[Math.floor(Math.random() * BOX_START.length)];
     if (FEATURES.tower) return pickStart();
     const near = new Set([START_ZONE]);
@@ -1245,10 +1406,14 @@ export default class Interactables {
 
   // Partida nueva (solo o anfitrión): la caja arranca en un lugar al azar.
   newRun() {
-    const box = this.box;
-    if (box.state !== 'closed') return;
-    this.placeBox(this.startSpot());
-    this.g.net?.event('box', { spot: box.spot });
+    // (las puertas que arrancan abiertas: se sortean acá, con la pantalla de carga todavía puesta)
+    this.applyPreDoors(this.pickPreDoors());
+    if (this.preDoors.length) this.g.net?.event('predoors', { l: this.preDoors, map: MAP_ID });
+    for (const box of this.boxes) {
+      if (box.state !== 'closed') continue;
+      this.placeBox(this.startSpot(box.n), box);
+      this.g.net?.event('box', box.n ? { spot: box.spot, n: box.n } : { spot: box.spot });
+    }
   }
 
   applyRemotePap(m) {
@@ -1292,7 +1457,7 @@ export default class Interactables {
     const sup = have ? !!have.supremo : supremoOn(g.settings);
     const pool = BOX_POOL.filter((w) => inBox(w) && !owns(w.id) && !(w.id === 'pava' && tac === 'pava') && !(w.id === 'gut' && owns('gutacida') && owns('gutmuerte')) && (!WEAPONS[w.id].egg || sup));
     // el easter egg puede pedir más de algún mate (el Tronador para el barbacuá)
-    const weight = (w) => boxWeight(w, MAP_ID) * (g.ee?.boxBoost?.(w.id) || 1);
+    const weight = (w) => boxWeight(w, MAP_ID, FEATURES.boxTune) * (g.ee?.boxBoost?.(w.id) || 1);
     let total = pool.reduce((s, w) => s + weight(w), 0);
     let r = Math.random() * total;
     box.offer = pool[pool.length - 1].id;
@@ -1308,6 +1473,7 @@ export default class Interactables {
     const ev = { s: 'spinning', w: box.offer, coffee: box.coffee, pool: pool.map((w) => w.id) };
     if (box.sale != null) ev.b = box.sale;
     else ev.spot = box.spot;
+    if (box.n) ev.n = box.n;
     g.net?.event('box', ev);
     return true;
   }
@@ -1316,7 +1482,7 @@ export default class Interactables {
     box.state = 'closing';
     box.t = 0;
     box.offer = null;
-    this.g.net?.event('box', box.sale != null ? { s: 'closing', b: box.sale } : { s: 'closing' });
+    this.g.net?.event('box', box.sale != null ? { s: 'closing', b: box.sale } : box.n ? { s: 'closing', n: box.n } : { s: 'closing' });
   }
 
   boxModel(id, box = this.box) {
@@ -1340,7 +1506,7 @@ export default class Interactables {
     box.beam.material.opacity = 0.15 + Math.sin(g.time * 2) * 0.04;
     const pulse = 1.2 + Math.sin(g.time * 3) * 0.4;
     for (const m of box.glowMats) m.color.copy(box.glow).multiplyScalar(pulse);
-    this.stepBox(box, dt);
+    for (const b of this.boxes) this.stepBox(b, dt);
     this.updateSaleBoxes(dt);
   }
 
@@ -1384,7 +1550,7 @@ export default class Interactables {
             box.t = 0;
             // (el invitado lo muestra cuando le llega esto: si su compu iba
             // adelantada, pedía un mate que acá todavía estaba girando)
-            g.net?.event('box', box.sale != null ? { s: 'offer', w: box.offer, b: box.sale } : { s: 'offer', w: box.offer });
+            g.net?.event('box', box.sale != null ? { s: 'offer', w: box.offer, b: box.sale } : box.n ? { s: 'offer', w: box.offer, n: box.n } : { s: 'offer', w: box.offer });
           }
         }
         break;
@@ -1440,17 +1606,25 @@ export default class Interactables {
       case 'away': {
         // (el invitado espera adónde la manda el anfitrión: applyRemoteBox)
         if (box.t > 5 && !g.net?.guest) {
-          const options = BOX_SPOTS.map((_, i) => i).filter((i) => i !== box.spot);
-          const next = options[Math.floor(Math.random() * options.length)];
+          let options = BOX_SPOTS.map((_, i) => i).filter((i) => i !== box.spot);
+          // (dos cajas: nunca a la isla donde está la otra)
+          const others = this.boxes.filter((b) => b !== box);
+          if (others.length) options = options.filter((i) => !others.some((b) => isleOf(b.spot) === isleOf(i)));
+          // (ni arriba de una de la liquidación que alguien está usando: quedaban dos encimadas)
+          const free = options.filter((i) => !(this.saleBoxes[i]?.group.visible && this.saleBoxes[i].state !== 'closed'));
+          if (free.length) options = free;
+          // (la torre: no al azar, stackedNext. __mduBoxAzar: como antes)
+          const up = FEATURES.tower && globalThis.__mduBoxAzar !== true ? stackedNext(box.spot) : -1;
+          const next = up >= 0 ? up : options[Math.floor(Math.random() * options.length)];
           box.group.visible = true;
           box.beam.visible = true;
           box.group.position.y = 0;
           box.group.rotation.z = 0;
           lidOpen(0);
           box.uses = 0;
-          this.placeBox(next);
+          this.placeBox(next, box);
           box.state = 'closed';
-          g.net?.event('box', { s: 'closed', spot: next });
+          g.net?.event('box', box.n ? { s: 'closed', spot: next, n: box.n } : { s: 'closed', spot: next });
           g.fx.flash(box.center, box.glowHex, 40, 0.5, 12);
         }
         break;
@@ -1501,7 +1675,7 @@ export default class Interactables {
     const near = [];
     for (const it of this.list) {
       if (!it.lockable || it.locked) continue;
-      if (it.kind === 'box' && (this.box.state === 'away' || this.box.state === 'coffee')) continue;
+      if (it.kind === 'box' && ((it.box || this.box).state === 'away' || (it.box || this.box).state === 'coffee')) continue;
       if (it.kind === 'perk' && it.machine.gone) continue;
       const d = it.pos.distanceTo(from);
       if (d < 13) near.push([d, it]);
@@ -1523,7 +1697,7 @@ export default class Interactables {
     // las cadenas, el candado y el precinto de cada cosa (world/lockSkins.js),
     // colgados de su grupo (la caja se los lleva)
     this.lockMats ||= lockMats(this.M);
-    const host = it.kind === 'perk' ? it.machine?.group : it.kind === 'pap' ? this.pap?.group : it.kind === 'box' ? this.box?.group : null;
+    const host = it.kind === 'perk' ? it.machine?.group : it.kind === 'pap' ? this.pap?.group : it.kind === 'box' ? (it.box || this.box)?.group : null;
     let dims = null;
     if (it.kind === 'perk') dims = { w: MACHINE.W, d: MACHINE.D, h: MACHINE.H };
     else if (it.kind === 'pap') dims = { w: 1.9, d: 1.1, h: 1.2 };

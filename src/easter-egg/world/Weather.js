@@ -251,7 +251,7 @@ export default class Weather {
     // (el Monumento no tiene jefe de ronda: sin la luna roja que lo anuncia;
     // MonumentoEgg.tuneRound, __mduMonuRoundBoss)
     const noBoss = FEATURES.monumento && !globalThis.__mduMonuRoundBoss;
-    if (bossRound(round, FEATURES.bossFrom) && !noBoss) {
+    if (bossRound(round, FEATURES.bossFrom, FEATURES.bossEvery) && !noBoss) {
       this.set('blood');
       return;
     }

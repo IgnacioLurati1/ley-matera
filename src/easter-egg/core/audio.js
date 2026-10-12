@@ -4,7 +4,7 @@
 // personajes salen del sintetizador por formantes de core/voice.js; las de los
 // zombies y los bichos de las rondas especiales son grabadas (core/sfxPack.js;
 // el sintetizado queda para el jefe y por si no bajaron).
-import { zombieSound, speechPlan, voiceLength, renderVoice, RATE } from './voice';
+import { zombieSound, speechPlan, voiceLength, renderVoice, wordTimes, setClarity, clarityNow, baseClarity, RATE } from './voice';
 import { MAP_ID } from '../config/map';
 import { esterosStart, esterosEnd } from '../fx/esterosMusic';
 import { monumentoStart, monumentoEnd } from '../fx/monumentoMusic';
@@ -162,6 +162,19 @@ export default class GameAudio {
     this.reverbGain = c.createGain();
     this.reverbGain.gain.value = 0.55;
     this.reverb.connect(this.reverbGain).connect(this.sfx);
+    // el eco de la sala (el usuario, 2026-10-11): adentro, un cuarto chico y
+    // cercano mezclado con el de siempre, más bajo; afuera, el de siempre. Los
+    // efectos entran por verbIn; las voces siguen derecho a `reverb`.
+    // (setRoom lo mueve; globalThis.__mduNoSala: como antes)
+    this.verbIn = c.createGain();
+    this.hallK = c.createGain();
+    this.roomK = c.createGain();
+    this.roomK.gain.value = 0;
+    this.room = c.createConvolver();
+    this.room.buffer = this.impulse(0.55, 1.6);
+    this.verbIn.connect(this.hallK).connect(this.reverb);
+    this.verbIn.connect(this.roomK).connect(this.room).connect(this.reverbGain);
+    this.roomNow = 0;
     // los efectos por tipo: cada uno con su volumen en lo seco y en lo que
     // manda al eco (cat: el tipo de lo que está sonando ahora; ver CAT_OF)
     this.cats = {};
@@ -169,7 +182,7 @@ export default class GameAudio {
       const dry = c.createGain();
       const wet = c.createGain();
       dry.connect(this.sfx);
-      wet.connect(this.reverb);
+      wet.connect(this.verbIn);
       this.cats[k] = { dry, wet };
     }
     this.cat = null;
@@ -403,12 +416,12 @@ export default class GameAudio {
     return b;
   }
 
-  playBuffer(buf, { pos = null, gain = 1, reverb = 0.2, rate = 1, bus = null, filter = null, when = 0, offset = 0, ref } = {}) {
+  playBuffer(buf, { pos = null, gain = 1, reverb = 0.2, rate = 1, bus = null, filter = null, when = 0, offset = 0, ref, occl, room } = {}) {
     const c = this.ctx;
     const src = c.createBufferSource();
     src.buffer = buf;
     src.playbackRate.value = rate;
-    const o = this.out({ pos, gain, reverb, bus, ref });
+    const o = this.out({ pos, gain, reverb, bus, ref, occl, room });
     let node = src;
     if (filter) {
       for (const f of filter) {
@@ -426,6 +439,11 @@ export default class GameAudio {
     // (la salida, para poder apagarlo de a poco)
     src.out = o;
     return src;
+  }
+
+  // La perilla "Claridad de las voces" (0 a 1): core/voice.js
+  setVoiceClarity(v) {
+    setClarity(v);
   }
 
   // voice: volumen de las voces (si no viene, van con los efectos)
@@ -557,9 +575,22 @@ export default class GameAudio {
     }
   }
 
+  // Dónde está el oído: bajo techo (1) o afuera (0). Mezcla los dos ecos de a
+  // poco (dos volúmenes, solo cuando cambia).
+  setRoom(k) {
+    if (globalThis.__mduNoSala === true) k = 0;
+    if (k === this.roomNow) return;
+    this.roomNow = k;
+    const t = this.ctx.currentTime;
+    this.roomK.gain.setTargetAtTime(0.9 * k, t, 0.25);
+    this.hallK.gain.setTargetAtTime(1 - 0.6 * k, t, 0.25);
+  }
+
   // Punto de salida: opcionalmente espacializado y con envío a reverb.
   // ref: a qué distancia se oye con toda su fuerza (lo grande se oye de lejos)
-  out({ pos = null, reverb = 0.2, gain = 1, bus = null, ref = 2.2 } = {}) {
+  // occl: las paredes entre el oído y el lugar lo tapan (this.block, lo pone
+  // Game: World.soundBlock); room: su eco es el de la sala (false: las voces)
+  out({ pos = null, reverb = 0.2, gain = 1, bus = null, ref = 2.2, occl = true, room = true } = {}) {
     const c = this.ctx;
     const g = c.createGain();
     g.gain.value = gain;
@@ -588,7 +619,23 @@ export default class GameAudio {
         p.positionY.value = pos.y;
         p.positionZ.value = pos.z;
       } else p.setPosition(pos.x, pos.y, pos.z);
-      g.connect(p);
+      // las paredes en el medio: más grave y más bajo (se mira una vez, al
+      // arrancar; con el sonido saturado, no: son dos nodos más por sonido)
+      // (globalThis.__mduNoOclusion: sin esto)
+      let head = g;
+      const ob = occl && this.block && this.ear && this.load <= LOAD_HRTF * k && globalThis.__mduNoOclusion !== true ? this.block(this.ear, pos) : 0;
+      if (ob > 0.05) {
+        const lp = c.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 16000 * Math.pow(700 / 16000, ob);
+        lp.Q.value = 0.5;
+        const og = c.createGain();
+        og.gain.value = 1 - 0.45 * ob;
+        g.connect(lp).connect(og);
+        head = og;
+        this.lastBlock = ob;
+      }
+      head.connect(p);
       node = p;
     }
     // (sin bus propio: por el volumen de su tipo, si se sabe cuál es)
@@ -597,7 +644,7 @@ export default class GameAudio {
     if (reverb > 0) {
       const s = c.createGain();
       s.gain.value = reverb;
-      node.connect(s).connect(C?.wet || this.reverb);
+      node.connect(s).connect(room ? C?.wet || this.verbIn : this.reverb);
     }
     return g;
   }
@@ -1812,11 +1859,15 @@ export default class GameAudio {
     const key = cine && this.online?.() && globalThis.__mduNoVoiceSync !== true ? seedOf(`${speaker}|${text}`) : 0;
     let fixed = 0;
     if (key) {
-      const pl = speechPlan(text, speaker, rng(key), { cut });
+      // (con la perilla de claridad en su lugar de cuenta: igual en todas las compus)
+      const pl = speechPlan(text, speaker, rng(key), { cut, clear: baseClarity() });
       fixed = voiceLength(pl.segs, pl.P);
     }
     const talk = (rate) => fixed || Math.max(1.6, (text.length * 0.064 + pauses * 0.22) / rate + 0.3);
     this.sayWait = 0;
+    // (cuándo arranca cada palabra de lo que se dice ahora, para el subtítulo:
+    // lo llena murmur; con otra voz o sin voz, nada)
+    this.sayMarks = null;
     if (this.cine && !cine) return talk(1);
     const now = this.ctx.currentTime;
     const wait = Math.max(0, this.voiceEnd - now);
@@ -1940,6 +1991,7 @@ export default class GameAudio {
 
   murmur(text, speaker, when = 0, cut = false, r = Math.random) {
     const { segs, P } = speechPlan(text, speaker, r, { cut });
+    this.sayMarks = wordTimes(text, segs);
     const fx = {
       abuelo: { reverb: 0.55, gain: 1.1 },
       anunciador: { reverb: 1.1, gain: 1.4 },
@@ -1989,7 +2041,8 @@ export default class GameAudio {
       const offset = now - at > 0.12 ? now - at : 0;
       if (offset >= buf.duration) return;
       // se anota para poder cortarla
-      const src = this.playBuffer(buf, { ...fx, bus: this.voice, when: Math.max(at, now), offset });
+      // (la perilla de claridad, de la mitad para arriba, les saca eco a las voces)
+      const src = this.playBuffer(buf, { ...fx, reverb: fx.reverb * (1 - Math.max(0, clarityNow() - 0.5) * 1.2), room: false, occl: false, bus: this.voice, when: Math.max(at, now), offset });
       this.voiceSrc.add(src);
       src.onended = () => this.voiceSrc.delete(src);
     };

@@ -104,6 +104,11 @@ export default class Net {
     // los saludos vienen sin destinatario; las respuestas, dirigidas a la sala
     if (msg.t === 'answer' && msg.to !== this.code) return;
     if (msg.t === 'hello') {
+      // (en la pelea final no entra nadie: `busy` lo pone net/Session.js)
+      if (this.busy?.()) {
+        this.signal.send({ t: 'busy', to: msg.from });
+        return;
+      }
       if (this.peers.size + 1 >= MAX_PLAYERS) {
         this.signal.send({ t: 'full', to: msg.from });
         return;
@@ -126,6 +131,7 @@ export default class Net {
 
   // Conecta a un invitado por código largo (sin canal de encuentro).
   async hostManualOffer() {
+    if (this.busy?.()) throw new Error('En la pelea final no se puede sumar a nadie');
     const id = this.nextId++;
     const peer = createPeer();
     const offer = await makeOffer(peer);
@@ -188,6 +194,7 @@ export default class Net {
     await this.signal.open(this.code, async (msg) => {
       if (msg.to !== mine) return;
       if (msg.t === 'full') this.rejectJoin?.(new Error('La sala está llena'));
+      if (msg.t === 'busy') this.rejectJoin?.(new Error('Están en la pelea final: no se puede entrar ahora'));
       if (msg.t !== 'offer') return;
       found = true;
       this.id = msg.id;

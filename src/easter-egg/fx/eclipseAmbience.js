@@ -70,7 +70,7 @@ class EclAmbience {
     const want = on && isle ? LOOP_OF[isle] || null : null;
     if (want !== this.want) this.set(want);
     if (this.cur) {
-      const lv = (this.cur.name === 'dim' ? LEVEL_DIM : LEVEL) * (TRIM[this.cur.name] ?? 1) * (g.ee?.scene || g.cine ? DUCK : 1) * (g.state === 'paused' ? 0.5 : 1) * (g.weather?.atmos?.rift ? 0.5 : 1) * (g.ee?.scene?.cine?.hush ? 0 : 1);
+      const lv = (this.cur.name === 'dim' ? LEVEL_DIM : LEVEL) * (TRIM[this.cur.name] ?? 1) * (g.ee?.scene || g.cine ? DUCK : 1) * (g.state === 'paused' ? 0.5 : 1) * (g.weather?.atmos?.rift ? 0.5 : 1) * (g.ee?.scene?.cine?.hush ? 0 : 1) * (g.ee?.scene?.cine?.ambK ?? 1);
       if (Math.abs(lv - this.level) > 0.01) {
         this.level = lv;
         this.cur.out.gain.setTargetAtTime(lv, a.now, FADE);

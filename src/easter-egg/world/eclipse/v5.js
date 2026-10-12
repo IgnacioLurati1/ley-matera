@@ -1654,10 +1654,28 @@ function tapera(w, ctx) {
     const mine = (G.PROPS || []).filter((p) => p.type === 'boveda' || p.type === 'pajar');
     // (la bóveda y el pajar del establo: lo de la granja que cae en la sección)
     const R = [49.5, 21.5, 78.5, 40.5];
-    ctx.ext(transplant(w, S, (pw) => {
+    const est = transplant(w, S, (pw) => {
       buildBovedas(pw);
       buildPajar(pw);
-    }, { keep: (x, y, z) => (inBox(x, z, R) ? true : false), swap: [[PROPS, mine]], name: 'v5-establo' }).group);
+    }, { keep: (x, y, z) => (inBox(x, z, R) ? true : false), swap: [[PROPS, mine]], name: 'v5-establo' }).group;
+    // (las tablas de arriba —las arma world/Farm.js con las UV de la granja—
+    // quedaban medio azulejo corridas de las de la pared de abajo, que las pone
+    // Levels con el lugar de acá: la sección cae corrida un número impar de
+    // metros. Se corren las UV lo mismo que la sección. En la granja no pasa.
+    // El usuario, 2026-10-10. __mduNoTablasUV: como antes)
+    if (globalThis.__mduNoTablasUV !== true) {
+      est.traverse((o) => {
+        const uv = o.isMesh && o.material === w.M.barn ? o.geometry.attributes.uv : null;
+        const nr = uv ? o.geometry.attributes.normal : null;
+        if (!uv || !nr) return;
+        for (let i = 0; i < uv.count; i++) {
+          if (Math.abs(nr.getY(i)) > 0.5) continue;
+          uv.setXY(i, uv.getX(i) + (S.dx * Math.round(nr.getZ(i)) - S.dz * Math.round(nr.getX(i))) / 2, uv.getY(i) + S.dy / 3.6);
+        }
+        uv.needsUpdate = true;
+      });
+    }
+    ctx.ext(est);
     // lo retorcido: grietas en las cabeceras de tablas del establo, por dentro
     if (K.D) twist(w, ctx, K.D, { cracks: 2, seed: 61 });
   });

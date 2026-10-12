@@ -2,6 +2,7 @@ import { PERKS } from '../config/perks';
 import { perkIconURL } from './perkIcons';
 import { ACT } from '../config/map';
 import { keyLabel } from '../core/controls';
+import { shownChars } from '../core/voice';
 import { SHIELD_ICONS, SHIELD_CRACKS, PART_SHORT, partIcon, SOUL_ICON, CANDLE_ICON } from './hudIcons';
 
 // HUD en DOM: ronda con palitos de tiza, puntos con "+10" volando, munición,
@@ -677,11 +678,14 @@ export default class Hud {
     this.addLine({ text: withKeys(text), secs, kind, speaker: null });
   }
 
-  speak(speaker, text, secs, kind = '') {
-    this.addLine({ text, secs, kind, speaker, reveal: Math.min(secs * 0.85, text.length * 0.045) });
+  // marks: cuándo arranca cada palabra del murmullo (core/voice wordTimes); con
+  // eso el texto avanza palabra por palabra, a la par de lo que se oye.
+  // (globalThis.__mduSubViejo: las letras parejas en el tiempo, como antes)
+  speak(speaker, text, secs, kind = '', marks = null) {
+    this.addLine({ text, secs, kind, speaker, reveal: Math.min(secs * 0.85, text.length * 0.045), marks: globalThis.__mduSubViejo === true ? null : marks });
   }
 
-  addLine({ text, secs, kind, speaker, reveal = 0 }) {
+  addLine({ text, secs, kind, speaker, reveal = 0, marks = null }) {
     const same = this.lines.find((l) => l.text === text && !l.out);
     if (same) {
       same.t = Math.max(same.t, secs);
@@ -691,7 +695,7 @@ export default class Hud {
     if (speaker) el('b', '', p, speaker);
     const span = el('span', '', p);
     span.textContent = reveal > 0 ? '' : text;
-    const line = { el: p, span, text, t: secs, reveal, shown: reveal > 0 ? 0 : text.length, age: 0, out: false };
+    const line = { el: p, span, text, t: secs, reveal, marks, shown: reveal > 0 ? 0 : text.length, age: 0, out: false };
     this.lines.push(line);
     this.layoutT = 0;
     while (this.lines.filter((l) => !l.out).length > 3) this.dropLine(this.lines.find((l) => !l.out));
@@ -857,7 +861,7 @@ export default class Hud {
       if (l.out) continue;
       l.age += dt;
       if (l.reveal > 0 && l.shown < l.text.length) {
-        const n = Math.min(l.text.length, Math.ceil((l.age / l.reveal) * l.text.length));
+        const n = l.marks ? shownChars(l.text, l.marks, l.age) : Math.min(l.text.length, Math.ceil((l.age / l.reveal) * l.text.length));
         if (n !== l.shown) {
           l.shown = n;
           l.span.textContent = l.text.slice(0, n);

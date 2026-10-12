@@ -569,7 +569,8 @@ export default class Activities {
     const g = this.g;
     const M = this.M;
     this.parts = {};
-    this.shieldBuilt = false;
+    // (un mapa sin piezas, la torre: el escudo ya está armado en la mesa)
+    this.shieldBuilt = !ACT.parts.length;
     for (const def of ACT.parts) {
       const obj = new THREE.Group();
       obj.position.set(...def.pos);

@@ -130,10 +130,23 @@ function drown(p, dt) {
   if (p.health <= 0) p.goDown();
 }
 
+// ¿Se puede nadar en esta celda con la creciente? Solo donde se camina (piso,
+// puerta o ventana: 1, 3, 4 en world/Levels.js); no afuera del mapa, ni en el
+// pajonal del borde, ni del otro lado de una baranda.
+function swimCell(w, x, z) {
+  const cx = Math.floor(x);
+  const cz = Math.floor(z);
+  if (!w.inside(cx, cz)) return false;
+  const k = w.grid[w.idx(cx, cz)];
+  return k === 1 || k === 3 || k === 4;
+}
+
 // Nadando (en la superficie o buceando): reemplaza el caminar, saltar y caer.
 // wx/wz: hacia dónde empuja (ya girado con la mirada); f: adelante/atrás.
 export function swimMove(p, dt, input, W, wx, wz, f) {
   const g = p.g;
+  const ox = p.pos.x;
+  const oz = p.pos.z;
   const aqua = p.perks.has('aqua');
   const sp = (aqua ? 4.6 : 3.1) * (p.ghost ? 1.2 : 1) * (p.downed ? 0.35 : 1);
   // nadando en la superficie, la cabeza va afuera (caído, flota boca arriba)
@@ -205,6 +218,24 @@ export function swimMove(p, dt, input, W, wx, wz, f) {
     }
   }
   g.world.collide(p.pos, PLAYER.radius, p.pos.y + 0.05, p.pos.y + 1.7);
+  // La creciente del estero: con el agua 2,6 m arriba, el que nada pasa por
+  // encima del pajonal del borde y de las barandas (las cajas que frenan
+  // quedan abajo de los pies) y "si te vas a la laguna del Irupé te podés ir
+  // del mapa directamente" (el usuario, 2026-10-10; medido: 13 969 celdas de
+  // afuera alcanzables). Con el agua alta no se pasa a una celda donde no se
+  // camina: resbala por el borde. Si ya estaba en una (lo agarró ahí la
+  // crecida), se mueve libre para volver. globalThis.__mduNoSwimStay: como antes.
+  if (g.mapId === 'esteros' && g.water && g.water.level - g.water.base > 0.3 && globalThis.__mduNoSwimStay !== true) {
+    const w = g.world;
+    if (swimCell(w, ox, oz) && !swimCell(w, p.pos.x, p.pos.z)) {
+      if (swimCell(w, p.pos.x, oz)) p.pos.z = oz;
+      else if (swimCell(w, ox, p.pos.z)) p.pos.x = ox;
+      else {
+        p.pos.x = ox;
+        p.pos.z = oz;
+      }
+    }
+  }
   p.onGround = false;
   p.airTop = p.pos.y;
   p.landKick = Math.max(0, p.landKick - dt * 4);

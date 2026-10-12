@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { shownChars } from '../core/voice';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EE } from '../config/map';
 import { zombieHealth, maxAlive, SPEEDS } from '../config/rules';
@@ -1581,7 +1582,7 @@ export default class PenalEgg {
   sceneSay(text) {
     const S = this.scene;
     const d = this.g.audio.say(text, 'entidad', { cine: true });
-    S.sub = { text, t0: S.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.045)), k: -1 };
+    S.sub = { text, t0: S.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.045)), marks: globalThis.__mduSubViejo === true ? null : this.g.audio.sayMarks, k: -1 };
     S.span.textContent = '';
     S.text.classList.add('is-on');
     return d;
@@ -1729,7 +1730,7 @@ export default class PenalEgg {
     // el subtítulo, letra por letra
     const sub = S.sub;
     if (sub) {
-      const k = Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
+      const k = sub.marks ? shownChars(sub.text, sub.marks, t - sub.t0) : Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
       if (k !== sub.k) {
         sub.k = k;
         S.span.textContent = sub.text.slice(0, k);

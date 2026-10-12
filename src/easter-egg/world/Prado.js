@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import Arena from './Arena';
-import { mesh, boxGeo, cylGeo, mergeByMaterial } from './props';
+import { mesh, boxGeo, cylGeo, mergeByMaterial, buildProp } from './props';
 import { EE } from '../config/map';
 import { depthPrepass } from '../fx/prepass';
 import { lightGrass } from '../config/quality';
@@ -24,6 +24,13 @@ const GRASS = { at: 0.5, until: 0.3, max: 75, grow: 1.6, spread: 1.8, wither: 2.
 // los cortes: [alcance, coseno del arco] (la hoz barre ancho; la medialuna de
 // la Hoz de la Muerte, un círculo a su paso; el cuchillo, un poquito adelante)
 const CUT = { hoz: [3.1, 0.15], crescent: [1.3, -1], knife: [1.5, 0.55] };
+// Los espantapájaros que lo cubren (buildDummies): cuántos, a qué parte del
+// radio del claro se paran, y cuánto tardan en salir de la tierra, en caer
+// cortados, en quedar tirados y en hundirse.
+const DUMMIES = 3;
+const DUMMY = { ring: 0.6, rise: 0.9, fall: 0.55, lie: 1.3, sink: 1.2, r: 0.32, h: 2.3 };
+// desde dónde les llega el tajo: [alcance, coseno del arco]
+const DUMMY_CUT = { hoz: [3.1, 0.15], knife: [2.4, 0.45] };
 const tmpM = new THREE.Matrix4();
 const tmpQ = new THREE.Quaternion();
 const tmpS = new THREE.Vector3();
@@ -120,6 +127,7 @@ export default class Prado extends Arena {
       this.g.scene.add(c);
       this.flock.push({ obj: c, a: (i / 10) * Math.PI * 2, h: 2 + Math.random() * 3, rad: 1.6 + Math.random() * 1.4, sp: 1.5 + Math.random() });
     }
+    this.buildDummies();
     // el cuervo que marca a quién va cuando se mete bajo tierra
     this.markCrow = this.flock[0].obj.clone();
     this.markCrow.scale.setScalar(2.2);
@@ -143,6 +151,7 @@ export default class Prado extends Arena {
 
   start() {
     super.start();
+    this.resetDummies();
     this.digT = 12;
     this.grassDone = false;
     this.grassOff();
@@ -643,6 +652,7 @@ export default class Prado extends Arena {
   updateShared(dt) {
     super.updateShared(dt);
     this.updateGrass(dt);
+    this.updateDummies(dt);
     // el cuervo de la marca: da vueltas arriba del marcado
     const mk = this.g.zombies.moves.markAt(this.markV);
     this.markCrow.visible = !!mk;
@@ -888,6 +898,8 @@ export default class Prado extends Arena {
   // Un golpe de acá (Weapons: el tajo de la hoz, la medialuna a su paso, el
   // cuchillo) contra el maizal.
   onScythe(pos, fwd, st, kind = 'hoz') {
+    // (el tajo de la hoz y el cuchillo; la medialuna que vuela, no)
+    if (DUMMY_CUT[kind]) this.cutDummies(pos, fwd, kind);
     const G = this.grass;
     if (!this.active || !G || (G.state !== 'grow' && G.state !== 'on')) return;
     const len = Math.hypot(fwd.x, fwd.z) || 1;
@@ -950,8 +962,255 @@ export default class Prado extends Arena {
     return n;
   }
 
+  // ---------------- los espantapájaros que lo cubren ----------------
+  // (pedido del usuario, 2026-10-10) Cuando se cubre ya no alcanza con liquidar
+  // a los peones: salen de la tierra tres espantapájaros alrededor del claro y
+  // hay que cortarlos con el tajo de la hoz (o con el cuchillo). Cortados los
+  // tres, se le van los cuervos. No se va sola ni matando peones.
+  // El anfitrión elige dónde salen ('espanta' p) y cuenta los cortados; el que
+  // corta uno avisa ('espanta' c). (__mduPradoViejo: como antes, con los peones)
+  buildDummies() {
+    const g = this.g;
+    const M = g.world.M;
+    this.dummies = Array.from({ length: DUMMIES }, (_, k) => {
+      const grp = new THREE.Group();
+      const made = buildProp({ type: 'espantajo', pos: [0, 0], rot: 0 }, M, 71 + k);
+      if (made) grp.add(made.obj);
+      // los ojos prendidos: se lo ve entre el maíz y con la niebla
+      const glint = new THREE.Sprite(new THREE.SpriteMaterial({ map: g.textures.dot, color: 0xff7a18, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0 }));
+      glint.position.set(0, 2.02, 0);
+      glint.renderOrder = 3;
+      grp.add(glint);
+      grp.visible = false;
+      g.scene.add(grp);
+      const D = { k, grp, glint, state: 'off', t: 0, x: 0, z: 0, fx: 0, fz: 1, col: null, it: null };
+      // (los carteles nacen acá, en el mismo orden en todas las compus)
+      D.it = g.interact.add({
+        kind: 'ee',
+        pos: new THREE.Vector3(0, -999, 0),
+        radius: 2.6,
+        prompt: () => (this.active && (D.state === 'up' || D.state === 'rise') ? { text: 'Cortalo con la hoz o el cuchillo', noCost: true, info: true } : null),
+        cost: () => 0,
+        use: () => false,
+      });
+      return D;
+    });
+  }
+
+  dummyUp(D) {
+    return D.state === 'up' || D.state === 'rise';
+  }
+
+  // Se cubre: con los espantapájaros (y los peones vienen igual).
+  setWard(on) {
+    const was = this.ward;
+    super.setWard(on);
+    if (globalThis.__mduPradoViejo === true || was === this.ward) return;
+    if (on) {
+      this.wardMax0 ??= this.wardMax;
+      this.waveUntil = Infinity;
+      this.wardMax = Infinity;
+      if (!this.g.net?.guest) this.spawnDummies();
+    } else {
+      this.wardMax = this.wardMax0 ?? this.wardMax;
+      this.waveUntil = 0;
+      // (si quedó alguno parado, se hunde solo)
+      for (const D of this.dummies) if (this.dummyUp(D)) this.dropDummy(D, 'sink');
+    }
+  }
+
+  // (anfitrión) Dónde salen: repartidos alrededor, lejos de los fardos, del
+  // jefe y de donde hay alguien parado.
+  spawnDummies() {
+    const g = this.g;
+    const A = this.A;
+    const b = g.zombies.boss;
+    const people = this.standing();
+    const flat = [];
+    const a0 = Math.random() * Math.PI * 2;
+    for (let k = 0; k < DUMMIES; k++) {
+      let px = A.x;
+      let pz = A.z;
+      for (let j = 0; j < 14; j++) {
+        const a = a0 + (k / DUMMIES) * Math.PI * 2 + (j ? (j % 2 ? 1 : -1) * Math.ceil(j / 2) * 0.16 : 0);
+        px = A.x + Math.cos(a) * A.r * DUMMY.ring;
+        pz = A.z + Math.sin(a) * A.r * DUMMY.ring;
+        const free = !this.cols.some((c) => Math.hypot(px - c.x, pz - c.z) < c.r + 1.3) && !people.some((p) => Math.hypot(px - p.x, pz - p.z) < 2.2) && !(b && Math.hypot(px - b.pos.x, pz - b.pos.z) < 3);
+        if (free) break;
+      }
+      flat.push(+px.toFixed(2), +pz.toFixed(2));
+    }
+    this.setDummies(flat);
+    g.net?.event('espanta', { p: flat });
+  }
+
+  // (todos) Salen de la tierra en estos lugares.
+  setDummies(flat) {
+    const g = this.g;
+    const y = this.A.y || 0;
+    for (const D of this.dummies) {
+      const x = flat[D.k * 2];
+      const z = flat[D.k * 2 + 1];
+      if (x == null) continue;
+      this.dropDummy(D, 'off');
+      D.x = x;
+      D.z = z;
+      D.cut = false;
+      D.landed = false;
+      D.state = 'rise';
+      D.t = 0;
+      D.grp.visible = true;
+      D.grp.position.set(x, y - DUMMY.h - 0.2, z);
+      D.grp.quaternion.identity();
+      // (mirando al centro)
+      D.grp.rotation.y = Math.atan2(this.A.x - x, this.A.z - z);
+      D.yaw = D.grp.rotation.y;
+      D.grp.scale.setScalar(1);
+      D.it.pos.set(x, y + 1.1, z);
+      D.col = { x, z, r: DUMMY.r, h: DUMMY.h, what: 'el espantapájaros' };
+      this.cols.push(D.col);
+      g.fx.dirt(tmpP.set(x, y + 0.2, z), 30);
+    }
+    g.audio.caw?.(tmpP.set(this.A.x, (this.A.y || 0) + 4, this.A.z), 3);
+    g.hud.subtitle('Tres espantapájaros lo cubren: cortalos con la hoz o el cuchillo', 5);
+  }
+
+  // Un tajo de acá: ¿le da a alguno?
+  cutDummies(pos, fwd, kind) {
+    if (!this.active || !this.dummies) return;
+    const len = Math.hypot(fwd.x, fwd.z) || 1;
+    const fx = fwd.x / len;
+    const fz = fwd.z / len;
+    const [range, cos] = DUMMY_CUT[kind];
+    for (const D of this.dummies) {
+      if (!this.dummyUp(D) || (D.state === 'rise' && D.t < 0.35)) continue;
+      const dx = D.x - pos.x;
+      const dz = D.z - pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > range || (d > 0.6 && (dx * fx + dz * fz) / d < cos)) continue;
+      this.cutDummy(D.k, fx, fz);
+      this.g.net?.share('espanta', { c: D.k, x: +fx.toFixed(2), z: +fz.toFixed(2) });
+    }
+  }
+
+  // (todos) Cortaron el k: se viene abajo para el lado del tajo. El anfitrión
+  // cuenta: con los tres en el piso, se le van los cuervos.
+  cutDummy(k, fx, fz) {
+    const g = this.g;
+    const D = this.dummies[k];
+    if (!D || !this.dummyUp(D)) return;
+    D.fx = fx;
+    D.fz = fz;
+    this.dropDummy(D, 'fall');
+    const y = this.A.y || 0;
+    // paja y trapo que vuelan para el lado del tajo
+    for (let j = 0; j < 22; j++) {
+      g.fx.alpha.spawn(D.x + (Math.random() - 0.5) * 0.5, y + 0.9 + Math.random() * 1.2, D.z + (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 2.4 + fx * 2.2, 0.6 + Math.random() * 2.2, (Math.random() - 0.5) * 2.4 + fz * 2.2, {
+        color: j % 5 ? [0.78 + Math.random() * 0.12, 0.66 + Math.random() * 0.1, 0.3] : [0.6, 0.12, 0.1],
+        size: 0.07 + Math.random() * 0.06,
+        size1: 0.03,
+        life: 1.2 + Math.random() * 0.8,
+        gravity: 3.5,
+      });
+    }
+    g.audio.knife?.(true);
+    g.fx.addShake(0.1);
+    D.cut = true;
+    const n = this.dummies.filter((x) => x.cut).length;
+    g.hud.toast(`Espantapájaros cortados: ${n} de ${DUMMIES}`);
+    if (g.net?.guest) return;
+    if (!this.dummies.some((x) => this.dummyUp(x))) {
+      g.later(0.7, () => {
+        if (!this.active || !this.ward) return;
+        this.setWard(false);
+        g.hud.subtitle('Se le fueron los cuervos', 3);
+      });
+    }
+  }
+
+  // (invitado, o el anfitrión con el tajo de un invitado) net/Session: 'espanta'.
+  onDummies(m) {
+    if (!this.active || !this.dummies) return;
+    if (m.p) this.setDummies(m.p);
+    else if (m.c != null) this.cutDummy(m.c, m.x ?? 0, m.z ?? 1);
+  }
+
+  // Deja de estar parado (ya no tapa el paso ni tiene cartel) y pasa a `state`.
+  dropDummy(D, state) {
+    if (D.col) {
+      const i = this.cols.indexOf(D.col);
+      if (i >= 0) this.cols.splice(i, 1);
+      D.col = null;
+    }
+    D.it.pos.y = -999;
+    D.state = state;
+    D.t = 0;
+    if (state === 'off') D.grp.visible = false;
+  }
+
+  resetDummies() {
+    for (const D of this.dummies || []) this.dropDummy(D, 'off');
+  }
+
+  // Salen de la tierra sacudiéndose, se mecen, caen para el lado del tajo,
+  // quedan tirados un momento y se hunden.
+  updateDummies(dt) {
+    if (!this.dummies) return;
+    const g = this.g;
+    const y = this.A.y || 0;
+    const t = g.time;
+    for (const D of this.dummies) {
+      if (D.state === 'off') continue;
+      D.t += dt;
+      const G = D.grp;
+      if (D.state === 'rise') {
+        const k = Math.min(1, D.t / DUMMY.rise);
+        const e = 1 - (1 - k) ** 3;
+        G.position.y = y - (DUMMY.h + 0.2) * (1 - e);
+        G.rotation.set(0, D.yaw, Math.sin(D.t * 26) * 0.07 * (1 - k));
+        D.glint.material.opacity = k * 0.45;
+        D.glint.scale.setScalar(0.3);
+        if (Math.random() < dt * 30 * (1 - k)) g.fx.dirt(tmpP.set(D.x + (Math.random() - 0.5) * 0.6, y + 0.1, D.z + (Math.random() - 0.5) * 0.6), 2);
+        if (k >= 1) D.state = 'up';
+      } else if (D.state === 'up') {
+        G.position.y = y;
+        G.rotation.set(Math.sin(t * 1.3 + D.k * 2) * 0.02, D.yaw, Math.sin(t * 1.7 + D.k) * 0.04);
+        D.glint.material.opacity = 0.42 + Math.sin(t * 4 + D.k * 2) * 0.16;
+        D.glint.scale.setScalar(0.3 + Math.sin(t * 4 + D.k * 2) * 0.04);
+      } else if (D.state === 'fall') {
+        // gira sobre el pie, para el lado del tajo, hasta quedar acostado
+        const k = Math.min(1, D.t / DUMMY.fall);
+        const ang = k * k * (Math.PI / 2);
+        tmpQ.setFromAxisAngle(tmpS.set(D.fz, 0, -D.fx).normalize(), ang);
+        G.quaternion.setFromAxisAngle(tmpP.set(0, 1, 0), D.yaw).premultiply(tmpQ);
+        G.position.y = y + 0.06;
+        D.glint.material.opacity = Math.max(0, 0.42 * (1 - k * 2));
+        if (k >= 1 && !D.landed) {
+          D.landed = true;
+          g.fx.dirt(tmpP.set(D.x + D.fx * 1.4, y + 0.1, D.z + D.fz * 1.4), 14);
+        }
+        if (D.t > DUMMY.fall + DUMMY.lie) {
+          D.state = 'sink';
+          D.t = 0;
+          D.landed = false;
+        }
+      } else if (D.state === 'sink') {
+        const k = Math.min(1, D.t / DUMMY.sink);
+        G.position.y -= dt * (0.5 + k * 1.6);
+        G.scale.setScalar(1 - k * 0.25);
+        D.glint.material.opacity = Math.max(0, D.glint.material.opacity - dt * 2);
+        if (Math.random() < dt * 14) g.fx.dirt(tmpP.set(D.x + (Math.random() - 0.5) * 1.2, y + 0.1, D.z + (Math.random() - 0.5) * 1.2), 2);
+        if (k >= 1) {
+          D.state = 'off';
+          G.visible = false;
+        }
+      }
+    }
+  }
+
   dispose() {
     super.dispose();
+    for (const D of this.dummies || []) D.grp.removeFromParent();
     for (const c of this.flock || []) c.obj.removeFromParent();
     this.markCrow?.removeFromParent();
     this.grassMesh?.removeFromParent();

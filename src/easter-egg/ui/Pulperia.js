@@ -79,6 +79,59 @@ export function rollBake(paid) {
   return res;
 }
 
+// El cartel de una tarjeta con el mouse encima (antes era el `title` del
+// navegador: una cajita gris que tardaba y tapaba la tarjeta de al lado; el
+// usuario, 2026-10-10): el nombre y qué hace, arriba de la tarjeta (abajo si
+// arriba no entra) y sin salirse de la pantalla.
+function bindTips(root) {
+  const tip = document.createElement('div');
+  tip.className = 'mdu-pulp__tip';
+  tip.hidden = true;
+  tip.append(document.createElement('b'), document.createElement('span'));
+  if (getComputedStyle(root).position === 'static') root.style.position = 'relative';
+  root.appendChild(tip);
+  let cur = null;
+  const hide = () => {
+    cur = null;
+    tip.classList.remove('is-on');
+    tip.hidden = true;
+  };
+  const show = (el) => {
+    if (el === cur) return;
+    cur = el;
+    tip.children[0].textContent = el.dataset.tipH || '';
+    tip.children[1].textContent = el.dataset.tip;
+    tip.style.setProperty('--c', el.style.getPropertyValue('--c') || '#d8b060');
+    tip.classList.remove('is-on');
+    tip.hidden = false;
+    const box = root.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const w = tip.offsetWidth;
+    const h = tip.offsetHeight;
+    const x = Math.max(box.left + 8, Math.min(box.right - w - 8, r.left + r.width / 2 - w / 2));
+    const above = r.top - h - 12 > box.top + 8;
+    const y = above ? r.top - h - 12 : r.bottom + 12;
+    tip.style.left = `${x - box.left + root.scrollLeft}px`;
+    tip.style.top = `${y - box.top + root.scrollTop}px`;
+    // (la flechita, en el medio de la tarjeta aunque el cartel se haya corrido)
+    tip.style.setProperty('--ax', `${Math.max(14, Math.min(w - 14, r.left + r.width / 2 - x))}px`);
+    tip.classList.toggle('is-below', !above);
+    requestAnimationFrame(() => cur === el && tip.classList.add('is-on'));
+  };
+  const over = (e) => {
+    const el = e.target.closest?.('[data-tip]');
+    if (el && root.contains(el)) show(el);
+    else hide();
+  };
+  root.addEventListener('pointerover', over);
+  root.addEventListener('focusin', over);
+  root.addEventListener('pointerleave', hide);
+  root.addEventListener('focusout', hide);
+  // (un clic rearma las tarjetas: el cartel se va y vuelve al mover el mouse)
+  root.addEventListener('pointerdown', hide, true);
+  return tip;
+}
+
 export function useLine(e) {
   if (e.use === 'tiempo') return e.dur >= 60 ? `${Math.round(e.dur / 60)} min` : `${e.dur} s`;
   if (e.use === 'rondas') return `${e.dur} ${e.dur > 1 ? 'rondas' : 'ronda'}`;
@@ -152,6 +205,7 @@ export default class Pulperia {
       if (name === 'title') this.syncTitle();
     });
     this.el.addEventListener('click', (e) => this.click(e));
+    this.bindTips();
     // (jugando no: lo sincroniza el showHooks al volver al título)
     P.on('change', () => {
       if (menus.g.state !== 'title') return;
@@ -268,6 +322,10 @@ export default class Pulperia {
     if (this.tab === 'despensa') this.renderGrid();
   }
 
+  bindTips() {
+    this.tip = bindTips(this.el);
+  }
+
   click(e) {
     const t = e.target.closest('[data-ptab],[data-bake],[data-slot],[data-choose],[data-pact],[data-emp]');
     if (!t || t.disabled) return;
@@ -381,7 +439,7 @@ export default class Pulperia {
       }
       const sp = e.kind === 'especial';
       const left = mega[e.id] || 0;
-      html += `<button class="mdu-kit-card mdu-pulp__slot ${(sp && !left) || !usable(e) ? 'is-out' : ''}" data-slot="${i}" style="--c:${this.colorOf(e)}" title="${esc(e.desc)}">
+      html += `<button class="mdu-kit-card mdu-pulp__slot ${(sp && !left) || !usable(e) ? 'is-out' : ''}" data-slot="${i}" style="--c:${this.colorOf(e)}" data-tip="${esc(e.desc)}" data-tip-h="${esc(e.name)}" aria-label="${esc(e.name)}: ${esc(e.desc)}">
         <span class="mdu-pulp__ico">${this.iconImg(e.id)}</span><b>${esc(e.name)}</b><small>${esc(e.sabor)}</small><em>${sp ? `×${left}` : '∞'}</em></button>`;
     }
     box.innerHTML = html;
@@ -404,7 +462,7 @@ export default class Pulperia {
         const inUse = ids.includes(e.id) && ids[slot] !== e.id;
         const sp = e.kind === 'especial';
         const ok = usable(e);
-        return `<button class="mdu-kit-card mdu-pulp__cell ${inUse ? 'is-used' : ''} ${ok ? '' : 'is-locked'}" data-choose="${e.id}" style="--c:${this.colorOf(e)}" title="${esc(e.desc)}"${ok ? '' : ' disabled'}>
+        return `<button class="mdu-kit-card mdu-pulp__cell ${inUse ? 'is-used' : ''} ${ok ? '' : 'is-locked'}" data-choose="${e.id}" style="--c:${this.colorOf(e)}" data-tip="${esc(e.desc)}" data-tip-h="${esc(e.name)}" aria-label="${esc(e.name)}: ${esc(e.desc)}"${ok ? '' : ' disabled'}>
           <span class="mdu-pulp__ico">${this.iconImg(e.id)}</span><b>${esc(e.name)}</b><em>${ok ? (sp ? `×${mega[e.id]}` : '∞') : `Nv ${e.level}`}</em></button>`;
       })
       .join('')}</div></div><div class="mdu-pulp__row"><button class="mdu-btn mdu-btn--mini" data-pact="unpick">Cancelar</button><button class="mdu-btn mdu-btn--mini" data-choose="">Dejar vacío</button></div>`;

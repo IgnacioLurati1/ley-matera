@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { shownChars } from '../core/voice';
 import { EE, TOWER } from '../config/map';
 import Avatars from '../net/Avatars';
 import { buildChiqui, chiquiGiggle, chiquiGlitch, chiquiTap } from '../world/Chiqui';
@@ -628,7 +629,7 @@ export default class TowerCinematic {
     this.el.classList.toggle('is-fierro', who === 'fierro' && !secret);
     this.el.classList.toggle('is-fran', who === 'francisco');
     this.el.classList.toggle('is-secreto', secret);
-    this.sub = { text, t0: this.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.05)), k: -1 };
+    this.sub = { text, t0: this.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.05)), marks: globalThis.__mduSubViejo === true ? null : this.g.audio.sayMarks, k: -1 };
     // (Fierro gesticula mientras habla: fierroClips)
     if (who === 'fierro') this.fTalkUntil = this.t + d;
     return d;
@@ -1620,7 +1621,7 @@ export default class TowerCinematic {
     // el subtítulo, letra por letra
     const sub = this.sub;
     if (sub) {
-      const k = Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
+      const k = sub.marks ? shownChars(sub.text, sub.marks, t - sub.t0) : Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
       if (k !== sub.k) {
         sub.k = k;
         this.span.textContent = sub.text.slice(0, k);

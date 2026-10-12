@@ -577,6 +577,8 @@ export const SCENES = [
   },
   // el final del Monumento (ui/MonumentoEnding.js): la Bandera, Belgrano y el mate
   { id: 'fin-monumento', map: 'monumento', group: 'Cinemáticas', name: 'Monumento: el final (la Primera Bandera y Belgrano)', track: 'fin-monumento', go: (g) => g.ee.playEnding() },
+  // una escena de prueba hecha entera en Blender (ui/blendScene.js, ui/BlendDemo.js): no es de la historia
+  { id: 'demo-blender', map: 'monumento', group: 'Cinemáticas', name: 'Prueba: escena hecha en Blender (el motor de cinemáticas)', go: (g) => import('../ui/BlendDemo').then((m) => m.playBlendDemo(g)) },
   // Las de mitad de partida (y los finales) que no tienen canción propia:
   // igual van, para poder verlas (el usuario, 2026-09-26).
   { id: 'cine-penal-yerba', map: 'penal', group: 'Cinemáticas', name: 'Mate of the Dead: la Voz de Arriba y la yerba de oro', go: (g) => g.ee.startYerbaScene() },

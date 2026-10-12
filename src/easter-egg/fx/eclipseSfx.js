@@ -109,3 +109,32 @@ export function eclSfx(g) {
   if (!a) return { play() {}, loop() { return null; }, load() { return Promise.resolve(); }, has() { return false; } };
   return (a.ecl ||= new EclSfx(a));
 }
+
+// El "ahhhh" celestial (el mp3 del usuario, el del cielo del Challenge de la
+// torre): al llegar al convento por el desgarro y al empezar la escena final.
+// Se baja una vez; ahhWarm() lo deja listo antes de que haga falta.
+const AHH_URL = '/assets/sotano/sfx/cielo-ahhh.mp3';
+let ahhBuf = null;
+let ahhJob = null;
+export function ahhWarm(g) {
+  const A = g?.audio;
+  if (ahhBuf || ahhJob || !A?.ctx) return ahhJob;
+  ahhJob = fetch(AHH_URL)
+    .then((r) => r.arrayBuffer())
+    .then((b) => A.ctx.decodeAudioData(b))
+    .then((buf) => (ahhBuf = buf))
+    .catch(() => null);
+  return ahhJob;
+}
+export function ahhPlay(g, { gain = 0.9, reverb = 0.4, when } = {}) {
+  const A = g?.audio;
+  if (!A?.ctx) return false;
+  if (ahhBuf) {
+    A.playBuffer(ahhBuf, { gain, reverb, when });
+    return true;
+  }
+  // (todavía bajando: suena apenas llega, si no pasó más de un segundo y medio)
+  const t0 = performance.now();
+  ahhWarm(g)?.then((buf) => buf && performance.now() - t0 < 1500 && A.playBuffer(buf, { gain, reverb }));
+  return false;
+}
