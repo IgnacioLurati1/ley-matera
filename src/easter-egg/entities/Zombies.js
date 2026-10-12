@@ -2114,7 +2114,10 @@ export default class Zombies {
 
   chase(z, dt, t, player, distP) {
     const g = this.g;
-    const lure = this.lure;
+    // (la torre: el señuelo —el Mark III— solo tira de los muertos de su piso; los de los otros
+    // pisos siguen al jugador. El usuario, 2026-10-12. globalThis.__mduLureTodos: como antes)
+    const T = g.world.tower;
+    const lure = this.lure && T && globalThis.__mduLureTodos !== true && T.levelOf(z.pos.y + 0.5) !== T.levelOf(this.lure.pos.y + 0.5) ? null : this.lure;
     // va por el jugador de pie más cercano: a los tirados no los buscan (ni al
     // sumergido: solo los yacarés, que lo siguen abajo del agua pero no lo muerden)
     const target = g.nearestPlayer(z.pos.x, z.pos.z, z.pos.y, z.dog && !!this.rigOf(z).sinks);

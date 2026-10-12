@@ -590,7 +590,9 @@ export const TITLE_CAM = { at: [46, 8, 8], amp: [3, 1.5], look: [30, 34, 30], lo
 // Y la caja (boxTune, config/weapons.js boxWeight): los fuertes, el 40,4% (como
 // estaba: el usuario lo volvió a bajar), el Mark III el 5% (salía el 1,5%) y la
 // pava silbadora el 2% (era el 3,8%). En el Challenge, lo mismo.)
-export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: 'mixed', boss: 'mixed', egg: 'revelaciones', tower: true, levels: true, vida: false, bossFrom: 11, bossEvery: 7, boxTune: { strong: 1.033, set: { mk3: 6.75, pava: 2.7 } } };
+// (pace: el ritmo de salida de los muertos, entities/Rounds.js paceMul: en la historia sube hasta
+// una vez y media en la ronda 20 y otra vez y media más en la 30. El usuario, 2026-10-12)
+export const FEATURES = { attic: false, highWindows: false, decor: false, curandero: false, secrets: false, special: 'mixed', boss: 'mixed', egg: 'revelaciones', tower: true, levels: true, vida: false, bossFrom: 11, bossEvery: 7, boxTune: { strong: 1.033, set: { mk3: 6.75, pava: 2.7 } }, pace: [1.5, 1.5] };
 export const TEXT = {
   soul: (many) => `El remolino se llevó ${many ? 'sus almas' : 'tu alma'}.`,
   won: (team, r) => `${team ? 'Vencieron' : 'Venciste'} a Francisco en la ronda ${r}. El Chiquitijuein se acerca...`,
@@ -640,10 +642,11 @@ export function challenge() {
     // la caja de su mapa: el usuario, 2026-10-08)
     // (y los potenciadores: balas infinitas y botas; en lugar del Admin Mate,
     // el especial de cualquier mapa: entities/Powerups.js)
-    FEATURES: { ...FEATURES, egg: 'reto', boxTune: { strong: 0.923, set: { mk3: 8.17, pava: 3.27 } }, boxAll: { skip: ['gut', 'caotico', 'llamarada'] }, pups: ['infinito', 'botas'], anySpecial: true, ammoBag: 2, bossAmmo: true },
-    // (ammoBag: copias de más de la munición máxima en la bolsa de potenciadores: 3 de cada 11 en vez
-    // de 1 de cada 9. bossAmmo: el minijefe que cae suelta siempre munición máxima. entities/Powerups.js.
-    // El usuario, 2026-10-12)
+    FEATURES: { ...FEATURES, egg: 'reto', boxTune: { strong: 0.923, set: { mk3: 8.17, pava: 3.27 } }, boxAll: { skip: ['gut', 'caotico', 'llamarada'] }, pups: ['infinito', 'botas'], anySpecial: true, ammoBag: 0.5, bossAmmo: true, pace: [2, 2] },
+    // (ammoBag: copias de más de la munición máxima en la bolsa de potenciadores. Con 2 salía el 27%:
+    // "la original más un poquito más" -> 0,5: una bolsa sí y otra no lleva una de más, el 16% contra
+    // el 11% de antes. bossAmmo: el minijefe que cae suelta siempre munición máxima. entities/Powerups.js.
+    // pace: el ritmo de salida, entities/Rounds.js paceMul. El usuario, 2026-10-12)
     EE: {
       // (towerDecor deja libres los dos lugares)
       altar,

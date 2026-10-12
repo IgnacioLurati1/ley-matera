@@ -18,6 +18,17 @@ const FLOOD_RISE = 2.6;
 // los minijefes de la torre, en el orden en que salen (mixedBoss)
 const MIXED = ['crow', 'capataz', 'alcaide'];
 
+// El ritmo de salida de la torre (el usuario, 2026-10-12): la cantidad de muertos es la misma, salen
+// más seguido. FEATURES.pace = [a, b]: de la ronda 1 a la 20 el ritmo sube parejo hasta `a` veces; de
+// la 20 a la 30, hasta `a` por `b`; después queda. El Challenge lleva [2, 2] (el doble y el cuádruple);
+// la historia, [1,5; 1,5] (config/maps/torre.js). globalThis.__mduNoRitmoTorre: como antes.
+export function paceMul(round, P = FEATURES.pace) {
+  if (!P || globalThis.__mduNoRitmoTorre === true) return 1;
+  const [a, b] = P;
+  if (round <= 20) return 1 + ((a - 1) * Math.max(0, round - 1)) / 19;
+  return a * (1 + (b - 1) * Math.min(1, (round - 20) / 10));
+}
+
 export default class Rounds {
   constructor(game) {
     this.g = game;
@@ -101,6 +112,8 @@ export default class Rounds {
     this.toSpawn = this.total;
     this.health = zombieHealth(this.round);
     this.delay = spawnDelay(this.round);
+    // (la torre: los mismos muertos, saliendo más seguido: paceMul)
+    if (FEATURES.pace) this.delay = Math.max(0.06, this.delay / paceMul(this.round));
     this.spawnT = this.round === 1 ? 1 : 2.5;
     this.bossPending = FEATURES.boss === 'alcaide' ? this.alcaideRound() : bossRound(this.round, FEATURES.bossFrom, FEATURES.bossEvery);
     // (el cuerpo de verdad del minijefe se baja desde que empieza la ronda)

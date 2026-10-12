@@ -2016,7 +2016,9 @@ export default class Game {
     const hit = p && this.state !== 'title' && !clean ? p.hitK : 0;
     // la lente de cine (fx/Lens.js): en las escenas, lo de atrás de los
     // personajes fuera de foco. (globalThis.__mduNoLente: sin ella)
-    this.post.setLens(cine && this.state !== 'title' && globalThis.__mduNoLente !== true ? lensHull(this, this.camera) : null);
+    // (2026-10-12, el usuario: "sacá la difuminación de todas las cinemáticas, espantoso". Queda
+    // apagada en todas; el fondo desenfocado y el barrido vuelven solo con globalThis.__mduLenteCine = true)
+    this.post.setLens(cine && this.state !== 'title' && globalThis.__mduLenteCine === true && globalThis.__mduNoLente !== true ? lensHull(this, this.camera) : null);
     this.post.render(dt, this.time, { hurt: clean ? 0 : hurt * 0.9, hit, hitX: p?.hitX || 0, hitY: p?.hitY || 0, down: clean ? 0 : down, crit: this.state === 'title' || clean ? 0 : this.critK || 0, pulse: cine ? 0 : pulse, vida });
   }
 

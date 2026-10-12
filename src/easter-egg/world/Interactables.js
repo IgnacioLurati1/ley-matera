@@ -495,6 +495,12 @@ export default class Interactables {
       }
       carry = left;
     }
+    // (las que no cuestan nada también arrancan abiertas: quedaban cerradas con el cartel de
+    // "abrir" por 0 puntos. El usuario, 2026-10-12: "una puerta me salió 0, era que se abran, no que
+    // salgan gratis")
+    DOORS.forEach((d, i) => {
+      if (!d.cost && !d.locked && d.kind !== 'vida') open.push(i);
+    });
     return open.sort((a, b) => a - b);
   }
 

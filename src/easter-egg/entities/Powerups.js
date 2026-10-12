@@ -76,7 +76,9 @@ export default class Powerups {
       for (const k of FEATURES.pups || []) if (NAMES[k]) this.bag.push(k);
       // (y la munición máxima le sale más seguido: FEATURES.ammoBag copias de más. El usuario,
       // 2026-10-12. globalThis.__mduNoRetoAmmo: como antes)
-      if (globalThis.__mduNoRetoAmmo !== true) for (let k = 0; k < (FEATURES.ammoBag || 0); k++) this.bag.push('maxammo');
+      // (con decimales: la parte entera, siempre; el resto, la probabilidad de una más en esta bolsa)
+      const extra = globalThis.__mduNoRetoAmmo !== true ? FEATURES.ammoBag || 0 : 0;
+      for (let k = 0; k < Math.floor(extra) + (Math.random() < extra % 1 ? 1 : 0); k++) this.bag.push('maxammo');
       for (let i = this.bag.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [this.bag[i], this.bag[j]] = [this.bag[j], this.bag[i]];

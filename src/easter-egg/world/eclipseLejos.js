@@ -68,12 +68,34 @@ const MOVES = /spin|fan|flywheel|wellRig|candle|kilnGlow|orbit|live|bandera|flag
 
 const ISL = Object.entries(ISLANDS).map(([k, I]) => ({ k, b: I.box }));
 
+// La isla de un punto: la de la caja más cercana, hasta `pad` metros afuera. (Antes ganaba la
+// primera de la lista que lo tuviera adentro de su caja agrandada. Con La Tapera más grande —llega
+// a x 116— y el margen de 40 m con que se parten las paredes, medio penal quedaba "de La Tapera":
+// con el jugador en el penal, sus paredes, mesas y pisos con textura no se dibujaban —se veía la
+// base lisa— y al pausar volvían. El usuario, 2026-10-12: "no cargan muchas texturas y al pausar sí
+// cargan". globalThis.__mduIslaPrimera, puesto antes de cargar: como antes)
 function islandOf(x, z, pad = PAD) {
+  if (globalThis.__mduIslaPrimera === true) {
+    for (let i = 0; i < ISL.length; i++) {
+      const [x0, z0, x1, z1] = ISL[i].b;
+      if (x >= x0 - pad && x <= x1 + pad && z >= z0 - pad && z <= z1 + pad) return i;
+    }
+    return -1;
+  }
+  let best = -1;
+  let bd = Infinity;
   for (let i = 0; i < ISL.length; i++) {
     const [x0, z0, x1, z1] = ISL[i].b;
-    if (x >= x0 - pad && x <= x1 + pad && z >= z0 - pad && z <= z1 + pad) return i;
+    const dx = x < x0 ? x0 - x : x > x1 ? x - x1 : 0;
+    const dz = z < z0 ? z0 - z : z > z1 ? z - z1 : 0;
+    if (dx > pad || dz > pad) continue;
+    const d = Math.max(dx, dz);
+    if (d < bd) {
+      bd = d;
+      best = i;
+    }
   }
-  return -1;
+  return best;
 }
 
 const PROTO = (o, f) => Object.getPrototypeOf(o).intersectsFrustum.call(o, f);
