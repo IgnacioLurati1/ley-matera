@@ -33,7 +33,6 @@ import { assetUrl } from '../../lib/assets';
 // nuevas (fogonazos de fx). Clips de Blender: scratchpad cine/ecl_clips.py →
 // modelos/gaucho/cine-eclipse.json (svWalk, svKneel, lookBack, cancheroOk,
 // brimBow) + cine-sable.json (sablePresent, sableRise), anim_qa.
-// globalThis.__mduNoEclipseSable: sin la escena (el Sable aparece en la Llama).
 
 const FILES = ['cine-eclipse.json', 'cine-sable.json'];
 let CLIPS = null;
@@ -671,7 +670,7 @@ export default class EclipseSable {
   // (sin los clips o el cuerpo del gaucho): el paso muestra el Sable en la Llama.
   play(cb) {
     const g = this.g;
-    if (this.on || this.done || globalThis.__mduNoEclipseSable === true) return false;
+    if (this.on || this.done) return false;
     if (!CLIPS || !this.C.list.every((r) => r.a?.gs?.on)) return false;
     this.cb = cb;
     this.on = true;

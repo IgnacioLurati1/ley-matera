@@ -6,7 +6,7 @@ import { toTexture, coverageMips } from '../core/textures';
 import { rng } from '../core/noise';
 import Water from '../fx/Water';
 import { depthPrepass } from '../fx/prepass';
-import { addGrassPush, makeGrassPush, windOn } from '../fx/grassPush';
+import { addGrassPush, makeGrassPush } from '../fx/grassPush';
 import { jitterGrass } from '../fx/TAA';
 import { tejasTexture } from './Farm';
 import { registerEsterosProps } from './esterosProps';
@@ -19,8 +19,8 @@ import { compactGroup } from './props';
 
 // Lo fijo de un grupo, una malla por material (world/props compactGroup): los
 // techos y las tablas de los mates de pared eran ~80 llamadas de dibujo por
-// pasada en el peor punto del estero (globalThis.__mduNoMerge2: como antes).
-const pack = (g) => (globalThis.__mduNoMerge2 === true ? g : compactGroup(g));
+// pasada en el peor punto del estero.
+const pack = (g) => compactGroup(g);
 
 // "Mate no Numa": el estero. Engancha a world/Levels.js el suelo suave (islas,
 // barrancas y el fondo de lagunas y riachos, world/esterosGround.js), separa
@@ -506,11 +506,9 @@ function buildPajonal(w, G) {
   let pre = null;
   // (de a 48 m: con cuadros de 24 m el pajonal y las matas eran ~250 llamadas
   // de dibujo por cuadro entre profundidad, color y G-buffer; las matas son de
-  // 6 triángulos, dibujar las de más de un cuadro grande no cuesta.
-  // globalThis.__mduSmallTiles: como antes, para comparar)
-  const big = globalThis.__mduSmallTiles !== true;
+  // 6 triángulos, dibujar las de más de un cuadro grande no cuesta)
   const im = tileInstances(w, geo, w.M.reed, items, {
-    tile: big ? 48 : 24,
+    tile: 48,
     far: 90,
     setup: (t) => {
       t.receiveShadow = true;
@@ -522,7 +520,7 @@ function buildPajonal(w, G) {
   w.root.add(im);
   w.pajonal = im;
   // las matas de cerca (world/esterosGrass.js)
-  w.tussocks = buildTussocks(w.root, tuft, w.M.tussock, { ...(low ? { leaves: 22, stems: 5 } : {}), chunk: big ? 42 : 21 });
+  w.tussocks = buildTussocks(w.root, tuft, w.M.tussock, { ...(low ? { leaves: 22, stems: 5 } : {}), chunk: 42 });
   // (y cada mata con el detalle de su distancia, antes de cada dibujo: esterosGrass LODS)
   const pre0 = w.preRender;
   w.preRender = (cam, dt) => {
@@ -531,22 +529,19 @@ function buildPajonal(w, G) {
   };
   // (con su pasada de profundidad, como el pajonal: de cerca las hojas se pisan
   // muchas veces y cada capa se sombreaba entera con todas las luces. Parado
-  // en la tranquera de la laguna eran ~1,1 ms de placa en Épica a 1440p.
-  // globalThis.__mduNoTuftPre al armar el mapa: sin ella, como antes)
+  // en la tranquera de la laguna eran ~1,1 ms de placa en Épica a 1440p)
   let tpre = null;
-  if (globalThis.__mduNoTuftPre !== true) {
-    for (const t of w.tussocks) {
-      depthPrepass(t);
-      if (tpre) t.userData.prepass.material = tpre;
-      else tpre = t.userData.prepass.material;
-    }
+  for (const t of w.tussocks) {
+    depthPrepass(t);
+    if (tpre) t.userData.prepass.material = tpre;
+    else tpre = t.userData.prepass.material;
   }
   // el pasto alto se aparta cuando lo cruza el Luisón (o uno): fx/grassPush.js.
   // (también las pasadas de profundidad, que si no dejaban huecos)
   const mats = [w.M.reed, w.M.tussock, pre, tpre].filter(Boolean);
   for (const m of mats) addGrassPush(m);
   // (el viento a prueba: también las copas y las palmeras; fx/grassPush WIND)
-  if (windOn()) for (const m of [w.M.leafDark, w.M.lapacho, w.M.ceiboLeaf, w.M.palm]) addGrassPush(m, { crown: true });
+  for (const m of [w.M.leafDark, w.M.lapacho, w.M.ceiboLeaf, w.M.palm]) addGrassPush(m, { crown: true });
   // (y corrido una fracción de píxel por cuadro: el suavizado temporal lo
   // suaviza también parado; fx/TAA.js. La profundidad, igual que el color)
   for (const m of mats) jitterGrass(m);

@@ -36,10 +36,10 @@ export function decorateOverEclipse(g, s, { won = false } = {}) {
   s.querySelector('.mdu-ove-crew')?.remove();
   s.querySelector('.mdu-ove-veil')?.remove();
   s.classList.remove('mdu-over--eclipse', 'is-won', 'is-lost', 'is-veil');
-  if (g.mapId !== 'eclipse' || globalThis.__mduNoOverEclipse === true) return;
+  if (g.mapId !== 'eclipse') return;
   s.classList.add('mdu-over--eclipse', won ? 'is-won' : 'is-lost');
   // (2026-10-07, el usuario: "no hay música final en la pantalla final") la
-  // épica, mientras dure la pantalla. globalThis.__mduNoOverEclipseMusic: sin
+  // épica, mientras dure la pantalla.
   // (2026-10-08, el usuario: en la pantalla final "la música baja de volumen" y
   // "la transición es muy abrupta, con un lag grande". La pieza arrancaba de su
   // principio, que va 17 dB más bajo que el telón durante 20 s, y se apagaba
@@ -47,16 +47,13 @@ export function decorateOverEclipse(g, s, { won = false } = {}) {
   // parte fuerte suena a -22 dB, el telón a -21,6— y da la vuelta cuando se
   // apagó la coda. Y la pantalla sale del negro del final: un velo negro que se
   // va despacio, con el fondo ya puesto; el primer cuadro, que el navegador
-  // tarda en pintar entero, queda debajo del negro.
-  // globalThis.__mduOldOverEclipseIn: como antes)
-  const IN = won && globalThis.__mduOldOverEclipseIn !== true;
+  // tarda en pintar entero, queda debajo del negro)
+  const IN = won;
   const keep = (G) => G.state === 'won' || G.state === 'over';
   // (2026-10-08, ITERACION-8: la del usuario, "pantalla final", entera y desde
-  // el principio —arranca fuerte—; da la vuelta recién a los 3 minutos.
-  // globalThis.__mduOldFin8: la de antes)
-  if (won && globalThis.__mduNoOverEclipseMusic !== true) {
-    if (globalThis.__mduOldFin8 !== true) g.music?.play?.('fin8-pantalla', { fadeIn: 0.6, loop: true, while: keep });
-    else g.music?.play?.('fin-eclipse-pantalla', IN ? { at: 20, gain: 0.8, fadeIn: 0.5, loop: true, while: keep } : { fadeIn: 2.5, while: keep });
+  // el principio —arranca fuerte—; da la vuelta recién a los 3 minutos)
+  if (won) {
+    g.music?.play?.('fin8-pantalla', { fadeIn: 0.6, loop: true, while: keep });
   }
   const deco = h(`<div class="mdu-ove" aria-hidden="true">
       <i class="mdu-ove__glow"></i>
@@ -219,26 +216,13 @@ function horizonSvg() {
   }
   return `<svg class="mdu-ove__hz" viewBox="0 0 1200 300" preserveAspectRatio="xMidYMax slice">
       <path class="mdu-ove__hill2" d="M0 236C160 214 300 226 460 210C640 192 820 222 1000 206C1080 199 1150 204 1200 200V300H0Z"/>
-      ${globalThis.__mduOldOveFacon !== true ? faconSvg() : ''}
+      ${faconSvg()}
       <path class="mdu-ove__hill" d="M0 260C120 248 220 236 330 238C420 240 470 216 560 222C680 230 760 256 900 252C1020 249 1120 240 1200 244V300H0Z"/>
       <g class="mdu-ove__tree" transform="translate(470 224)">
         <path d="M-6 0L-4 -60C-20 -78 -46 -84 -70 -80M-3 -52C10 -76 30 -88 58 -92M-4 -66C-6 -90 4 -108 -6 -126M-4 -30C14 -40 30 -38 44 -46" fill="none" stroke-width="7" stroke-linecap="round"/>
         <path d="M0 0L-10 0L-6 -58Z"/>
         <ellipse cx="-58" cy="-88" rx="40" ry="14"/><ellipse cx="44" cy="-98" rx="46" ry="15"/><ellipse cx="-6" cy="-128" rx="38" ry="15"/><ellipse cx="-20" cy="-104" rx="52" ry="12"/>
-        ${
-          // (2026-10-09, el usuario: "la pantalla final tiene eso que el facón
-          // vuela": la soga colgando de la rama, con la cinta, parecía un
-          // facón en el aire. Sin la soga: la cinta atada a la rama.
-          // globalThis.__mduOldOveRope: como antes)
-          // (2026-10-10, el usuario: "añadí el facón del Gil con su bandana
-          // flameando en lugar de ponerlo en el algarrobo": la cinta ya no va
-          // en la rama; ver faconSvg. globalThis.__mduOldOveFacon: como antes)
-          globalThis.__mduOldOveFacon !== true
-            ? ''
-            : globalThis.__mduOldOveRope === true
-              ? '<path class="mdu-ove__rope" d="M30 -44L30 -20"/><path class="mdu-ove__ribbon" d="M30 -40C42 -42 50 -36 62 -38C70 -39 76 -36 82 -38"/>'
-              : '<path class="mdu-ove__knot" d="M27 -41L33 -37"/><path class="mdu-ove__ribbon" d="M30 -39C40 -36 47 -31 57 -32C65 -33 70 -29 76 -30"/>'
-        }
+        
       </g>
       <g class="mdu-ove__lantern-man">
         <path d="M0 0L-3 -26L-9 -27L-8 -34L-14 -35L0 -42L14 -35L8 -34L9 -27L3 -26Z"/>

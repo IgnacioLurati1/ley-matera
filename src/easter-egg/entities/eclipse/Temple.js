@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { LIGHTS, ZONES } from '../../config/maps/eclipse';
-import { QStep, Marker, HoldZone, glowOrb, players, playerAt, dist2, myId } from './common';
-import { ART, buildBrasero, buildStuck, buildSpiritFlame } from './stepArt';
+import { QStep, Marker, HoldZone, players, playerAt, dist2, myId } from './common';
+import { buildBrasero, buildStuck, buildSpiritFlame } from './stepArt';
 import { unlock as unlockLogro } from '../../core/logros';
 
 // "El Temple de los Cuatro Filos": la mejora del Desgarrador (obligatoria para
@@ -70,24 +70,22 @@ export default class Temple extends QStep {
     this.hT = new HoldZone(g, NUDO, 9, TEMPLE_SECS);
     // (stepArt) la llama del desgarro: fría, verde agua, con su estela; y la
     // misma esperando arriba de la marca de la cima hasta que alguien la toma
-    this.flame = ART ? buildSpiritFlame(g) : glowOrb(0xa0ffd0, 0.14);
+    this.flame = buildSpiritFlame(g);
     this.flame.visible = false;
     g.scene.add(this.flame);
-    if (ART) {
-      this.flameSrc = buildSpiritFlame(g);
-      this.flameSrc.position.copy(LLAMA_FROM).add(V(0, 1.3, 0));
-      this.flameSrc.visible = false;
-      g.scene.add(this.flameSrc);
-    }
+    this.flameSrc = buildSpiritFlame(g);
+    this.flameSrc.position.copy(LLAMA_FROM).add(V(0, 1.3, 0));
+    this.flameSrc.visible = false;
+    g.scene.add(this.flameSrc);
     // (stepArt) la guadaña clavada de punta en la muela, con la escarcha
-    this.stuck = ART ? buildStuck(g) : glowOrb(0x80c0ff, 0.12);
+    this.stuck = buildStuck(g);
     this.stuck.visible = false;
-    this.stuck.position.copy(MUELA).add(V(0, ART ? 0 : 1.2, 0));
+    this.stuck.position.copy(MUELA);
     g.scene.add(this.stuck);
     // (qa-flujo) el brasero de la fragua: el patio de armas no trae uno propio
     // (sin w.eclipseArt.braseroFire). Pie, taza de fierro y brasas que se
     // prenden con el fuego de la etapa 2 (sin luz nueva: fx.fire, como la Llama)
-    if (!g.world.eclipseArt?.braseroFire && ART) {
+    if (!g.world.eclipseArt?.braseroFire) {
       // (stepArt) trípode de patas curvas, taza remachada y brasas de verdad
       const B = buildBrasero(g);
       this.coalM = B.coalM;
@@ -384,15 +382,13 @@ export default class Temple extends QStep {
       // (el fuego del brasero propio, mientras arde)
       if (this.braseroObj && (this.braseroFireT -= dt) <= 0) {
         this.braseroFireT = 0.12;
-        g.fx.fire?.(BRASERO.clone().add(V(0, ART ? 1.15 : 1.1, 0)), 0.45, 1);
+        g.fx.fire?.(BRASERO.clone().add(V(0, 1.15, 0)), 0.45, 1);
       }
     }
-    if (ART) {
-      if (this.flame.visible) this.flame.userData.tick?.(dt, t);
-      if (this.stuck.visible) this.stuck.userData.tick?.(dt, t);
-      this.flameSrc.visible = S.stage === 3 && S.carrier < 0;
-      if (this.flameSrc.visible) this.flameSrc.userData.tick?.(dt, t);
-    }
+    if (this.flame.visible) this.flame.userData.tick?.(dt, t);
+    if (this.stuck.visible) this.stuck.userData.tick?.(dt, t);
+    this.flameSrc.visible = S.stage === 3 && S.carrier < 0;
+    if (this.flameSrc.visible) this.flameSrc.userData.tick?.(dt, t);
     if (this.coalM) this.coalM.emissiveIntensity = S.stage === 2 && S.fuego === 1 ? 1.4 + 0.4 * Math.sin(t * 7) : 0;
     // 3. la llama en la mano del que la lleva
     if (S.stage === 3 && S.carrier >= 0) {

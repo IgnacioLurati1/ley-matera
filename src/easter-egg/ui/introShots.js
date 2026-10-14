@@ -142,7 +142,6 @@ function lie(P, t = 0) {
 // 2026-10-05). Mientras se estira (LAZY, s del clip) los codos se abren hasta
 // doblarse LAZY.bend como mucho: los brazos se estiran de verdad. Después (se
 // sienta, se vuelve a acostar con las manos en la panza) el clip como está.
-// globalThis.__mduNoMolEstira: como antes.
 const LAZY = { a: 0.15, b: 1.95, fade: 0.3, bend: 0.45 };
 const oA = new THREE.Vector3();
 const oF = new THREE.Vector3();
@@ -332,28 +331,26 @@ function molino(g, I) {
   const COME = new THREE.Vector3(D0.x + 5.5, 0, D0.z - 6);
   const OVER = new THREE.Vector3(D0.x - 0.2, 0, D0.z - 0.9);
   // Tomas animadas a mano en Blender (2026-10-03, C:/Users/ignac/Tools/mdu-blender:
-  // anim_drag2.py, anim_kneel2.py; globalThis.__mduBlend = false: las de antes).
+  // anim_drag2.py, anim_kneel2.py).
   // El arrastre: Francisco camina para atrás hacia el galpón tirándote de las
   // muñecas, vos acostado con los brazos por arriba de la cabeza. Arranca a lo
   // que camina el clip de la puerta.
   let CC = null;
   let B0 = null;
   // (bajados o fallados: para ready)
-  const got = { cc: globalThis.__mduBlend === false, ia: globalThis.__mduBlend === false };
+  const got = { cc: false, ia: false };
   const dirD = D1.clone().sub(D0).normalize();
-  if (globalThis.__mduBlend !== false) {
-    fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-molino.json'))
-      .then((r) => r.json())
-      .then((J) => {
-        const C = {};
-        for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
-        const h = C.drag.hips;
-        B0 = D1.clone().addScaledVector(dirD, -Math.abs(h[(C.drag.n - 1) * 3 + 2] - h[2]));
-        CC = C;
-      })
-      .catch(() => {})
-      .finally(() => (got.cc = true));
-  }
+  fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-molino.json'))
+    .then((r) => r.json())
+    .then((J) => {
+      const C = {};
+      for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+      const h = C.drag.hips;
+      B0 = D1.clone().addScaledVector(dirD, -Math.abs(h[(C.drag.n - 1) * 3 + 2] - h[2]));
+      CC = C;
+    })
+    .catch(() => {})
+    .finally(() => (got.cc = true));
   // (los pasos del clip: arranca a los 0,6 s, uno cada 0,7 s)
   const STEP_B = 0.7;
   const dragBlend = (I, lt) => {
@@ -457,30 +454,27 @@ function molino(g, I) {
   };
   // Francisco se va y se despiertan los cuatro, cada uno a su manera (ui/cineCrew
   // PERSONA), animados en Blender (C:/Users/ignac/Tools/mdu-blender
-  // introA_clips.py → cine-introA.json); globalThis.__mduBlend = false: como antes.
-  const BLEND = globalThis.__mduBlend !== false;
+  // introA_clips.py → cine-introA.json);
   let IA = null;
-  if (BLEND) {
-    fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-introA.json'))
-      .then((r) => r.json())
-      .then((J) => {
-        const C = {};
-        for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
-        IA = C;
-      })
-      .catch(() => {})
-      .finally(() => (got.ia = true));
-  }
+  fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-introA.json'))
+    .then((r) => r.json())
+    .then((J) => {
+      const C = {};
+      for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+      IA = C;
+    })
+    .catch(() => {})
+    .finally(() => (got.ia = true));
   // cómo se despierta cada uno y cuándo se le cae el mate del pecho (s del clip):
   // el Valiente de un salto en guardia, el Miedoso se sienta de golpe, retrocede
   // y se santigua, el Canchero se estira, mira y se vuelve a acostar, el Viejo
   // tose, se apoya en los codos y queda sentado
   // (el Canchero, 2026-10-05, el usuario: "simplificá, que estire los brazos y
   // luego se pare": upStretch, se estira con un bostezo y se para; el de antes,
-  // upLazy, con globalThis.__mduOldCanchero)
+  // upLazy, queda si falta el clip)
   // (se decide al despertarse: los clips bajan después)
   // (v2: "hacé que se pare así no más": upPlain, se sienta, se agacha y queda parado)
-  const canch = () => (globalThis.__mduOldCanchero === true || !IA?.upPlain ? ['upLazy', 1.9] : ['upPlain', 0.5]);
+  const canch = () => (!IA?.upPlain ? ['upLazy', 1.9] : ['upPlain', 0.5]);
   const WAKE = { valiente: ['upFists', 0.1], miedoso: ['upScared', 0.08], canchero: ['upLazy', 1.9], viejo: ['upOld', 0.85] };
   // al terminar, cada uno sigue en lo suyo (va y vuelve por el final del clip):
   // el Valiente en guardia mirando a los lados, el Miedoso temblando, el Viejo
@@ -549,17 +543,16 @@ function molino(g, I) {
       // fundía ahí en 0,6 s, todavía acostados, y quedaban así hasta que
       // arrancaba el clip. Ahora siguen tirados, con los brazos sueltos, hasta
       // que arranca su clip, y se funde mientras se levantan: los codos se
-      // doblan al apoyarse. globalThis.__mduNoMolCodos: como antes)
+      // doblan al apoyarse)
       let o;
-      if (globalThis.__mduNoMolCodos === true) o = rt - R.t0 < 0.6 ? { snap: R.snap, sw: smooth((rt - R.t0) / 0.6) } : {};
-      else o = rt < R.at + 0.8 ? { snap: R.snap, sw: smooth(clamp01((rt - R.at) / 0.8)) } : {};
+      o = rt < R.at + 0.8 ? { snap: R.snap, sw: smooth(clamp01((rt - R.at) / 0.8)) } : {};
       // (el Viejo, ya sentado, tose con la cabeza más alta: si no, el ala del
       // sombrero le tapaba la cara)
       if (R.p === 'viejo') o.look = 0.75 * smooth(clamp01((rt - R.at - 2.3) / 0.9));
       if (!poseCineClip(b, R.c, ct, R.x, 0, R.z, 0, o)) return;
       // (el Canchero estirándose: los codos abiertos, ver LAZY)
       b.wakeT = ct;
-      if (R.name === 'upLazy' && globalThis.__mduNoMolEstira !== true) {
+      if (R.name === 'upLazy') {
         const e = Math.min(clamp01((ct - LAZY.a) / LAZY.fade), clamp01((LAZY.b - ct) / LAZY.fade));
         openElbows(b, smooth(e), LAZY.bend);
       }
@@ -621,7 +614,7 @@ function molino(g, I) {
   const shades = () => {
     const i = st.ids.findIndex((id, k) => personaOf(k) === 'canchero');
     const b = bodies[i];
-    if (!BLEND || !b?.gs?.on || b.shades) return;
+    if (!b?.gs?.on || b.shades) return;
     const glass = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, metalness: 0.7, roughness: 0.12 });
     const gold = new THREE.MeshStandardMaterial({ color: 0xc9a040, metalness: 1, roughness: 0.3 });
     const root = new THREE.Group();
@@ -828,9 +821,7 @@ function molino(g, I) {
       ease: 'lin',
     },
     // 9 · se despiertan los cuatro, cada uno a su manera (desde los pies de la fila)
-    ...(BLEND
-      ? [
-          {
+    {
             d: 7.6,
             fadeIn: 1.4,
             fog: 0.9,
@@ -885,33 +876,6 @@ function molino(g, I) {
               }
             },
           },
-        ]
-      : []),
-    // 9 · te despertás en el galpón (la de antes, __mduBlend = false)
-    ...(BLEND ? [] : [{
-      d: 5.8,
-      wake: true,
-      wakeAt: 3,
-      enter: () => {
-        st.mode = 'wake';
-        I.lid(1);
-      },
-      fn: (I, t, u, cam) => {
-        cam.position.set(H.x, 0.28, H.z + 0.05);
-        cam.lookAt(tmpV.set(H.x + 0.3, 3, H.z + 1.1));
-      },
-      tick: (I, t) => {
-        // un rato con los ojos cerrados, dos parpadeos lentos y se abren
-        const k = t < 0.9 ? 1 : t < 1.5 ? 1 - ((t - 0.9) / 0.6) * 0.7 : t < 1.9 ? 0.3 + ((t - 1.5) / 0.4) * 0.7 : t < 2.9 ? 1 - (t - 1.9) / 1 : 0;
-        I.lid(clamp01(k));
-        // con los ojos cerrados, los compañeros ya están parados
-        if (t > 1.8 && !st.stood) {
-          st.stood = true;
-          bodies.forEach((b) => (b.group.visible = false));
-          if (g.net?.avatars) g.net.avatars.root.visible = true;
-        }
-      },
-    }]),
   ];
 
   const cues = [
@@ -978,11 +942,10 @@ function molino(g, I) {
       coals.visible = asleep;
       // (2026-10-04, el usuario: los anteojos solo en el penal y la torre; acá
       // el Canchero es el que se estira, bosteza y se vuelve a acostar)
-      if (globalThis.__mduIntroShades) shades();
       // (despertándose: cada uno con su clip, y el mate cae al piso)
       const rising = (m === 'rise' || m === 'wake') && !st.stood && riseBodies(I, t - (st.rise0 ??= t));
       if (rising) riseSounds(I, t - st.rise0);
-      riseFill.intensity = BLEND && (m === 'rise' || m === 'wake') && !st.stood ? 7 : 0;
+      riseFill.intensity = (m === 'rise' || m === 'wake') && !st.stood ? 7 : 0;
       if (asleep) sleepBodies(t);
       else if (lying && !st.stood && !rising) layBodies(t);
       else if (!lying) bodies.forEach((b) => (b.group.visible = false));
@@ -995,7 +958,7 @@ function molino(g, I) {
       });
       // (si los clips todavía no bajaron, se esperan en el fundido de entrada; si
       // no llegan, la toma entera es la de antes: nunca se cambia a la mitad)
-      if (m === 'drag' && !CC && BLEND && lt < 2 && !st.dragOld) {
+      if (m === 'drag' && !CC && lt < 2 && !st.dragOld) {
         F.group.visible = false;
         dragged.group.visible = false;
       } else if (m === 'drag' && !st.dragOld && dragBlend(I, lt)) {
@@ -1271,15 +1234,13 @@ function molino(g, I) {
 function granja(g, I) {
   // Los cuatro gauchos (ui/cineActors: clips de Blender, cada uno con su
   // carácter) parados donde arrancás, mirando hacia `look`; vos en tu lugar.
-  // globalThis.__mduBlend = false: la entrada de antes, sin ellos.
-  const BLEND = globalThis.__mduBlend !== false;
   let crew = null;
   const crewUp = (spots, look, floor) => {
     crew?.dispose();
     crew = new CineActors(g, { base: 470, floor });
     // (2026-10-04, el usuario: los anteojos solo en el penal y la torre; acá el
     // Canchero ceba, sin anteojos)
-    if (!globalThis.__mduIntroShades) crew.shadesOf = null;
+    crew.shadesOf = null;
     const me = g.net ? g.net.id : 0;
     // (2026-10-04: cada uno en su lugar por carácter, no en fila; el tuyo va
     // donde arrancás, en el del Valiente, y el Valiente toma el del tuyo)
@@ -1303,9 +1264,7 @@ function granja(g, I) {
     { d: 4.6, fadeIn: 0.5, fog: 0.8, where: 'El Barbacuá', cam: [[25.4, 3.1, 15], [27, 3.9, 12.8]], look: [[32.5, 3, 5], [32.5, 3.2, 5]], ease: 'lin' },
     { d: 4.8, fadeIn: 0.5, fadeOut: 0.4, fog: 0.9, where: 'La Huerta', cam: [[23.6, 1.55, 34.6], [22.9, 1.5, 33.6]], look: [[19.6, 1.75, 32], [19.6, 1.8, 32]], ease: 'lin', fov: [52, 44] },
     // los cuatro en el patio: el cuervo vuelve a chillar y cada uno lo toma a su manera
-    ...(BLEND
-      ? [
-          {
+    {
             d: 4.4,
             fadeIn: 0.5,
             fog: 0.9,
@@ -1330,8 +1289,6 @@ function granja(g, I) {
             ease: 'soft',
             fov: [48, 44],
           },
-        ]
-      : []),
     // (vos te vas a tus ojos; los demás se quedan donde están)
     {
       d: 4.6,
@@ -1371,7 +1328,7 @@ function granja(g, I) {
     place: 'Chacra de los Cuervos · Misiones, 1987',
     fov: 50,
     // (los de la partida se ven recién al final: antes los hacen los muñecos)
-    hideTeam: BLEND,
+    hideTeam: true,
     shots,
     cues,
     // (las pruebas: los muñecos)
@@ -1381,7 +1338,7 @@ function granja(g, I) {
       // (el Valiente donde arrancás, de cara a la huerta; el Miedoso más atrás,
       // a un costado (fuera de tu vista al despertar), el Viejo al fondo y el
       // Canchero cerca de la cámara, que ni mira: ceba)
-      if (BLEND) crewUp({ valiente: [0, 0], miedoso: [-0.66, -1.78], canchero: [-0.14, 2.02, new THREE.Vector3(33, 0, 29)], viejo: [2.4, -0.4] }, HUERTA);
+      crewUp({ valiente: [0, 0], miedoso: [-0.66, -1.78], canchero: [-0.14, 2.02, new THREE.Vector3(33, 0, 29)], viejo: [2.4, -0.4] }, HUERTA);
     },
     tick(I, dt) {
       // (desde la toma de antes: escondidos, ya con su pose de clip)
@@ -1424,8 +1381,6 @@ function penal(g, I) {
   };
   // Los cuatro gauchos (ui/cineActors: clips de Blender, cada uno con su
   // carácter) parados donde arrancás, mirando hacia `look`; vos en tu lugar.
-  // globalThis.__mduBlend = false: la entrada de antes, sin ellos.
-  const BLEND = globalThis.__mduBlend !== false;
   let crew = null;
   const crewUp = (spots, look, floor) => {
     crew?.dispose();
@@ -1438,8 +1393,8 @@ function penal(g, I) {
       r.own = r.id - 470 === me;
       // (en línea, cada uno en el lugar de su carácter, donde arranca de verdad
       // —entities/Player PENAL_SPOTS—: con el cambio de lugares, el muñeco del
-      // Valiente quedaba arriba del cuerpo del invitado. __mduNoPenalSpots: como antes)
-      const ownSpot = g.net && globalThis.__mduNoPenalSpots !== true ? r.persona : null;
+      // Valiente quedaba arriba del cuerpo del invitado)
+      const ownSpot = g.net ? r.persona : null;
       const [dx, dz, at = look] = spots[ownSpot || (r.own ? 'valiente' : r.persona === 'valiente' ? mine : r.persona)];
       r.pos.set(PLAYER_START.x + dx, 0, PLAYER_START.z + dz);
       r.pos.y = crew.floor(r.pos.x, r.pos.z);
@@ -1455,8 +1410,7 @@ function penal(g, I) {
   // clip 'lay': un brazo estirado). En la entrada, dormido boca arriba: el
   // primer cuadro de upLazy (cine-introA), en el mismo lugar y para el mismo lado.
   let LAZY = null;
-  if (BLEND)
-    fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-introA.json'))
+  fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-introA.json'))
       .then((r) => r.json())
       .then((J) => (LAZY = J.clips.upLazy ? cineClip(J.clips.upLazy) : null))
       .catch(() => {});
@@ -1465,7 +1419,7 @@ function penal(g, I) {
   const angXZ = (v) => Math.atan2(v.x, v.z);
   const sleepBody = () => {
     const a = g.vida?.bodies?.list?.get(200 + (g.net?.id || 0));
-    if (!LAZY || !a?.gs?.on || !a.group.visible || globalThis.__mduNoSleepBody) return;
+    if (!LAZY || !a?.gs?.on || !a.group.visible) return;
     const B = a.gs.bones;
     const y = a.r.pos.y;
     // (GauchoLife rearma el muerto cuando se muda: se vuelve a calcular)
@@ -1513,9 +1467,7 @@ function penal(g, I) {
     { d: 4.2, fadeIn: 0.5, where: 'La Oficina del Alcaide', cam: [[48, 9.8, 22], [51.8, 9.6, 19.6]], look: [[55.5, 8.8, 16.4], [55.5, 8.7, 16.4]], ease: 'lin' },
     { d: 4.6, fadeIn: 0.5, fadeOut: 0.4, fog: 0.7, where: 'El Cerro del Espinillo', cam: [[73, 14.4, 25.5], [75, 15, 23.5]], look: [[82.5, 13.6, 18.5], [83.5, 14.5, 17.5]], ease: 'lin' },
     // los cuatro en el pabellón: el rayo ilumina las rejas y cada uno a su manera
-    ...(BLEND
-      ? [
-          {
+    {
             d: 4.6,
             fadeIn: 0.5,
             crew: true,
@@ -1550,8 +1502,6 @@ function penal(g, I) {
             },
             fov: [50, 46],
           },
-        ]
-      : []),
     {
       d: 5,
       fadeIn: 0.6,
@@ -1599,7 +1549,7 @@ function penal(g, I) {
     title: 'Mate of the Dead',
     place: 'Penal de la Isla del Ceibo · Corrientes, 1878',
     fov: 52,
-    hideTeam: BLEND,
+    hideTeam: true,
     shots,
     cues,
     // (las pruebas: los muñecos)
@@ -1609,7 +1559,7 @@ function penal(g, I) {
       // (alrededor de tu catre, mirando al fondo del pabellón: al terminar no te quedan delante)
       // (todos miran tu catre: el Canchero cerca de la cámara, el Miedoso del
       // lado de las rejas (fuera del brillo de tu alma) y el Viejo atrás)
-      if (BLEND) crewUp({ valiente: [0, 0], miedoso: [0.3, 2.3], canchero: [1.8, -1.5], viejo: [3.15, 0.6] }, CATRE, () => g.player.pos.y);
+      crewUp({ valiente: [0, 0], miedoso: [0.3, 2.3], canchero: [1.8, -1.5], viejo: [3.15, 0.6] }, CATRE, () => g.player.pos.y);
     },
     tick(I, dt) {
       hideHand();
@@ -1649,12 +1599,11 @@ function penal(g, I) {
 // En un corte de cámara de la torre: los faroles del lugar nuevo, ya prendidos.
 // world/Tower.updateLights los muda de a poco (apaga 0,4 s y prende 0,55 s):
 // después de la toma del ojo, la planta baja arrancaba ~1 s a oscuras.
-// globalThis.__mduNoTowerSnap = true: como antes.
 const towerP = new THREE.Vector3();
 function towerLightsAt(g, x, y, z) {
   const T = g.world.tower;
   const pool = T?.lightPool;
-  if (!pool || !T.anchors || globalThis.__mduNoTowerSnap) return;
+  if (!pool || !T.anchors) return;
   towerP.set(x, y, z);
   for (const a of T.anchors) a.d = a.pos.distanceToSquared(towerP) + Math.abs(a.pos.y - y - 1.4) * 40;
   const want = [...T.anchors].sort((p, q) => p.d - q.d);
@@ -1749,8 +1698,6 @@ function torre(g, I) {
     }],
   ];
   const S = { title: 'Revelaciones Materas', place: 'La torre del fin del mundo', fov: 55, shots, cues };
-  // (globalThis.__mduBlend = false: la de antes, sin los gauchos)
-  if (globalThis.__mduBlend === false) return S;
   // Los cuatro gauchos (2026-10-03, ui/introCrewB.js, clips de Blender): en la
   // planta baja, mirando para arriba por el pozo. Cuando la Voz habla, el
   // Miedoso se santigua y el Viejo cuenta los pisos con el dedo (y se rasca la
@@ -1799,7 +1746,7 @@ function torre(g, I) {
   let dead = false;
   import('./introCrewB')
     .then((m) => {
-      if (!dead) crew = m.introCrew(g, plan, { base: 480, shades: 18 });
+      if (!dead) crew = m.introCrew(g, plan, { base: 480, shades: 18, clipPose: true });
     })
     .catch(() => {});
   // (de costado y bajo, se acerca despacio y levanta la vista con el dedo del Viejo)
@@ -1913,8 +1860,6 @@ function torreReto(g, I) {
     [12.3, (I) => I.card('Sin historia. Sin ayuda. Aguantá.', { low: true, d: 3 })],
   ];
   const S = { title: 'Revelaciones Materas', place: 'Challenge', fov: 58, shots, cues };
-  // (globalThis.__mduBlend = false: la de antes, sin nadie)
-  if (globalThis.__mduBlend === false) return S;
   // Al fondo de la caída, los cuatro (ui/introCrewB.js; sin historia igual):
   // cada uno se prepara a su manera. El Valiente en guardia, el Miedoso se
   // santigua y reza, el Canchero (con los anteojos ya puestos) ni se inmuta y
@@ -1942,7 +1887,7 @@ function torreReto(g, I) {
   import('./introCrewB')
     .then((m) => {
       // (sin anteojos: solo en el penal y la torre de la historia)
-      if (!dead) crew = m.introCrew(g, plan, { base: 480, shades: globalThis.__mduIntroShades ? 'on' : null });
+      if (!dead) crew = m.introCrew(g, plan, { base: 480, shades: null, clipPose: true });
     })
     .catch(() => {});
   // (bajo y de costado, se arrima despacio; los faroles ya prendidos al cortar)
@@ -2104,8 +2049,6 @@ function castillo(g, I) {
     },
     dispose: () => chiqui.root.removeFromParent(),
   };
-  // (globalThis.__mduBlend = false: la de antes, sin los gauchos)
-  if (globalThis.__mduBlend === false) return S;
   // Los cuatro (2026-10-03, ui/introCrewB.js, clips de Blender). En el patio,
   // de noche y con nieve, mientras Fierro cuenta lo de la guerra: el Valiente
   // encara el castillo, el Miedoso tirita abrazado, el Canchero se sacude la
@@ -2139,7 +2082,7 @@ function castillo(g, I) {
   import('./introCrewB')
     .then((m) => {
       // (sin anteojos: solo en el penal y la torre)
-      if (!dead) crew = m.introCrew(g, plan, { base: 490, shades: globalThis.__mduIntroShades ? 'on' : null });
+      if (!dead) crew = m.introCrew(g, plan, { base: 490, shades: null });
     })
     .catch(() => {});
   // (2026-10-04: un poco de arriba, por encima del borde de la fuente: más bajo,
@@ -2667,7 +2610,7 @@ function esteros(g, I) {
     tick(I, dt, t) {
       if (I.shotI < 6) poseCrew(t, dt);
       // (las bandanas de los compañeros del Gil: acá no corre people.update)
-      if (globalThis.__mduNoBandanas !== true) for (const c of crew) c.a === gil ? gilVincha(gil) : crewBandana(c.a);
+      for (const c of crew) c.a === gil ? gilVincha(gil) : crewBandana(c.a);
       // el farol tiembla
       const flick = 0.85 + Math.sin(t * 17) * 0.06 + Math.sin(t * 7.3) * 0.08;
       lamp.flame.scale.setScalar(0.22 * flick);
@@ -2758,8 +2701,6 @@ function monumento(g, I) {
     shots,
     cues,
   };
-  // (globalThis.__mduBlend = false: la de antes, sin los gauchos)
-  if (globalThis.__mduBlend === false) return S;
   // Los cuatro (2026-10-03, ui/introCrewB.js, clips de Blender). En la
   // costanera, contra la baranda: el Miedoso ve algo en el río, lo señala con
   // la mano temblando y se encoge; el Valiente se pone en guardia, el Canchero
@@ -2806,7 +2747,7 @@ function monumento(g, I) {
   import('./introCrewB')
     .then((m) => {
       // (sin anteojos: solo en el penal y la torre)
-      if (!dead) crew = m.introCrew(g, plan, { base: 500, shades: globalThis.__mduIntroShades ? 'on' : null });
+      if (!dead) crew = m.introCrew(g, plan, { base: 500, shades: null });
     })
     .catch(() => {});
   // (del lado del río, la baranda adelante)

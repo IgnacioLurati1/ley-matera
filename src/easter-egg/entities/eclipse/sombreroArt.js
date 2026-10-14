@@ -175,15 +175,12 @@ export function buildCondor() {
     }
   };
   // (2026-10-10: eran 28 mallas, 56 dibujos por cuadro cuando se lo ve. El
-  // cuerpo, cada ala y cada punta de ala, juntos por material: 10.
-  // globalThis.__mduCondorSuelto: como antes)
-  if (globalThis.__mduCondorSuelto !== true) {
-    for (const w of wings) {
-      fuse(w.outer);
-      fuse(w.inner);
-    }
-    fuse(root);
+  // cuerpo, cada ala y cada punta de ala, juntos por material: 10)
+  for (const w of wings) {
+    fuse(w.outer);
+    fuse(w.inner);
   }
+  fuse(root);
   flap(0.2);
   root.traverse((o) => {
     if (o.isMesh) o.castShadow = false;

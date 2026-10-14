@@ -24,10 +24,6 @@ import { eclSfx } from '../fx/eclipseSfx';
 //   anfitrión).
 // - En línea lo lleva el anfitrión: EclipseEgg manda y recibe (`send`, `apply`,
 //   `state`, `applyFull`).
-//
-// Interruptores de prueba: __mduNoPortalView (sin la vista de la otra isla),
-// __mduNoPortalLive (solo fotos, nunca en vivo), __mduNoPortalTrip (cruce seco,
-// sin el viaje).
 
 // el paño donde se dibuja (con lugar para el resplandor) y el tajo adentro
 const QW = 4.6;
@@ -55,12 +51,12 @@ const SNAP_GAP = 2.5;
 const SHARDS = 7;
 // La GRIETA (el portal trabado, a La Disformidad; el usuario: "en el medio debería
 // haber una grieta que lleva a la dimensión oscura"): el mismo tajo pero enorme,
-// de 14 m de alto, con la marca y las esquirlas al tamaño. __mduNoBigRift: como los demás.
+// de 14 m de alto, con la marca y las esquirlas al tamaño.
 const BIG = { sx: 2.4, sy: 3.0, mark: 4.4, shard: 2.6, reach: 1.7, radius: 4.2 };
 // (mundo, it. 4: `big` la grieta del claro al Nudo; `dark` el portal negro del medio del
 // Nudo a La Disformidad y el atajo de vuelta: el tajo grande, negro por dentro, con el filo violeta)
-const bigOf = (def) => (!!def.locked || !!def.big || !!def.dark) && globalThis.__mduNoBigRift !== true;
-const darkOf = (def) => !!def.dark && globalThis.__mduNoDarkPortal !== true;
+const bigOf = (def) => !!def.locked || !!def.big || !!def.dark;
+const darkOf = (def) => !!def.dark;
 
 const NOISE = /* glsl */ `
   #define TAU 6.28318531
@@ -245,9 +241,8 @@ const FRAG_TRIP = /* glsl */ `
 `;
 
 const PREMUL = { transparent: true, depthWrite: false, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor, fog: false };
-// Los sonidos grabados de los portales (2026-10-10; globalThis.__mduOldPortalSfx
-// === true: los sintetizados de antes). El raro del viaje: menos del 5 %.
-const OLD_SFX = () => globalThis.__mduOldPortalSfx === true;
+// Los sonidos grabados de los portales (2026-10-10). El raro del viaje: menos
+// del 5 %.
 const RARE_TRIP = 0.04;
 // cuánto tarda en abrirse el portal negro (s): lo que ruge su sonido
 const DARK_OPEN = 3.2;
@@ -397,7 +392,7 @@ export default class EclipsePortals {
     if (this.baked || !a?.ctx || !a.bakeSound) return;
     this.baked = true;
     // (los grabados, de fondo: fx/eclipseSfx)
-    if (!OLD_SFX()) eclSfx(this.g).load(['portal-teleport', 'portal-teleport-raro', 'portal-caos-abre']);
+    eclSfx(this.g).load(['portal-teleport', 'portal-teleport-raro', 'portal-caos-abre']);
     // se abre: el crujido, el aire que se rasga, el golpe sordo y un brillo que sube
     a.bakeSound('ptl-abre', 1.9, function (o, t) {
       for (let i = 0; i < 7; i++) this.noise(o, { t: t + i * 0.03 + Math.random() * 0.02, dur: 0.05, type: 'highpass', freq: 2600 + Math.random() * 3200, gain: 0.4 - i * 0.04, attack: 0.002 });
@@ -476,7 +471,7 @@ export default class EclipsePortals {
     // negro, con su apertura: ruge ~3,5 s y el tajo se abre en ese rato (no en
     // 1,1 s). Si ya la está oyendo (los cuatro pilares, world/papGrietas.js
     // opening, la largan 2 s antes), no se repite; si no, entra por donde ruge.
-    if (darkOf(def0(P)) && !OLD_SFX()) {
+    if (darkOf(def0(P))) {
       P.slow = true;
       if (!(g.time - (this.caosAt ?? -99) < 8)) eclSfx(g).play('portal-caos-abre', { pos: near.pos, gain: 1, reverb: 0.25, ref: 9, offset: 1.5 });
     } else this.play('ptl-abre', near.pos, 1);
@@ -587,13 +582,6 @@ export default class EclipsePortals {
   // ---------------- el viaje ----------------
   begin(pl, from, to) {
     const g = this.g;
-    if (globalThis.__mduNoPortalTrip === true) {
-      this.cross(pl, to);
-      this.cd = COOLDOWN;
-      g.post?.flash?.(0.22);
-      if (!this.tripSound()) this.play('ptl-pasa', null, 1);
-      return;
-    }
     this.trip = { t: 0, from, to, moved: false, fov: 0 };
     // (mientras viaja y un momento después, nada lo lastima)
     pl.guardT = Math.max(pl.guardT || 0, g.time + T_ALL + 0.7);
@@ -610,9 +598,8 @@ export default class EclipsePortals {
   // El viaje, grabado (fx/eclipseSfx): la entrada y la salida en un solo
   // archivo que calza con el túnel; menos del 5 % de las veces, el raro (sin su
   // medio segundo de arranque: el golpe cae al salir). false si todavía no
-  // bajaron (suena el sintetizado de antes) o con __mduOldPortalSfx.
+  // bajaron (suena el sintetizado de antes).
   tripSound() {
-    if (OLD_SFX()) return false;
     const S = eclSfx(this.g);
     const rare = Math.random() < RARE_TRIP && S.has('portal-teleport-raro');
     const id = rare ? 'portal-teleport-raro' : 'portal-teleport';
@@ -715,7 +702,6 @@ export default class EclipsePortals {
   // ---------------- la vista de la otra isla ----------------
   // 0: solo fotos; 1: en vivo cada cuadro; 2: en vivo cuadro por medio
   liveMode() {
-    if (globalThis.__mduNoPortalLive === true) return 0;
     const q = this.g.settings?.quality;
     // (en Alta, solo fotos: dibujar la otra isla cada dos cuadros costaba 10 ms
     // de CPU en el Monumento y la Torre con el layout v4, 2026-10-06)
@@ -726,7 +712,7 @@ export default class EclipsePortals {
   // como mucho UNA vista por cuadro.
   prerender(renderer, scene, cam) {
     const g = this.g;
-    if (scene !== g.scene || this.trip || globalThis.__mduNoPortalView === true || g.settings?.quality === 'perf') return;
+    if (scene !== g.scene || this.trip || g.settings?.quality === 'perf') return;
     const live = this.liveMode();
     const now = this.time.value;
     cam.getWorldDirection(tmpV);
@@ -781,7 +767,7 @@ export default class EclipsePortals {
     this.over.visible = false;
     // (mundo, it. 4) la grieta a la Disformidad no muestra el Pack-a-Pava: desde
     // el claro se veía la máquina en el medio del tajo. Vive solo allá adentro.
-    const hidePap = (to.isla === 'desgarro' || to.isla === 'abismo') && globalThis.__mduNoRiftHidePap !== true ? [g.interact?.pap?.group, g.papq?.termas?.root].filter((o) => o?.visible) : [];
+    const hidePap = (to.isla === 'desgarro' || to.isla === 'abismo') ? [g.interact?.pap?.group, g.papq?.termas?.root].filter((o) => o?.visible) : [];
     for (const o of hidePap) o.visible = false;
     const rt0 = renderer.getRenderTarget();
     const auto = renderer.shadowMap.autoUpdate;

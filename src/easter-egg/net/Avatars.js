@@ -122,7 +122,7 @@ function gunTemplate(src, W, palm = false) {
         if (!o.isMesh || !o.geometry) return;
         // (anim-online: sin lo escondido, el porongo del Liquidificador o los
         // efectos de los elementales: si no, el mate quedaba flotando lejos de la palma)
-        for (let q = o; q; q = q.parent) if (q === bomb || (!q.visible && globalThis.__mduNoAvatarBlend !== true)) return;
+        for (let q = o; q; q = q.parent) if (q === bomb || !q.visible) return;
         if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
         box.union(b2.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld));
       });
@@ -177,7 +177,7 @@ function mergeParts(root) {
 }
 
 // Todos los grupos de muñecos vivos (los jugadores y los de cada escena):
-// la lente de cine mira cuáles están en cuadro (ui/cineLens.js).
+// fx/contacto.js los recorre.
 export const AVATAR_SETS = new Set();
 
 export default class Avatars {
@@ -389,14 +389,14 @@ export default class Avatars {
     // (la hoz de oro: 'oro', mejorada o no; weapons/Weapons.js equipModel)
     const gold = w === 'hoz' && c === 'oro';
     const camo = gold || (!u && c && CAMO_BY_ID[c] && camoable(w)) ? c : null;
-    const ac = acc && camoable(w) && globalThis.__mduSinAccesorios !== true ? acc.split(',').filter(Boolean).slice(0, 4) : [];
+    const ac = acc && camoable(w) ? acc.split(',').filter(Boolean).slice(0, 4) : [];
     const src = w && (((camo || ac.length) && W?.modelOf?.(w, gold ? u : camo ? 0 : u, camo, 'R', ac)) || W?.models?.get(`${w}|${u}`) || W?.models?.get(`${w}|0`));
     if (!src?.root) return;
     // (la copia de primera persona ya preparada para la mano del muñeco, una
     // por modelo: gunTemplate; cada compañero la suya, con las mismas mallas)
     // (los de una mano, parados en la palma: net/gauchoSkin)
-    // (anim-online: los mates de dos manos también, parados en la palma; __mduNoAvatarBlend: como fusil)
-    const T = gunTemplate(src, W, !TWO_HAND.has(w) || (globalThis.__mduNoAvatarBlend !== true && !!src.mouth && !!src.mate));
+    // (anim-online: los mates de dos manos también, parados en la palma)
+    const T = gunTemplate(src, W, !TWO_HAND.has(w) || (!!src.mouth && !!src.mate));
     const gun = T.gun.clone();
     let n = 0;
     a.muzzle = null;
@@ -691,8 +691,7 @@ export default class Avatars {
     // los muñecos de los easter eggs (presos, Fierro: offCull = true) fuera de
     // cuadro no se animan ni se recorren: quedan en su última pose hasta volver
     // a verse (0,14 ms por cuadro los presos del penal). No en las cinemáticas.
-    // (globalThis.__mduNoNpcCull: como antes)
-    const cull = this.offCull === true && globalThis.__mduNoNpcCull !== true && !g.cine && !g.intro?.active && !g.ee?.scene?.cine && g.state === 'playing';
+    const cull = this.offCull === true && !g.cine && !g.intro?.active && !g.ee?.scene?.cine && g.state === 'playing';
     if (cull) cullFr.setFromProjectionMatrix(cullM.multiplyMatrices(g.camera.projectionMatrix, g.camera.matrixWorldInverse));
     for (const a of this.list.values()) {
       const r = a.r;
@@ -712,7 +711,7 @@ export default class Avatars {
       // la vincha del Gil que quedó pedida y las bandanas de sus compañeros
       if (a.gs?.on) {
         if (a.wantVincha && !a.vincha) gilVincha(a);
-        else if (this.bandanas === true && !a.vincha && !a.wantVincha && BANDANA_MAPS.has(g.mapId) && globalThis.__mduNoBandanas !== true) {
+        else if (this.bandanas === true && !a.vincha && !a.wantVincha && BANDANA_MAPS.has(g.mapId)) {
           if (!a.bandana) crewBandana(a);
           else bandanaColor(a);
         }
@@ -729,8 +728,8 @@ export default class Avatars {
       // un compañero pegado a la cámara (la bajada de una entrada a tus ojos,
       // dos parados en el mismo lugar) no se ve desde adentro: se esconde
       // mientras la cámara esté dentro de su cuerpo (caído, solo si está a su
-      // altura: al levantarlo se ve). (globalThis.__mduNoNearHide: como antes)
-      if (this.team && globalThis.__mduNoNearHide !== true) {
+      // altura: al levantarlo se ve).
+      if (this.team) {
         const c = g.camera.position;
         const dx = c.x - r.pos.x;
         const dz = c.z - r.pos.z;
@@ -861,7 +860,7 @@ export default class Avatars {
         // en la mano derecha (el brazo va adelante), girado con la mirada
         // (yaw y pitch, como la cámara)
         // (anim-online: con el brazo ocupado en el facón, la granada o tomando, el mate escondido)
-        a.gun.visible = armed && (r.swim || 0) < 2 && !front && !(a.gs?.actW > 0.05 && globalThis.__mduNoAvatarBlend !== true);
+        a.gun.visible = armed && (r.swim || 0) < 2 && !front && !(a.gs?.actW > 0.05);
         if (a.gun.visible) {
           // (un mate: derecho, girado con el cuerpo y apenas con la mirada)
           const mate = !!a.mouth;
@@ -895,7 +894,7 @@ export default class Avatars {
       // hacia el mate, y el chorro del pico a la boca
       const pk = a.gs?.pourK || 0;
       // (anim-online: el cebado de Blender; el termo rígido en la mano izquierda, net/gauchoSkin termoAt)
-      const tm = globalThis.__mduNoAvatarBlend !== true ? a.gs?.tm : null;
+      const tm = a.gs?.tm;
       const pp = tm?.on && tm.prop === 'porongo' ? this.porongo(a) : null;
       for (const X of [a.porongoP, a.termo]) {
         if (X && X !== (pp || (tm?.on ? a.termo : null))) {

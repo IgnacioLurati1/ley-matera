@@ -205,9 +205,8 @@ function playSound(startedAt) {
     // recién abierta— acá se cortaba: nunca sonaba, aunque el navegador lo
     // dejara (la app de escritorio lo deja siempre). Ahora se agenda igual: si
     // el contexto arranca solo, suena; si queda en pausa, arranca con el primer
-    // clic o tecla, por donde vaya el logo (ver `wake`).
-    // globalThis.__mduLogoSoundGate: como antes)
-    if (!AC || (globalThis.__mduLogoSoundGate === true && navigator.userActivation?.hasBeenActive === false)) return null;
+    // clic o tecla, por donde vaya el logo (ver `wake`))
+    if (!AC) return null;
     // el volumen general de los ajustes del juego
     let vol = 0.8;
     try {
@@ -382,7 +381,7 @@ export function playStudioLogo(parent = document.body) {
   };
   try {
     // en otro hilo: no lo frena la carga del juego
-    if (!logo.transferControlToOffscreen || typeof Worker === 'undefined' || globalThis.__mduLogoHere) throw new Error('sin lienzos fuera del hilo');
+    if (!logo.transferControlToOffscreen || typeof Worker === 'undefined') throw new Error('sin lienzos fuera del hilo');
     worker = new Worker(new URL('./studioLogoWorker.js', import.meta.url), { type: 'module' });
     const ob = back.transferControlToOffscreen();
     const ol = logo.transferControlToOffscreen();
@@ -394,8 +393,7 @@ export function playStudioLogo(parent = document.body) {
       e.preventDefault?.();
       paintHere();
     };
-    // (globalThis.__mduLogoGpu: el lienzo con la placa, como antes)
-    worker.postMessage({ back: ob, logo: ol, lay, dpr, t0, calm, gpu: globalThis.__mduLogoGpu === true }, [ob, ol]);
+    worker.postMessage({ back: ob, logo: ol, lay, dpr, t0, calm, gpu: false }, [ob, ol]);
     seek = (ms) => worker?.postMessage({ seek: ms });
   } catch {
     paintHere();

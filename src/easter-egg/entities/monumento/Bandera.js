@@ -25,7 +25,6 @@ import { SPEEDS } from '../../config/rules';
 //     cada cinco van derecho al mástil a tirar de la driza: cada tirón la baja
 //     (hay que voltearlos antes de que lleguen). Zombies los manda por
 //     g.defense (entities/monumento/Armada.js active / goal / zombieHit).
-//     globalThis.__mduNoBanderaHorda: como antes.
 // Lo decide el anfitrión y viaja por 'pee' (k: 'bnd').
 
 const SEW_T = 60;
@@ -73,31 +72,11 @@ function cloth(w, h, mat) {
 }
 
 // La bandera de Belgrano: celeste, blanca y celeste, cosida a mano, con el Sol
-// de Mayo (world/monumentoTextures.js; __mduNoSolEE: la de antes, sin el sol).
+// de Mayo (world/monumentoTextures.js).
 let flagTex = null;
 function banderaTex() {
   if (flagTex) return flagTex;
-  if (globalThis.__mduNoSolEE !== true) return (flagTex = banderaTexture({ seams: true }));
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 160;
-  const x = c.getContext('2d');
-  x.fillStyle = '#74acdf';
-  x.fillRect(0, 0, 256, 160);
-  x.fillStyle = '#f4f2ec';
-  x.fillRect(0, 53, 256, 54);
-  // las costuras (a mano, apenas)
-  x.strokeStyle = 'rgba(80,90,110,0.35)';
-  x.setLineDash([3, 4]);
-  for (const y of [53, 107]) {
-    x.beginPath();
-    x.moveTo(0, y);
-    x.lineTo(256, y);
-    x.stroke();
-  }
-  flagTex = new THREE.CanvasTexture(c);
-  flagTex.colorSpace = THREE.SRGBColorSpace;
-  return flagTex;
+  return (flagTex = banderaTexture({ seams: true }));
 }
 
 // El ánima de la costurera, sentada en su silla con la tela en la falda.
@@ -263,7 +242,7 @@ export default class Bandera {
         const st = this.st;
         if (!st.on) return null;
         // (con el sable, qué hacer: sin cartel nadie sabía que había que pegarle)
-        if (st.cel === 0) return g.weapons.has('sable') ? (globalThis.__mduNoTelaHint ? null : { text: 'Cortala con el Sable Corvo (clic)', noCost: true, info: true }) : { text: 'Se corta con el Sable Corvo', noCost: true, info: true };
+        if (st.cel === 0) return g.weapons.has('sable') ? { text: 'Cortala con el Sable Corvo (clic)', noCost: true, info: true } : { text: 'Se corta con el Sable Corvo', noCost: true, info: true };
         if (st.cel === 1 && this.fallC >= 1) return { text: 'agarrar la tela celeste', noCost: true };
         return null;
       },
@@ -286,7 +265,7 @@ export default class Bandera {
       pos: new THREE.Vector3(BLA_C.x - 1, -3.3, 31.4),
       radius: 4.2,
       wide: true,
-      prompt: () => (!globalThis.__mduNoTelaHint && this.st.on && this.st.bla === 0 ? { text: g.weapons.has('sable') ? 'Tirale el Sable Corvo a la tela (clic derecho)' : 'La tela blanca se baja tirándole el Sable Corvo', noCost: true, info: true } : null),
+      prompt: () => (this.st.on && this.st.bla === 0 ? { text: g.weapons.has('sable') ? 'Tirale el Sable Corvo a la tela (clic derecho)' : 'La tela blanca se baja tirándole el Sable Corvo', noCost: true, info: true } : null),
       cost: () => 0,
       use: () => false,
     });
@@ -705,7 +684,7 @@ export default class Bandera {
 
   // ---------------- la manada del paso de la Bandera ----------------
   horda() {
-    return globalThis.__mduNoBanderaHorda !== true;
+    return true;
   }
 
   // ¿Está la Bandera en camino al mástil o subiendo? (los que salen, corren:

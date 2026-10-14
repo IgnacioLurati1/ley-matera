@@ -53,9 +53,8 @@ export const WALK_V = 1.75;
 // en el juego y se sacó: es para una puerta chica (la mano gira a 0,4 m de la
 // bisagra y la reja tiene 0,78), la mano se metía entre los barrotes, la
 // cachiporra cruzaba la reja y la hoja le entraba en la panza.
-// globalThis.__mduAlcaideViejo = true: la visita de antes (camina derecho, gira
+// Si en la celda no hay lugar, la visita de antes (camina derecho, gira
 // parado y da el cachiporrazo de costado). Lo decide el anfitrión (vis.av).
-const viejo = () => !!globalThis.__mduAlcaideViejo;
 // at: dónde pega (local de la celda: x a lo largo, z hacia afuera; mira para
 // adentro): la punta baja por el ala del sombrero del votado y la cachiporra
 // cruza la reja abierta 20 cm abajo del techo de la celda y a 10 cm de los
@@ -446,36 +445,34 @@ export default class PzEncierro {
     const g = this.g;
     const W = g.world;
     const C = this.cells[ci];
-    if (!viejo()) {
-      // (la visita nueva: los dos caminos curvos, libres a tres alturas, y piso donde arranca)
-      const free = (cv) => {
-        for (let i = 4; i < cv.pts.length; i += 4) {
-          const a = cv.pts[i - 4];
-          const d = tmpW.subVectors(cv.pts[i], a);
-          const len = d.length();
-          d.divideScalar(len || 1);
-          for (const h of [0.35, 1.1, 1.9]) if (W.raycast(tmpV.set(a.x, C.y + h, a.z), d, len) < len - 0.05) return false;
-        }
-        return true;
-      };
-      // (y lugar para la guardia y el porrazo: nada bajo a medio metro de donde pega)
-      const K = C.at(PORRAZO.at[0], PORRAZO.at[1], new THREE.Vector3());
-      const room = [C.out, C.side, tmpU.copy(C.side).negate()].every((d) => W.raycast(tmpV.set(K.x, C.y + 0.35, K.z), d, 0.75) >= 0.7);
-      for (const [lx, lz] of [...STARTS, [0.6, 4]]) {
-        if (!room) break;
-        const s = C.at(lx, lz, new THREE.Vector3());
-        if (Math.abs(W.floorAt(s.x, s.z, C.y + 1) - C.y) >= 0.3) continue;
-        const pref = Math.sign(tmpV.subVectors(s, K).dot(C.side)) || 1;
-        for (const sd of [pref, -pref]) {
-          const P = visitPaths(C, s, sd);
-          if (free(P.inn) && free(P.out)) {
-            pickedOld = false;
-            return { sx: +s.x.toFixed(2), sz: +s.z.toFixed(2), walk: +(P.inn.len / (WALK_V * PROF.mean)).toFixed(2), sd };
-          }
+    // (la visita nueva: los dos caminos curvos, libres a tres alturas, y piso donde arranca)
+    const free = (cv) => {
+      for (let i = 4; i < cv.pts.length; i += 4) {
+        const a = cv.pts[i - 4];
+        const d = tmpW.subVectors(cv.pts[i], a);
+        const len = d.length();
+        d.divideScalar(len || 1);
+        for (const h of [0.35, 1.1, 1.9]) if (W.raycast(tmpV.set(a.x, C.y + h, a.z), d, len) < len - 0.05) return false;
+      }
+      return true;
+    };
+    // (y lugar para la guardia y el porrazo: nada bajo a medio metro de donde pega)
+    const K = C.at(PORRAZO.at[0], PORRAZO.at[1], new THREE.Vector3());
+    const room = [C.out, C.side, tmpU.copy(C.side).negate()].every((d) => W.raycast(tmpV.set(K.x, C.y + 0.35, K.z), d, 0.75) >= 0.7);
+    for (const [lx, lz] of [...STARTS, [0.6, 4]]) {
+      if (!room) break;
+      const s = C.at(lx, lz, new THREE.Vector3());
+      if (Math.abs(W.floorAt(s.x, s.z, C.y + 1) - C.y) >= 0.3) continue;
+      const pref = Math.sign(tmpV.subVectors(s, K).dot(C.side)) || 1;
+      for (const sd of [pref, -pref]) {
+        const P = visitPaths(C, s, sd);
+        if (free(P.inn) && free(P.out)) {
+          pickedOld = false;
+          return { sx: +s.x.toFixed(2), sz: +s.z.toFixed(2), walk: +(P.inn.len / (WALK_V * PROF.mean)).toFixed(2), sd };
         }
       }
-      // (si en esta celda no hay lugar ni camino libre, la visita de antes)
     }
+    // (si en esta celda no hay lugar ni camino libre, la visita de antes)
     pickedOld = true;
     const stand = C.at(STAND[0], STAND[1], new THREE.Vector3());
     for (const [lx, lz] of STARTS) {

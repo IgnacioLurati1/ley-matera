@@ -26,8 +26,6 @@ import PzFuego, { FLAMES } from './pzFuego';
 //    gratis y anda sin la luz del gaucho life.
 // Lo decide el anfitrión y lo manda a todos ('pee' {pzs}); la espera, solo a
 // los policías (Porteno.sendPriv). Nadie sabe quién saboteó.
-// globalThis.__mduPorteñoSinSabotajes = true: el modo sin nada de esto (sin
-// telesilla, como antes).
 
 const ISLE = new Set(['L', 'M']);
 const SHORT = { A: 'Pabellón', B: 'Comedor', C: 'Cocina', H: 'Patio', I: 'Yerbales', S: 'Secadero', J: 'Muelle', K: 'Calabozos', D: 'Duchas', E: 'Oficina', F: 'Enfermería', G: 'Capilla', T: 'Estación', P: 'Cerro', L: 'Islote', M: 'Ermita' };

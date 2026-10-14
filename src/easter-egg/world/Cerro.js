@@ -7,7 +7,6 @@ import GilHeld, { HELD_HOME } from './gilHeld';
 import { soulGeometry, soulMaterial, SOUL_TIME } from './soulLook';
 import { warmObject } from '../fx/ghostMat';
 import { PENAL_CARCEL } from '../core/music';
-import { gilFightBlend } from '../entities/skins/gil';
 
 // El Cerro del Espinillo: la punta de la isla, arriba de la capilla del penal.
 // Cuando el mate supremo queda armado en el espinillo aparece el Gauchito Gil,
@@ -534,10 +533,6 @@ export default class Cerro extends Arena {
     this.startSweep(m);
     this.g.net?.event('bfx', m);
     this.g.zombies.setState(b, 'summon');
-    // (con los clips de Blender: quieto hasta que termina de revolear, no sale
-    // caminando en medio del giro; 'summon' dura 1,2 s y el clip del molinete
-    // termina 1,1 s después del último golpe: skins/gil.js)
-    if (gilFightBlend()) b.holdT = Math.max(b.holdT || 0, SWEEP_WARN + (n - 1) * SWEEP_GAP + 1.1 - 1.2);
   }
 
   startSweep(m) {
@@ -632,7 +627,7 @@ export default class Cerro extends Arena {
   // abajo se ponen coloradas; hay que acercarse a cada una y soltarla (F).
   // Sueltas las tres, se le cae la protección (no se cae sola ni matando
   // presos). El anfitrión elige cuáles ('gsoul' m) y avisa cada una que sueltan
-  // ('gsoul' r). (__mduGilViejo: como antes, con los presos)
+  // ('gsoul' r).
   buildRedSouls() {
     const g = this.g;
     this.red = [];
@@ -666,11 +661,10 @@ export default class Cerro extends Arena {
 
   // En el cerro no se cubre; en la cárcel, con las almas.
   setWard(on) {
-    const neu = globalThis.__mduGilViejo !== true;
-    if (neu && on && this.stage === 1) return;
+    if (on && this.stage === 1) return;
     const was = this.ward;
     super.setWard(on);
-    if (!neu || this.stage !== 2 || was === this.ward) return;
+    if (this.stage !== 2 || was === this.ward) return;
     if (on) {
       this.wardMax0 ??= this.wardMax;
       this.waveUntil = Infinity;

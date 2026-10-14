@@ -424,9 +424,9 @@ export default class BossMoves {
     if (this.pullT > 0 && t > 0.15) this.throwB.set(this.g.player.pos.x, this.g.player.pos.y + 1.1, this.g.player.pos.z);
     // (2026-10-05, el usuario: la cadena salía del aire: quedaba donde estaba la
     // mano al tirarla y el cuerpo seguía con el tiro; ahora sale de la mano
-    // de cada cuadro. globalThis.__mduNoChainHand: como antes)
+    // de cada cuadro)
     const zb = this.Z.boss;
-    if (zb?.active && !zb.dead && globalThis.__mduNoChainHand !== true && skinBoneAt(this.Z, 'whip', tmpV)) this.throwA.copy(tmpV);
+    if (zb?.active && !zb.dead && skinBoneAt(this.Z, 'whip', tmpV)) this.throwA.copy(tmpV);
     this.placeChain(this.throwChain, this.throwA, this.throwB, k);
   }
 

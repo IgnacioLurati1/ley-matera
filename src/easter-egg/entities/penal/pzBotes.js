@@ -30,7 +30,6 @@ import { PZS } from '../../config/porteno';
 //    el fuego (o de amarrado, si llegó después a buscarlos) y después sale
 //    con los que están arriba, y mientras haya vivos
 //    en la isla siempre hay un bote yendo o amarrado allá.
-//    globalThis.__mduPorteñoBotesSinVuelta = true: como antes (se quedan en el islote).
 // Las maniobras: sale derecho hacia afuera, gira, cruza, gira en el agua y
 // entra de culata al amarre (así siempre sale de proa).
 
@@ -289,8 +288,6 @@ export default class PzBotes {
   hostTick(dt, fireOn) {
     const pz = this.sab.pz;
     let changed = false;
-    // (globalThis.__mduPorteñoBotesSinVuelta = true: con el incendio se quedan en el islote, como antes)
-    const vuelve = !globalThis.__mduPorteñoBotesSinVuelta;
     // ¿quién está vivo en la isla?
     const onIsle = pz.ids().filter((id) => pz.alive(id) && this.sab.inIsle(pz.posOf(id)));
     for (const b of this.list) {
@@ -335,7 +332,7 @@ export default class PzBotes {
         // (solo si el fuego se apagó a manguerazos, outT >= 0: después de un
         // encierro todos vuelven al pabellón y con la isla quemándose se
         // termina la partida; ahí, como antes)
-        if (vuelve && this.outT >= 0 && onIsle.length > 0 && (b.fetch || !serving) && !this.sab.burning()) {
+        if (this.outT >= 0 && onIsle.length > 0 && (b.fetch || !serving) && !this.sab.burning()) {
           b.fetch = false;
           b.st = 'trip';
           b.tt = 0;
@@ -359,7 +356,7 @@ export default class PzBotes {
           b.st = 'trip';
           b.tt = 0;
           changed = true;
-        } else if (fireOn && vuelve) {
+        } else if (fireOn) {
           // con el incendio vuelve solo y vacío al muelle (si alguien se sube
           // en este rato, la cuenta sigue y se lo lleva)
           if (b.wait < 0) {
@@ -390,12 +387,12 @@ export default class PzBotes {
       let go = true;
       // (con el incendio no se espera a nadie: si no, un policía sentado
       // dejaría el bote en el islote; el usuario, 2026-10-14)
-      if (b.at === 'isle' && !(fireOn && vuelve)) {
+      if (b.at === 'isle' && !fireOn) {
         const other = this.list.some((o) => o !== b && o.st === 'dock' && o.at === 'isle');
         go = other || onIsle.every((id) => b.seats.includes(id));
         // (a los OUT_WAIT s de apagado sale con los que tiene: la cuenta de
         // PZS.boatWait empieza antes, así zarpa a esa hora y se ve venir)
-        if (!go && vuelve && this.outT >= 0 && b.lastT >= OUT_WAIT - PZS.boatWait) go = true;
+        if (!go && this.outT >= 0 && b.lastT >= OUT_WAIT - PZS.boatWait) go = true;
       }
       if (!go) {
         if (b.wait !== -2) {

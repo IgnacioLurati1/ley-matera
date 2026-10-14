@@ -13,7 +13,6 @@ import { assetUrl } from '../../lib/assets';
 // anteojos de sol puestos), el Viejo durmiendo la siesta (de espaldas, las
 // manos juntas en el pecho y el sombrero tapándole la cara). La escena se ve
 // desde arriba (el alma sube): con la cara arriba el ala queda de canto.
-// globalThis.__mduBlend = false: el de siempre (el clip 'dead' de net/gauchoSkin).
 
 const CLIP = { valiente: 'deadBrave', miedoso: 'deadProne', canchero: 'deadCool', viejo: 'deadSiesta' };
 // (los pies hacia donde arranca el alma: la cámara empieza de ese lado, baja, y
@@ -38,12 +37,11 @@ function prefetch() {
     });
 }
 // (son poses quietas, 20 KB: se bajan con el juego, así ya están al morir)
-if (typeof fetch === 'function') setTimeout(() => globalThis.__mduBlend !== false && prefetch(), 4000);
+if (typeof fetch === 'function') setTimeout(() => prefetch(), 4000);
 
 // avatars/id/r: el cuerpo (Game.endBody). Devuelve lo que se llama cada cuadro
 // después de avatars.update, o null.
 export function deathPose(g, avatars, id, r) {
-  if (globalThis.__mduBlend === false) return null;
   prefetch();
   const ids = crewIds(g);
   // (globalThis.__mduDeathPersona: para probar los cuatro sin jugar en línea)
@@ -64,7 +62,7 @@ export function deathPose(g, avatars, id, r) {
     a.hand.visible = false;
     if (!poseCineClip(a, c, t, r.pos.x, r.pos.y, r.pos.z, r.yaw + (FEET_FIRST[persona] ? 0 : Math.PI), { loop: true })) return;
     // (los anteojos solo en el penal y la torre: el usuario, 2026-10-04)
-    if (persona === 'canchero' && !shades && (g.mapId === 'penal' || g.mapId === 'torre' || globalThis.__mduShadesAll)) {
+    if (persona === 'canchero' && !shades && (g.mapId === 'penal' || g.mapId === 'torre')) {
       shades = headProp(a, buildShades());
       // (los vidrios sin espejo: con el cielo del penal uno se veía blanco, un monóculo)
       shades?.traverse((o) => {

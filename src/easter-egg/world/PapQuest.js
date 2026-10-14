@@ -220,16 +220,14 @@ export default class PapQuest {
       // es algo quieto, eso rehacía todas las sombras guardadas (la luna y los
       // cubos de las lámparas, fx/Epic ShadowCache) cada pocos segundos: un
       // tirón grande en Épica. Al caerse vuelve a tener sombra.
-      // (globalThis.__mduPavitaShadow: como antes)
       const casters = [];
       kettle.traverse((o) => o.isMesh && o.castShadow && casters.push(o));
-      const cast = globalThis.__mduPavitaShadow === true;
-      for (const o of casters) o.castShadow = cast;
+      for (const o of casters) o.castShadow = false;
       return {
         i,
         kettle,
         casters,
-        cast,
+        cast: false,
         base: kettle.position.clone(),
         center: kettle.position.clone().setY(kettle.position.y + 0.15),
         face: new THREE.Vector3(d.face[0], 0, d.face[1]),
@@ -268,8 +266,7 @@ export default class PapQuest {
     const g = this.g;
     for (const p of this.pavitas) {
       if (p.state === 'up') {
-        const cast = globalThis.__mduPavitaShadow === true;
-        if (p.cast !== cast) this.pavitaShadow(p, cast);
+        if (p.cast !== false) this.pavitaShadow(p, false);
         if (!this.playing) continue;
         // un hilito de vapor siempre, y cada tanto un silbido que se oye de lejos
         p.steamT -= dt;

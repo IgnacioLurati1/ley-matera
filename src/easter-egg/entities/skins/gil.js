@@ -16,7 +16,7 @@ import { loadMayhemClips, RUGE } from './mayhemClips';
 // final (ui/PenalCinematic.js gilWant), con clips hechos a mano en Blender
 // sobre este mismo modelo (C:/Users/ignac/Tools/mdu-blender gil_clips.py →
 // cine-gil.json: vencido, habla, ruega, señala, el rayo, se desarma);
-// globalThis.__mduBlend = false: las poses de piezas de antes. Lo colorado de
+// Lo colorado de
 // la segunda fase, el rayo y la ceniza se copian de los materiales del jefe (after).
 
 // caminando o parado (m/s del modelo, con histéresis) y el ritmo máximo del paso
@@ -37,22 +37,13 @@ const GLOW = 0.7;
 const SKIN0 = new THREE.Color(0xb08662);
 const CHAR = new THREE.Color(0x141110);
 
-// Los clips de la pelea hechos a mano en Blender (C:/Users/ignac/Tools/mdu-blender
-// gilf_clips.py → clips-blend.json: caminar con el paso medido, la embestida, el
-// grito, el molinete de una y de dos vueltas, atontado, agarrado, de rodillas),
-// en vez de los de Mixamo de clips.json. APAGADOS desde 2026-10-05 (el usuario
-// quiere la pelea como era): globalThis.__mduGilFightBlend = true los prende.
-// (las cinemáticas del Gil no pasan por acá: siguen con lo suyo)
-export const gilFightBlend = () => globalThis.__mduGilFightBlend === true && globalThis.__mduNoGilFightBlend !== true && globalThis.__mduBlend !== false;
-
 // Al morir queda en la pose con que arranca el final (ui/PenalCinematic.js
 // gilWant: gDown de cine-gil.json, de rodillas, vencido; lo pidió el usuario el
 // 2026-10-05): de vuelta en el cerro después de la cárcel ya está así (el paso
 // queda bajo el pantallazo blanco) y, si cae en el cerro, se arrodilla (el
 // arrodilla de siempre) y cae la otra rodilla. S.downT: por dónde va gDown; el
-// final sigue desde ahí, sin salto. globalThis.__mduNoGilDeathCine = true: como
-// antes (de rodillas con las poses de piezas de world/gilHeld.js, o el arrodilla solo)
-const deathCine = (S) => globalThis.__mduNoGilDeathCine !== true && globalThis.__mduBlend !== false && !!S.clips.gDown;
+// final sigue desde ahí, sin salto.
+const deathCine = (S) => !!S.clips.gDown;
 // cayendo en el cerro: hasta acá del arrodilla (s desde que cae; la rodilla
 // derecha va llegando al piso) y cuánto tarda en caer la otra
 const KNEE_AT = 1.3;
@@ -178,9 +169,9 @@ export default {
   dir: 'gil',
   // (pesos de la piel rehechos 2026-10-04: el poncho cuelga del lomo y los hombros
   // con transición suave a los brazos, sin puntas ni agujeros; scratchpad
-  // penal-npc2/wopt.py. globalThis.__mduOldGil = true: el modelo de antes)
+  // penal-npc2/wopt.py)
   // (los clips de la pelea hechos en Blender, clips-blend.json: gilFightBlend())
-  files: () => ({ ...(globalThis.__mduOldGil ? { glb: 'modelo-viejo.glb' } : {}), ...(gilFightBlend() ? { clips: 'clips-blend.json' } : {}) }),
+  files: () => ({}),
   loops: ['quieto', 'caminar', 'carga'],
   // la cadena sale de la derecha (el tiro: entities/bossMoves.js chainThrow)
   alias: { whip: 'RightHand' },
@@ -202,8 +193,7 @@ export default {
     // (el grito del Boss Rush Mayhem: entities/skins/mayhemClips.js)
     loadMayhemClips(S, 'gil');
     // los del final del penal (se suman a los de la pelea; S.cineGil cuando llegan)
-    if (globalThis.__mduBlend !== false)
-      fetch(assetUrl('/assets/sotano/modelos/gil/cine-gil.json'))
+    fetch(assetUrl('/assets/sotano/modelos/gil/cine-gil.json'))
         .then((r) => r.json())
         .then((J) => {
           for (const [k, c] of Object.entries(J.clips)) {
@@ -281,8 +271,7 @@ export default {
     }
     // la cadena: la de Blender (de costado, con el cuerpo: gil_clips.py tiraP)
     // si está; la de Mixamo le rompía el poncho en puntas (brazo por arriba).
-    // globalThis.__mduBlend = false: la de antes
-    const TK = globalThis.__mduBlend !== false && C.tiraP ? 'tiraP' : 'tira';
+    const TK = C.tiraP ? 'tiraP' : 'tira';
     switch (st) {
       // el grito de guerra (al llegar, al llevárselos a la cárcel y al llegar allá)
       case 'intro':

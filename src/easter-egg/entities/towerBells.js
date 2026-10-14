@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { EE } from '../config/map';
-import { zombieHealth, maxAlive } from '../config/rules';
+import { zombieHealth, towerAlive } from '../config/rules';
 import { mesh, boxGeo, cylGeo } from '../world/props';
 import { sndBell, sndCreak } from './towerKit';
 
@@ -286,7 +286,8 @@ export default class TowerBells {
   bringOne() {
     const g = this.g;
     const players = this.ee.players();
-    if (g.zombies.alive >= maxAlive(players)) return;
+    // (el tope de la torre en grupo: config/rules.js towerAlive, el usuario 2026-10-14)
+    if (g.zombies.alive >= towerAlive(players)) return;
     const ref = g.zombies.spawnRef();
     const fy = this.T.yOf(this.T.levelOf(ref.pos.y));
     const round = Math.max(6, g.rounds.round);

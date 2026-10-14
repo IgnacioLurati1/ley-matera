@@ -95,8 +95,8 @@ export default class Infierno extends Arena {
     this.wards = [0.86, 0.52, 0.18];
     this.speeds = [3.4, 4.4, 5.2];
     // (2026-10-10, el usuario: al final tiraba dos tandas de tres cada 1,9 s y
-    // era imposible: una sola tanda. __mduFranOld: como antes)
-    this.oneVolley = globalThis.__mduFranOld !== true;
+    // era imposible: una sola tanda)
+    this.oneVolley = true;
     this.rainColor = 0xffc040;
     this.fireColor = 0xffc860;
     this.rainBoom = [1, 0.8, 0.35];
@@ -588,7 +588,7 @@ export default class Infierno extends Arena {
     this.landFx(F.land.x, F.land.z);
     this.send({ land: [+F.land.x.toFixed(2), +F.land.z.toFixed(2)] });
     // (en el rush de jefes la munición la reparte el rush, pareja en todas las
-    // peleas: core/rushPelea.js. __mduRushMunicionVieja: también acá)
+    // peleas: core/rushPelea.js)
     if (!municionDelRush(g)) {
       g.powerups.bag.push('maxammo');
       g.powerups.drop(tmpV.set(this.A.x + (Math.random() - 0.5) * 6, this.A.y || 0, this.A.z + 3 + Math.random() * 3).clone(), true);
@@ -1133,7 +1133,7 @@ export default class Infierno extends Arena {
     if (tp) b.yaw = Math.atan2(tp.pos.x - b.pos.x, tp.pos.z - b.pos.z);
     this.ritFireT -= dt;
     // (con el rayo de la bombilla dando vueltas, r2, no tira bolas: el usuario, 2026-10-10)
-    if (this.ritFireT <= 0 && (this.stage !== 'r2' || globalThis.__mduFranOld === true)) {
+    if (this.ritFireT <= 0 && (this.stage !== 'r2')) {
       this.ritFireT = this.stage === 'r2' ? 2.6 : 3.2;
       this.fireball(tmpV.set(b.pos.x + Math.sin(b.yaw) * 0.8, b.pos.y + 2.2, b.pos.z + Math.cos(b.yaw) * 0.8).clone(), this.stage === 'r2' ? 3 : 1);
     }

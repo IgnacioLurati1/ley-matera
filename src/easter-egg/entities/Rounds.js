@@ -1,4 +1,4 @@
-import { zombieCount, zombieHealth, spawnDelay, bossRound, maxAlive, dogRound, dogCount, ROUND_BREAK } from '../config/rules';
+import { zombieCount, zombieHealth, spawnDelay, bossRound, maxAlive, dogRound, dogCount, ROUND_BREAK, towerCountPer, towerRate, towerAlive } from '../config/rules';
 import { GRENADE } from '../config/weapons';
 import { FEATURES, WATER_Y } from '../config/map';
 import { preloadBossSkin } from './bossSkin';
@@ -22,9 +22,9 @@ const MIXED = ['crow', 'capataz', 'alcaide'];
 // El ritmo de salida de la torre (el usuario, 2026-10-12): la cantidad de muertos es la misma, salen
 // más seguido. FEATURES.pace = [a, b]: de la ronda 1 a la 20 el ritmo sube parejo hasta `a` veces; de
 // la 20 a la 30, hasta `a` por `b`; después queda. El Challenge lleva [2, 2] (el doble y el cuádruple);
-// la historia, [1,5; 1,5] (config/maps/torre.js). globalThis.__mduNoRitmoTorre: como antes.
+// la historia, [1,5; 1,5] (config/maps/torre.js).
 export function paceMul(round, P = FEATURES.pace) {
-  if (!P || globalThis.__mduNoRitmoTorre === true) return 1;
+  if (!P) return 1;
   const [a, b] = P;
   if (round <= 20) return 1 + ((a - 1) * Math.max(0, round - 1)) / 19;
   return a * (1 + (b - 1) * Math.min(1, (round - 20) / 10));
@@ -109,12 +109,15 @@ export default class Rounds {
     const g = this.g;
     this.round++;
     const players = this.players || 1;
-    this.total = zombieCount(this.round, players);
+    // (la torre en grupo: más muertos por jugador de más y salen más seguido; config/rules.js
+    // towerCountPer y towerRate, el usuario 2026-10-14; __mduTorreGrupoViejo: como antes)
+    this.total = zombieCount(this.round, players, FEATURES.tower ? towerCountPer() : 0.6);
     this.toSpawn = this.total;
     this.health = zombieHealth(this.round);
     this.delay = spawnDelay(this.round);
     // (la torre: los mismos muertos, saliendo más seguido: paceMul)
     if (FEATURES.pace) this.delay = Math.max(0.06, this.delay / paceMul(this.round));
+    if (FEATURES.tower && players > 1) this.delay = Math.max(0.06, this.delay / towerRate(players));
     this.spawnT = this.round === 1 ? 1 : 2.5;
     this.bossPending = FEATURES.boss === 'alcaide' ? this.alcaideRound() : bossRound(this.round, FEATURES.bossFrom, FEATURES.bossEvery);
     // (el cuerpo de verdad del minijefe se baja desde que empieza la ronda)
@@ -184,26 +187,16 @@ export default class Rounds {
   // primero es siempre el Cuervo). En la historia el Cuervo ya viene con la
   // Noche del Remolino (entities/towerNoche.js): acá se turnan los de a pie.
   // Antes salían al azar y, desde la ronda 15, un jefe de a pie y el Cuervo
-  // juntos: el Cuervo venía en todas (el usuario, 2026-10-10; __mduMixedAzar:
-  // como antes).
+  // juntos: el Cuervo venía en todas (el usuario, 2026-10-10).
   mixedBoss() {
     const g = this.g;
-    if (globalThis.__mduMixedAzar !== true) {
-      // (si al que le toca todavía anda por ahí, pasa el turno al que sigue)
-      const order = g.ee?.noche ? MIXED.slice(1) : MIXED;
-      for (let i = 0; i < order.length; i++) {
-        const kind = order[this.mixedTurn++ % order.length];
-        if (kind === 'crow' ? g.crow?.spawn(this.round) : !g.zombies.boss && g.zombies.spawnBoss(this.round, { kind })) return;
-      }
-      return;
+    // (si al que le toca todavía anda por ahí, pasa el turno al que sigue)
+    const order = g.ee?.noche ? MIXED.slice(1) : MIXED;
+    for (let i = 0; i < order.length; i++) {
+      const kind = order[this.mixedTurn++ % order.length];
+      if (kind === 'crow' ? g.crow?.spawn(this.round) : !g.zombies.boss && g.zombies.spawnBoss(this.round, { kind })) return;
     }
-    const both = this.round >= (this.bothFrom || 15);
-    const ground = Math.random() < 0.5 ? 'capataz' : 'alcaide';
-    const crow = both || Math.random() < 0.34;
-    if (!crow || both) {
-      if (!g.zombies.boss) g.zombies.spawnBoss(this.round, { kind: ground });
-    }
-    if (crow) g.crow?.spawn(this.round);
+    return;
   }
 
   // El alcaide del penal: fijo cada 5 rondas, como los demás jefes de ronda
@@ -295,7 +288,7 @@ export default class Rounds {
     // (holdCap, holdPace, holdSpot: el mapa puede pedir otro tope, otro ritmo y
     // de dónde salen mientras aguantan; el estero, en la creciente de las almas
     // y con la luz en camino: EsterosEgg)
-    const cap = this.dogs ? 3 + players * 2 : hold ? g.ee.holdCap?.(players) ?? Math.min(maxAlive(players), 16 + (players - 1) * 4) : maxAlive(players) + (this.capBonus || 0);
+    const cap = this.dogs ? 3 + players * 2 : hold ? g.ee.holdCap?.(players) ?? Math.min(maxAlive(players), 16 + (players - 1) * 4) : (FEATURES.tower ? towerAlive(players) : maxAlive(players)) + (this.capBonus || 0);
     if (this.toSpawn > 0 && this.spawnT <= 0 && g.zombies.alive < cap) {
       // en la torre, cada tanto sale un especial en vez de un muerto
       const special = this.specials > 0 && !(this.specialT > 0) && Math.random() < Math.min(0.5, (this.specials * 1.4) / this.toSpawn);

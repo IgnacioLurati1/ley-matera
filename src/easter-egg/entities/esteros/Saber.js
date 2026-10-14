@@ -113,11 +113,10 @@ export default class Saber {
   // (2026-10-08, el usuario: "la pluma cae fuera del mapa". Los tres palos
   // están adentro del pajonal del borde, fuera del piso que se camina —a 2, 3
   // y 5 m del borde— y la pluma caía al pie del palo: no se llegaba. Ahora
-  // cae meciéndose hacia el piso más cerca, en una celda con piso alrededor.
-  // globalThis.__mduOldPluma: al pie del palo, como antes)
+  // cae meciéndose hacia el piso más cerca, en una celda con piso alrededor)
   landing(x, z) {
     const w = this.g.world;
-    if (globalThis.__mduOldPluma === true || !w.grid || !w.inside) return null;
+    if (!w.grid || !w.inside) return null;
     const FLOOR = 1;
     const isF = (ix, iz) => w.inside(ix, iz) && w.grid[w.idx(ix, iz)] === FLOOR;
     const cx = Math.floor(x);
@@ -204,11 +203,9 @@ export default class Saber {
     // adentro del pajonal, que tiene 2,5-3 m: desde donde se camina no se veía
     // ni el palo. Ahora cada uno se para al borde del pajonal, del lado del
     // piso; el pájaro, un poco más grande y más claro (sigue pareciendo un
-    // pedazo de rama), y cuando canta le brillan los ojos.
-    // globalThis.__mduOldUruSpot: adentro del pajonal y como antes)
-    const SEE = globalThis.__mduOldUruSpot !== true;
+    // pedazo de rama), y cuando canta le brillan los ojos)
     this.birds = EE.urutau.map(([x0, z0, h]) => {
-      const [x, z] = SEE ? this.perch(x0, z0) : [x0, z0];
+      const [x, z] = this.perch(x0, z0);
       const y0 = this.floor(x, z);
       const grp = new THREE.Group();
       grp.position.set(x, y0, z);
@@ -235,14 +232,12 @@ export default class Saber {
         eyes.push(e);
       }
       bird.rotation.x = -0.18;
-      if (SEE) {
-        bird.scale.setScalar(1.45);
-        body.material = head.material = MAT.birdSee();
-      }
+      bird.scale.setScalar(1.45);
+      body.material = head.material = MAT.birdSee();
       grp.add(bird);
       // (el brillo de los ojos cuando canta)
       const eyeGlow = glint(g, 0xffd23a, 0.45);
-      eyeGlow.position.set(0.02, h + 0.44 * (SEE ? 1.45 : 1), 0.1);
+      eyeGlow.position.set(0.02, h + 0.44 * 1.45, 0.1);
       eyeGlow.visible = false;
       grp.add(eyeGlow);
       const feather = featherModel();
@@ -251,7 +246,7 @@ export default class Saber {
       const fg = glint(g, 0xe8e0d0, 0.6);
       fg.visible = false;
       this.root.add(fg);
-      return { grp, bird, eyes, eyeGlow: SEE ? eyeGlow : null, feather, fg, top: new THREE.Vector3(x + 0.02, y0 + h + 0.3, z), ground: this.landing(x, z) || new THREE.Vector3(x + 0.35, y0 + 0.04, z + 0.25) };
+      return { grp, bird, eyes, eyeGlow, feather, fg, top: new THREE.Vector3(x + 0.02, y0 + h + 0.3, z), ground: this.landing(x, z) || new THREE.Vector3(x + 0.35, y0 + 0.04, z + 0.25) };
     });
     this.sync();
   }

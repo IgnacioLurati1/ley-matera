@@ -216,16 +216,13 @@ export default class ChallengeHeaven {
     // (2026-10-12, el usuario: "la cinemática final te deja ciego". Toda la escena daba casi blanco
     // puro 18 segundos: el cielo aclarado por la pasada final —uLin, en su shader— y las nubes y el
     // mármol, blancos. Ahora el cielo sale con sus colores (azul arriba, naranja en el horizonte) y
-    // las nubes y el mármol un poco más bajos. globalThis.__mduCieloBlanco: como antes)
-    const suave = globalThis.__mduCieloBlanco !== true;
-    if (suave) {
-      M.cloud.color.setScalar(0.74);
-      M.marble.color.setScalar(0.86);
-    }
+    // las nubes y el mármol un poco más bajos)
+    M.cloud.color.setScalar(0.74);
+    M.marble.color.setScalar(0.86);
     // el cielo: una esfera que escribe profundidad (tapa todo lo de afuera)
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(140, 40, 20),
-      new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uLin: { value: suave ? 1 : 0 } }, vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: true, fog: false }),
+      new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uLin: { value: 1 } }, vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: true, fog: false }),
     );
     sky.position.set(CX, HY, CZ);
     sky.renderOrder = -10;
@@ -586,7 +583,7 @@ export default class ChallengeHeaven {
     // el fogonazo blanco: al subir, al llegar y al final
     const white = t < TL.up ? smooth(seg(t, 0.35, TL.up)) : t < TL.up + 1.2 ? 1 - smooth(seg(t, TL.up, TL.up + 1.05)) : smooth(seg(t, TL.slurp - 0.8, TL.slurp));
     // (el fogonazo, hasta el 82%: a pantalla llena y en blanco pleno era lo que más encandilaba)
-    this.white.style.opacity = (white * (globalThis.__mduCieloBlanco === true ? 1 : 0.82)).toFixed(3);
+    this.white.style.opacity = (white * 0.82).toFixed(3);
     // lo que se mueve
     this.animate(dt, t);
     if (t < TL.up) {

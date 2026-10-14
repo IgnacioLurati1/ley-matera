@@ -37,7 +37,7 @@ export function buildEclipseGfx(w) {
     const L = buildLamps(w);
     if (L) live.push(L);
   }
-  // texturas de piso y de roca en alta (world/eclipseGfxTex.js, __mduNoEclTex)
+  // texturas de piso y de roca en alta (world/eclipseGfxTex.js)
   const hi = upgradeFloors(w);
   if (on('__mduNoEclRock')) rockLook(w, hi);
   if (on('__mduNoEclVitral')) vitrales(w);
@@ -61,8 +61,8 @@ export function buildEclipseGfx(w) {
 // the Dead": la luna 0,46 → 0,8 y un poco más de cielo; las sombras de la luna
 // marcan el relieve. Después: "aumentaría más la luz que se genera en el
 // cielo, así parece más la luz de luna de Mate no Numa": cielo y ambiente
-// como en el estero (0,9 y 0,5). globalThis.__mduOldEclMoon: la de antes)
-export const LIGHT_K = globalThis.__mduOldEclMoon === true ? { hemi: 0.3, amb: 0.45, moon: 0.46 } : { hemi: 0.55, amb: 0.8, moon: 0.95 };
+// como en el estero (0,9 y 0,5))
+export const LIGHT_K = { hemi: 0.55, amb: 0.8, moon: 0.95 };
 let lightOn = false;
 function installLight() {
   if (lightOn) return;
@@ -115,7 +115,7 @@ function vitrales(w) {
 // (core/textures.js: relief { detail }): con el eclipse alto casi no se ve.
 // Acá, más fuerte (fx/Surfaces les pone el normal map con escala 1 al
 // prenderse o al cambiar la calidad: se vuelve a poner cada cuadro, son
-// pocos materiales). __mduNoEclRelief: como antes.
+// pocos materiales).
 const RELIEF_K = { grass: 2.6, dirt: 2.4, dirtDark: 2.4, ground: 2.4, concrete: 1.6, terracotta: 1.5, stone: 1.6, flagstone: 1.5, calcareo: 1.3, rock: 2.2, caveFloor: 1.8, caveRock: 1.8, snow: 1.6 };
 // (y los pisos de afuera más oscuros: el pasto de la textura es claro y, con
 // la noche del eclipse, el claro se veía como de día nublado)
@@ -123,12 +123,11 @@ const FLOOR_DIM = { grass: 0.72, dirt: 0.8, dirtDark: 0.85, ground: 0.8 };
 function floorRelief(w) {
   const list = [];
   for (const [k, v] of Object.entries(RELIEF_K)) if (w.M?.[k]) list.push([w.M[k], v]);
-  if (globalThis.__mduNoEclRelief !== true) for (const [k, v] of Object.entries(FLOOR_DIM)) w.M?.[k]?.color.multiplyScalar(v);
+  for (const [k, v] of Object.entries(FLOOR_DIM)) w.M?.[k]?.color.multiplyScalar(v);
   return () => {
-    const off = globalThis.__mduNoEclRelief === true;
     for (const [m, v] of list) {
       if (!m.normalMap) continue;
-      const want = off ? 1 : v;
+      const want = v;
       if (m.normalScale.x !== want) m.normalScale.set(want, want);
     }
   };
@@ -270,7 +269,7 @@ function buildLamps(w) {
     // (mundo, it. 4: en los salones altos -el gran salón del castillo, 10 m- la
     // cadena arrancaba a 3,4 m del piso y el farol quedaba volando: ahora la
     // cadena sale del techo de verdad y el farol queda a la misma altura)
-    if (globalThis.__mduNoEclHangRoof !== true && Z.roof - top > 0.05) {
+    if (Z.roof - top > 0.05) {
       const lampTop = top - Math.min(1.1, top - y - 2.1);
       hang.push({ x, y: Z.roof, z, zone: k, isle: isleOfZone(k), drop: Z.roof - lampTop });
       continue;
@@ -356,8 +355,8 @@ function buildLamps(w) {
   }
   // piso mojado: manchas lisas y oscuras donde pega la luz de cada farol y de
   // cada brasero (el brillo del farol se refleja en el barro y la piedra:
-  // lo que hace el estero con sus charcos; __mduNoEclWet: sin ellas)
-  if (globalThis.__mduNoEclWet !== true) {
+  // lo que hace el estero con sus charcos)
+  {
     const wet = [];
     const near = [...lamps.map((L) => [L.x + L.ix * 1.6, L.z + L.iz * 1.6, L.zone]), ...fires.map((F) => [F.x + 1.4, F.z + 0.6, F.zone])];
     for (const [cx, cz, k] of near) {
@@ -407,8 +406,8 @@ function buildLamps(w) {
     const isl = ISLANDS[H.isle];
     const col = new THREE.Color(0xffb062).lerp(new THREE.Color(isl?.lamp ?? 0xffc27a), 0.25).getHex();
     // (sesión 1f: pegado a la luz del cuarto, con la corriente las dos juntas
-    // quemaban en blanco las duchas del penal: ahí, la mitad. __mduNoEclColgadoK)
-    const near = globalThis.__mduNoEclColgadoK !== true && LIGHTS.some((L) => L.zone === H.zone && Math.hypot(L.pos[0] - H.x, L.pos[2] - H.z) < 3);
+    // quemaban en blanco las duchas del penal: ahí, la mitad)
+    const near = LIGHTS.some((L) => L.zone === H.zone && Math.hypot(L.pos[0] - H.x, L.pos[2] - H.z) < 3);
     add({ zone: H.zone, pos: [H.x, H.y - H.drop - 0.2, H.z], color: col, intensity: near ? 7 : 14, noPower: 1, kind: 'candle', tag: 'eclColgado' });
   }
   for (const F of fires) add({ zone: F.zone, pos: [F.x, F.y + 1.35, F.z], color: 0xff8a3a, intensity: 20, noPower: 1, kind: 'fire', tag: 'eclBrasero' });
@@ -543,8 +542,8 @@ function roughenRock(w, mesh) {
   // 2. correr cada vértice: ruido con escalones, más fuerte abajo
   // (la malla no es indexada: el mismo vértice aparece en ~6 triángulos y es
   // función del lugar; se calcula una vez por lugar. 1,75 s → ~0,4 s en cada
-  // armado; agente rend. globalThis.__mduNoEclRockCache: como antes)
-  const memo = globalThis.__mduNoEclRockCache === true ? null : new Map();
+  // armado; agente rend)
+  const memo = new Map();
   for (let i = 0; i < out.length; i += 3) {
     const x = out[i], y = out[i + 1], z = out[i + 2];
     const key = memo && `${x},${y},${z}`;
@@ -622,7 +621,7 @@ function rockLook(w, hi) {
   // malla y el mismo mapa: core/cacheDisco; ~0,9 s)
   const rough = on('__mduNoEclRockShape');
   const G0 = mesh.geometry;
-  const huella = cacheHuella('roca', rough, globalThis.__mduNoEclRockCache === true, ROCK_EDGE, G0.attributes.position.array, G0.attributes.color?.array, w.grid, w.fy, JSON.stringify(Object.values(ISLANDS).map((I) => [I.box, I.y])));
+  const huella = cacheHuella('roca', rough, false, ROCK_EDGE, G0.attributes.position.array, G0.attributes.color?.array, w.grid, w.fy, JSON.stringify(Object.values(ISLANDS).map((I) => [I.box, I.y])));
   const guardado = cacheTomar('eclipse', 'roca', huella);
   // (la malla solo se reemplaza si se rompe; si no, queda la de siempre)
   if (guardado?.pos && rough) {

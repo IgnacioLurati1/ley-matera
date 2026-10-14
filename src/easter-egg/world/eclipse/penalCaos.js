@@ -26,18 +26,16 @@ import { compactGroup } from '../props';
 //  · (la torre de guardia partida e inclinada: breakTower, desde penal.js).
 // Se arma en el primer cuadro (después de v5b: no pisa sus piezas). Lo que se
 // mueve: unas pocas mallas instanciadas, solo con la cámara cerca.
-// globalThis.__mduNoPenalCaos: nada de esto.
 
 const FLOOR = 1;
 const WALL = 2;
 const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-const OFF = () => globalThis.__mduNoPenalCaos === true;
 
 let W = null;
 let LIVE = null;
 
 export function build(w) {
-  if (OFF() || globalThis.__mduEclipse !== true || !ISLANDS.penal) return;
+  if (globalThis.__mduEclipse !== true || !ISLANDS.penal) return;
   W = w;
   LIVE = { built: false };
 }
@@ -915,7 +913,6 @@ function flowers(w, root, list, M) {
 // altura y la garita suelta flotando arriba, torcida, con la luz violeta en la
 // quebradura. obj: la torre de penalProps ('torre'); g: el pedazo suelto.
 export function breakTower(obj, g, M) {
-  if (OFF()) return;
   obj.updateMatrixWorld(true);
   const top = new THREE.Group();
   const H = 4.2;

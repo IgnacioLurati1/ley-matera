@@ -41,7 +41,6 @@ const STEP = 1 / 60;
 // cada cuadro): la textura se mira con la cámara con la que se dibujó, así que
 // al girar el reflejo queda en su lugar; en el muelle del penal a 12 ms era un
 // dibujo entero de la escena cada dos cuadros
-// (globalThis.__mduRefl12: el de antes)
 const REFL_MS = 22;
 // y solo si el agua se ve de verdad: una consulta de oclusión en el dibujo del
 // agua (WebGL2) dice si pasó algún píxel. Tapada por el pajonal, la tierra o
@@ -98,7 +97,7 @@ const CULL_N = 300;
 // orbitan de las otras islas. En el espejo —a media resolución y movido por las
 // olas— no se distingue y cada malla era un dibujo. Se guarda dónde está cada
 // copia y se vuelve a mirar si cambian. Solo Eclipse (cambia algo la imagen: unos
-// puntos). globalThis.__mduNoMirrorTiny: como antes.
+// puntos).
 const MIRROR_TINY = 4;
 const instMemo = new WeakMap();
 function tinyInst(o, cp, k) {
@@ -171,8 +170,7 @@ function faceUp(o) {
 // las matas bajas del pasto (cuadros instanciados con material userData.foliage)
 // van en el espejo solo hasta tantos metros del borde del cuadro: más lejos su
 // reflejo queda detrás de la orilla o es una raya en el agua movida, y en el
-// estero eran ~2 millones de triángulos por espejo (globalThis.__mduAllMirror
-// para comparar)
+// estero eran ~2 millones de triángulos por espejo
 const MIRROR_FOL = 12;
 
 // El espejo solo para el agua de cerca (la idea del usuario, 2026-10-02): el
@@ -180,7 +178,7 @@ const MIRROR_FOL = 12;
 // la distancia de dibujo de Épica), en casilleros de CELL m. Lo de afuera del
 // recorte no se dibuja en el espejo (menos dibujos y menos píxeles) y el agua
 // que cae ahí (la del fondo) refleja el cielo, como el reflejo barato. Sin agua
-// cerca, no hay espejo. (globalThis.__mduNoReflRect: la imagen entera, como antes)
+// cerca, no hay espejo.
 const CELL = 4;
 // la niebla al 99%: densidad x distancia
 const FOG_END = 2.2;
@@ -200,7 +198,6 @@ const RECT_FULL = { x0: -1, x1: 1, y0: -1, y1: 1 };
 // vuelta de costado), y si no se ve en ninguna, no hay espejo. Las consultas
 // vuelven 1-2 cuadros después: si la cámara giró más de 4° o anduvo más de
 // STRIP_MOVE desde que se preguntó, el recorte de siempre.
-// (globalThis.__mduNoWaterStrips: como antes)
 const STRIP_X = 8;
 const STRIP_Y = 6;
 const STRIP_TURN = Math.cos((4 * Math.PI) / 180);
@@ -717,7 +714,7 @@ export default class Water {
     };
     m.onBeforeRender = (renderer, scene, camera, g2) => {
       const rt = renderer.getRenderTarget();
-      const ask = camera === this.g.camera && !S.pending && rt !== null && !!this.tier?.refl && globalThis.__mduNoWaterStrips !== true;
+      const ask = camera === this.g.camera && !S.pending && rt !== null && !!this.tier?.refl;
       g2.setDrawRange(0, ask ? Infinity : 0);
       if (!ask) return;
       const gl = (S.gl ||= renderer.getContext());
@@ -801,10 +798,9 @@ export default class Water {
   // (columnas x filas): parado en la tranquera de la laguna, el charco de la
   // isleta asoma entre las matas y el espejo entero cada 4 cuadros era lo que
   // hacía perder el vsync. En movimiento, como siempre.
-  // (globalThis.__mduNoReflSlow: siempre a REFL_MS)
   stripSlow(camera) {
     const S = this.strips;
-    if (!S || !S.valid || !S.rect || !S.mAt || globalThis.__mduNoReflSlow === true || globalThis.__mduNoWaterStrips === true) return false;
+    if (!S || !S.valid || !S.rect || !S.mAt) return false;
     const R = S.rect;
     const cells = Math.round(((R.x1 - R.x0) * STRIP_X) / 2) * Math.round(((R.y1 - R.y0) * STRIP_Y) / 2);
     if (cells > SLOW_CELLS || performance.now() - S.when > STRIP_OLD) return false;
@@ -824,7 +820,7 @@ export default class Water {
   // El recorte del espejo (rc) achicado a donde se vio agua; null: no se ve agua.
   stripCut(rc, camera) {
     const S = this.strips;
-    if (!S || !S.valid || globalThis.__mduNoWaterStrips === true) return rc;
+    if (!S || !S.valid) return rc;
     tmpA.set(0, 0, -1).transformDirection(camera.matrixWorld);
     tmpB.setFromMatrixPosition(camera.matrixWorld);
     if (tmpA.dot(S.rDir) < STRIP_TURN || tmpB.distanceToSquared(S.rAt) > STRIP_MOVE * STRIP_MOVE || performance.now() - S.when > STRIP_OLD) return rc;
@@ -1318,17 +1314,17 @@ export default class Water {
       // dos o tres, y partido en dos mitades de cuadros distintos: el reflejo
       // quedaba de una cámara 1-3 cuadros vieja. Con la cámara en movimiento va
       // entero, en cada cuadro y sin el recorte del cuadro anterior; quieta,
-      // como siempre. globalThis.__mduNoEclReflLive: como antes)
+      // como siempre)
       // (2026-10-09, el usuario: "lo que titila es la cinemática inicial" de Mate
       // no Numa. La cámara de la entrada nunca para: el espejo se rehacía cada
       // 4 cuadros —partido en dos— y en cada uno el reflejo del pajonal lejano
       // cambiaba de golpe; en el medio quedaba quieto: 45 saltos por segundo.
       // En la partida se veía bien y así queda —sin el costo—; en las
       // entradas, como en Eclipse: entero y en cada cuadro mientras la cámara
-      // se mueve. globalThis.__mduOldIntroRefl: como antes)
-      const cineLive = !!this.g.intro?.active && globalThis.__mduOldIntroRefl !== true;
-      const live = (this.g.mapId === 'eclipse' || cineLive) && globalThis.__mduNoEclReflLive !== true && this.camMoved(camera);
-      const every = live ? 0 : globalThis.__mduRefl12 === true ? 12 : (REFL_MS - dt * 500) * (this.stripSlow(camera) ? 2 : 1);
+      // se mueve)
+      const cineLive = !!this.g.intro?.active;
+      const live = (this.g.mapId === 'eclipse' || cineLive) && this.camMoved(camera);
+      const every = live ? 0 : (REFL_MS - dt * 500) * (this.stripSlow(camera) ? 2 : 1);
       let on = true;
       if (live && this.job?.on) this.job.on = false;
       this.noCut = live;
@@ -1342,7 +1338,7 @@ export default class Water {
           this.stripMark(camera);
           // (de a tajadas por cuadro; la primera vez, entera)
           this.cullList(scene, tmpC, this.hide ? CULL_N : Infinity);
-          const split = !live && u.uPlanar.value === 1 && dt < REFL_MS / 2000 && globalThis.__mduNoReflSplit !== true;
+          const split = !live && u.uPlanar.value === 1 && dt < REFL_MS / 2000;
           this.reflect(renderer, scene, rc, split ? 1 : 0);
         } else on = false;
       }
@@ -1401,7 +1397,7 @@ export default class Water {
   // ¿El agua quedó tapada los últimos OCC_HIDE resultados?
   occHidden() {
     const O = this.occ;
-    if (!O || globalThis.__mduNoWaterOcc === true) return false;
+    if (!O) return false;
     const gl = O.gl;
     const now = performance.now();
     if (O.q && !O.open && gl.getQueryParameter(O.q, gl.QUERY_RESULT_AVAILABLE)) {
@@ -1654,17 +1650,17 @@ export default class Water {
       if (!o.isMesh) return;
       // (lo plano que mira para arriba y es de una cara —pisos, charcos, calcos
       // de sangre, marcas— la cámara del espejo, abajo del agua, lo ve de atrás:
-      // no se ve nunca y se dibujaba igual. globalThis.__mduNoMirrorUp: como antes)
-      if (globalThis.__mduNoMirrorUp !== true && faceUp(o)) {
+      // no se ve nunca y se dibujaba igual)
+      if (faceUp(o)) {
         N.push(o);
         return;
       }
       if (o.isInstancedMesh) {
-        if (o.material?.userData?.foliage && globalThis.__mduAllMirror !== true) {
+        if (o.material?.userData?.foliage) {
           if (!o.boundingSphere) o.computeBoundingSphere();
           const s = tmpSph.copy(o.boundingSphere).applyMatrix4(o.matrixWorld);
           if (s.center.distanceTo(cp) - s.radius > MIRROR_FOL) N.push(o);
-        } else if (this.g.mapId === 'eclipse' && globalThis.__mduNoMirrorTiny !== true && tinyInst(o, cp, pxScale(this.g.camera))) N.push(o);
+        } else if (this.g.mapId === 'eclipse' && tinyInst(o, cp, pxScale(this.g.camera))) N.push(o);
         return;
       }
       const geo = o.geometry;
@@ -1720,7 +1716,7 @@ export default class Water {
     mc.layers.mask = camera.layers.mask;
     mc.updateMatrixWorld();
     mc.projectionMatrix.copy(camera.projectionMatrix);
-    const rc = globalThis.__mduNoReflRect === true ? RECT_FULL : this.waterRect(mc, tmpC);
+    const rc = this.waterRect(mc, tmpC);
     return rc && (this.noCut ? rc : this.stripCut(rc, camera));
   }
 
@@ -1849,7 +1845,6 @@ export default class Water {
   // de la escena cada ~4 cuadros (~1,5 ms de CPU de golpe en el campamento y el
   // algarrobo): ese cuadro perdía el vsync. Ahora son dos de la mitad. La imagen
   // llega un cuadro más tarde (~6 ms) y el espejo se rehace igual de seguido.
-  // (globalThis.__mduNoReflSplit: entero, como antes)
   reflect(renderer, scene, rc, part = 0) {
     const J = (this.job ||= { on: false, mat: new THREE.Matrix4(), scale: new THREE.Vector2(), cut: new THREE.Vector4() });
     if (part === 2) {
@@ -1930,9 +1925,8 @@ export default class Water {
     // cañas finas sin la niebla ni el suavizado de la imagen— que desde la
     // cámara baja de la entrada era un ruido de puntitos. En las entradas el
     // pajonal y las matas no van al espejo: se reflejan la canoa, los árboles,
-    // los irupés y el cielo. En la partida, como siempre.
-    // globalThis.__mduOldIntroRefl: como antes)
-    if (this.g.intro?.active && globalThis.__mduOldIntroRefl !== true) {
+    // los irupés y el cielo. En la partida, como siempre)
+    if (this.g.intro?.active) {
       const w = this.g.world;
       for (const o of [w?.pajonal, ...(Array.isArray(w?.tussocks) ? w.tussocks : [w?.tussocks])]) {
         if (!o?.isObject3D || !o.visible) continue;

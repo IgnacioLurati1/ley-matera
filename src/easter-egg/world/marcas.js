@@ -9,7 +9,6 @@ import * as THREE from 'three';
 // dibujado: el mismo rayo contra las mallas que tocan esa caja (lista armada una
 // vez por caja). Si pasa por un hueco, ni marca ni polvo; en lo fino (alambre,
 // palitos) el polvo sin la marca.
-// globalThis.__mduMarcaVieja = true: como antes (la marca en la caja).
 
 // lo que es pared de verdad: la marca va en la caja, como siempre
 const SOLID = new Set(['wall', 'slab', 'floor', 'ceiling', 'door', 'window', 'ground', 'box']);
@@ -175,8 +174,8 @@ function prepare(g) {
 // el rebote y lo demás siguen saliendo de la caja, como antes).
 export function marca(g, o, d, t, hit) {
   const box = hit.box;
-  if (prep !== g.world && globalThis.__mduMarcaVieja !== true && g.world) prepare(g);
-  if (globalThis.__mduMarcaVieja === true || !box || typeof box !== 'object' || SOLID.has(box.kind)) {
+  if (prep !== g.world && g.world) prepare(g);
+  if (!box || typeof box !== 'object' || SOLID.has(box.kind)) {
     out.k = 2;
     out.point.copy(hit.point);
     out.normal.copy(hit.normal);

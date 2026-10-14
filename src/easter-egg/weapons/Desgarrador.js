@@ -4,14 +4,13 @@ import { MAP_ID } from '../config/map';
 import { zombieHealth, bossHealth, PLAYER } from '../config/rules';
 import { keyLabel } from '../core/controls';
 import { furiaKills, dashCd as dashCdOf } from '../entities/eclipse/catalizador';
-import { walkLine } from '../world/Levels';
 import { VM, registerMate } from './viewmodels';
-import { buildScythe, cosmicMats, cloneMats, setCosmicEnv, tintMats, driftCosmos, animScythe, desgarradorModel, GRIP_L_Y, MID_Y, TOP_Y, SHAFT_R, GRIP_RAD } from './desgarradorModels';
+import { buildScythe, cosmicMats, cloneMats, setCosmicEnv, tintMats, driftCosmos, animScythe, desgarradorModel, GRIP_L_Y, MID_Y, TOP_Y, GRIP_RAD } from './desgarradorModels';
 import { gripHand } from './desgarradorHands';
 import Cazador from './Cazador';
 import DesgarradorFx, { PAL } from './desgarradorFx';
 import { VoidBleed, OrbitShards } from './desgarradorAura';
-import { OLD_FURIA11, CONC, SND_OFF, FURIA_SND, concPose, concFloat, CONC_FLOAT, FuriaGather, concWorld, concBurst, furiaSnd, stopSnd } from './desgarradorFuria';
+import { CONC, SND_OFF, FURIA_SND, concPose, concFloat, FuriaGather, concWorld, concBurst, furiaSnd, stopSnd } from './desgarradorFuria';
 import { eclSfx } from '../fx/eclipseSfx';
 import { VMS, ELBOW_R, ELBOW_L, ELBOW_FOLLOW, LEFT_OFF, shaftQuat, REST_P, MOVES, COMBO, THROW, THROW_KEYS, THROW_AT, DASH_KEYS, DRAW, DRAW_KEYS, INSPECT, INSPECT_KEYS, BEAM_P, CHARGE_P, SPIN_UP, SPIN_TURNS, NP, sample, mix, DESG_POSES } from './desgarradorMoves';
 
@@ -36,7 +35,7 @@ import { VMS, ELBOW_R, ELBOW_L, ELBOW_FOLLOW, LEFT_OFF, shaftQuat, REST_P, MOVES
 //    fuerte, se corre más, el derecho mantenido es un rayo que pulveriza y cada
 //    baja cura. (furia11: la H primero concentra el poder ~1,5 s —el báculo
 //    parado delante, camina despacio y no lo tocan— y con el golpe del regatón
-//    se desata; weapons/desgarradorFuria.js. globalThis.__mduOldFuria11: de una)
+//    se desata; weapons/desgarradorFuria.js)
 //  · Reservado (el potenciador Cazador del Caos lo prende con exec()): la
 //    ejecutora, violeta y rosa: cada tajo mata de una a cualquiera que no sea
 //    jefe, las guadañas no gastan, la embestida no espera, los ejecutados
@@ -75,20 +74,11 @@ const SLEEVE_L = 0.8;
 // regatón); la izquierda, más adelante, hacia la hoja (o suelta). v3: un puño de
 // verdad (weapons/desgarradorHands.js) que gira alrededor del asta para que el
 // antebrazo vaya derecho al codo. Los antebrazos van aparte, de la muñeca al
-// codo. (globalThis.__mduDesgOldHands: la mano de wrapHand, como antes)
+// codo.
 const HAND_S = 0.86;
 function hand(M, left) {
-  if (globalThis.__mduDesgOldHands !== true) {
-    const H = gripHand(M, { r: GRIP_RAD[left ? 1 : 0] * VMS, s: HAND_S, left });
-    return { h: H.h, at: H.at, roll: true };
-  }
-  const r = (SHAFT_R + 0.0045) * VMS;
-  const h = VM.wrapHand(M, left ? { radius: r, y0: -0.036, side: -Math.PI / 2, dir: -1, arm: new THREE.Vector3(-0.3, -0.9, 0.3), scale: 0.95 } : { radius: r, y0: -0.036, side: Math.PI / 2, dir: 1, arm: new THREE.Vector3(0.2, -0.9, 0.4), scale: 0.95 });
-  for (const o of [...h.children]) if (o.material === M.sleeve || o.material === M.cuff) o.removeFromParent();
-  // dónde arranca el antebrazo (atrás de la palma, como en wrapHand)
-  const out = new THREE.Vector3(0, 0, left ? -1 : 1);
-  const at = out.multiplyScalar(r + 0.0135).setY(-0.036 + 0.004);
-  return { h, at };
+  const H = gripHand(M, { r: GRIP_RAD[left ? 1 : 0] * VMS, s: HAND_S, left });
+  return { h: H.h, at: H.at, roll: true };
 }
 function forearm(M) {
   const arm = new THREE.Group();
@@ -130,7 +120,7 @@ registerMate(ID, (up, T) => {
   // (v4) la del Eclipse: un anillo de eclipse que orbita la cabeza (dos aros
   // de oro y violeta y una lunita negra con su corona que da vueltas)
   let orb = null;
-  if (up && globalThis.__mduNoDesgOrb !== true) {
+  if (up) {
     const OM = orbMats();
     orb = new THREE.Group();
     orb.position.copy(head.position);
@@ -184,22 +174,20 @@ function setPose(m, P, spin = 0, ax = null) {
   const rel = smooth(clamp01(P[10] || 0));
   m.rel = rel;
   // (v3: las dos manos se corren juntas por el asta, a la misma distancia)
-  _w.set(0, (globalThis.__mduDesgOldGrip === true ? GRIP_L_Y - slide : GRIP_L_Y) * VMS, 0).applyQuaternion(_q).add(m.wrist.position);
+  _w.set(0, GRIP_L_Y * VMS, 0).applyQuaternion(_q).add(m.wrist.position);
   m.handL.position.copy(_w).lerp(LEFT_OFF, rel);
   m.handL.quaternion.copy(_q).multiply(_lq);
   m.handL.visible = rel < 0.98;
   m.armL.visible = m.handL.visible;
   // (v4) el codo izquierdo sigue a la mano cuando ella cruza a la derecha (la
   // quieta nueva: las dos manos a la derecha); si no, el antebrazo cruzaba la
-  // pantalla entera. (globalThis.__mduDesgOldElbow: el codo fijo, como antes)
+  // pantalla entera.
   _eL.copy(ELBOW_L);
-  if (globalThis.__mduDesgOldElbow !== true) {
-    _eL.x = Math.max(ELBOW_L.x, m.handL.position.x - ELBOW_FOLLOW[0]);
-    // (guadana5: con la guadaña acostada el codo va más abajo y atrás: el
-    // antebrazo baja casi derecho y no tapa el medio de la pantalla)
-    _eL.y += ELBOW_FOLLOW[1];
-    _eL.z += ELBOW_FOLLOW[2];
-  }
+  _eL.x = Math.max(ELBOW_L.x, m.handL.position.x - ELBOW_FOLLOW[0]);
+  // (guadana5: con la guadaña acostada el codo va más abajo y atrás: el
+  // antebrazo baja casi derecho y no tapa el medio de la pantalla)
+  _eL.y += ELBOW_FOLLOW[1];
+  _eL.z += ELBOW_FOLLOW[2];
   // (v3) cada puño gira alrededor del asta hasta que el antebrazo mira al codo
   let rollR = 0;
   let rollL = 0;
@@ -250,8 +238,7 @@ function floatScythe(m, F) {
 // Antes iba parada delante de la cara, agarrada del regatón; ahora la agarra
 // por el medio, cruzada en diagonal: la hoja arriba de su hombro derecho y el
 // regatón abajo hacia su pie izquierdo (hoja guadana/shots/_ag_vars2.png, v6).
-// (globalThis.__mduDesgOldAvatar: como antes)
-const AV_T = globalThis.__mduDesgOldAvatar === true ? { rx: 0.12, ry: Math.PI / 2 + 0.25, rz: 0.08, pk: 0.85, y: 0 } : { rx: -0.3, ry: Math.PI / 2 + 0.25, rz: 0.9, pk: 0.85, y: -0.55 };
+const AV_T = { rx: -0.3, ry: Math.PI / 2 + 0.25, rz: 0.9, pk: 0.85, y: -0.55 };
 // (furia11) cuánto levanta la guadaña el muñeco de un compañero que concentra
 // la Furia (radianes de mirada hacia arriba: net/gauchoSkin desgLift).
 // (globalThis.__desgAvLift: para afinarlo desde las pruebas)
@@ -277,7 +264,7 @@ export default class Desgarrador {
   // demás mapas, ni sus modelos ni sus materiales; si alguien la da igual —la
   // prueba de armas—, se arma al darla).
   static atLoad() {
-    return MAP_ID === 'eclipse' || globalThis.__mduNoDesgSleep === true;
+    return MAP_ID === 'eclipse';
   }
 
   constructor(w) {
@@ -287,7 +274,6 @@ export default class Desgarrador {
     // esta partida no arma nada (ni efectos, ni sonidos, ni texturas) y su
     // update vuelve enseguida. Se despierta (wake) al darla, al tenerla en las
     // manos, con la de un compañero o en Eclipse (en la carga: Arrival bake/warm).
-    // (globalThis.__mduNoDesgSleep: despierta siempre, como antes)
     this.awake = false;
     this._fx = null;
     this.mode = 'none';
@@ -377,7 +363,7 @@ export default class Desgarrador {
 
   // ¿Despierta? En Eclipse siempre; en los demás mapas, si la dieron.
   wanted() {
-    return this.awake || MAP_ID === 'eclipse' || globalThis.__mduNoDesgSleep === true;
+    return this.awake || MAP_ID === 'eclipse';
   }
 
   // ¿La tiene el jugador (en las manos o guardada)?
@@ -428,7 +414,7 @@ export default class Desgarrador {
     // y los tres grabados de la Furia, bajados ya
     this.gather = new FuriaGather();
     w.vmRoot.add(this.gather.mesh);
-    if (!OLD_FURIA11()) eclSfx(this.g).load(FURIA_SND);
+    eclSfx(this.g).load(FURIA_SND);
     const vs = w.vmScene;
     const prev = vs.onBeforeRender;
     vs.onBeforeRender = (...a) => {
@@ -559,7 +545,7 @@ export default class Desgarrador {
     if (!st || st.id !== ID) return st;
     // (furia11) concentrando camina despacio (no queda clavado)
     if (this.mode === 'conc' && !this.concLit) return { ...st, moveMult: (st.moveMult || 1) * CONC.move };
-    if (this.furiaOn && st.furia && globalThis.__mduNoFuria !== true) {
+    if (this.furiaOn && st.furia) {
       const F = st.furia;
       return { ...st, rpm: st.rpm * F.rate, moveMult: (st.moveMult || 1) * F.move, furiaOn: true };
     }
@@ -601,8 +587,8 @@ export default class Desgarrador {
       return;
     }
     // (v4) la del Eclipse: mantener el izquierdo después de un tajo carga el
-    // golpe (la ruptura grande); se suelta y baja. (globalThis.__mduNoCharge: sin cargar)
-    const CH = st.charge && globalThis.__mduNoCharge !== true ? st.charge : null;
+    // golpe (la ruptura grande); se suelta y baja.
+    const CH = st.charge ? st.charge : null;
     this.holdL = input.mouse.left ? this.holdL + this.dt : 0;
     if (this.mode === 'charge') {
       if (!input.mouse.left || this.t > 4) this.releaseCharge(st);
@@ -640,8 +626,8 @@ export default class Desgarrador {
     // ataque y luego carga". Con la del Eclipse: apretar no corta; un toque
     // (soltar antes de TAP s) es el tajo; mantener carga sin tajo antes. En
     // la cadena del combo (recién terminó un tajo) o con un tajo en cola, corta
-    // al apretar, sin esperar. globalThis.__mduDesgOldChargeInput: como antes)
-    if (CH && globalThis.__mduDesgOldChargeInput !== true) {
+    // al apretar, sin esperar)
+    if (CH) {
       const chain = g.time - this.lastEnd < 0.34;
       if (input.mouse.leftPressed && !this.queued && !chain) this.pend = 0;
       if (this.pend != null) {
@@ -726,7 +712,7 @@ export default class Desgarrador {
       this.chargeK = 0;
       this.toIdle();
       // (guadana5: soltar antes del mínimo es un tajo común, no nada)
-      if (CH && globalThis.__mduDesgOldChargeInput !== true) this.startSlash(st);
+      if (CH) this.startSlash(st);
       return;
     }
     this.chargedK = Math.max(0.5, Math.min(1, this.t / CH.full));
@@ -736,7 +722,7 @@ export default class Desgarrador {
     this.lastEnd = g.time;
     this.startSlash(st);
     // (la siega arranca desde la pose de la carga, no desde la quieta: sin salto)
-    this.relBlend = globalThis.__mduDesgOldRelease === true ? 0 : 1;
+    this.relBlend = 1;
   }
 
   // ---------------- los tajos ----------------
@@ -748,8 +734,8 @@ export default class Desgarrador {
     this.combo = chain ? (this.combo + 1) % COMBO.length : 0;
     this.move = COMBO[this.combo];
     const mv = MOVES[this.move];
-    // (el Double Tap 2.0 no toca el cuerpo a cuerpo: __mduDoubleTapViejo, +20 % como antes)
-    const rate = (g.player.perks.has('doubletap') && globalThis.__mduDoubleTapViejo === true ? 1.2 : 1) * (this.execOn ? 1.1 : 1);
+    // (el Double Tap 2.0 no toca el cuerpo a cuerpo)
+    const rate = this.execOn ? 1.1 : 1;
     this.dur = (60 / st.rpm / rate) * mv.len;
     this.mode = 'slash';
     this.t = 0;
@@ -785,7 +771,7 @@ export default class Desgarrador {
     // adelante y corta todo lo que cruza (una vez a cada uno)
     if (this.furiaOn && st.furia?.wave) this.furiaWave(o, fwd, yaw, mv, R, st, pal, true);
     // (v3) la ejecutora: cada tajo larga una onda rosa que ejecuta lo que cruza
-    else if (this.execOn && WEAPONS[ID].exec.wave && globalThis.__mduNoExecWave !== true) this.furiaWave(o, fwd, yaw, mv, R, st, pal, true, WEAPONS[ID].exec.wave);
+    else if (this.execOn && WEAPONS[ID].exec.wave) this.furiaWave(o, fwd, yaw, mv, R, st, pal, true, WEAPONS[ID].exec.wave);
     g.net?.share('desg', { k: 's', id: g.net?.id ?? 0, p: r2(o), y: +yaw.toFixed(2), m: COMBO.indexOf(this.move), R: +R.toFixed(2), L: +life.toFixed(2), w: +sweep.toFixed(2), u: up ? 1 : 0, c: pal === 'exec' ? 2 : pal === 'furia' ? 1 : 0 });
     this.emit({ type: 'cut', how: this.move, o: eye.clone(), fwd: fwd.clone(), range: S.range });
   }
@@ -811,10 +797,10 @@ export default class Desgarrador {
     const pal = PAL[this.pal()];
     // (v4) la del Eclipse (y la ejecutora): cada tajo abre un agujero negro chico
     // donde pega (en el medio de los que corta) y se traga a los que mata
-    // (regla, no de vez en cuando). globalThis.__mduNoSlashHole: como en la v3
+    // (regla, no de vez en cuando).
     let hole = null;
     const HC = st.hole || (this.execOn && WEAPONS[ID].exec.hole ? WEAPONS[ID].pap.hole : null);
-    if (HC && !mv.wide && globalThis.__mduNoSlashHole !== true) {
+    if (HC && !mv.wide) {
       let n = 0;
       const c = new THREE.Vector3();
       for (const { z } of list.slice(0, S.targets)) {
@@ -839,7 +825,7 @@ export default class Desgarrador {
     for (const { z } of list.slice(0, S.targets)) {
       const point = new THREE.Vector3(z.pos.x, aimY(z), z.pos.z);
       // (el remate los levanta y los tira para afuera: 'blast'; a los jefes, el tajo)
-      const fling = mv.wide && !big(z) && globalThis.__mduNoRemateFling !== true;
+      const fling = mv.wide && !big(z);
       const out = fling ? new THREE.Vector3(z.pos.x - P.x, 0, z.pos.z - P.z).normalize().addScaledVector(fwd, 0.6).normalize().setY(0.6) : fwd.clone();
       // (v3, la del Eclipse) los del tajo se los traga la grieta: un punto de la
       // raja entre el jugador y el muerto
@@ -849,7 +835,7 @@ export default class Desgarrador {
         const dl = Math.hypot(z.pos.x - P.x, z.pos.z - P.z) || 1;
         const rr = Math.min(dl * 0.75, this.lastRift?.R || 2.5);
         sw = new THREE.Vector3(P.x + ((z.pos.x - P.x) / dl) * rr, eye.y - 0.42, P.z + ((z.pos.z - P.z) / dl) * rr);
-      } else if (mv.wide && S.rupture && !big(z) && globalThis.__mduNoRupture !== true) {
+      } else if (mv.wide && S.rupture && !big(z)) {
         // (el remate del Eclipse: se los traga la ruptura de adelante)
         sw = new THREE.Vector3(P.x + fwd.x * S.rupture.at, P.y + 1.4, P.z + fwd.z * S.rupture.at);
       }
@@ -877,10 +863,10 @@ export default class Desgarrador {
     }
     // el remate revienta: la onda que levanta y tira a los que mata y empuja
     // a los que quedan, adelante
-    else if (mv.wide && S.rupture && globalThis.__mduNoRupture !== true) this.rupture(S.rupture, fwd, st);
+    else if (mv.wide && S.rupture) this.rupture(S.rupture, fwd, st);
     else if (mv.wide && S.wave) {
       const c = new THREE.Vector3(P.x + fwd.x * 1.6, P.y, P.z + fwd.z * 1.6);
-      this.fx.nova(c, S.wave.radius, { pal: this.pal(), dust: true, big: globalThis.__mduNoDesgFx4 === true ? 1.2 : 1.5 });
+      this.fx.nova(c, S.wave.radius, { pal: this.pal(), dust: true, big: 1.5 });
       this.novaHits(c, S.wave, 'remate');
     }
     g.stats.shots++;
@@ -911,7 +897,7 @@ export default class Desgarrador {
     if (info.type === 'slice' && info.dir) z.sliceDir = { x: info.dir.x, z: info.dir.z, t: g.time };
     // (v3) tragado por la grieta: muere 'slice' y desgarradorFx.slice lo hace
     // entrar en el punto (los demás se enteran por 'w')
-    if (info.swallow && !big(z) && !z.dead && globalThis.__mduNoSwallow !== true) {
+    if (info.swallow && !big(z) && !z.dead) {
       const dur = info.swallowDur || 0.55;
       z.swallowAt = { p: info.swallow.clone(), t: g.time, dur };
       info.type = 'slice';
@@ -955,9 +941,8 @@ export default class Desgarrador {
     if (this.kills >= need) {
       // (furia11: "Cuando la barra se llena 'furia se cargo.mp3'": el grabado
       // en vez del horneado, una vez por llenado)
-      if (OLD_FURIA11()) this.fx.play('desg-lista', { gain: 0.8 });
-      else furiaSnd(this.g, 'furia-cargada', { gain: 1, reverb: 0.2 });
-      if (!this.furiaTold && !globalThis.__mduNoFuriaHint) {
+      furiaSnd(this.g, 'furia-cargada', { gain: 1, reverb: 0.2 });
+      if (!this.furiaTold) {
         this.furiaTold = true;
         // (la acción 'furia' está en Controles solo con el mapa prendido: si no, la H)
         const k = keyLabel('furia');
@@ -1077,7 +1062,7 @@ export default class Desgarrador {
 
   // ---------------- la guadaña espectral ----------------
   usesAmmo() {
-    return !this.execOn && globalThis.__mduNoDesgAmmo !== true;
+    return !this.execOn;
   }
 
   tryThrow(st) {
@@ -1129,11 +1114,11 @@ export default class Desgarrador {
     const up = this.up;
     const pal = this.pal();
     const home = (out) => this.handWorld(out, 0.1, 0.1, -0.6);
-    if (T.trio && globalThis.__mduNoTrio !== true) {
+    if (T.trio) {
       // (v3) tres: la del medio derecho a la punta (el pozo), las otras dos abiertas
       this.fx.throwStart({ id: g.net?.id ?? 0, own: true, up, o, f, r, R: T.reach * T.well.at, A: 0, T: T.time, st, pal, cfg: { well: T.well }, home });
       // (v4) las de los costados, al llegar, orbitan el pozo mientras dura
-      const orbit = T.trio.orbit && globalThis.__mduNoTrioOrbit !== true ? { c: o.clone().addScaledVector(f, T.reach * T.well.at), time: T.well.time, w: T.trio.orbit } : null;
+      const orbit = T.trio.orbit ? { c: o.clone().addScaledVector(f, T.reach * T.well.at), time: T.well.time, w: T.trio.orbit } : null;
       this.fx.throwStart({ id: g.net?.id ?? 0, own: true, up, o, f, r, R: T.reach * 0.85, A: -T.side, T: T.time, st, pal, cfg: { pull: T.pull, burst: T.burst, orbit }, home, delay: T.trio.lag });
       this.fx.throwStart({ id: g.net?.id ?? 0, own: true, up, o, f, r, R: T.reach * 0.85, A: T.side, T: T.time, st, pal, cfg: { pull: T.pull, burst: T.burst, orbit: orbit && { ...orbit, w: -orbit.w } }, home, delay: T.trio.lag * 2 });
     } else this.fx.throwStart({ id: g.net?.id ?? 0, own: true, up, o, f, r, R: T.reach, A: T.side, T: T.time, st, pal, cfg: { pull: T.pull, burst: T.burst }, home });
@@ -1144,10 +1129,10 @@ export default class Desgarrador {
       this.w.updateHud();
     }
     this.fx.launchFx(o, f, pal, up);
-    this.fx.play(T.trio && globalThis.__mduNoTrio !== true ? 'desg-lanza-up' : 'desg-lanza', { gain: 0.8 });
+    this.fx.play(T.trio ? 'desg-lanza-up' : 'desg-lanza', { gain: 0.8 });
     g.player.addRecoil(0.02, -0.012);
     g.stats.shots++;
-    g.net?.share('desg', { k: 't', id: g.net.id, p: r2(o), f: r2(f), r: r2(r), R: T.reach, A: T.side, T: T.time, u: up ? 1 : 0, c: pal === 'exec' ? 2 : pal === 'furia' ? 1 : 0, n: T.trio && globalThis.__mduNoTrio !== true ? 3 : 1 });
+    g.net?.share('desg', { k: 't', id: g.net.id, p: r2(o), f: r2(f), r: r2(r), R: T.reach, A: T.side, T: T.time, u: up ? 1 : 0, c: pal === 'exec' ? 2 : pal === 'furia' ? 1 : 0, n: T.trio ? 3 : 1 });
     this.emit({ type: 'throw', o: o.clone(), f: f.clone() });
   }
 
@@ -1259,9 +1244,7 @@ export default class Desgarrador {
       const fy = W.floorAt(nx + f.x * R, nz + f.z * R, ny + 0.5);
       if (!Number.isFinite(fy) || ny - fy > 0.9) break;
       // (el paso de la navegación de los muertos frenaba en cada escalón de las
-      // gradas: alcanza con lo de arriba y las barandas, que son cajas;
-      // globalThis.__mduDashWalkLine: también con ese paso)
-      if (lv && globalThis.__mduDashWalkLine === true && !walkLine(W, x, z, nx, nz, y)) break;
+      // gradas: alcanza con lo de arriba y las barandas, que son cajas)
       const hy = Math.max(y, ny);
       if (!this.bodyFree(nx, nz, R, hy + 0.12, hy + 1.7)) break;
       x = nx;
@@ -1392,7 +1375,7 @@ export default class Desgarrador {
     const hole = new THREE.Vector3(c.x, P.y + 1.4, c.z);
     if (bigR) {
       // (el cielo de Eclipse responde: w.eclipse.pulse, el estallido del eclipse)
-      if (globalThis.__mduNoDesgSky !== true) g.world?.eclipse?.pulse?.(1);
+      g.world?.eclipse?.pulse?.(1);
       g.post?.flash?.(0.12);
     }
     let n = 0;
@@ -1431,7 +1414,6 @@ export default class Desgarrador {
   // segundos (y después vuelven a la suya).
   slowZone(c, r, time, s) {
     const g = this.g;
-    if (globalThis.__mduNoTimeBubble === true) return;
     for (const { z } of g.zombies.inRadius(c, r, near)) {
       if (z.dead || z.boss || big(z)) continue;
       if (z.tbOrig == null) z.tbOrig = z.speed;
@@ -1585,10 +1567,10 @@ export default class Desgarrador {
   tryFuria(st, lit = false) {
     const g = this.g;
     const F = st?.furia;
-    if (!F || this.furiaOn || this.kills < furiaKills(g, F.kills) || globalThis.__mduNoFuria === true) return false;
+    if (!F || this.furiaOn || this.kills < furiaKills(g, F.kills)) return false;
     const p = g.player;
     if (!p.alive || p.downed) return false;
-    if (!lit && !OLD_FURIA11()) return this.startConc(st);
+    if (!lit) return this.startConc(st);
     this.kills = 0;
     this.furiaT = F.time;
     this.furiaMax = F.time;
@@ -1602,13 +1584,10 @@ export default class Desgarrador {
     this.furiaChoir?.stop(0.1);
     this.furiaChoir = this.fx.loop('desg-furia-coro', null, { gain: 0.24, fadeIn: lit ? 3 : 1.2, from: 2, to: 6 });
     // (guadana5: "cuando se entra en modo furia no se ve nada": sin el
-    // destello de pantalla, la luz más chica y sin el rasgón de la pantalla.
-    // globalThis.__mduNoFuriaSoft: como antes)
-    const SOFT = globalThis.__mduNoFuriaSoft !== true;
-    if (!SOFT) g.post?.flash?.(0.1);
-    g.fx.addShake(SOFT ? 0.2 : 0.35);
+    // destello de pantalla, la luz más chica y sin el rasgón de la pantalla)
+    g.fx.addShake(0.2);
     const at = tmpV.set(p.pos.x, p.pos.y + 1, p.pos.z);
-    g.fx.flash(at, 0xb050ff, SOFT ? 5 : 12, 0.4, 10);
+    g.fx.flash(at, 0xb050ff, 5, 0.4, 10);
     // (furia11: nacían a 0,6 m de la cámara y de cerca eran bolas redondas
     // delante de la cara; ahora salen de más afuera y más chicas)
     const pr = lit ? 1.5 : 0.6;
@@ -1617,14 +1596,13 @@ export default class Desgarrador {
       g.fx.add.spawn(at.x + Math.cos(a) * pr, at.y + rnd() * 1.4, at.z + Math.sin(a) * pr, Math.cos(a) * 5, Math.random() * 2, Math.sin(a) * 5, { color: PAL.furia.dust[i % 3], size: lit ? 0.05 : 0.08, size1: 0, life: 0.7, drag: 2.5 });
     }
     // (v4) prende con un estallido alrededor (solo se ve)
-    if (globalThis.__mduNoDesgFx4 !== true) this.fx.nova(p.pos.clone(), F.eclipse ? 9 : 6, { pal: 'furia', dust: true, big: 1.3, sound: false });
+    this.fx.nova(p.pos.clone(), F.eclipse ? 9 : 6, { pal: 'furia', dust: true, big: 1.3, sound: false });
     // (v4) la del Eclipse: el Eclipse (la pantalla oscura con grietas de oro, el
     // cielo que estalla, el gong)
-    if (F.eclipse && globalThis.__mduNoEclTint !== true) {
+    if (F.eclipse) {
       this.fx.play('desg-eclipse', { gain: 0.7 });
-      if (globalThis.__mduNoDesgSky !== true) g.world?.eclipse?.pulse?.(1.2);
+      g.world?.eclipse?.pulse?.(1.2);
       this.auraT = 0.6;
-      if (!SOFT) this.rip = Math.max(this.rip, 0.8);
       this.ripA = Math.PI / 2 - 0.4;
       this.ripSeed = Math.random() * 50;
     }
@@ -1639,7 +1617,7 @@ export default class Desgarrador {
     const g = this.g;
     // ("cuando la furia se acaba 'furia se acaba.mp3'"; furiaLive: estaba
     // prendida de verdad —el reloj ya llegó a cero cuando se llama desde update—)
-    if (this.furiaLive && !quiet && !OLD_FURIA11() && g.state === 'playing') furiaSnd(g, 'furia-fin', { gain: 0.95, reverb: 0.25 });
+    if (this.furiaLive && !quiet && g.state === 'playing') furiaSnd(g, 'furia-fin', { gain: 0.95, reverb: 0.25 });
     this.furiaLive = false;
     this.furiaT = 0;
     this.furiaLoop?.stop(0.8);
@@ -1791,15 +1769,10 @@ export default class Desgarrador {
     this.mode = 'beam';
     this.w.state = 'cosmic';
     B.loop?.stop(0.05);
-    // (guadana5: el encendido y el rugido del rayo de vacío; globalThis.__mduDesgOldBeam: los de antes)
-    if (globalThis.__mduDesgOldBeam === true) {
-      this.fx.play('desg-rayo', { gain: 0.9 });
-      B.loop = this.fx.loop('desg-rayo-loop', null, { gain: 0.7, fadeIn: 0.12 });
-    } else {
-      this.fx.play('desg-rayo5', { gain: 1 });
-      B.loop = this.fx.loop('desg-rayo5-loop', null, { gain: 0.95, fadeIn: 0.1, from: 0.5, to: 2.5 });
-    }
-    g.fx.addShake(globalThis.__mduDesgOldBeam === true ? 0.15 : 0.4);
+    // (guadana5: el encendido y el rugido del rayo de vacío)
+    this.fx.play('desg-rayo5', { gain: 1 });
+    B.loop = this.fx.loop('desg-rayo5-loop', null, { gain: 0.95, fadeIn: 0.1, from: 0.5, to: 2.5 });
+    g.fx.addShake(0.4);
   }
 
   stopBeam() {
@@ -1835,9 +1808,8 @@ export default class Desgarrador {
     const reach = Math.min(R.range, wall);
     const end = B.to.copy(origin).addScaledVector(fwd, reach);
     // (v4: nace en la cabeza del arma, a la derecha a la altura del pecho; antes
-    // en la punta de la hoja, que en la pose del rayo quedaba abajo y tapaba;
-    // globalThis.__mduDesgBeamTip: desde la punta, como antes)
-    const hd = globalThis.__mduDesgBeamTip !== true && this.w.model?.cosmic?.head;
+    // en la punta de la hoja, que en la pose del rayo quedaba abajo y tapaba)
+    const hd = this.w.model?.cosmic?.head;
     const tip = this.tipWorld(B.from, hd || null);
     if (live) B.grow = Math.min(B.grow + dt * 85, 99);
     const hitWall = Number.isFinite(wall) && wall < R.range;
@@ -1846,11 +1818,10 @@ export default class Desgarrador {
     if (!live) return;
     const fwdC = fwd.clone();
     // (guadana5: el rayo nuevo pesa: tiembla más y menos motitas, que se leían
-    // como burbujas; globalThis.__mduDesgOldBeam: como antes)
-    const NEWB = globalThis.__mduDesgOldBeam !== true;
-    this.fx.motes(tip, end, len, dt, NEWB ? 0.35 : 1);
+    // como burbujas)
+    this.fx.motes(tip, end, len, dt, 0.35);
     if (hitWall && B.grow >= len) this.fx.impact(end, hitTmp.normal, dt, true);
-    g.fx.addShake(dt * (NEWB ? 0.8 : 0.3));
+    g.fx.addShake(dt * 0.8);
     B.tickT -= dt;
     if (B.tickT <= 0) {
       B.tickT = R.tick;
@@ -1946,9 +1917,8 @@ export default class Desgarrador {
     const g = this.g;
     const w = this.w;
     // (guadana5: las gotas de vacío de la hoja se veían como burbujitas
-    // -"salen unas burbujitas que están totalmente de más"-: fuera.
-    // globalThis.__mduDesgOldBubbles: vuelven)
-    const on = mine && !!m?.up && w.holder?.visible !== false && globalThis.__mduNoDesgPresence !== true && globalThis.__mduDesgOldBubbles === true;
+    // -"salen unas burbujitas que están totalmente de más"-: fuera)
+    const on = false;
     if (this.bleed) {
       const cam = w.vmCamera;
       const H = g.renderer?.domElement?.height || 720;
@@ -1977,7 +1947,7 @@ export default class Desgarrador {
     }
     if (this.orbit) {
       const L = (this.orbList ||= [{ pos: new THREE.Vector3(), on: false }, { pos: new THREE.Vector3(), on: false }, { pos: new THREE.Vector3(), on: false }, { pos: new THREE.Vector3(), on: false }]);
-      L[0].on = mine && !!m?.up && g.player.alive && globalThis.__mduNoDesgPresence !== true;
+      L[0].on = mine && !!m?.up && g.player.alive;
       L[0].pos.copy(g.player.pos);
       let s = 1;
       const list = g.net?.avatars?.list;
@@ -2074,7 +2044,7 @@ export default class Desgarrador {
       // (v4) con la guadaña en la mano la Furia se llena sola
       const X = WEAPONS[ID].exec;
       const sF = this.st?.furia;
-      if (X.fill && sF && !this.furiaOn && globalThis.__mduNoExecFill !== true) {
+      if (X.fill && sF && !this.furiaOn) {
         this.fillT += dt * X.fill;
         while (this.fillT >= 1) {
           this.fillT -= 1;
@@ -2083,7 +2053,7 @@ export default class Desgarrador {
       }
     }
     // (v4) la Furia divina del Eclipse: el aura que los mata de a poco
-    const sAura = this.furiaOn && mine && this.st?.furia?.aura && globalThis.__mduNoEclAura !== true ? this.st.furia.aura : null;
+    const sAura = this.furiaOn && mine && this.st?.furia?.aura ? this.st.furia.aura : null;
     if (sAura) {
       this.auraT -= dt;
       if (this.auraT <= 0) {
@@ -2091,7 +2061,7 @@ export default class Desgarrador {
         this.auraTick(sAura);
       }
     }
-    const eWant = this.furiaOn && mine && this.st?.furia?.eclipse && globalThis.__mduNoEclTint !== true ? 1 : 0;
+    const eWant = this.furiaOn && mine && this.st?.furia?.eclipse ? 1 : 0;
     this.eclK += (eWant - this.eclK) * Math.min(1, dt * (eWant ? 2 : 3));
     if (this.eclK < 1e-3) this.eclK = 0;
     this.t += dt * (this.stopT > 0 ? 0.08 : 1);
@@ -2174,9 +2144,9 @@ export default class Desgarrador {
     if (ck > 0) this.concBeatPh = (this.concBeatPh || 0) + dt * (4 + 16 * ck);
     if (m) {
       if (pal !== 'base') tintMats(m.M, pal, 1, beat, breath);
-      else if (ck > 0) tintMats(m.M, 'furia', smooth(ck) * 0.92, 0.5 + 0.5 * Math.sin(this.concBeatPh), breath, m.up && globalThis.__mduNoDivineGlow !== true ? 'divine' : null);
+      else if (ck > 0) tintMats(m.M, 'furia', smooth(ck) * 0.92, 0.5 + 0.5 * Math.sin(this.concBeatPh), breath, m.up ? 'divine' : null);
       else if (this.glowK > 0) tintMats(m.M, 'flare', this.glowK, beat, breath);
-      else tintMats(m.M, m.up && globalThis.__mduNoDivineGlow !== true ? 'divine' : 'base', 1, beat, breath);
+      else tintMats(m.M, m.up ? 'divine' : 'base', 1, beat, breath);
       if (m.bolts) m.bolts.visible = (pal !== 'base' || ck > 0.5) && mine;
     }
     driftCosmos(dt, pal === 'base' ? 1 + 2 * ck : 3);
@@ -2184,26 +2154,18 @@ export default class Desgarrador {
     // la Furia en pantalla (fx/PostFX lee tint)
     // (v4: en el Eclipse, la pantalla oscura y con grietas de oro: el violeta, apenas)
     // (guadana5: la Furia apenas tiñe; fx/PostFX la deja en los bordes)
-    const SOFT = globalThis.__mduNoFuriaSoft !== true;
-    const want = mine && this.furiaOn ? (this.st?.furia?.eclipse && globalThis.__mduNoEclTint !== true ? 0.3 : SOFT ? 0.7 : 1) : mine && this.execOn ? (SOFT ? 0.4 : 0.6) : 0;
+    const want = mine && this.furiaOn ? this.st?.furia?.eclipse ? 0.3 : 0.7 : mine && this.execOn ? 0.4 : 0;
     // (v4) el Cazador del Caos en la mano: el violeta, apenas
-    const wantC0 = this.cazador.on && globalThis.__mduCazV3 !== true ? Math.max(want, 0.28) : want;
+    const wantC0 = this.cazador.on ? Math.max(want, 0.28) : want;
     // (furia11) concentrando: el violeta de los bordes va entrando
     const wantC = Math.max(wantC0, 0.55 * smooth(ck));
     this.tint = (this.tint || 0) + (wantC - (this.tint || 0)) * Math.min(1, dt * 5);
     if (this.tint < 1e-3) this.tint = 0;
     this.tintBeat = beat;
-    // el aura de la Furia: polvo violeta que sube de la hoja (en el mundo)
-    // (guadana5: eran puntitos redondos que subían como burbujas -"salen unas
-    // burbujitas que están totalmente de más"-: fuera. globalThis.__mduDesgOldBubbles: vuelven)
-    if ((this.furiaOn || this.execOn) && mine && globalThis.__mduDesgOldBubbles === true && Math.random() < dt * 30) {
-      const at = this.handWorld(tmpV2, 0.15 + rnd() * 0.3, 0.1 + Math.random() * 0.4, -0.7);
-      g.fx.add.spawn(at.x, at.y, at.z, rnd() * 0.4, 0.4 + Math.random() * 0.6, rnd() * 0.4, { color: PAL[pal].dust[(Math.random() * 3) | 0], size: 0.05, size1: 0, life: 0.6, drag: 1 });
-    }
     // (v3) la burbuja del tiempo, la lluvia de la Furia del Eclipse, la luz de
     // la del Eclipse, el rasgón y los tragados que hay que avisar
     if (this.slowed.size) this.stepSlowed();
-    if (this.furiaOn && mine && st?.furia?.rain && globalThis.__mduNoRain !== true) {
+    if (this.furiaOn && mine && st?.furia?.rain) {
       this.rainT -= dt;
       if (this.rainT <= 0) {
         this.rainT = st.furia.rain.every;
@@ -2214,7 +2176,7 @@ export default class Desgarrador {
     if (L) {
       // (furia11) concentrando, la luz de la guadaña crece (la común, que no
       // tiene luz propia, la prende para esto)
-      const lit = mine && (m?.up || ck > 0) && w.holder?.visible !== false && globalThis.__mduNoDesgLight !== true;
+      const lit = mine && (m?.up || ck > 0) && w.holder?.visible !== false;
       if (lit) {
         // (su raíz en la escena y la luz adoptada por el mundo: fx.attach)
         this.fx.attach();
@@ -2348,7 +2310,7 @@ export default class Desgarrador {
           // (furia12: acostada como en la quieta; la guadaña flota arriba de
           // las manos y cae: floatScythe, después de la pose)
           concPose(this.t, this.concFrom, g.time, P);
-          float = CONC_FLOAT();
+          float = true;
           lower = 0;
           snap = 1;
           break;
@@ -2568,7 +2530,7 @@ export default class Desgarrador {
           const R = Math.min(30, +m.R || 18);
           const A = Math.min(10, +m.A || 5);
           this.fx.throwStart({ ...base, R: R * PT.well.at, A: 0, cfg: { well: PT.well } });
-          const orbit = PT.trio.orbit && globalThis.__mduNoTrioOrbit !== true ? { c: o.clone().addScaledVector(base.f, R * PT.well.at), time: PT.well.time, w: PT.trio.orbit } : null;
+          const orbit = PT.trio.orbit ? { c: o.clone().addScaledVector(base.f, R * PT.well.at), time: PT.well.time, w: PT.trio.orbit } : null;
           this.fx.throwStart({ ...base, R: R * 0.85, A: -A, cfg: { pull: PT.pull, burst: PT.burst, orbit }, delay: PT.trio.lag });
           this.fx.throwStart({ ...base, R: R * 0.85, A, cfg: { pull: PT.pull, burst: PT.burst, orbit: orbit && { ...orbit, w: -orbit.w } }, delay: PT.trio.lag * 2 });
           this.fx.play('desg-lanza-up', { pos: o, gain: 0.9 });
@@ -2646,7 +2608,7 @@ export default class Desgarrador {
           const at = tmpV.set(r.pos.x, (r.pos.y || 0) + 1.4, r.pos.z);
           if (conc) this.avatarIgnite(m.id, r);
           else this.fx.play('desg-furia', { pos: at, gain: 0.9 });
-        } else if (!m.on && r?.pos && !OLD_FURIA11()) furiaSnd(g, 'furia-fin', { pos: new THREE.Vector3(r.pos.x, (r.pos.y || 0) + 1.4, r.pos.z), gain: 0.8, reverb: 0.3 });
+        } else if (!m.on && r?.pos) furiaSnd(g, 'furia-fin', { pos: new THREE.Vector3(r.pos.x, (r.pos.y || 0) + 1.4, r.pos.z), gain: 0.8, reverb: 0.3 });
         break;
       }
       // (furia11) un compañero concentra la Furia (on: 0, se cortó)
@@ -2717,13 +2679,8 @@ export default class Desgarrador {
       const rig = this.fx.rig();
       if (!rig) return;
       r = { id: m.id, rig, a: new THREE.Vector3().fromArray(m.a), b: new THREE.Vector3().fromArray(m.b), ta: new THREE.Vector3(), tb: new THREE.Vector3(), k: 0, t: 0, grow: 0, loop: null, wall: false };
-      if (globalThis.__mduDesgOldBeam === true) {
-        r.loop = this.fx.loop('desg-rayo-loop', r.a, { gain: 1.1, fadeIn: 0.12 });
-        this.fx.play('desg-rayo', { pos: r.a, gain: 0.9 });
-      } else {
-        r.loop = this.fx.loop('desg-rayo5-loop', r.a, { gain: 1.2, fadeIn: 0.1, from: 0.5, to: 2.5 });
-        this.fx.play('desg-rayo5', { pos: r.a, gain: 1 });
-      }
+      r.loop = this.fx.loop('desg-rayo5-loop', r.a, { gain: 1.2, fadeIn: 0.1, from: 0.5, to: 2.5 });
+      this.fx.play('desg-rayo5', { pos: r.a, gain: 1 });
       this.remoteBeams.push(r);
     }
     r.ta.fromArray(m.a);
@@ -2783,7 +2740,7 @@ export default class Desgarrador {
       if (r) r.desgLift = 0;
       return;
     }
-    if (!D || OLD_FURIA11()) return;
+    if (!D) return;
     const pos = r?.pos ? new THREE.Vector3(r.pos.x, (r.pos.y || 0) + 1.4, r.pos.z) : null;
     const fy = r?.pos ? this.floorY(tmpV.set(r.pos.x, r.pos.y || 0, r.pos.z)) : 0;
     D.conc = {
@@ -2801,7 +2758,7 @@ export default class Desgarrador {
     const fy = this.floorY(p);
     const a = this.avatarOf(id);
     concBurst(g, p, fy, +(a?.wkey?.split('|')[1] || 0) >= 1);
-    if (globalThis.__mduNoDesgFx4 !== true) this.fx.nova(p.clone(), 6, { pal: 'furia', dust: true, big: 1.1, sound: false });
+    this.fx.nova(p.clone(), 6, { pal: 'furia', dust: true, big: 1.1, sound: false });
     // (la baja de golpe: poseAvatar suelta desgLift)
   }
 
@@ -2919,8 +2876,8 @@ export default class Desgarrador {
     // larga), el asta pasa por las dos manos de verdad: de la derecha (atrás,
     // en el puño) a la izquierda (adelante), la hoja para arriba. El tajo gira
     // la hoja alrededor del asta (las manos no se sueltan) y el giro de la R
-    // también. (globalThis.__mduDesgOldAvatar: como antes, en la mano derecha)
-    if (!this.avatarTwoHands(a, D) || globalThis.__mduDesgOldAvatar === true) {
+    // también.
+    if (!this.avatarTwoHands(a, D)) {
       D.model.quaternion.identity();
       D.model.position.set(0, AT.y, 0);
       D.pivot.position.set(0, 0, 0);
@@ -2981,7 +2938,7 @@ export default class Desgarrador {
   avatarTwoHands(a, D) {
     const G = a.gs;
     const B = G?.bones;
-    if (!B?.RightHand || !B?.LeftHand || !G.two || globalThis.__mduDesgOldAvatar === true) return false;
+    if (!B?.RightHand || !B?.LeftHand || !G.two) return false;
     const holder = D.holder;
     // (la palma: un poco más allá de la muñeca, hacia los dedos)
     const palm = (hand, fore, out) => {
@@ -3083,6 +3040,6 @@ export default class Desgarrador {
     if (!this.w.slots?.some((s) => s.id === ID)) this.kills = 0;
     if (this.mode !== 'none') this.mode = 'idle';
     // (partida nueva o escena: sin la guadaña y fuera de Eclipse, a dormir)
-    if (MAP_ID !== 'eclipse' && !this.held() && globalThis.__mduNoDesgSleep !== true) this.awake = false;
+    if (MAP_ID !== 'eclipse' && !this.held()) this.awake = false;
   }
 }

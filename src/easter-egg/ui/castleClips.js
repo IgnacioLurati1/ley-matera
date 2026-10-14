@@ -11,8 +11,8 @@ import { assetUrl } from '../../lib/assets';
 // tiene (el clip de antes o la de piezas); release(r) vuelve a la de piezas,
 // también mezclando.
 // Después de poner los huesos se rearman las piezas, la mano y el mate de la
-// luz (parado, como en la mano). Sin los clips (o con globalThis.__mduBlend =
-// false) no hace nada: queda la pose de piezas de siempre.
+// luz (parado, como en la mano). Sin los clips no hace nada: queda la pose de
+// piezas de siempre.
 
 const URL = '/assets/sotano/modelos/gaucho/cine-castillo.json';
 // (y los de la Gran Guerra: el tirón de la cadena de luz, torre2_clips.py)
@@ -77,7 +77,7 @@ export default class CastleClips {
     this.C = null;
     this.now = 0;
     this.recs = new Set();
-    if (globalThis.__mduBlend !== false) loadCastleClips().then((C) => (this.C = C));
+    loadCastleClips().then((C) => (this.C = C));
   }
 
   has(name) {
@@ -120,10 +120,8 @@ export default class CastleClips {
     r.ccSeat = S.avs;
   }
 
-  // Sin clip (pose de piezas): el mate en la mano en cada update. (Con
-  // __mduBlend = false, nada: como antes.)
+  // Sin clip (pose de piezas): el mate en la mano en cada update.
   seat(r, avs) {
-    if (globalThis.__mduBlend === false) return;
     r.ccSeat = avs;
     this.recs.add(r);
   }

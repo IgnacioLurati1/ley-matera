@@ -9,7 +9,7 @@ import { chiquiGiggle } from '../../world/Chiqui';
 import { isHost, myId, announce, players } from './common';
 import { ARM_COCK, ARM_FIRE, bannerTex, lavaTex, streamTex, buildCatapult, buildLadder, buildRam, buildCauldron, buildChest, boulderGeo, buildGateIce, buildStandards } from './asedioModels';
 import { sleepHidden } from '../../world/castleLean';
-import { SpriteBatch, spriteBatchOn } from '../../fx/spriteBatch';
+import { SpriteBatch } from '../../fx/spriteBatch';
 
 // El asedio del castillo (cada 10 rondas, y una vez durante el easter egg):
 // el Chiquitijuein sitia el castillo del Mateendrache.
@@ -500,9 +500,7 @@ export default class Asedio {
       }
     }
     // (las 16 llamas y los 35 humos en un dibujo cada uno: fx/spriteBatch.js)
-    if (spriteBatchOn()) {
-      this.batches = [new SpriteBatch(S.flames), new SpriteBatch(this.smoke.map((p) => p.s), { sort: true })];
-    }
+    this.batches = [new SpriteBatch(S.flames), new SpriteBatch(this.smoke.map((p) => p.s), { sort: true })];
     this.skyK = 0;
   }
 

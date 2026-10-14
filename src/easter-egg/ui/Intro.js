@@ -112,9 +112,9 @@ export default class Intro {
     // terminó de cargar tarde, arranca adelantada lo que se atrasó (pasado el
     // final, entra directo). Antes contaba desde el primer cuadro y ese primer
     // cuadro sumaba la edad de la página: con 2 jugadores, 10-22 s de desfase.
-    // Solo, como antes. (globalThis.__mduNoIntroSync: como antes también en línea)
+    // Solo, como antes.
     this.wallAt = 0;
-    if (g.net && globalThis.__mduNoIntroSync !== true) {
+    if (g.net) {
       const now = performance.now();
       this.wallAt = now;
       if (at != null) this.t = Math.max(0, (now - at) / 1000);
@@ -380,7 +380,7 @@ export default class Intro {
       // sola, con la bajada a los ojos (antes se cortaba por negro y el
       // atrasado se perdía las últimas tomas); muy atrasada, se corta
       const left = this.total - this.t;
-      if (m.n && left < 3 && globalThis.__mduNoIntroSync !== true) {
+      if (m.n && left < 3) {
         clearTimeout(this.endBy);
         this.endBy = setTimeout(() => this.end(false), (left + 1.5) * 1000);
         return;

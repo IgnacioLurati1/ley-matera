@@ -1040,8 +1040,8 @@ function paintPerkLabel(perk) {
   ctx.font = 'bold 28px "Special Elite", monospace';
   ctx.fillStyle = L.text;
   // (el lema puede venir en renglones, con \n: el del Deadshot no entraba en
-  // uno; centrados en el mismo alto. __mduNoLemaNuevo: el lema de antes)
-  const lines = (globalThis.__mduNoLemaNuevo && L.taglineOld ? L.taglineOld : L.tagline).split('\n');
+  // uno; centrados en el mismo alto)
+  const lines = L.tagline.split('\n');
   lines.forEach((ln, i) => ctx.fillText(ln, W / 2, H * 0.26 + (i - (lines.length - 1) / 2) * 34));
   // nombre del perk en la banda
   ctx.fillStyle = L.bandText;

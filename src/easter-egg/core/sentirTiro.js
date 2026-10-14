@@ -20,10 +20,6 @@ import Carne from '../fx/carne';
 //  6. El peso del tiro: una sacudida chica de cámara (solo en la imagen: la
 //     puntería no se mueve), un fogonazo más fuerte con la misma luz de
 //     siempre (Effects.flash) y la cola del eco distinta adentro y afuera.
-//
-// Interruptores: globalThis.__mduFeedbackViejo = true deja los cuatro como
-// antes; uno por punto: __mduSinBajaConfirmada, __mduSinCabezaRevienta,
-// __mduSinCaidaFuerza, __mduSinPesoDisparo.
 
 // ---- 3. La cabeza revienta -------------------------------------------------
 // Con el daño de un tiro entero a la cabeza, tal como está el mate (mejorado o
@@ -95,12 +91,6 @@ const SND_DIR = '/assets/sotano/sfx/sentir/';
 // apagado; "crujido" un cráneo que se rompe, mojado
 const SONIDOS = ['baja', 'crujido-1', 'crujido-2', 'crujido-3'];
 
-const viejo = () => globalThis.__mduFeedbackViejo === true;
-const bajaOn = () => !viejo() && globalThis.__mduSinBajaConfirmada !== true;
-const cabezaOn = () => !viejo() && globalThis.__mduSinCabezaRevienta !== true;
-const caidaOn = () => !viejo() && globalThis.__mduSinCaidaFuerza !== true;
-const pesoOn = () => !viejo() && globalThis.__mduSinPesoDisparo !== true;
-
 const ease = (k) => 1 - (1 - k) * (1 - k);
 const tmpV = new THREE.Vector3();
 const tmpD = new THREE.Vector3();
@@ -158,7 +148,7 @@ export default class SentirTiro {
     if (fx && !fx.mduGib) {
       const gib = fx.gib.bind(fx);
       fx.mduGib = gib;
-      fx.gib = (p, vel) => (cabezaOn() && g.sentir?.carne?.lanzar(p, vel, 0.065)) || gib(p, vel);
+      fx.gib = (p, vel) => g.sentir?.carne?.lanzar(p, vel, 0.065) || gib(p, vel);
     }
     const hud = g.hud;
     if (hud && !hud.mduBaja) {
@@ -220,7 +210,6 @@ export default class SentirTiro {
   disparo(st) {
     this.tiro = st;
     this.olvidar();
-    if (!pesoOn()) return;
     const g = this.g;
     const S = g.settings || {};
     const k = (S.shake ?? 1) * (S.calmFx ? 0.4 : 1) * (g.weapons?.ads ? 0.7 : 1);
@@ -240,7 +229,7 @@ export default class SentirTiro {
 
   // Weapons.fire: el fogonazo de este mate (null: el de siempre)
   fogonazo(st, soft) {
-    if (!pesoOn() || soft) return null;
+    if (soft) return null;
     const F = FOGONAZO[st.sound] || FOGONAZO_OTRO;
     return { i: F[0], d: F[1], t: F[2] };
   }
@@ -261,7 +250,6 @@ export default class SentirTiro {
   // ---------------- 2. la baja confirmada ----------------
   // (Hud.hitmarker, envuelto) true: no mostrar la marca común
   tapaMarca(head) {
-    if (!bajaOn()) return false;
     this.marcaYa = true;
     this.marcaHead ||= !!head;
     this.olvidar();
@@ -271,7 +259,7 @@ export default class SentirTiro {
 
   // (GameAudio.hitmarker, envuelto) true: no el tic, ya suena la baja
   tapaTic() {
-    return bajaOn() && (this.bajaYa || this.bajaPend);
+    return this.bajaYa || this.bajaPend;
   }
 
   // Una baja propia: se confirma si el golpe mostró su marca (los tiros, el
@@ -285,7 +273,7 @@ export default class SentirTiro {
 
   // el anfitrión avisa que la baja fue del invitado (Session 'bj')
   bajaRemota(m) {
-    if (bajaOn()) this.mostrarBaja(!!m?.c);
+    this.mostrarBaja(!!m?.c);
   }
 
   mostrarBaja(head) {
@@ -320,7 +308,6 @@ export default class SentirTiro {
   // Zombies.kill, el tiro a la cabeza que mata: true si reventó (ya puso la
   // sangre, los pedazos y el ruido; el que llama no pone los suyos)
   reventar(z, info, hp) {
-    if (!cabezaOn()) return false;
     const g = this.g;
     if (z.boss || z.dog || z.jinete || info.hell || (info.type || 'bullet') !== 'bullet' || z.slowT > 0 || g.zombies?.dry?.(z)) return false;
     const fuerte = info.sf != null ? !!(info.sf & 1) : this.propio(info) && nominal(this.tiro) >= UMBRAL_REVIENTA;
@@ -372,13 +359,12 @@ export default class SentirTiro {
   // red (Session): 1 cae de espaldas, 2 le reventó la cabeza.
   alMorir(z, info, type) {
     const g = this.g;
-    if (bajaOn() && !NO_BAJA.has(type)) {
+    if (!NO_BAJA.has(type)) {
       if (this.propio(info)) this.bajaPropia(info.zone === 'head');
       else if (g.net?.host) g.net.net?.to?.(info.by, { t: 'bj', c: info.zone === 'head' ? 1 : 0 });
     }
     z.mduCaida = null;
-    if (!caidaOn() && !cabezaOn()) return;
-    if (caidaOn() && z.state === 'dead' && !z.boss && !z.dog && !z.crawler && !z.jinete && info.dir) this.planCaida(z, info, type);
+    if (z.state === 'dead' && !z.boss && !z.dog && !z.crawler && !z.jinete && info.dir) this.planCaida(z, info, type);
     z.mduCaida = (z.deathBack ? 1 : 0) | (z.mduRevId === z.id ? 2 : 0);
   }
 
@@ -442,9 +428,9 @@ export default class SentirTiro {
   // Zombies.applyRemote: cae para el lado que dice el anfitrión y, si le
   // reventó la cabeza, se ve acá también
   remota(z, f, was, state) {
-    if (!f.dead || f.caida == null || (!caidaOn() && !cabezaOn())) return;
+    if (!f.dead || f.caida == null) return;
     z.deathBack = !!(f.caida & 1);
-    if (cabezaOn() && f.caida & 2 && state === 'dead' && was && was !== 'dead' && z.mduRevId !== z.id) {
+    if (f.caida & 2 && state === 'dead' && was && was !== 'dead' && z.mduRevId !== z.id) {
       z.mduRevId = z.id;
       this.estallido(z, new THREE.Vector3().setFromMatrixPosition(z.mats[2]), null);
     }
@@ -520,7 +506,7 @@ export default class SentirTiro {
   antesDeDibujar(cam) {
     const sp = this.sp;
     const g = this.g;
-    if (!(sp.p || sp.r || sp.b) || !pesoOn() || g.state !== 'playing' || g.ee?.scene || g.intro?.active) return false;
+    if (!(sp.p || sp.r || sp.b) || g.state !== 'playing' || g.ee?.scene || g.intro?.active) return false;
     camP.copy(cam.position);
     camQ.copy(cam.quaternion);
     cam.rotateX(sp.p);
@@ -539,7 +525,7 @@ export default class SentirTiro {
   // ---------------- la cola del eco (core/weaponSfx shot) ----------------
   cola(node, pos) {
     const a = this.g.audio;
-    if (!pesoOn() || !a?.ctx || !node || !(a.ecoLibre?.() ?? true)) return;
+    if (!a?.ctx || !node || !(a.ecoLibre?.() ?? true)) return;
     const c = a.ctx;
     const E = (a.mduEco ||= this.armarEco(a));
     const k = a.roomNow || 0;

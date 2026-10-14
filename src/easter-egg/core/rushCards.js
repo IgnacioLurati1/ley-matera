@@ -42,7 +42,6 @@ export const good = (t) => t === 'oro' || t === 'prisma';
 // habilidad con su tecla (HABILIDADES; una por jugador) y habup, su recarga
 // más corta; esp, el especialista de un mate que llevás (core/armas.js; en el
 // rush arrancan todos apagados). Lo que hacen en la pelea: core/rushBuild.js.
-// globalThis.__mduRushViejo = true: el pozo de antes (sin estas cuatro).
 export const POZO = {
   gris: {
     // (el usuario, 2026-10-13: Electric Cherry de prismático a gris; Double
@@ -94,8 +93,6 @@ export const EMP_MAX = 3;
 // siempre lo de mejor tier: 3-4 perks de 10 en vez de 6-7, 3-4 mejoras, casi
 // siempre una habilidad y unos 700 armados distintos cada 5000 partidas)
 export const PESO_CLASE = { perk: 1.7, pap: 1.6, pap2: 1.6, gun: 0.8, elem: 0.9, emp: 0.8, mej: 2.6, hab: 1.8, habup: 1.1, esp: 1.6, vida: 0.3 };
-const viejo = () => globalThis.__mduRushViejo === true;
-const NUEVAS = new Set(['mej', 'hab', 'habup', 'esp']);
 
 // ---- las mejoras: [gris, oro] de cada una, y se suman ----
 const pc = (v) => `${Math.round(v * 100)} %`;
@@ -140,8 +137,7 @@ export const RAROS = {
   resurgir: { name: 'Resurgir del mate', fx: 'Levanta a todos, una vez', online: true, tecla: true },
   // (el usuario, 2026-10-13: una carta con el escudo mejorado, "que tome el
   // del mapa al que vas y se resetee full vida por cada pelea, incluso si se
-  // rompió". De oro, una vez: core/bossRush.js loadout.
-  // globalThis.__mduRushSinEscudo = true: no sale ni da el escudo)
+  // rompió". De oro, una vez: core/bossRush.js loadout)
   escudo: { name: 'Escudo mejorado', fx: 'El de cada mapa, nuevo en cada pelea', tier: 'oro' },
 };
 
@@ -293,7 +289,7 @@ function options(tier, kind, D, seen, again = false) {
       if (MEJORAS[id] && tier !== 'prisma' && !(TOPE[id] != null && sumaMej(D, id) + MEJORAS[id][tier] > TOPE[id] + 1e-6)) out.push({ kind, id, up: mej.filter((x) => x.id === id).length });
       // (las de en línea, con compañeros: D.equipo lo pone bossRush; sin él, nunca)
       // (una vez cada una; las prismáticas, y la del escudo, de oro: RAROS.escudo)
-      else if (RAROS[id] && tier === (RAROS[id].tier || 'prisma') && !mej.some((x) => x.id === id) && !(id === 'escudo' && globalThis.__mduRushSinEscudo === true) && !(RAROS[id].online && !(D.equipo?.() > 0)) && !(RAROS[id].tecla && globalThis.__mduRushSinPoderes === true)) out.push({ kind, id });
+      else if (RAROS[id] && tier === (RAROS[id].tier || 'prisma') && !mej.some((x) => x.id === id) && !(RAROS[id].online && !(D.equipo?.() > 0))) out.push({ kind, id });
     }
   }
   if (kind === 'hab' && !D.hab) for (const id of P.hab || []) if (HABILIDADES[id]) out.push({ kind, id });
@@ -313,7 +309,7 @@ const KINDS0 = {
   oro: ['perk', 'gun', 'pap', 'emp', 'mej', 'hab', 'habup', 'esp', 'vida'],
   prisma: ['perk', 'gun', 'pap2', 'emp', 'mej', 'hab', 'vida'],
 };
-const KINDS = new Proxy(KINDS0, { get: (o, t) => (viejo() ? o[t]?.filter((k) => !NUEVAS.has(k)) : o[t]) });
+const KINDS = new Proxy(KINDS0, { get: (o, t) => o[t] });
 
 function pick(list, rnd) {
   return list[Math.floor(rnd() * list.length)];
@@ -371,25 +367,18 @@ export function dealSet(tiers, D, seen, rnd = Math.random) {
 // jugador a cuál reemplaza"): la carta lleva `elegir` y ui/RushCards.js
 // muestra sus mates (dejables) para que elija; el Pack-a-Pava y el
 // especialista del que deja se van con él (takeCard).
-// globalThis.__mduReemplazoAuto = true: como antes (va en lugar del peor que
-// llevás —el de arranque o el menos mejorado— y la carta lo dice).
-// globalThis.__mduRushSinArma = true: como antes (los mates en los sets).
-export const armaAparte = () => globalThis.__mduRushSinArma !== true && !viejo();
 // La calidad de cada uno, al azar (el usuario, 2026-10-13: "que la calidad
 // de las armas sea aleatoria, no siempre salga gris, dorada y prismática,
 // todos elegirían la última siempre"): como sale cualquier carta del rush (la
 // mitad grises; de las buenas, PRISMA_DE_BUENAS prismáticas), cada uno por su
 // lado: pueden salir dos grises o tres de oro. El Mayhem trae las suyas
 // (D.armaTiers, core/bossRush.js fresh: sin grises).
-// globalThis.__mduArmaTierFijo = true: como antes (gris, oro, oro o prismático).
 export const ARMA_TIERS = { gris: 0.5, oro: 0.5 * (1 - PRISMA_DE_BUENAS), prisma: 0.5 * PRISMA_DE_BUENAS };
 function armaTiers(D, rnd) {
-  if (globalThis.__mduArmaTierFijo === true) return ['gris', 'oro', rnd() < PRISMA_DE_BUENAS ? 'prisma' : 'oro'];
   const W = D.armaTiers || ARMA_TIERS;
   const ts = TIERS.filter((t) => W[t] > 0);
   return [0, 1, 2].map(() => pickW(ts, (t) => W[t], rnd));
 }
-const reemplazoAuto = () => globalThis.__mduReemplazoAuto === true;
 function armaPeor(D) {
   if (D.guns.length < slotsOf(D)) return null;
   // (lo mejorado con el Pack-a-Pava pesa más que el tier; el de arranque, lo menos)
@@ -400,8 +389,7 @@ export function dealArmas(D, seen, rnd = Math.random) {
   const P = D.pozo || POZO;
   const out = [];
   const lleno = D.guns.length >= slotsOf(D);
-  const peor = reemplazoAuto() ? armaPeor(D) : null;
-  const elegir = lleno && !peor ? true : undefined;
+  const elegir = lleno ? true : undefined;
   const free = (t) => (P[t]?.gun || []).filter((id) => WEAPONS[id] && !D.guns.some((x) => x.id === id) && !out.some((c) => c.id === id));
   for (const t of armaTiers(D, rnd)) {
     // (de su tier, lo que no salió todavía; si no, lo que salió; si no, de otro tier)
@@ -409,7 +397,7 @@ export function dealArmas(D, seen, rnd = Math.random) {
       const l = free(tt);
       if (!l.length) continue;
       const fresh = l.filter((id) => !seen.has(keyOf({ kind: 'gun', id })));
-      out.push({ kind: 'gun', id: pick(fresh.length ? fresh : l, rnd), up: 0, tier: tt, replace: peor?.id, replaceUp: peor?.up, elegir });
+      out.push({ kind: 'gun', id: pick(fresh.length ? fresh : l, rnd), up: 0, tier: tt, replace: undefined, replaceUp: undefined, elegir });
       break;
     }
   }

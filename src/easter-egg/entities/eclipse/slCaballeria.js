@@ -15,7 +15,7 @@ import { toWorld, toLocal, hLoc, yawOf, dirWorld, avoidProps, edgeU } from '../.
 // un granadero de verdad (slAliados) en la pose de carga, copiado una vez en la
 // arena y montado sobre el lomo del cuadro que toca. Los programas se compilan
 // en la carga con datos de relleno (las mismas variantes: instancias, mapa,
-// caras planas). Sin sombras (el polvo las tapa). __mduNoSlCaballeria: sin esto.
+// caras planas). Sin sombras (el polvo las tapa).
 
 const FRAMES = 16;
 const VAT_W = 2048;
@@ -55,13 +55,11 @@ const SPREAD = [0.42, 0.42, 0.42, 0.45, 0.7, 0.95, 1, 1, 1, 1, 0.75, 0.6, 0.55, 
 // y se quedan trabados corriendo contra la pared": el ala del sur salía de
 // adentro de la tapia, la cruzaba y corría contra la galería del claustro. Ahora
 // sale por el portón de la tapia (sanlorenzoCampo), por el medio entre la tapia
-// y el claustro y un poco más junta. __mduOldSlTapia: el camino de antes)
-if (globalThis.__mduOldSlTapia !== true) {
-  PATH[0][1] = 40.6;
-  PATH[1][1] = 40.6;
-  PATH[2][1] = 39.6;
-  SPREAD[0] = SPREAD[1] = SPREAD[2] = 0.38;
-}
+// y el claustro y un poco más junta)
+PATH[0][1] = 40.6;
+PATH[1][1] = 40.6;
+PATH[2][1] = 39.6;
+SPREAD[0] = SPREAD[1] = SPREAD[2] = 0.38;
 // dónde está la barranca en el camino (el punto 9)
 const EDGE_I = 9;
 
@@ -161,7 +159,7 @@ export default class Caballeria {
     this.sl = sl;
     this.g = sl.g;
     const g = this.g;
-    this.off = globalThis.__mduNoSlCaballeria === true;
+    this.off = false;
     const q = g.settings?.quality;
     this.N = q === 'perf' || q === 'low' ? 20 : q === 'medium' ? 32 : 48;
     this.root = new THREE.Group();
@@ -500,13 +498,11 @@ export default class Caballeria {
       toLocal(R.pos.x, R.pos.z, L);
       // (sesión 1f, el usuario: "los granaderos casi se salen del mapa": en la
       // vuelta por la barranca la línea abierta (±9 m) pasaba el borde. Nadie
-      // más allá de 3 m antes de la barranca. __mduNoCavEdge: como antes)
-      if (globalThis.__mduNoCavEdge !== true) {
-        const lim = edgeU(L.v) - 3;
-        if (L.u > lim) {
-          L.u = lim;
-          toWorld(L.u, L.v, 0, R.pos);
-        }
+      // más allá de 3 m antes de la barranca)
+      const lim = edgeU(L.v) - 3;
+      if (L.u > lim) {
+        L.u = lim;
+        toWorld(L.u, L.v, 0, R.pos);
       }
       // (los troncos, las carretas, los cañones: los rodean)
       if (avoidProps(L, 1.5)) toWorld(L.u, L.v, 0, R.pos);

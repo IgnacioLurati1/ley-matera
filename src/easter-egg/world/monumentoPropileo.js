@@ -84,16 +84,13 @@ export function buildPropileo(w, gb, extra) {
   const yE = SHAFT_TOP;
   // (sin la cara de abajo sobre la nave: tapaba los casetones del cielorraso y
   // titilaba con el fondo de las vigas, en el mismo plano; abajo va solo donde
-  // se ve: el vuelo de 5 cm de todo alrededor. __mduNoZfix: entera)
-  const fixE = globalThis.__mduNoZfix !== true;
-  bbox(gb, 'travertinoBig', P.x0 - 0.05, yE, P.z0 - 0.05, P.x1 + 0.05, P.top - 0.32, P.z1 + 0.05, { b: 0.04, skip: fixE ? ['top', 'bottom'] : ['top'] });
-  if (fixE) {
-    const ring = [[P.x0 - 0.05, P.z0 - 0.05, P.x1 + 0.05, P.z0], [P.x0 - 0.05, P.z1, P.x1 + 0.05, P.z1 + 0.05], [P.x0 - 0.05, P.z0, P.x0, P.z1], [P.x1, P.z0, P.x1 + 0.05, P.z1]];
-    for (const [a, b, c, d] of ring) quad(gb, 'travertinoBig', [[a, yE, b], [c, yE, b], [c, yE, d], [a, yE, d]], [0, -1, 0]);
-    // y los costados del hueco del cielorraso, arriba de las caras de los pilonos
-    quad(gb, 'travertino', [[P.x0, yE, P.pyN], [P.x1, yE, P.pyN], [P.x1, yE + 0.6, P.pyN], [P.x0, yE + 0.6, P.pyN]], [0, 0, 1]);
-    quad(gb, 'travertino', [[P.x0, yE, P.pyS], [P.x1, yE, P.pyS], [P.x1, yE + 0.6, P.pyS], [P.x0, yE + 0.6, P.pyS]], [0, 0, -1]);
-  }
+  // se ve: el vuelo de 5 cm de todo alrededor)
+  bbox(gb, 'travertinoBig', P.x0 - 0.05, yE, P.z0 - 0.05, P.x1 + 0.05, P.top - 0.32, P.z1 + 0.05, { b: 0.04, skip: ['top', 'bottom'] });
+  const ring = [[P.x0 - 0.05, P.z0 - 0.05, P.x1 + 0.05, P.z0], [P.x0 - 0.05, P.z1, P.x1 + 0.05, P.z1 + 0.05], [P.x0 - 0.05, P.z0, P.x0, P.z1], [P.x1, P.z0, P.x1 + 0.05, P.z1]];
+  for (const [a, b, c, d] of ring) quad(gb, 'travertinoBig', [[a, yE, b], [c, yE, b], [c, yE, d], [a, yE, d]], [0, -1, 0]);
+  // y los costados del hueco del cielorraso, arriba de las caras de los pilonos
+  quad(gb, 'travertino', [[P.x0, yE, P.pyN], [P.x1, yE, P.pyN], [P.x1, yE + 0.6, P.pyN], [P.x0, yE + 0.6, P.pyN]], [0, 0, 1]);
+  quad(gb, 'travertino', [[P.x0, yE, P.pyS], [P.x1, yE, P.pyS], [P.x1, yE + 0.6, P.pyS], [P.x0, yE + 0.6, P.pyS]], [0, 0, -1]);
   // la cornisa de remate alrededor
   const c = [[P.x0 - 0.05, P.z0 - 0.05], [P.x0 - 0.05, P.z1 + 0.05], [P.x1 + 0.05, P.z1 + 0.05], [P.x1 + 0.05, P.z0 - 0.05]];
   const outs = [[-1, 0], [0, 1], [1, 0], [0, -1]];
@@ -115,10 +112,9 @@ export function buildPropileo(w, gb, extra) {
       // balas (no cortaba la grilla de los muertos), y los muertos se trababan
       // queriendo pasar entre la columna y el pilono (55 cm). Ahora abajo también
       // es sólido: World.computeNavBlock no manda a nadie por al lado de una
-      // columna. globalThis.__mduNoColNav: como antes.
-      const navCol = globalThis.__mduNoColNav !== true;
+      // columna.
       w.addBox([x - COL_D / 2, y + 1.02, z - COL_W / 2, x + COL_D / 2, SHAFT_TOP, z + COL_W / 2], { kind: 'prop' });
-      w.addBox([x - COL_D / 2, y - 0.1, z - COL_W / 2, x + COL_D / 2, y + 1.02, z + COL_W / 2], { kind: 'prop', solid: navCol });
+      w.addBox([x - COL_D / 2, y - 0.1, z - COL_W / 2, x + COL_D / 2, y + 1.02, z + COL_W / 2], { kind: 'prop', solid: true });
     }
   }
   // ---- los frisos con las frases (al Patio y al Pasaje)
@@ -141,7 +137,7 @@ export function buildPropileo(w, gb, extra) {
       extra.push(place(bowl, M.lampGlass, x + dx, y + 2.18, z));
       w.addBox([x + dx - 0.16, y + 1.02, z - 0.16, x + dx + 0.16, y + 2.25, z + 0.16], { kind: 'prop' });
       // (y el pie, para la grilla de los muertos, como las columnas)
-      if (globalThis.__mduNoColNav !== true) w.addBox([x + dx - 0.16, y, z - 0.16, x + dx + 0.16, y + 1.02, z + 0.16], { kind: 'prop', shoot: false });
+      w.addBox([x + dx - 0.16, y, z - 0.16, x + dx + 0.16, y + 1.02, z + 0.16], { kind: 'prop', shoot: false });
     }
   }
   // ---- las ocho urnas de bronce verde pompeyano, en la nave (cuatro por lado)
@@ -165,10 +161,9 @@ function frieze(w, extra, text, x, ry) {
   tex.anisotropy = 8;
   // (con la luz se ilumina el friso entero, con las letras talladas más
   // oscuras: world/monumentoLuces.js statues; el lavado de la piedra ya no
-  // pasa por delante, que las tapaba. globalThis.__mduNoFrisoLuz: como antes)
-  const lit = globalThis.__mduNoFrisoLuz !== true;
-  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, ...(lit ? { emissiveMap: tex, emissive: 0xffe6c4, emissiveIntensity: 0 } : {}) });
-  if (lit) (w.mon.litMats ||= []).push(mat), (mat.userData.litK = 0.75);
+  // pasa por delante, que las tapaba)
+  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, emissiveMap: tex, emissive: 0xffe6c4, emissiveIntensity: 0 });
+  (w.mon.litMats ||= []).push(mat), (mat.userData.litK = 0.75);
   const L = PROP.z1 - PROP.z0 - 2.2;
   const geo = new THREE.PlaneGeometry(L, (L * 160) / 4096);
   extra.push(place(geo, mat, x, SHAFT_TOP + 0.75, (PROP.z0 + PROP.z1) / 2, ry));

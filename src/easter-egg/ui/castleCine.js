@@ -146,7 +146,7 @@ export default class CastleCine {
     // (en línea lo que se mueve también va con el reloj de verdad, hasta 1 s por
     // cuadro, como ui/MolinoCinematic: con el dt con tope, en la compu que se
     // traba los muñecos quedaban atrás de las tomas y de la otra compu)
-    if (g.net && globalThis.__mduNoCineSync !== true) dt = Math.min(step, 1);
+    if (g.net) dt = Math.min(step, 1);
     if (this.drive) g.time += dt;
     g.weapons.vmRoot.visible = false;
     const t = this.t;
@@ -272,7 +272,7 @@ export function knightMouth(av, parent, opt = {}) {
   head.getWorldPosition(mH);
   const e = mA.distanceTo(mB);
   // (los ojos, con opt.eyes: en el vacío la luz de ánima también los borraba)
-  const eyeW = opt.eyes && !globalThis.__mduNoKnightEyes ? [mA.clone(), mB.clone()] : null;
+  const eyeW = opt.eyes ? [mA.clone(), mB.clone()] : null;
   const mid = mA.add(mB).multiplyScalar(0.5);
   // adelante: de la cabeza a los ojos (sin lo vertical)
   mF.subVectors(mid, mH).setY(0).normalize();

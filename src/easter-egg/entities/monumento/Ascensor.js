@@ -123,10 +123,9 @@ function gateMaterial(M) {
 // cabina) daba un reflejo puntual de cientos de veces el blanco y el bloom
 // lavaba la pantalla al girar hacia el ascensor. El brillo directo de las luces
 // va con tope (queda el redondel tibio del farol); el reflejo de pantalla de
-// fx/Epic sigue igual. globalThis.__mduNoMirrorCap: como antes.
+// fx/Epic sigue igual.
 function mirrorMaterial() {
   const m = new THREE.MeshStandardMaterial({ color: 0x9fb2c0, metalness: 1, roughness: 0.08 });
-  if (globalThis.__mduNoMirrorCap === true) return m;
   m.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>', 'reflectedLight.directSpecular = min( reflectedLight.directSpecular, vec3( 1.0 ) );\n#include <aomap_fragment>');
   };
@@ -158,7 +157,7 @@ export default class Ascensor {
       // raya de la celda y, si el camino se rehacía con la puerta cerrada, la
       // cabina quedaba aislada: parado adentro de la del Mirador los muertos
       // salían abajo, por las ventanas del Patio. Cerrada, los frena blockDoors)
-      S.doorBox = g.world.addBox([Math.min(D.x, D.x + into * 0.12), D.y, D.z - D.hw, Math.max(D.x, D.x + into * 0.12), D.y + ELEV.top, D.z + D.hw], { kind: 'prop', shoot: true, navFree: globalThis.__mduNoAscZ !== true });
+      S.doorBox = g.world.addBox([Math.min(D.x, D.x + into * 0.12), D.y, D.z - D.hw, Math.max(D.x, D.x + into * 0.12), D.y + ELEV.top, D.z + D.hw], { kind: 'prop', shoot: true, navFree: true });
       this.stops[k] = S;
       this.buildCab(S);
     }
@@ -359,7 +358,7 @@ export default class Ascensor {
       S.btn.emissiveIntensity = lit;
       S.btnIn.emissiveIntensity = lit;
     }
-    if (isHost(g) && globalThis.__mduNoAscZ !== true) this.blockDoors();
+    if (isHost(g)) this.blockDoors();
     if (isHost(g)) this.strays(dt);
     if (!R) return;
     R.t += dt;
@@ -380,7 +379,7 @@ export default class Ascensor {
         this.sfxRide(R.to === 'high');
       }
       // los compañeros que quedaron adentro: cada compu los lleva (showRider)
-      if (g.net && A !== B && globalThis.__mduNoAscNet !== true) {
+      if (g.net && A !== B) {
         this.fixFn ||= (x) => this.showRider(x);
         for (const r of g.net.remote.values()) {
           if (r.dead || r.downed || !this.inside(A, r.pos)) continue;
@@ -398,8 +397,8 @@ export default class Ascensor {
       for (const S of Object.values(this.stops)) {
         this.setIndicator(S, i);
         // (subiendo, el pozo pasa para abajo: la textura corre con offset que
-        // crece; estaba al revés y parecía que bajaba. __mduNoAscDir: como antes)
-        const sgn = globalThis.__mduNoAscDir ? -1 : 1;
+        // crece; estaba al revés y parecía que bajaba)
+        const sgn = 1;
         for (const t of S.shaft) t.offset.y = (R.to === 'high' ? p : -p) * sgn * (TRAVEL / 3.2);
       }
       if (R.me && k >= 0.5 && R.cab !== B.k) {
@@ -523,7 +522,6 @@ export default class Ascensor {
   // El que viaja cuenta en los dos niveles hasta que llega.
   strays(dt) {
     const g = this.g;
-    if (globalThis.__mduNoAscZ === true) return this.straysOld(dt);
     // (en qué niveles hay alguien: bits)
     let at = 0;
     const see = (p) => {
@@ -539,21 +537,6 @@ export default class Ascensor {
       const t = at & (high ? 2 : 1) ? 0 : (this.mirT.get(z) || 0) + dt;
       this.mirT.set(z, t);
       if (t > (high ? 6 : 3.5)) {
-        this.mirT.delete(z);
-        g.zombies.free(z);
-        g.rounds.requeue?.(1);
-      }
-    }
-  }
-
-  straysOld(dt) {
-    const g = this.g;
-    const up = players(g).some((p) => p.pos.y > 40);
-    for (const z of g.zombies.pool) {
-      if (!z.active || z.dead || (z.baseY ?? z.pos.y) < 40) continue;
-      const t = up ? 0 : (this.mirT.get(z) || 0) + dt;
-      this.mirT.set(z, t);
-      if (t > 6) {
         this.mirT.delete(z);
         g.zombies.free(z);
         g.rounds.requeue?.(1);

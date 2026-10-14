@@ -203,8 +203,8 @@ export function swimMove(p, dt, input, W, wx, wz, f) {
     if (fa > p.pos.y + 0.4 && fa < W.surface + 0.9 && dA < SWIM && (g.world.swimClimb?.(ax, az, p) ?? true)) {
       // (Eclipse: se trepa de a poco, climbStep; de un cuadro al otro subía
       // 1,5 m y avanzaba: "te teletransportás al subir por los bordes", el
-      // usuario 2026-10-06. agente rend; globalThis.__mduNoEclClimb: como antes)
-      if (g.mapId === 'eclipse' && globalThis.__mduNoEclClimb !== true) {
+      // usuario 2026-10-06. agente rend)
+      if (g.mapId === 'eclipse') {
         p.climbing = { t: 0, dur: CLIMB_S, from: p.pos.clone(), to: p.pos.clone().set(ax, fa, az) };
         p.vel.set(0, 0, 0);
         g.water?.splash?.(p.pos.x, p.pos.z, 0.4);
@@ -217,15 +217,18 @@ export function swimMove(p, dt, input, W, wx, wz, f) {
       g.audio.land();
     }
   }
-  g.world.collide(p.pos, PLAYER.radius, p.pos.y + 0.05, p.pos.y + 1.7);
+  // (el zombi de Zombies gauchescos cruza la paja también nadando: si no, en
+  // el riacho y la laguna quedaba trabado contra el pajonal de la orilla; el
+  // usuario, 2026-10-14. globalThis.__mduConvNadoViejo = true: como antes)
+  g.world.collide(p.pos, PLAYER.radius, p.pos.y + 0.05, p.pos.y + 1.7, globalThis.__mduConvNadoViejo === true ? undefined : g.gz?.coll);
   // La creciente del estero: con el agua 2,6 m arriba, el que nada pasa por
   // encima del pajonal del borde y de las barandas (las cajas que frenan
   // quedan abajo de los pies) y "si te vas a la laguna del Irupé te podés ir
   // del mapa directamente" (el usuario, 2026-10-10; medido: 13 969 celdas de
   // afuera alcanzables). Con el agua alta no se pasa a una celda donde no se
   // camina: resbala por el borde. Si ya estaba en una (lo agarró ahí la
-  // crecida), se mueve libre para volver. globalThis.__mduNoSwimStay: como antes.
-  if (g.mapId === 'esteros' && g.water && g.water.level - g.water.base > 0.3 && globalThis.__mduNoSwimStay !== true) {
+  // crecida), se mueve libre para volver.
+  if (g.mapId === 'esteros' && g.water && g.water.level - g.water.base > 0.3) {
     const w = g.world;
     if (swimCell(w, ox, oz) && !swimCell(w, p.pos.x, p.pos.z)) {
       if (swimCell(w, p.pos.x, oz)) p.pos.z = oz;

@@ -26,12 +26,8 @@ const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
 const LOAD_TAU = 0.8;
 const LOAD_HRTF = 14;
 // (era 26: en una pelea normal en una compu buena el eco se iba casi todo el
-// rato; el usuario, 2026-10-12. Con __mduAudioTopeViejo, 26 otra vez)
+// rato; el usuario, 2026-10-12)
 const LOAD_VERB = 40;
-const LOAD_VERB_VIEJO = 26;
-// el tope de antes: pasado esto (x budget) los de posición nuevos no sonaban
-// (solo con __mduAudioTopeViejo)
-const LOAD_MAX = 48;
 // el de ahora: pasado esto se saltean solo los muy lejanos o muy bajos (ver out)
 const LOAD_TOPE = 120;
 const TOPE_DIST = 40;
@@ -131,8 +127,8 @@ export default class GameAudio {
     // cargada y pocos fps la música se entrecortaba; esto no se nota en los tiros
     // (era 25, que Chrome redondeaba a 30; subido por seguridad para las compus flojas)
     // En la app de escritorio, 60 ms: un poco más de colchón contra los cortes
-    // con mucho sonando (el usuario, 2026-10-12; __mduAudioTopeViejo: 40)
-    const desk = typeof window !== 'undefined' && !!window.mduDesktop && globalThis.__mduAudioTopeViejo !== true;
+    // con mucho sonando (el usuario, 2026-10-12)
+    const desk = typeof window !== 'undefined' && !!window.mduDesktop;
     this.ctx = new Ctx({ latencyHint: desk ? 0.06 : 0.04 });
     const c = this.ctx;
     this.master = c.createGain();
@@ -177,7 +173,7 @@ export default class GameAudio {
     // el eco de la sala (el usuario, 2026-10-11): adentro, un cuarto chico y
     // cercano mezclado con el de siempre, más bajo; afuera, el de siempre. Los
     // efectos entran por verbIn; las voces siguen derecho a `reverb`.
-    // (setRoom lo mueve; globalThis.__mduNoSala: como antes)
+    // (setRoom lo mueve)
     this.verbIn = c.createGain();
     this.hallK = c.createGain();
     this.roomK = c.createGain();
@@ -590,7 +586,6 @@ export default class GameAudio {
   // Dónde está el oído: bajo techo (1) o afuera (0). Mezcla los dos ecos de a
   // poco (dos volúmenes, solo cuando cambia).
   setRoom(k) {
-    if (globalThis.__mduNoSala === true) k = 0;
     if (k === this.roomNow) return;
     this.roomNow = k;
     const t = this.ctx.currentTime;
@@ -601,8 +596,7 @@ export default class GameAudio {
   // ¿Hay lugar para un eco más? (el mismo tope que out(): con muchos sonidos
   // a la vez, sin eco). Lo usa la cola del tiro (core/sentirTiro.js).
   ecoLibre() {
-    const viejo = globalThis.__mduAudioTopeViejo === true;
-    return (this.load || 0) <= (viejo ? LOAD_VERB_VIEJO : LOAD_VERB) * (this.budget ?? 1);
+    return (this.load || 0) <= LOAD_VERB * (this.budget ?? 1);
   }
 
   // Punto de salida: opcionalmente espacializado y con envío a reverb.
@@ -631,13 +625,9 @@ export default class GameAudio {
     // su forma barata (paneo simple, sin eco ni paredes: medido, cientos a la
     // vez aguantan) y recién pasado LOAD_TOPE se saltean los muy lejanos o muy
     // bajos. Lo propio (sin posición, o con bus) suena siempre.
-    // (globalThis.__mduAudioTopeViejo: el tope y el eco como antes)
-    const viejo = globalThis.__mduAudioTopeViejo === true;
     const roll = ref > 2.2 ? 0.8 : 1.3;
     if (pos && !bus) {
-      if (viejo) {
-        if (this.load > LOAD_MAX * k) return g;
-      } else if (this.load > LOAD_TOPE && this.ear) {
+      if (this.load > LOAD_TOPE && this.ear) {
         const e = this.ear;
         const d = Math.hypot(pos.x - e.x, pos.y - e.y, pos.z - e.z);
         // cuánto llega al oído (la misma cuenta que el panner, 'inverse')
@@ -645,7 +635,7 @@ export default class GameAudio {
         if (d > TOPE_DIST || (gain * ref) / (ref + roll * (r - ref)) < TOPE_VOL) return g;
       }
     }
-    if (this.load > (viejo ? LOAD_VERB_VIEJO : LOAD_VERB) * k) reverb = 0;
+    if (this.load > LOAD_VERB * k) reverb = 0;
     let node = g;
     if (pos) {
       const p = c.createPanner();
@@ -661,9 +651,8 @@ export default class GameAudio {
       } else p.setPosition(pos.x, pos.y, pos.z);
       // las paredes en el medio: más grave y más bajo (se mira una vez, al
       // arrancar; con el sonido saturado, no: son dos nodos más por sonido)
-      // (globalThis.__mduNoOclusion: sin esto)
       let head = g;
-      const ob = occl && this.block && this.ear && this.load <= LOAD_HRTF * k && globalThis.__mduNoOclusion !== true ? this.block(this.ear, pos) : 0;
+      const ob = occl && this.block && this.ear && this.load <= LOAD_HRTF * k ? this.block(this.ear, pos) : 0;
       if (ob > 0.05) {
         const lp = c.createBiquadFilter();
         lp.type = 'lowpass';
@@ -1894,9 +1883,8 @@ export default class GameAudio {
     // guion de cada una avanza con lo que devuelve esto): murmullos con la
     // suerte atada a la frase y ese largo aunque esta compu use otras voces.
     // Antes cada murmullo variaba ±0,25 s al azar y el final de un mapa
-    // terminaba más de 1 s corrido entre jugadores. (this.online lo pone Game;
-    // globalThis.__mduNoVoiceSync: como antes)
-    const key = cine && this.online?.() && globalThis.__mduNoVoiceSync !== true ? seedOf(`${speaker}|${text}`) : 0;
+    // terminaba más de 1 s corrido entre jugadores. (this.online lo pone Game)
+    const key = cine && this.online?.() ? seedOf(`${speaker}|${text}`) : 0;
     let fixed = 0;
     if (key) {
       // (con la perilla de claridad en su lugar de cuenta: igual en todas las compus)
@@ -2060,7 +2048,7 @@ export default class GameAudio {
       // el Sargento, como desde abajo del agua: sin agudos y con un pico hueco en los graves
       sargento: { reverb: 0.6, gain: 1.3, filter: [{ type: 'lowpass', freq: 1900 }, { type: 'peaking', freq: 520, q: 1.4, gain: 5 }] },
       // San Martín, de mando: sin graves y con presencia (se distingue de Fierro y del Gil)
-      ...(globalThis.__mduOldVoces10 === true ? {} : { sanmartin: { reverb: 0.5, gain: 1.2, filter: [{ type: 'highpass', freq: 170 }, { type: 'peaking', freq: 2400, q: 1.2, gain: 5 }] } }),
+      sanmartin: { reverb: 0.5, gain: 1.2, filter: [{ type: 'highpass', freq: 170 }, { type: 'peaking', freq: 2400, q: 1.2, gain: 5 }] },
     }[speaker] || { reverb: 0.4, gain: 1 };
     // espera su turno (si alguien está hablando); el largo sale de los
     // segmentos, así se sabe antes de renderizar
@@ -2859,8 +2847,8 @@ export default class GameAudio {
       // la cinemática final de Eclipse, "en cualquier momento, medio raro": era
       // este tic-tic, el del fogón del mapa, que sonaba con la oreja cerca aunque
       // en pantalla no hubiera fuego. En las cinemáticas no crepita; el rumor
-      // sigue. globalThis.__mduOldCineCrackle: como antes)
-      if (this.cine && globalThis.__mduOldCineCrackle !== true) return;
+      // sigue)
+      if (this.cine) return;
       if (near && opts.crackle !== false && e && performance.now() - e.at < 500) this.noise(o, { dur: 0.03, type: 'highpass', freq: 2500, gain: 0.3 + Math.random() * 0.5 });
     }, 140);
     this.fire = fire;

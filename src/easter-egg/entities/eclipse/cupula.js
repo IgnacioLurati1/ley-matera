@@ -277,9 +277,8 @@ export default class Cupula {
     // 1,26 ms por cuadro y 1,12 eran los cuatro caballeros —0,68 de animarlos,
     // se los mire o no, y 0,44 de dibujarlos—; la cúpula, los jinetes y la
     // oscuridad, casi nada. Fuera de cuadro no se animan, como los presos del
-    // penal (net/Avatars offCull; ui/castleClips tampoco les pone el clip).
-    // globalThis.__mduNoKnightCull: como antes)
-    this.people.offCull = globalThis.__mduNoKnightCull !== true;
+    // penal (net/Avatars offCull; ui/castleClips tampoco les pone el clip))
+    this.people.offCull = true;
     this.root.add(this.people.root);
     const beamGeo = new THREE.CylinderGeometry(0.032, 0.032, 1, 6, 1, true).translate(0, 0.5, 0).rotateX(Math.PI / 2);
     const colGeo = new THREE.CylinderGeometry(0.55, 0.7, DROP_H + 4, 18, 1, true).translate(0, (DROP_H + 4) / 2, 0);
@@ -328,17 +327,14 @@ export default class Cupula {
     // verdad, al bajar del cielo, era un cuadro de 63-138 ms. Y hechos luz son
     // otra variante (transparentes): se visten apenas llega el cuerpo de
     // verdad, en la carga, sin esperar al primer cuadro de la partida, que es
-    // después de ese dibujo. Medido, Épica 1440p.
-    // globalThis.__mduNoKnightWarm: como antes)
-    if (globalThis.__mduNoKnightWarm !== true) {
-      (g.world.warmHidden ||= []).push(this.people.root);
-      let n = 0;
-      const tryDress = () => {
-        if (this.gone || this.dress() || ++n > 80) return;
-        setTimeout(tryDress, 250);
-      };
-      tryDress();
-    }
+    // después de ese dibujo. Medido, Épica 1440p)
+    (g.world.warmHidden ||= []).push(this.people.root);
+    let n = 0;
+    const tryDress = () => {
+      if (this.gone || this.dress() || ++n > 80) return;
+      setTimeout(tryDress, 250);
+    };
+    tryDress();
     this.clips = new CastleClips();
   }
 
@@ -385,12 +381,12 @@ export default class Cupula {
     const w = this.g.world;
     // (bajan del cielo: al aire libre. Si la isla tiene partes techadas —el
     // pabellón del penal, el Gran Salón, el galpón—, la ronda de los cuatro va
-    // en el medio de lo abierto; __mduNoKnightOpen: alrededor del medio, como antes)
+    // en el medio de lo abierto)
     const open = (k) => !!ZONES[k]?.outdoor && !ZONES[k]?.roof;
     let kx = cx;
     let kz = cz;
     const zs = I.zones || [];
-    if (globalThis.__mduNoKnightOpen !== true && zs.some((k) => !open(k)) && zs.some(open)) {
+    if (zs.some((k) => !open(k)) && zs.some(open)) {
       let sx = 0;
       let sz = 0;
       let sa = 0;
@@ -415,8 +411,7 @@ export default class Cupula {
     // isla: en la torre dos quedaban en el vacío, en el castillo uno, y en el
     // penal dos flotando a 4 m. Ahora el medio de la ronda se elige sobre piso
     // libre de la isla, con lugar alrededor, y ningún caballero se pone sin
-    // comprobar el lugar. __mduOldKnightSpot: como antes)
-    const OLD = globalThis.__mduOldKnightSpot === true;
+    // comprobar el lugar)
     let yRef = I.y;
     // ¿se puede parar acá? (piso de esta isla, a la altura de la ronda, libre)
     const okAt = (x, z, needOpen, far = 2.5) => {
@@ -463,7 +458,7 @@ export default class Cupula {
       for (let i = 0; i < 4; i++) {
         const a = Math.PI / 4 + (i * Math.PI) / 2;
         let spot = find(a, true) || find(a, false);
-        if (!spot && !strict && !OLD) spot = around(true) || around(false) || nearest();
+        if (!spot && !strict) spot = around(true) || around(false) || nearest();
         if (!spot) {
           if (strict) return null;
           spot = [kx + Math.cos(a) * 2, yRef, kz + Math.sin(a) * 2];
@@ -473,7 +468,7 @@ export default class Cupula {
       return taken.slice();
     };
     // (donde la ronda de siempre entra entera, queda igual que antes)
-    let spots = OLD ? place4(false) : place4(true);
+    let spots = place4(true);
     if (!spots) {
       // las baldosas de la isla, de la más cercana al medio de la cúpula a la más lejana
       for (const k of zs) {
@@ -501,7 +496,7 @@ export default class Cupula {
       }
       spots = place4(false);
     }
-    this.kc = new THREE.Vector3(kx, OLD ? I.y : yRef, kz);
+    this.kc = new THREE.Vector3(kx, yRef, kz);
     this.knights.forEach((K, i) => {
       const spot = spots[i];
       K.home.set(spot[0], spot[1], spot[2]);

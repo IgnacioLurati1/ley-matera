@@ -39,7 +39,6 @@ import { roomOpen } from '../../core/sizeCull';
 // Y después, poco y con gusto, lo retorcido de Eclipse: grietas violetas en
 // las paredes, pedazos que flotan.
 // Cada sección va con su try/catch (una que falla no tira el mapa).
-// globalThis.__mduNoEclV5: nada de esto.
 
 const FLOOR = 1;
 const WALL = 2;
@@ -397,7 +396,7 @@ function zoneCuller(w, k, objs, pad = 12) {
   // que no te acercás bastante no cargan los props de adentro". Afuera de la
   // caja, también se ve si la consulta de oclusión de core/sizeCull dice que
   // algo de la sala se ve —por una puerta, una ventana, un techo abierto— y
-  // está a menos de SEE_FAR m. Tapada, como antes. globalThis.__mduNoEclZoneSee: como antes)
+  // está a menos de SEE_FAR m. Tapada, como antes)
   const xa = b[0] + pad;
   const xb = b[2] - pad;
   const za = b[1] + pad;
@@ -407,7 +406,7 @@ function zoneCuller(w, k, objs, pad = 12) {
     if (!c) return;
     c.getWorldPosition(cam);
     let want = cam.x > b[0] && cam.x < b[2] && cam.z > b[1] && cam.z < b[3] && cam.y > y0 && cam.y < y1;
-    if (!want && globalThis.__mduNoEclZoneSee !== true) {
+    if (!want) {
       const dx = Math.max(xa - cam.x, 0, cam.x - xb);
       const dz = Math.max(za - cam.z, 0, cam.z - zb);
       want = dx * dx + dz * dz < SEE_FAR * SEE_FAR && roomOpen(k) === true;
@@ -1333,13 +1332,11 @@ function torre(w, ctx) {
   // (sesión 1f, el usuario: "en la escalera rota se ve el techo a través": los
   // pisos de la torre tienen cielorraso por adentro y las vigas, pero arriba
   // nada; desde la Escalera Rota y la Escalera de Oro se veía todo el piso de
-  // adentro. Una azotea encima de cada piso techado. __mduNoTorreAzotea: sin)
-  if (globalThis.__mduNoTorreAzotea !== true) {
-    for (const k of ISLANDS.torre.zones) {
-      const Z = ZONES[k];
-      if (!Z || Z.outdoor || !(Z.roof > Z.y)) continue;
-      for (const [x0, z0, x1, z1] of zoneRects(k)) ctx.gbExt.box(w.M.travPave ? 'travPave' : 'azotea', x0 - 0.02, Z.roof + 0.12, z0 - 0.02, x1 + 1.02, Z.roof + 0.34, z1 + 1.02, 2);
-    }
+  // adentro. Una azotea encima de cada piso techado)
+  for (const k of ISLANDS.torre.zones) {
+    const Z = ZONES[k];
+    if (!Z || Z.outdoor || !(Z.roof > Z.y)) continue;
+    for (const [x0, z0, x1, z1] of zoneRects(k)) ctx.gbExt.box(w.M.travPave ? 'travPave' : 'azotea', x0 - 0.02, Z.roof + 0.12, z0 - 0.02, x1 + 1.02, Z.roof + 0.34, z1 + 1.02, 2);
   }
   for (const k of ISLANDS.torre.zones) {
     const tp = ZONES[k]?.tp;
@@ -1662,19 +1659,17 @@ function tapera(w, ctx) {
     // quedaban medio azulejo corridas de las de la pared de abajo, que las pone
     // Levels con el lugar de acá: la sección cae corrida un número impar de
     // metros. Se corren las UV lo mismo que la sección. En la granja no pasa.
-    // El usuario, 2026-10-10. __mduNoTablasUV: como antes)
-    if (globalThis.__mduNoTablasUV !== true) {
-      est.traverse((o) => {
-        const uv = o.isMesh && o.material === w.M.barn ? o.geometry.attributes.uv : null;
-        const nr = uv ? o.geometry.attributes.normal : null;
-        if (!uv || !nr) return;
-        for (let i = 0; i < uv.count; i++) {
-          if (Math.abs(nr.getY(i)) > 0.5) continue;
-          uv.setXY(i, uv.getX(i) + (S.dx * Math.round(nr.getZ(i)) - S.dz * Math.round(nr.getX(i))) / 2, uv.getY(i) + S.dy / 3.6);
-        }
-        uv.needsUpdate = true;
-      });
-    }
+    // El usuario, 2026-10-10)
+    est.traverse((o) => {
+      const uv = o.isMesh && o.material === w.M.barn ? o.geometry.attributes.uv : null;
+      const nr = uv ? o.geometry.attributes.normal : null;
+      if (!uv || !nr) return;
+      for (let i = 0; i < uv.count; i++) {
+        if (Math.abs(nr.getY(i)) > 0.5) continue;
+        uv.setXY(i, uv.getX(i) + (S.dx * Math.round(nr.getZ(i)) - S.dz * Math.round(nr.getX(i))) / 2, uv.getY(i) + S.dy / 3.6);
+      }
+      uv.needsUpdate = true;
+    });
     ctx.ext(est);
     // lo retorcido: grietas en las cabeceras de tablas del establo, por dentro
     if (K.D) twist(w, ctx, K.D, { cracks: 2, seed: 61 });
@@ -1709,7 +1704,7 @@ function penal(w, ctx) {
 const ISLAS = { castillo, monumento, torre, molino, tapera, penal };
 
 export function build(w, g) {
-  if (globalThis.__mduNoEclV5 === true || globalThis.__mduEclipse !== true) return;
+  if (globalThis.__mduEclipse !== true) return;
   const orbsAll = [];
   const errs = [];
   const live = [];

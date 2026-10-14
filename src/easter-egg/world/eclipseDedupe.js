@@ -13,7 +13,6 @@ import { cacheTomar, cacheGuardar, cacheHuella } from '../core/cacheDisco';
 // (el triángulo queda en un punto). Los calcos (mugre, manchas, charcos de luz)
 // no cuentan: van con polygonOffset. Solo caras de más de AREA m² (lo chico no
 // se nota y es casi todo: así tarda poco).
-// globalThis.__mduNoEclDedupe: como antes.
 // (2026-10-08, el usuario: "triángulos bugueados", tres agujeros en fila en el
 // travertino abajo de una cornisa, y "paredes que siguen clipeando", una franja
 // oscura dentada al pie de un muro. Se borraba el triángulo tapado en 5 de 7
@@ -26,8 +25,7 @@ import { cacheTomar, cacheGuardar, cacheHuella } from '../core/cacheDisco';
 // pie de la Proa el granito copiado y el parapeto de la isla iban los dos 1,2 cm
 // para atrás y quedaban otra vez en el mismo plano).
 // Y lo aditivo (las grietas violetas) ya no tapa: en los pisos de la torre la
-// grieta que cruza el agujero tapado borraba el piso y se veía el vacío.
-// globalThis.__mduOldEclDedupe: como antes de eso.)
+// grieta que cruza el agujero tapado borraba el piso y se veía el vacío.)
 
 const TOL = 0.02;
 const CELL = 4;
@@ -46,8 +44,6 @@ function rankOf(o) {
 }
 
 export function dedupeEclipse(w) {
-  if (globalThis.__mduNoEclDedupe === true) return null;
-  const OLD = globalThis.__mduOldEclDedupe === true;
   const t0 = performance.now();
   w.root.updateMatrixWorld(true);
   // (una geometría o un material que usan varias mallas no se tocan)
@@ -78,13 +74,13 @@ export function dedupeEclipse(w) {
     if (!m || m.visible === false || m.colorWrite === false) continue;
     // (lo que suma luz no tapa: la grieta violeta aditiva de los pisos de la
     // torre borraba el piso de abajo y quedaba un agujero al vacío)
-    if (!OLD && m.blending === THREE.AdditiveBlending) continue;
+    if (m.blending === THREE.AdditiveBlending) continue;
     // (las transparentes tapan —el pasto copiado del origen— pero no se tocan)
     const see = m.transparent || m.depthWrite === false;
     meshes.push({ o, r, edit: !see && geoUse.get(o.geometry) === 1 });
   }
   // (lo de una carga anterior con los mismos vértices: core/cacheDisco; ~1 s)
-  const huella = cacheHuella('dedupe', OLD, TOL, AREA, AREA_COVER, meshes.map(({ o, r, edit }) => [o.geometry.attributes.position.array, o.geometry.index?.array, o.matrixWorld.elements, r, edit]));
+  const huella = cacheHuella('dedupe', false, TOL, AREA, AREA_COVER, meshes.map(({ o, r, edit }) => [o.geometry.attributes.position.array, o.geometry.index?.array, o.matrixWorld.elements, r, edit]));
   const guardado = cacheTomar('eclipse', 'dedupe', huella);
   if (guardado) {
     aplicar(meshes, guardado);
@@ -229,7 +225,7 @@ export function dedupeEclipse(w) {
   const dead = new Uint8Array(N);
   const stamp = new Uint32Array(N);
   let stampN = 0;
-  const NS = OLD ? 7 : 10;
+  const NS = 10;
   const SX = new Float32Array(10);
   const SY = new Float32Array(10);
   const cov = new Uint8Array(10);
@@ -242,8 +238,7 @@ export function dedupeEclipse(w) {
   const order = new Int32Array(N);
   {
     let o = 0;
-    if (OLD) for (let i = 0; i < N; i++) order[o++] = i;
-    else for (let rk = 3; rk >= 0; rk--) for (let i = 0; i < N; i++) if (I[i * 4 + 2] === rk) order[o++] = i;
+    for (let rk = 3; rk >= 0; rk--) for (let i = 0; i < N; i++) if (I[i * 4 + 2] === rk) order[o++] = i;
     if (o < N) for (let i = 0; i < N; i++) if (I[i * 4 + 2] > 3 || I[i * 4 + 2] < 0) order[o++] = i;
   }
   let killed = 0;
@@ -294,20 +289,13 @@ export function dedupeEclipse(w) {
       for (const L of lists) {
         if (!L) continue;
         for (const j of L) {
-          if (j === i || (OLD ? dead[j] : dead[j] === 1) || stamp[j] === stampN) continue;
+          if (j === i || (dead[j] === 1) || stamp[j] === stampN) continue;
           stamp[j] = stampN;
           const rj = I[j * 4 + 2];
           if (rj < r || (rj === r && j > i)) continue;
           const g = j * 12;
           if (F[g] * F[f] + F[g + 1] * F[f + 1] + F[g + 2] * F[f + 2] < 0.999) continue;
           if (Math.abs(F[g + 3] - F[f + 3]) > TOL) continue;
-          if (OLD) {
-            for (let s = 0; s < 7; s++) if (!cov[s] && inTri(SX[s], SY[s], g)) cov[s] = 1;
-            // (y al revés: si la otra cae adentro de esta, aunque las muestras de
-            // esta no la toquen —una franja angosta—, se pisan)
-            if (!touch && sat(f, g)) touch = true;
-            continue;
-          }
           let hit = false;
           for (let s = 0; s < NS; s++) if (!cov[s] && inTri(SX[s], SY[s], g)) cov[s] = hit = 1;
           if (!hit) hit = sat(f, g);
@@ -321,18 +309,18 @@ export function dedupeEclipse(w) {
     }
     let k = 0;
     for (let s = 0; s < NS; s++) k += cov[s];
-    if (OLD ? k >= 5 : k === NS) {
+    if (k === NS) {
       dead[i] = 1;
       killed++;
     } else if (k > 0 || touch) {
-      if (!OLD && k - cov[7] - cov[8] - cov[9] >= 5) {
+      if (k - cov[7] - cov[8] - cov[9] >= 5) {
         spared++;
         // (para las pruebas: cuáles eran los que antes quedaban huecos)
         if (globalThis.__eclDedupeDbg) (globalThis.__eclDedupeSpared ||= []).push([meshes[I[i * 4]].o, I[i * 4 + 1]]);
       }
       // tapada a medias: un centímetro para atrás (la otra gana donde se pisan)
       dead[i] = 2;
-      push[i] = 0.012 + (OLD ? 0 : ahead[i]);
+      push[i] = 0.012 + ahead[i];
       pushed++;
     }
   }

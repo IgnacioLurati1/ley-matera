@@ -55,7 +55,6 @@ function savePostcard(id, url) {
 // foto al abrirse y enseguida armar el mapa trababa todo: quedaba vacía hasta
 // el final. Ahora se piden todas en el título (son 8 fotos chicas) y el cambio
 // de mapa espera a la suya antes de armar (switchMap).
-// globalThis.__mduNoPostalWarm: como antes.
 const postalImgs = new Map();
 function postalReady(id) {
   const url = postalOf(id);
@@ -71,7 +70,6 @@ function postalReady(id) {
   return e.p;
 }
 function warmPostcards() {
-  if (globalThis.__mduNoPostalWarm === true) return;
   for (const m of MAP_LIST) postalReady(m.id);
 }
 // (las de esta vez mandan sobre las guardadas)
@@ -255,9 +253,7 @@ export async function compile(g, { late = true } = {}) {
 // termine de compilarlo, que va en paralelo): en plena partida eran tirones de
 // 50-70 ms cuando muchos materiales pasaban a otra variante juntos (en el
 // estero, 72 en un cuadro a los 3,5 s). Compilados ya estaban; usados, no.
-// (globalThis.__mduNoUseProg: como antes)
 export function usePrograms(g) {
-  if (globalThis.__mduNoUseProg === true) return;
   for (const p of g.renderer?.info?.programs || []) {
     try {
       p.getUniforms();
@@ -311,28 +307,26 @@ export function warmWorld(g) {
   });
   // lo que el mapa arma escondido y prende de golpe (el patio de la 2043 del
   // Monumento: 3 programas y 73 mallas que se subían al entrar, un cuadro de
-  // 53 ms). globalThis.__mduNoWarmHidden: como antes
+  // 53 ms).
   const hid = [];
-  if (globalThis.__mduNoWarmHidden !== true) {
-    for (const o of g.world?.warmHidden || []) {
-      if (o.visible) continue;
+  for (const o of g.world?.warmHidden || []) {
+    if (o.visible) continue;
+    o.visible = true;
+    hid.push(o);
+  }
+  // las torres de la defensa del yerbal y el Cuervo de La Tapera: escondidos
+  // hasta la ronda 10/20, su variante del G-buffer se compilaba al aparecer
+  // (un cuadro de 40-55 ms al arrancar esa ronda)
+  // (y el Pack-a-Pava con lo suyo escondido —el yacaré del estero, la soga de
+  // la torre—: su sombra de fuego se compilaba en la ronda 10)
+  // (y el agua de la Inundación del Challenge de la torre: sus 2 programas
+  // se compilaban al subir el agua, un cuadro de 50-70 ms)
+  for (const root of [g.defense?.root, g.crow?.rig, g.papq?.root, g.papq?.termas?.model, g.ee?.ev?.flood?.water?.mesh]) {
+    root?.traverse((o) => {
+      if (o.visible) return;
       o.visible = true;
       hid.push(o);
-    }
-    // las torres de la defensa del yerbal y el Cuervo de La Tapera: escondidos
-    // hasta la ronda 10/20, su variante del G-buffer se compilaba al aparecer
-    // (un cuadro de 40-55 ms al arrancar esa ronda)
-    // (y el Pack-a-Pava con lo suyo escondido —el yacaré del estero, la soga de
-    // la torre—: su sombra de fuego se compilaba en la ronda 10)
-    // (y el agua de la Inundación del Challenge de la torre: sus 2 programas
-    // se compilaban al subir el agua, un cuadro de 50-70 ms)
-    for (const root of [g.defense?.root, g.crow?.rig, g.papq?.root, g.papq?.termas?.model, g.ee?.ev?.flood?.water?.mesh]) {
-      root?.traverse((o) => {
-        if (o.visible) return;
-        o.visible = true;
-        hid.push(o);
-      });
-    }
+    });
   }
   // el maizal del matorral apaga lo lejano (entities/Matorral.js)
   const far = [];
@@ -409,13 +403,12 @@ export function warmWorld(g) {
 // ronda 10. Cada clase de cosa que hace sombra (con huesos, instanciada, con su
 // lado y su recorte) se compila una vez con el mismo material que le pone three
 // (WebGLShadowMap getDepthMaterial): el programa queda y la sombra lo reusa.
-// globalThis.__mduNoWarmShadowProg: como antes.
 const SHADOW_SIDE = { [THREE.FrontSide]: THREE.BackSide, [THREE.BackSide]: THREE.FrontSide, [THREE.DoubleSide]: THREE.DoubleSide };
 let shadowRT = null;
 const shadowKeep = [];
 function warmShadowPrograms(g) {
   const R = g.renderer;
-  if (globalThis.__mduNoWarmShadowProg === true || !R.shadowMap.enabled) return;
+  if (!R.shadowMap.enabled) return;
   const t0 = performance.now();
   shadowRT ||= new THREE.WebGLRenderTarget(1, 1);
   const seen = new Map();
@@ -646,19 +639,18 @@ export default class Arrival {
         this.screen.open({ name: info.name, sub: info.sub, image: postalOf(id), quick: true, map: id });
         this.screen.progress(0.1, `Viajando a ${info.name}…`);
         // (la postal ya decodificada antes de trabar armando el mapa: postalReady)
-        if (globalThis.__mduNoPostalWarm !== true) await Promise.race([postalReady(id), later(1500)]);
+        await Promise.race([postalReady(id), later(1500)]);
         await frame();
         await frame();
         // (Eclipse: armarlo traba ~3-4 s; que la postal termine de aparecer
-        // antes, si no quedaba a medio fundir sobre el menú. agente rend;
-        // globalThis.__mduNoEclSettle: como antes)
-        if (id === 'eclipse' && globalThis.__mduNoEclSettle !== true) await later(240);
+        // antes, si no quedaba a medio fundir sobre el menú. agente rend)
+        if (id === 'eclipse') await later(240);
         if (g.state !== 'title') break;
         // (sesión 1f, el usuario: "la pantalla de cambio de mapa tarda una
         // eternidad": mientras se compila, el bucle no dibuja el mapa nuevo —está
         // tapado por la postal—: cada programa que dibujaba antes de que la placa
-        // terminara lo esperaba ahí, ~4 s en Eclipse. __mduNoSwitchHold: como antes)
-        g.switchHold = globalThis.__mduNoSwitchHold !== true;
+        // terminara lo esperaba ahí, ~4 s en Eclipse)
+        g.switchHold = true;
         // (lo que cargas anteriores ya armaron de este mapa: core/cacheDisco)
         await cacheAbrir(id);
         if (g.state !== 'title' || g.mapKey !== key) continue;
@@ -802,19 +794,17 @@ export default class Arrival {
     }
     // los sonidos del Desgarrador se horneaban en su primer cuadro, que es el
     // primero de la partida al terminar la entrada (~22 ms de los ~35 de ese
-    // cuadro, monumento 2026-10-05). globalThis.__mduNoBakeLoad: como antes
-    if (globalThis.__mduNoBakeLoad !== true) {
-      try {
-        g.weapons?.cosmic?.fx?.bake?.();
-      } catch {
-        /* se hornean en su primer cuadro, como antes */
-      }
+    // cuadro, monumento 2026-10-05).
+    try {
+      g.weapons?.cosmic?.fx?.bake?.();
+    } catch {
+      /* se hornean en su primer cuadro, como antes */
     }
     // lo que la cinemática de entrada necesita ya bajado (los clips y los
     // cuerpos de verdad): la primera vez arrancaba con los muñecos de piezas
-    // (ui/Intro ready; hasta 15 s; globalThis.__mduNoIntroWait: como antes)
+    // (ui/Intro ready; hasta 15 s)
     // (el rush entra sin la cinemática: ni se la espera ni se la calienta)
-    if (globalThis.__mduNoIntroWait !== true && g.intro?.ready && !P) {
+    if (g.intro?.ready && !P) {
       await g.intro.ready();
       if (token !== this.run) return false;
     }

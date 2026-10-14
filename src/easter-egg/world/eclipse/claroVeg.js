@@ -23,7 +23,6 @@ import { keepOut, zoneAtCell, inst, cutToGbuf } from './centro';
 // ondulaciones, piedras, borde deshilachado, juncos y matas en el agua. Lo de
 // Levels queda abajo (el choque sigue siendo la rampa).
 // Una sola variante de mata: 3 dibujos (cerca, medio, lejos).
-// globalThis.__mduNoClaroVeg: nada de esto; __mduNoPlaya: sin la orilla.
 
 const FLOOR = 1;
 const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -31,7 +30,7 @@ const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 let live = null;
 
 export function build(w) {
-  if (globalThis.__mduNoClaroVeg === true || globalThis.__mduEclipse !== true) return;
+  if (globalThis.__mduEclipse !== true) return;
   const r = rng(6061);
   const root = new THREE.Group();
   root.name = 'eclipse:claroVeg';
@@ -54,7 +53,7 @@ export function build(w) {
   const busyPts = [];
   for (const k of ['algarrobo', 'fogon', 'llama', 'corte']) if (EE?.[k]) busyPts.push([EE[k][0], EE[k][1], 4.5]);
   // la trampa del desgarro del claro (entities/eclipse/Trampas.js) y las cosas para usar
-  const trap = globalThis.__mduOldTrampas === true ? [135.5, 167] : [143.5, 166.5];
+  const trap = [143.5, 166.5];
   busyPts.push([trap[0], trap[1], 4.8]);
   // (2026-10-08: esa lista, al armar el mapa, es la de la partida ANTERIOR —la
   // de esta se arma después del mundo—: en la primera partida no hay ninguna (o
@@ -62,10 +61,7 @@ export function build(w) {
   // Guadaña, a 40 cm, tapándola. Y como cada lugar ocupado corre el azar, el
   // pajonal entero salía distinto en la primera partida y en el fast restart.
   // Ahora las matas se arman al final de Game.buildScene (World.finalizeStatic),
-  // ya con las cosas para usar de ESTA partida, y las que caen encima no van.
-  // globalThis.__mduOldClaroBusy: como antes)
-  const LATE = globalThis.__mduOldClaroBusy !== true;
-  if (!LATE) for (const it of w.g?.interact?.list || []) if (it.pos) busyPts.push([it.pos.x, it.pos.z, 2.2]);
+  // ya con las cosas para usar de ESTA partida, y las que caen encima no van)
   // (arte6, 10-06 tarde) la cinemática del comienzo (ui/eclipseIntro.js): los cuatro
   // del algarrobo y las cámaras bajas van hacia el fogón (el mismo lado que elige
   // la intro); el usuario: "queda tapado por los matorrales". Libre: 5,5 m
@@ -91,8 +87,8 @@ export function build(w) {
   // arriba. Que caiga ahí depende del azar, que se corre con la lista vieja de
   // interactuables —la del título en la primera partida, la de la partida
   // anterior en el fast restart—. Ahora lo que no está sobre el claro no va; el
-  // azar sigue igual. globalThis.__mduOldClaroVoid: como antes)
-  const yMin = globalThis.__mduOldClaroVoid === true ? -Infinity : (WATER_Y ?? 29.85) - 6;
+  // azar sigue igual)
+  const yMin = (WATER_Y ?? 29.85) - 6;
   const add = (x, y, z, h, wd = 1) => {
     const a = r() * Math.PI * 2;
     if (!(y > yMin) && yMin > -Infinity) return;
@@ -174,7 +170,7 @@ export function build(w) {
   }
   // 4. la playa: matas en la línea del agua y a los costados
   const playa = RAMPS.find((R) => R.own === 'playa');
-  if (playa && globalThis.__mduNoPlaya !== true) buildPlaya(w, root, r, playa, lvl, add);
+  if (playa) buildPlaya(w, root, r, playa, lvl, add);
   // las matas de verdad del estero (con su viento y que se apartan al pasar)
   // (el material de las matas del estero, w.M.tussock: el mismo arreglo que en
   // Mate no Numa —world/Esteros.js buildPajonal—: viento y empuje (fx/grassPush),
@@ -188,24 +184,21 @@ export function build(w) {
   const low = ['perf', 'hidden', 'low'].includes(w.g?.tier?.('grass'));
   // (sesión 1f, el usuario: "los matorrales al subir la escalera desaparecen de
   // la nada": desde la loma se ve todo el claro y las del fondo, a más de 78 m,
-  // se apagaban de golpe. Acá se dibujan hasta 150 m —el claro entero—.
-  // __mduOldClaroFar: como antes)
-  const far = globalThis.__mduOldClaroFar === true ? undefined : 150;
+  // se apagaban de golpe. Acá se dibujan hasta 150 m —el claro entero—)
+  const far = 150;
   let meshes = null;
   const finish = (spots) => {
     if (meshes) return;
     meshes = buildTussocks(root, spots, mat, { variants: 1, ...(low ? { leaves: 22, stems: 5 } : {}), seed: 73, ...(far ? { far } : {}) });
-    if (globalThis.__mduNoTuftPre !== true) {
-      let tpre = null;
-      for (const t of meshes) {
-        depthPrepass(t);
-        if (tpre) t.userData.prepass.material = tpre;
-        else tpre = t.userData.prepass.material;
-      }
-      if (tpre) {
-        addGrassPush(tpre);
-        jitterGrass(tpre);
-      }
+    let tpre = null;
+    for (const t of meshes) {
+      depthPrepass(t);
+      if (tpre) t.userData.prepass.material = tpre;
+      else tpre = t.userData.prepass.material;
+    }
+    if (tpre) {
+      addGrassPush(tpre);
+      jitterGrass(tpre);
     }
     live = { root, meshes, n: spots.length };
     w.claroVeg = live;
@@ -218,19 +211,16 @@ export function build(w) {
     finish(tuft.filter(([x, , z]) => !its.some(([px, pz]) => Math.hypot(x - px, z - pz) < 2.7)));
   };
   w.root.add(root);
-  if (!LATE) finish(tuft);
-  else {
-    const fin = w.finalizeStatic;
-    w.finalizeStatic = function (...a) {
-      const out = fin.apply(this, a);
-      try {
-        late();
-      } catch (e) {
-        console.error('Eclipse claroVeg: las matas', e);
-      }
-      return out;
-    };
-  }
+  const fin = w.finalizeStatic;
+  w.finalizeStatic = function (...a) {
+    const out = fin.apply(this, a);
+    try {
+      late();
+    } catch (e) {
+      console.error('Eclipse claroVeg: las matas', e);
+    }
+    return out;
+  };
   const pre0 = w.preRender;
   w.preRender = function (cam, dt) {
     pre0.call(this, cam, dt);
@@ -368,7 +358,7 @@ function buildPlaya(w, root, r, R, lvl, add) {
 // ella elige (hacia el fogón, o girando hasta que los lugares estén libres).
 function introClear(w) {
   const A = EE?.algarrobo;
-  if (!A || globalThis.__mduNoIntroClear === true) return () => false;
+  if (!A) return () => false;
   const ay = w.floorAt(A[0], A[1]);
   const F = EE.fogon || [PLAYER_START.x, PLAYER_START.z];
   let dx = F[0] - A[0];

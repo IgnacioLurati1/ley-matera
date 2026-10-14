@@ -636,7 +636,7 @@ export default class CabralScene extends CastleCine {
     if (globalThis.__mduOldCabralMarcha === true) return;
     const sl = this.sl;
     // (el final nuevo, entities/eclipse/slFinal.js: sin Marcha; con el grito vuelve la música de la pelea)
-    if (globalThis.__mduSlFinal === true) {
+    if (globalThis.__mduSlFinal !== false) {
       this.g.music?.play('jefe-eclipse', { loop: true, fadeIn: 1.2, while: (G) => sl.active && [3, 4].includes(sl.st.phase) && (G.state === 'playing' || G.state === 'paused') });
       return;
     }

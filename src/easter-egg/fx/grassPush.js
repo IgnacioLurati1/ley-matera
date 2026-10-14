@@ -37,23 +37,18 @@ export const EXTRA_PUSH = [];
 // baja un poco (que la hoja no se estire). El corrimiento vuelve a lo local con
 // la inversa de la matriz de la instancia (así siguen bien la sombra, la
 // profundidad y el reflejo).
-// El viento (2026-10-04, en todos los mapas; globalThis.__mduNoWind al cargar:
-// quieto, como antes): la mata (o la copa) se mece hacia donde sopla, más en la
+// El viento (2026-10-04, en todos los mapas): la mata (o la copa) se mece
+// hacia donde sopla, más en la
 // punta, con ráfagas que pasan. x: tiempo, y: fuerza (0: quieto), zw: dirección.
 export const WIND = { value: new THREE.Vector4(0, 0, 0.8, 0.6) };
-export const windOn = () => globalThis.__mduNoWind !== true;
 // El viento en un material, si está prendido (si no, el material como estaba).
 export function windy(mat, wind = null) {
-  return windOn() ? addGrassPush(mat, wind) : mat;
+  return addGrassPush(mat, wind);
 }
 
 // Cada cuadro (World.update), en todos los mapas.
 export function updateWind(dt) {
   const W = WIND.value;
-  if (!windOn()) {
-    W.y = 0;
-    return;
-  }
   W.x += dt;
   W.y = 0.75 + 0.25 * Math.sin(W.x * 0.21);
 }

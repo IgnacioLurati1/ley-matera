@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { SKY, ZONES } from '../config/map';
 import { ISLANDS } from '../config/maps/eclipse';
-import { buildSkyFight } from './eclipseGfxFight';
 import { eclSfx } from '../fx/eclipseSfx';
 import { plusOn } from '../config/quality';
 
@@ -11,8 +10,7 @@ import { plusOn } from '../config/quality';
 // choque grande —el de la onda en las grietas, uno de cada cuatro, cada
 // ~1,5 min— y en lugar del trueno fuerte (no encima); entre uno y otro, al
 // menos SHOCK_GAP s (si no, el trueno de siempre). El archivo, más bajo y
-// con menos sub que el original: sfx/eclipse/onda-choque.mp3, -18 LUFS.
-// globalThis.__mduOldShockSfx: el trueno, como antes)
+// con menos sub que el original: sfx/eclipse/onda-choque.mp3, -18 LUFS.)
 const SHOCK_GAP = 75;
 
 // El cielo de Eclipse Matero: el cielo roto.
@@ -90,9 +88,9 @@ export const SKY_PAL = {
   desgarro: [[0.3, 0.07, 0.42], [0.16, 0.03, 0.3], [0.05, 0.01, 0.12], [0.85, 0.2, 0.75]],
 };
 // Cuánta noche le cae encima a todos los cielos (0: los cielos a pleno de la
-// primera versión, con globalThis.__mduSkyBright). La usan también la niebla
+// primera versión). La usan también la niebla
 // y las luces de world/eclipseAtmos.
-export const SKY_NIGHT = () => (globalThis.__mduSkyBright === true ? 0 : 1);
+export const SKY_NIGHT = () => 1;
 // cuántas estrellas deja ver cada cielo
 const STARS = { centro: 0.8, molino: 0.12, tapera: 0.3, penal: 0.25, monumento: 0.04, torre: 0.35, castillo: 1.2, desgarro: 0.7 };
 // a qué altura (seno) está el centro de lo propio de cada cuña: el sol de La
@@ -929,16 +927,16 @@ export function buildEclipseSky(w) {
     uPulse: { value: 0 },
     uCrack: { value: 1 },
     uDark: { value: 1 },
-    // (la nebulosa de la Disformidad de antes: globalThis.__mduDimOld)
-    uDimOld: { value: globalThis.__mduDimOld === true ? 1 : 0 },
-    // (la nebulosa de la noche y la segunda capa de estrellas: globalThis.__mduNebOld las saca)
-    uNebOn: { value: globalThis.__mduNebOld === true ? 0 : 1 },
+    // (la nebulosa de la Disformidad de antes: apagada)
+    uDimOld: { value: 0 },
+    // (la nebulosa de la noche y la segunda capa de estrellas)
+    uNebOn: { value: 1 },
     // el volumen de la nebulosa (cielo con volumen; lo pone extraUpdate)
     uNebVol: { value: 0 },
     uNight: { value: SKY_NIGHT() },
     uDim: { value: 0 },
-    // el sol de La Tapera, más suave (globalThis.__mduOldTaperaSun: como antes)
-    uSunSoft: { value: globalThis.__mduOldTaperaSun === true ? 1 : 0.45 },
+    // el sol de La Tapera, más suave
+    uSunSoft: { value: 0.45 },
     uClash: { value: 0 },
     uClashA: { value: 0 },
     uClashD: { value: new THREE.Vector2() },
@@ -1009,7 +1007,6 @@ export function buildEclipseSky(w) {
     lunge: 0,
     // quién va ganando (-1 Francisco … 1 el Chiquitijuein; lo lleva world/eclipseGfxFight)
     lead: 0,
-    // (globalThis.__mduNoSkyFight: la pelea quieta, como antes)
     // k de 0 (apenas se tocan) a 1 (totalidad), en secs segundos (0 = ya)
     set(k, secs = SET_SECS) {
       const v = Math.max(0, Math.min(1, +k || 0));
@@ -1043,7 +1040,7 @@ export function buildEclipseSky(w) {
       // 5 y el final) la pelea seguía, con su sacudida y su onda. Sin sombra sobre
       // el sol no hay choque. globalThis.__mduOldSkyFightEnd: como antes)
       const over = this.target <= 0.1 && globalThis.__mduOldSkyFightEnd !== true;
-      if (globalThis.__mduNoSkyFight !== true && g?.state !== 'title' && this.k < 0.98 && !over) {
+      if (g?.state !== 'title' && this.k < 0.98 && !over) {
         this.fightT -= dt;
         if (this.fightT <= 0) {
           this.fightT = 14 + Math.random() * 16;
@@ -1057,7 +1054,7 @@ export function buildEclipseSky(w) {
           g?.fx?.addShake?.(this.clashBig ? 0.35 : 0.15);
           if (g?.audio?.thunder && g.camera) {
             const far = E.clone().multiplyScalar(220).add(g.camera.position);
-            const S = globalThis.__mduOldShockSfx !== true && g.audio.ctx ? eclSfx(g) : null;
+            const S = g.audio.ctx ? eclSfx(g) : null;
             S?.load(['onda-choque']);
             const now = g.time || 0;
             // (en la entrada no: tiene la suya, en el primer choque)
@@ -1085,7 +1082,7 @@ export function buildEclipseSky(w) {
       const lg = Math.sin(this.lunge * Math.PI) * 0.035 * (1 - k * 0.6);
       // quién va ganando la pelea (world/eclipseGfxFight: lead > 0, el
       // Chiquitijuein): el disco muerde más o retrocede (menos cerca de la totalidad)
-      const ld = globalThis.__mduNoSkyFight === true ? 0 : this.lead || 0;
+      const ld = this.lead || 0;
       const off = moonOff(k) * (1 - 0.3 * ld * (1 - k)) + Math.sin(t * 0.31) * 0.0018 * (1 - k) + Math.sin(t * 1.7) * 0.0006 * (1 - k) - lg;
       uniforms.uMoonOff.value.copy(uniforms.uMoonU.value).multiplyScalar(off);
       uniforms.uClashD.value.set(Math.cos(this.clashA) * lg, Math.sin(this.clashA) * lg);
@@ -1099,11 +1096,11 @@ export function buildEclipseSky(w) {
     },
   };
   w.eclipse = ecl;
-  // las figuras y los tiros de la pelea (world/eclipseGfxFight.js, grafica-v3)
+  // las figuras y los tiros de la pelea (grafica-v3)
   // (el usuario, 2026-10-06: "la pelea con Francisco en el cielo sacala, dejá
   // el solcito y la luna, se ven horribles": sin figuras ni tiros; el sol y la
-  // luna siguen con sus choques. globalThis.__mduSkyFightOn = true: la pelea)
-  const fight = globalThis.__mduSkyFightOn === true ? buildSkyFight(w, ecl, { E, EU, EV, uniforms }) : { update() {}, dispose() {} };
+  // luna siguen con sus choques)
+  const fight = { update() {}, dispose() {} };
   w.eclipseFight = fight;
   const prev = w.extraUpdate;
   const tmp = new THREE.Vector3();
@@ -1159,7 +1156,7 @@ export function eclipseShadow(moon) {
   // (abajo de cada isla cuelga su roca: unos metros más)
   y0 -= 3;
   const C = new THREE.Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
-  // (la dirección que ya trae la luz: la del eclipse, o la del cielo de siempre con __mduNoEclipseSky)
+  // (la dirección que ya trae la luz: la del eclipse)
   const L = moon.position.clone().sub(moon.target.position).normalize();
   // el cuadro de la sombra mirado desde la luz: las 8 esquinas de la huella
   const fwd = L.clone().negate();

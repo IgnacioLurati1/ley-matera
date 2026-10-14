@@ -42,7 +42,7 @@ export default class Session {
     this.net = net;
     // (2026-10-10, el usuario: en la pelea final no entra nadie, para que no
     // se sumen al final a cobrar el easter egg sin jugarlo)
-    net.busy = () => globalThis.__mduJoinSiempre !== true && this.bossFight();
+    net.busy = () => this.bossFight();
     this.guest = net.guest;
     this.host = net.host;
     this.id = net.id;

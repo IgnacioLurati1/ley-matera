@@ -179,7 +179,7 @@ function prep(url, gltf) {
     if (o.isBone) bones[o.name] = o;
   });
   if (!mesh || !bones.Hips) throw new Error('persona sin malla o sin huesos: ' + url);
-  const sl = globalThis.__mduNoSlAstilla === true ? null : dropSlivers(mesh, bones.neck.getWorldPosition(va).y);
+  const sl = dropSlivers(mesh, bones.neck.getWorldPosition(va).y);
   const restMats = Array.from({ length: 18 }, () => new THREE.Matrix4());
   solvePose(restMats, 0, 0, 0, 1, makePose());
   const partRest = restMats.slice(0, 13).map((m) => new THREE.Quaternion().setFromRotationMatrix(m).invert());
@@ -323,15 +323,12 @@ function attachPerson(a, T, def, map) {
     G.sable = s;
     // (2026-10-07, el usuario: "San Martín agarra mal el sable": el modelo no
     // tiene dedos y la mano abierta quedaba al lado del puño del sable. Con el
-    // sable en la mano, la mano se achica y un puño de guante lo cierra.
-    // globalThis.__mduOldSableGrip: como antes)
-    if (globalThis.__mduOldSableGrip !== true) {
-      const f = FIST9 ? new THREE.Mesh(FIST9_GEO, fistMat(mesh, map)) : new THREE.Mesh(FIST_GEO, FIST_MAT);
-      f.matrixAutoUpdate = false;
-      f.castShadow = false;
-      a.group.add(f);
-      G.fist = f;
-    }
+    // sable en la mano, la mano se achica y un puño de guante lo cierra)
+    const f = new THREE.Mesh(FIST9_GEO, fistMat(mesh, map));
+    f.matrixAutoUpdate = false;
+    f.castShadow = false;
+    a.group.add(f);
+    G.fist = f;
   }
   a.group.add(root);
   a.gs = G;
@@ -348,15 +345,11 @@ const sM = new THREE.Matrix4();
 const sInv = new THREE.Matrix4();
 const fM = new THREE.Matrix4();
 const fS = new THREE.Matrix4();
-// el puño cerrado (guante de gamuza clara)
-const FIST_GEO = new THREE.IcosahedronGeometry(1, 1);
-const FIST_MAT = new THREE.MeshStandardMaterial({ color: 0xd9ccb0, roughness: 0.82, metalness: 0, flatShading: true });
 // (2026-10-09, el usuario: "el coronel agarra mal el sable": la bola del guante
 // no se leía como una mano. Un puño: los cuatro dedos cerrados sobre la
 // empuñadura, el dorso hacia la muñeca y el pulgar arriba, del color de la
 // otra mano. En metros, con los ejes del sable: x el filo, y la hoja, z hacia
-// adentro del cuerpo. globalThis.__mduOldFist9: la bola)
-const FIST9 = globalThis.__mduOldFist9 !== true;
+// adentro del cuerpo)
 function fistGeo() {
   const parts = [];
   const box = (sx, sy, sz, x, y, z) => parts.push(new THREE.BoxGeometry(sx, sy, sz).translate(x, y, z));
@@ -368,7 +361,7 @@ function fistGeo() {
   box(0.022, 0.05, 0.022, -0.028, 0.012, 0.016);
   return mergeGeometries(parts);
 }
-const FIST9_GEO = FIST9 ? fistGeo() : null;
+const FIST9_GEO = fistGeo();
 // (el color del puño: el de la mano de cada modelo —San Martín más moreno que
 // los granaderos—, la mediana de lo que pinta la textura en los puntos de la
 // mano derecha que son piel; un material por textura)
@@ -465,7 +458,7 @@ function placeSable(G, M) {
   const grip = !!G.fist && G.sable.visible;
   // (la mano abierta, chica adentro del puño; sin el sable, como es)
   if (G.fist) {
-    B.RightHand.scale.setScalar(grip ? (FIST9 ? 0.25 : 0.5) : 1);
+    B.RightHand.scale.setScalar(grip ? 0.25 : 1);
     G.fist.visible = grip;
   }
   B.RightHand.getWorldPosition(va);
@@ -494,8 +487,7 @@ function placeSable(G, M) {
   if (grip) {
     // el puño alrededor de la empuñadura, justo atrás de la cruz
     fM.copy(sM).setPosition(va.addScaledVector(sY, -0.06));
-    if (FIST9) fS.identity();
-    else fS.makeScale(0.05, 0.06, 0.047);
+    fS.identity();
     G.fist.matrix.multiplyMatrices(sInv, fM).multiply(fS);
     G.fist.matrixWorldNeedsUpdate = true;
   }
@@ -751,7 +743,7 @@ export class Montura {
   // (sesión 1f, el usuario: "San Martín y Belgrano, animaciones viejas y
   // rígidas", "los granaderos congelados en la cinemática": parado, cada uno
   // mira a su alrededor —o adonde le digan— y se acomoda en la montura; con
-  // gestos, señala y alza el sable. __mduOldMontLife: como antes)
+  // gestos, señala y alza el sable)
   lifePose(P, t) {
     const s = this.seed;
     const still = 1 - clamp01(((this.h.speed || 0) - 0.5) / 3);
@@ -803,14 +795,13 @@ export class Montura {
       // con el sable en la mano, el brazo iba al frente casi derecho y la hoja,
       // al frente y abajo, se metía en el cuello del caballo. Ahora el codo
       // doblado, el puño delante del pecho y la hoja en alto, apenas hacia
-      // adelante. __mduOldMontSable: como antes)
-      const S9 = globalThis.__mduOldMontSable !== true;
+      // adelante)
       if (this.k.sable > 0.01) {
-        P.shLp += ((S9 ? -0.5 : -0.95) - P.shLp) * this.k.sable;
-        P.elL += ((S9 ? -1.7 : -0.55) - P.elL) * this.k.sable;
+        P.shLp += (-0.5 - P.shLp) * this.k.sable;
+        P.elL += (-1.7 - P.elL) * this.k.sable;
       }
       const G = this.a.gs;
-      if (S9 && G?.sable) {
+      if (G?.sable) {
         // (la hoja derecha para arriba mientras lo lleva; al señalar o alzarlo, como siempre)
         const k = this.k.sable > 0.01 && !this.gest ? this.k.sable : 0;
         if (k > 0) {
@@ -821,7 +812,7 @@ export class Montura {
           this.sk9 = false;
         }
       }
-      if (this.life && globalThis.__mduOldMontLife !== true) this.lifePose(P, t);
+      if (this.life) this.lifePose(P, t);
       if (this.k.senala > 0.01) POSE.senala(P, t, this.k.senala);
       // (brazos 'alza', 2026-10-09: el sable en alto hacia afuera, al costado
       // de la cabeza —señalando al frente, de frente, el brazo le tapaba la

@@ -7,8 +7,7 @@ import { prefetchTrack } from '../core/music';
 import { gilVincha } from '../net/gilLook';
 
 // (La versión de antes, con las poses de piezas: queda por si los clips de
-// Blender no bajaron o con globalThis.__mduBlend = false. La de ahora es
-// ui/EsterosEnding.js.)
+// Blender no bajaron. La de ahora es ui/EsterosEnding.js.)
 // El final de "Mate no Numa" (El Pacto): cayó el Luisón y los cuatro quedan
 // al pie del Algarrobo de los Colgados. La voz le habla a Gil (solo él la oye:
 // los compañeros no reaccionan) y le pide sellar el pacto con sangre.
@@ -99,7 +98,7 @@ export default class EsterosEnding extends CastleCine {
       this.npc.add(r);
       const a = this.npc.list.get(P.id);
       a.M.poncho.color.set(P.color).multiplyScalar(1.7);
-      if (P.key === 'gil' && globalThis.__mduNoBandanas !== true) gilVincha(a);
+      if (P.key === 'gil') gilVincha(a);
       const person = { r, a, pose: { v: {}, want: {}, speed: 6 } };
       r.poseFn = (Q) => this.applyPose(person.pose, Q);
       this.people[P.key] = person;

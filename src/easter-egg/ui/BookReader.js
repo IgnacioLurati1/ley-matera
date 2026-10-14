@@ -493,10 +493,9 @@ class BookReader {
     const free = meas[1].querySelector('.bk-flow');
     const open = eggSet();
     const pages = [{ kind: 'endpaper' }, { kind: 'title' }, { kind: 'toc' }];
-    // (también por cantidad: `at` easter eggs hechos, sin contar Eclipse;
-    // globalThis.__mduOldBookNeed: solo los que pide cada capítulo)
+    // (también por cantidad: `at` easter eggs hechos, sin contar Eclipse)
     const done = [...open].filter((m) => m !== 'eclipse').length;
-    const byCount = (c) => globalThis.__mduOldBookNeed !== true && c.at > 0 && done >= c.at;
+    const byCount = (c) => c.at > 0 && done >= c.at;
     const chapters = this.data.CHAPTERS.map((c) => ({ ...c, open: c.need.every((m) => open.has(m)) || byCount(c) }));
     const lineCount = (h) => Math.round(h / lh);
     const height = () => flow.getBoundingClientRect().height;
@@ -1058,9 +1057,7 @@ class BookReader {
 // Precarga (ui/Menus, en la carga del juego): las letras, el texto y las
 // texturas del papel y el cuero (se pintan en un canvas: lo que trababa la
 // primera vez que se abría, el usuario 2026-10-05), ya decodificadas.
-// globalThis.__mduNoBookPreload: como antes (todo al abrirlo).
 export function preloadBook() {
-  if (globalThis.__mduNoBookPreload === true) return;
   loadFonts().catch?.(() => {});
   import('../docs/libro/ronda.js').catch(() => {});
   const T = textures();

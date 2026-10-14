@@ -42,9 +42,8 @@ const toward = (P, T, k) => {
 const angLerp = (a, b, k) => a + wrapPi(b - a) * k;
 // El caballo que monta San Martín. (Sesión 1f, el usuario: "el caballo muerto
 // sigue cabalgando acostado": después de la escena de Cabral monta el de
-// repuesto (mh), pero las cargas que encabezaba movían su zaino caído (h).
-// __mduOldDeadLead: como antes)
-const leadHorse = (M) => (globalThis.__mduOldDeadLead === true ? M.h : M.mh || M.h);
+// repuesto (mh), pero las cargas que encabezaba movían su zaino caído (h))
+const leadHorse = (M) => (M.mh || M.h);
 // el yaw de un muñeco de Avatars (mira a -z con yaw 0) para un caballo/dirección con yaw del mundo h
 const puppetYaw = (h) => h + Math.PI;
 // San Martín a pie hasta su caballo (m/s) y lo que tarda en subir (s)
@@ -65,8 +64,8 @@ const V_VUELTA = 8;
 // San Martín a caballo, esperando: adelante del portón norte
 // (sesión 1f, el usuario: "San Martín atraviesa la muralla": el lugar de espera
 // estaba a 2 m del costado del portón norte —iba derecho y cruzaba el muro—;
-// ahora, delante del portón. __mduOldSmWall: como antes)
-const SM_WAIT = globalThis.__mduOldSmWall === true ? [-40.8, 13.4] : [-40.8, 9.5];
+// ahora, delante del portón)
+const SM_WAIT = [-40.8, 9.5];
 // Belgrano y la bandera: dónde está en cada fase (0 llega; 1 cerca del muro; 2 el medio; 3 adelante)
 export const FLAG_SPOTS = [
   [-49.6, -8.2],
@@ -164,7 +163,6 @@ export default class Aliados {
     if (giver) S.face = puppetYaw(Math.atan2(giver.x - S.r.pos.x, giver.z - S.r.pos.z));
     // (y después camina hasta el costado de su caballo y monta: el que espera
     // a que esté arriba —el desembarco— cuenta también eso)
-    if (globalThis.__mduOldSmMount === true) return 5.2;
     const st = this.smStirrup(S.h);
     return 5.2 + Math.hypot(st.x - S.r.pos.x, st.z - S.r.pos.z) / SM_WALK + 0.6 + SM_MOUNT;
   }
@@ -190,20 +188,18 @@ export default class Aliados {
     if (S.mode === 'pie') {
       POSE.firme(P, t);
       // (sesión 1f, el usuario: "San Martín, animaciones rígidas": mira al que
-      // se le acerca, llama con la mano, señala el campo. __mduOldSmStatue: quieto)
-      if (globalThis.__mduOldSmStatue !== true) {
-        const rel = S.lookRel || 0;
-        P.torsoY = Math.max(-0.4, Math.min(0.4, rel * 0.4));
-        P.headY = Math.max(-0.7, Math.min(0.7, rel * 0.6)) + 0.06 * Math.sin(t * 0.6);
-        P.headP = -0.05 + 0.03 * Math.sin(t * 0.4);
-        P.torsoR += 0.025 * Math.sin(t * 0.35);
-        const G = S.gest;
-        if (G) {
-          const u2 = (t - G.t0) / G.dur;
-          const k = ease(Math.min(1, u2 / 0.18)) * (1 - ease(Math.max(0, (u2 - 0.78) / 0.22)));
-          if (G.kind === 'llama') toward(P, { shLp: -2.25, shLr: -0.35, elL: -0.95 - 0.45 * Math.sin(t * 7), headP: -0.12 }, k);
-          else toward(P, { shLp: -1.5, shLr: -0.25, elL: -0.05, headP: -0.06, torsoY: P.torsoY + 0.12 }, k);
-        }
+      // se le acerca, llama con la mano, señala el campo)
+      const rel = S.lookRel || 0;
+      P.torsoY = Math.max(-0.4, Math.min(0.4, rel * 0.4));
+      P.headY = Math.max(-0.7, Math.min(0.7, rel * 0.6)) + 0.06 * Math.sin(t * 0.6);
+      P.headP = -0.05 + 0.03 * Math.sin(t * 0.4);
+      P.torsoR += 0.025 * Math.sin(t * 0.35);
+      const G = S.gest;
+      if (G) {
+        const u2 = (t - G.t0) / G.dur;
+        const k = ease(Math.min(1, u2 / 0.18)) * (1 - ease(Math.max(0, (u2 - 0.78) / 0.22)));
+        if (G.kind === 'llama') toward(P, { shLp: -2.25, shLr: -0.35, elL: -0.95 - 0.45 * Math.sin(t * 7), headP: -0.12 }, k);
+        else toward(P, { shLp: -1.5, shLr: -0.25, elL: -0.05, headP: -0.06, torsoY: P.torsoY + 0.12 }, k);
       }
       return;
     }
@@ -265,7 +261,7 @@ export default class Aliados {
     S.r.poseFn = (P) => this.smPose(P);
     S.t = 0;
     S.mountDur = 0.95;
-    if (walk && globalThis.__mduOldSmMount !== true) {
+    if (walk) {
       // (2026-10-07, el usuario: "se sube al caballo de un teleport": volaba 3,7 m en un segundo)
       S.to = this.smStirrup(h);
       S.mode = 'acerca';
@@ -286,7 +282,7 @@ export default class Aliados {
   // (San Martín a pie: a quién mira y qué gesto hace; lo llama smUpdate)
   smLife(dt) {
     const S = this.sm;
-    if (globalThis.__mduOldSmStatue === true || S.mode !== 'pie') {
+    if (S.mode !== 'pie') {
       S.gest = null;
       return;
     }
@@ -395,7 +391,7 @@ export default class Aliados {
       m.depthWrite = true;
       // (la textura del ánima del Monumento es muy clara: sólido y con el sol
       // del eclipse, el pantalón y la banda se quemaban en blanco)
-      m.color.setScalar(globalThis.__mduNoBelDim === true ? 1 : 0.62);
+      m.color.setScalar(0.62);
       m.needsUpdate = true;
     });
     // la levita oscura y sin sombrero (mientras baja el modelo, el muñeco de piezas)
@@ -476,24 +472,22 @@ export default class Aliados {
       P.headY = 0.25 * Math.sin(t * 0.3);
       // (sesión 1f, el usuario: "Belgrano se queda estatua toda la pelea": mira
       // a El Eclipse con la cabeza y el cuerpo, grita con el puño en alto,
-      // señala, alza la bandera y la sacude. __mduOldBelStatue: como antes)
-      if (globalThis.__mduOldBelStatue !== true) {
-        const rel = B.lookRel || 0;
-        P.torsoY = Math.max(-0.45, Math.min(0.45, rel * 0.45));
-        P.headY = Math.max(-0.6, Math.min(0.6, rel * 0.55)) + 0.08 * Math.sin(t * 0.7);
-        P.headP = -0.06 + 0.04 * Math.sin(t * 0.45);
-        const G = B.gest;
-        if (G) {
-          const u = (t - G.t0) / G.dur;
-          const k = ease(Math.min(1, u / 0.18)) * (1 - ease(Math.max(0, (u - 0.78) / 0.22)));
-          if (G.kind === 'grita') {
-            toward(P, { shLp: -2.75 + 0.12 * Math.sin(t * 9), shLr: -0.18, elL: -0.55, headP: -0.3, torsoP: -0.06 }, k);
-          } else if (G.kind === 'senala') {
-            toward(P, { shLp: -1.55, shLr: -0.3, elL: -0.06, headP: -0.08, torsoY: P.torsoY + 0.15 }, k);
-          } else if (G.kind === 'alza') {
-            // las dos manos en el asta, la sube y la sacude
-            toward(P, { shRp: -1.75 + 0.18 * Math.sin(t * 6), shRr: 0.1, elR: -0.55, shLp: -1.6 + 0.18 * Math.sin(t * 6), shLr: 0.25, elL: -0.7, headP: -0.25 }, k);
-          }
+      // señala, alza la bandera y la sacude)
+      const rel = B.lookRel || 0;
+      P.torsoY = Math.max(-0.45, Math.min(0.45, rel * 0.45));
+      P.headY = Math.max(-0.6, Math.min(0.6, rel * 0.55)) + 0.08 * Math.sin(t * 0.7);
+      P.headP = -0.06 + 0.04 * Math.sin(t * 0.45);
+      const G = B.gest;
+      if (G) {
+        const u = (t - G.t0) / G.dur;
+        const k = ease(Math.min(1, u / 0.18)) * (1 - ease(Math.max(0, (u - 0.78) / 0.22)));
+        if (G.kind === 'grita') {
+          toward(P, { shLp: -2.75 + 0.12 * Math.sin(t * 9), shLr: -0.18, elL: -0.55, headP: -0.3, torsoP: -0.06 }, k);
+        } else if (G.kind === 'senala') {
+          toward(P, { shLp: -1.55, shLr: -0.3, elL: -0.06, headP: -0.08, torsoY: P.torsoY + 0.15 }, k);
+        } else if (G.kind === 'alza') {
+          // las dos manos en el asta, la sube y la sacude
+          toward(P, { shRp: -1.75 + 0.18 * Math.sin(t * 6), shRr: 0.1, elR: -0.55, shLp: -1.6 + 0.18 * Math.sin(t * 6), shLr: 0.25, elL: -0.7, headP: -0.25 }, k);
         }
       }
     }
@@ -502,7 +496,7 @@ export default class Aliados {
   // (Belgrano vivo: a quién mira y qué gesto hace; lo llama belUpdate)
   belLife(dt) {
     const B = this.bel;
-    if (globalThis.__mduOldBelStatue === true || !B.planted || B.r.moving) {
+    if (!B.planted || B.r.moving) {
       B.gest = null;
       B.lift = 0;
       return;
@@ -675,8 +669,8 @@ export default class Aliados {
         // en dos filas al cargar: el lugar de cada uno en la columna
         const k = Math.ceil(S.riders.length / 2);
         // (la fila de adelante: los que forman más afuera, que es para donde
-        // sale la columna; al revés se cruzaban al salir. __mduOldColumnStart)
-        const rank = globalThis.__mduOldColumnStart === true ? Math.floor(i / k) : Math.floor((S.riders.length - 1 - i) / k);
+        // sale la columna; al revés se cruzaban al salir)
+        const rank = Math.floor((S.riders.length - 1 - i) / k);
         const file = i % k;
         R.lat = (file - (k - 1) / 2) * 2.5 * S.side;
         R.along = -rank * 3.6;
@@ -687,16 +681,14 @@ export default class Aliados {
   // El camino de una carga del lado `side` por el carril v = lane.
   chargePath(side, lane) {
     // (2026-10-07: la columna pasaba por arriba de los cañones de la barranca;
-    // el carril, a 6 m de cada uno. __mduOldChargeSmooth: como antes)
-    if (globalThis.__mduOldChargeSmooth !== true) {
-      for (const [, cv] of F.cannons) if (Math.abs(lane - cv) < 6) lane = cv + (lane >= cv ? 6 : -6);
-    }
+    // el carril, a 6 m de cada uno)
+    for (const [, cv] of F.cannons) if (Math.abs(lane - cv) < 6) lane = cv + (lane >= cv ? 6 : -6);
     const e = edgeU(lane);
     const s = side;
     // (sesión 1f, el usuario: "San Martín atraviesa la muralla": la fila de
     // adentro de la columna pasaba por la punta del muro (|v| 31, el muro llega
-    // a 32). Rodea 2,5 m más afuera. __mduOldWallEnd: como antes)
-    const W2 = globalThis.__mduOldWallEnd === true ? 0 : 1;
+    // a 32). Rodea 2,5 m más afuera)
+    const W2 = 1;
     const P = [
       [FORM_U, s * (FORM_V0 + FORM_DV * 1.5)],
       [FORM_U + 0.4, s * (29.5 + 2.5 * W2)],
@@ -749,9 +741,9 @@ export default class Aliados {
     }
     // (sesión 1f: los caballos se atravesaban al salir y al volver. La fila de
     // adelante es la de los que forman más afuera —para allá sale la columna— y
-    // al volver cada uno va al lugar que le queda en orden. __mduOldColumnStart)
+    // al volver cada uno va al lugar que le queda en orden)
     S.reslot = false;
-    if (globalThis.__mduOldColumnStart !== true) {
+    {
       const k = Math.ceil(S.riders.length / 2);
       [...S.riders]
         .filter((R) => R.slot)
@@ -858,43 +850,41 @@ export default class Aliados {
       tmpW.normalize();
       // (a la derecha del camino: -z de la tangente girada)
       // (2026-10-07: lo que tiene adelante —cañones, carretas, troncos— lo
-      // esquiva corriéndose de costado de a poco, desde unos metros antes;
-      // __mduOldChargeSmooth: como antes, de golpe al llegar)
-      if (globalThis.__mduOldChargeSmooth !== true && dt > 0) lat += this.dodge(h, tmpV, tmpW, lat, dt);
+      // esquiva corriéndose de costado de a poco, desde unos metros antes)
+      if (dt > 0) lat += this.dodge(h, tmpV, tmpW, lat, dt);
       let x = tmpV.x + -tmpW.z * lat;
       let z = tmpV.z + tmpW.x * lat;
       // (sesión 1f: al salir, la segunda fila iba al mismo punto que la primera
       // —el camino empieza en 0— y los caballos se atravesaban: atrás del
-      // arranque, sobre la tangente. __mduOldColumnStart: como antes)
+      // arranque, sobre la tangente)
       const back = S.s + along;
-      if (back < 0 && globalThis.__mduOldColumnStart !== true) {
+      if (back < 0) {
         x += tmpW.x * back;
         z += tmpW.z * back;
       }
       toLocal(x, z, L);
       // (sesión 1f: nadie más allá de 3 m antes de la barranca —"casi se salen
-      // del mapa"—; __mduNoCavEdge: como antes)
+      // del mapa"—)
       // (2026-10-07, el usuario: "los caballos se caen por el barranco y se
       // teletransportan arriba": en la vuelta junto a la barranca pasaban por
       // las bajadas al río y bajaban hasta 5 m por la rampa. Ahí, 11 m antes del
-      // borde. __mduOldChargeSmooth: como antes)
-      const SM2 = globalThis.__mduOldChargeSmooth !== true;
-      const lim = edgeU(L.v) - (SM2 && F.bajadas.some((b) => Math.abs(L.v - b) < F.bajW + 5) ? 11 : 3);
-      if (globalThis.__mduNoCavEdge !== true && L.u > lim) {
+      // borde)
+      const lim = edgeU(L.v) - (F.bajadas.some((b) => Math.abs(L.v - b) < F.bajW + 5) ? 11 : 3);
+      if (L.u > lim) {
         L.u = lim;
         const Wp = toWorld(L.u, L.v, 0, tmpU);
         x = Wp.x;
         z = Wp.z;
       }
-      // (los cañones, las carretas, el pozo y los troncos del campo: los rodean; __mduNoSlEsquiva)
-      if (globalThis.__mduNoSlEsquiva !== true && avoidProps(L, 1.3)) {
+      // (los cañones, las carretas, el pozo y los troncos del campo: los rodean)
+      if (avoidProps(L, 1.3)) {
         const Wp = toWorld(L.u, L.v, 0, tmpU);
         x = Wp.x;
         z = Wp.z;
       }
       // (y al esquivar los cañones y los árboles saltaban 1-5 m de un cuadro al
       // otro: ahora no se mueven más rápido que la columna, rodean de a poco)
-      if (SM2 && kIn >= 1 && dt > 0) {
+      if (kIn >= 1 && dt > 0) {
         const dx = x - h.pos.x;
         const dz = z - h.pos.z;
         const d = Math.hypot(dx, dz);
@@ -925,7 +915,7 @@ export default class Aliados {
       return y;
     };
     // (al empezar la vuelta a formar: los lugares, en el orden en que vienen)
-    if (!S.reslot && globalThis.__mduOldColumnStart !== true && S.s > P.len - 9) {
+    if (!S.reslot && S.s > P.len - 9) {
       S.reslot = true;
       const live = S.riders.filter((R) => R.slot && !R.scene);
       const slots = live.map((R) => R.slot).sort((a, b) => Math.abs(a.v) - Math.abs(b.v));
@@ -956,9 +946,9 @@ export default class Aliados {
       const M = this.sm;
       // (sesión 1f: si San Martín espera del lado del campo y la columna todavía
       // va por atrás del muro, espera a que la columna salga: si no, se iba
-      // derecho a ella atravesando el muro. __mduOldSmWall: como antes)
+      // derecho a ella atravesando el muro)
       let hold = false;
-      if (globalThis.__mduOldSmWall !== true && M.lead.k === 0) {
+      if (M.lead.k === 0) {
         P.curve.getPointAt(Math.max(0, Math.min(1, (S.s + 4.2) / P.len)), tmpU);
         const fu = toLocal(M.lead.from.pos.x, M.lead.from.pos.z, {}).u;
         const tu = toLocal(tmpU.x, tmpU.z, {}).u;
@@ -989,7 +979,7 @@ export default class Aliados {
       if (S.lead) {
         S.lead = false;
         this.sm.lead = null;
-        this.smToWait(globalThis.__mduOldWallEnd === true);
+        this.smToWait(false);
       }
     }
   }
@@ -1118,7 +1108,7 @@ export default class Aliados {
     // (del otro lado del muro: por el portón del norte, adentro y afuera)
     const h = S.mh || S.h;
     toLocal(h.pos.x, h.pos.z, L);
-    if (globalThis.__mduOldWallEnd !== true && L.u < F.wallU !== u < F.wallU) {
+    if (L.u < F.wallU !== u < F.wallU) {
       const gv = (F.gates[1][0] + F.gates[1][1]) / 2;
       const inU = F.wallU - 2.2;
       const outU = F.wallU + 2.2;

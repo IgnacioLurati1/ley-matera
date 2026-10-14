@@ -19,19 +19,16 @@ export const ELBOW_L = new THREE.Vector3(-0.46, -0.56, 0.12);
 // (guadana5) el codo izquierdo sigue a la mano: [cuánto más a la izquierda que
 // la mano, cuánto más abajo, cuánto más atrás] (antes 0,42 / 0 / 0)
 // (guadana5: la guadaña acostada: el codo más abajo y atrás, el antebrazo
-// izquierdo baja casi derecho; globalThis.__mduDesgOldHold: como antes)
-const OLD_HOLD = globalThis.__mduDesgOldHold === true;
+// izquierdo baja casi derecho)
 // (guadana5, segunda vuelta: el usuario quiere el ASTA horizontal, paralela
 // al borde de abajo, cruzada delante del cuerpo con las dos manos y la hoja en
-// la punta izquierda; globalThis.__mduDesgOldHold2: la de la primera vuelta)
-const OLD_HOLD2 = OLD_HOLD || globalThis.__mduDesgOldHold2 === true;
+// la punta izquierda)
 // (guadana5, tercera vuelta: "tiraría la mano izquierda más hacia el cuerpo así
 // queda más horizontal y no tanto hacia el medio de la pantalla en altura": la
 // izquierda más cerca del cuerpo, el asta más acostada y más abajo; los
-// barridos, igual de más abajo. globalThis.__mduDesgOldHold3: la segunda vuelta)
-const OLD_HOLD3 = OLD_HOLD2 || globalThis.__mduDesgOldHold3 === true;
-const LO = (P) => (OLD_HOLD3 ? P : [P[0], P[1] - 0.08, P[2], P[3], P[4] * 0.3, P[5], P[6], P[7], P[8], P[9], P[10]]);
-export const ELBOW_FOLLOW = OLD_HOLD ? [0.42, 0, 0] : OLD_HOLD2 ? [0.05, -0.15, 0.25] : [0, -0.3, 0.3];
+// barridos, igual de más abajo)
+const LO = (P) => [P[0], P[1] - 0.08, P[2], P[3], P[4] * 0.3, P[5], P[6], P[7], P[8], P[9], P[10]];
+export const ELBOW_FOLLOW = [0, -0.3, 0.3];
 // adónde se va la mano izquierda cuando suelta el asta (el giro): abajo, afuera de cuadro
 export const LEFT_OFF = new THREE.Vector3(-0.2, -0.46, 0.06);
 
@@ -72,7 +69,6 @@ export function shaftQuat(dx, dy, dz, ex, ey, ez, out) {
 // derecha) tenía la izquierda a la derecha de la derecha: brazos cruzados.
 // (hojas de comparación guadana/shots/_v4r7.png, _v4r8.png, _v4r9.png; la
 // prueba numérica de cruces: guadana/t_cruce.mjs)
-// (globalThis.__mduDesgOldRest: la quieta de la v3, la hoja parada a la izquierda)
 // guadana5 (iteración 4: "la guadaña está posicionada de forma medio vertical
 // en lugar de horizontal: no se ve en medio de la pantalla al usarla"): la
 // hoja ACOSTADA cruzando la vista, como la Parca: las dos manos a la derecha
@@ -80,17 +76,8 @@ export function shaftQuat(dx, dy, dz, ex, ey, ez, out) {
 // hacia adelante y arriba, la cabeza un poco a la derecha del medio y la hoja
 // hacia la izquierda, horizontal, con la cara del cosmos a la vista, debajo de
 // la mira. (hojas guadana5/shots/_r2.._r5.png; elegida M5c)
-// (globalThis.__mduDesgOldHold: la quieta de la v4)
 export const REST_P =
-  globalThis.__mduDesgOldRest === true
-    ? [0.02, 0.0, -0.02, -0.86, 0.24, -0.45, 0.36, 0.92, 0.14, 0, 0]
-    : OLD_HOLD
-      ? [0.12, -0.08, -0.22, -0.5, 0.75, -0.43, -0.8, -0.2, -0.55, 0.1, 0]
-      : OLD_HOLD2
-        ? [0.14, -0.05, -0.1, -0.3, 0.5, -0.81, -1, 0, 0, 0.45, 0]
-        : OLD_HOLD3
-          ? [0.0, 0.06, -0.22, -0.96, 0.12, -0.25, 0, 0.6, -0.8, 0.3, 0]
-          : [0.0, -0.02, -0.2, -0.99, 0.03, -0.1, 0, 0.6, -0.8, 0.3, 0];
+  [0.0, -0.02, -0.2, -0.99, 0.03, -0.1, 0, 0.6, -0.8, 0.3, 0];
 // Un arco: la guadaña entera gira alrededor de la normal del plano (n),
 // pasando por d0 (el asta en el medio del arco), de `from` a `to` (radianes),
 // con la punta de la hoja adelante. Las manos van de off0 a off1 (x, y, z,
@@ -220,58 +207,34 @@ export const MOVES = {
 // al revés), siempre con la cara a la vista y pasando por el medio. Mientras
 // el asta apunta a la derecha, la izquierda suelta (si no, los brazos se
 // cruzan) y vuelve a agarrar cuando el asta pasa por arriba.
-if (!OLD_HOLD2) {
-  // segunda vuelta: el asta siempre acostada en la pantalla; los golpes la
-  // barren entera (la cabeza y la hoja cruzan el medio de derecha a izquierda,
-  // de izquierda a derecha, o de arriba abajo en la siega). La izquierda
-  // siempre a la izquierda de la derecha: nunca se cruzan.
-  const W = LO([0.2, 0.06, -0.1, -0.5, 0.12, -0.86, -0.3, 0.5, -0.8, 0.3, 0]);
-  const M = LO([0.06, 0.0, -0.2, -0.88, 0.1, -0.46, -0.35, 0.4, -0.85, 0.3, 0]);
-  const L = LO([-0.12, -0.04, -0.16, -0.97, 0.08, 0.2, -0.25, 0.4, -0.88, 0.3, 0]);
-  MOVES.diag.keys = moveKeys([[0.14, W, 'io']], [[0.3, LO([0.18, 0.04, -0.14, -0.55, 0.1, -0.83, -0.35, 0.45, -0.82, 0.3, 0]), 'i'], [0.5, M, 'l'], [0.72, L, 'o']]);
-  MOVES.rev.keys = moveKeys(
-    [[0.14, LO([-0.1, 0.02, -0.16, -0.97, 0.08, 0.15, 0.35, 0.45, -0.82, 0.3, 0]), 'io']],
-    [[0.3, LO([-0.08, 0.0, -0.18, -0.95, 0.1, 0.0, 0.35, 0.45, -0.82, 0.3, 0]), 'i'], [0.5, LO([0.1, 0.02, -0.2, -0.75, 0.1, -0.65, 0.35, 0.45, -0.82, 0.3, 0]), 'l'], [0.72, LO([0.26, 0.04, -0.12, -0.45, 0.12, -0.88, 0.4, 0.45, -0.8, 0.3, 0]), 'o']],
-  );
-  // la siega: la levanta acostada por arriba de la cabeza (la hoja atrás) y la
-  // baja: la hoja gira alrededor del asta y cae por el medio
-  MOVES.alto.keys = moveKeys(
-    [[0.16, [0.04, 0.26, -0.06, -0.96, 0.18, -0.2, 0, 0.8, 0.6, 0.3, 0], 'io']],
-    [[0.34, [0.04, 0.24, -0.12, -0.96, 0.15, -0.22, 0, 0.95, -0.3, 0.3, 0], 'i'], [0.52, [0.04, 0.02, -0.26, -0.96, 0.08, -0.26, 0, 0.2, -1, 0.3, 0], 'l'], [0.7, [0.04, -0.14, -0.24, -0.96, 0.05, -0.26, 0, -0.6, -0.8, 0.3, 0], 'o']],
-  );
-  // el remate: el molinete de siempre y el barrido acostado
-  MOVES.remate.keys = moveKeys(
-    [[0.09, [-0.05, 0.08, -0.08, 0.6, 0.6, -0.5, -0.3, 0.8, 0.5, 0.35, 0.8], 'io']],
-    [
-      { n: [0, 0.3, 0.95], d0: [1, 0, 0], from: 0.3, to: -2 * Math.PI + 0.33, off0: [-0.1, 0.06, -0.14, 1, 0.4], off1: [-0.1, 0.06, -0.14, 1, 0.4], k0: 0.14, k1: 0.5, tilt: 0.25, pivot: 0.24, ease: 'in' },
-      [0.58, LO([0.22, 0.06, -0.1, -0.5, 0.12, -0.86, -0.3, 0.5, -0.8, 0.3, 0.3]), 'io'],
-      [0.68, LO([0.08, 0.0, -0.2, -0.85, 0.1, -0.5, -0.35, 0.4, -0.85, 0.3, 0]), 'i'],
-      [0.84, LO([-0.14, -0.05, -0.16, -0.97, 0.08, 0.22, -0.25, 0.4, -0.88, 0.3, 0]), 'o'],
-    ],
-  );
-} else if (!OLD_HOLD) {
-  const N = [0, 0.82, 0.57];
-  const D = [0, 0.57, -0.82];
-  MOVES.diag.keys = moveKeys(
-    [[0.13, [0.24, 0.0, -0.02, 0.7, 0.55, -0.45, -0.3, 0.4, -0.85, 0.45, 1], 'io']],
-    [
-      { n: N, d0: D, from: -1.1, to: 0, off0: [0.22, 0.02, -0.04, 1, 0.45], off1: [0.04, 0, -0.06, 0, 0.45], k0: 0.24, k1: 0.44, tilt: 0.15, pivot: 0.35 },
-      { n: N, d0: D, from: 0, to: 1.3, off0: [0.04, 0, -0.06, 0, 0.45], off1: [-0.14, -0.03, -0.08, 0, 0.45], k0: 0.44, k1: 0.72, tilt: 0.15, pivot: 0.35 },
-    ],
-  );
-  MOVES.rev.keys = moveKeys(
-    [[0.13, [-0.06, 0.0, -0.04, -0.7, 0.55, -0.45, 0.3, 0.4, -0.85, 0.45, 0], 'io']],
-    [{ n: N, d0: D, from: 1.2, to: -0.75, off0: [-0.08, 0, -0.06, 0, 0.45], off1: [0.2, -0.02, -0.05, 0, 0.45], k0: 0.24, k1: 0.72, tilt: -0.15, pivot: 0.35, rel: 1 }],
-  );
-  MOVES.remate.keys = moveKeys(
-    [[0.09, [-0.05, 0.08, -0.08, 0.6, 0.6, -0.5, -0.3, 0.8, 0.5, 0.35, 0.8], 'io']],
-    [
-      { n: [0, 0.3, 0.95], d0: [1, 0, 0], from: 0.3, to: -2 * Math.PI + 0.33, off0: [-0.1, 0.06, -0.14, 1, 0.4], off1: [-0.1, 0.06, -0.14, 1, 0.4], k0: 0.14, k1: 0.5, tilt: 0.25, pivot: 0.24, ease: 'in' },
-      { n: N, d0: D, from: -1.2, to: 0, off0: [0.24, 0.02, -0.04, 1, 0.45], off1: [0.04, 0, -0.06, 0, 0.45], k0: 0.54, k1: 0.66, tilt: 0.2, pivot: 0.35 },
-      { n: N, d0: D, from: 0, to: 1.45, off0: [0.04, 0, -0.06, 0, 0.45], off1: [-0.16, -0.05, -0.08, 0, 0.45], k0: 0.66, k1: 0.84, tilt: 0.2, pivot: 0.35 },
-    ],
-  );
-}
+// segunda vuelta: el asta siempre acostada en la pantalla; los golpes la
+// barren entera (la cabeza y la hoja cruzan el medio de derecha a izquierda,
+// de izquierda a derecha, o de arriba abajo en la siega). La izquierda
+// siempre a la izquierda de la derecha: nunca se cruzan.
+const W = LO([0.2, 0.06, -0.1, -0.5, 0.12, -0.86, -0.3, 0.5, -0.8, 0.3, 0]);
+const M = LO([0.06, 0.0, -0.2, -0.88, 0.1, -0.46, -0.35, 0.4, -0.85, 0.3, 0]);
+const L = LO([-0.12, -0.04, -0.16, -0.97, 0.08, 0.2, -0.25, 0.4, -0.88, 0.3, 0]);
+MOVES.diag.keys = moveKeys([[0.14, W, 'io']], [[0.3, LO([0.18, 0.04, -0.14, -0.55, 0.1, -0.83, -0.35, 0.45, -0.82, 0.3, 0]), 'i'], [0.5, M, 'l'], [0.72, L, 'o']]);
+MOVES.rev.keys = moveKeys(
+  [[0.14, LO([-0.1, 0.02, -0.16, -0.97, 0.08, 0.15, 0.35, 0.45, -0.82, 0.3, 0]), 'io']],
+  [[0.3, LO([-0.08, 0.0, -0.18, -0.95, 0.1, 0.0, 0.35, 0.45, -0.82, 0.3, 0]), 'i'], [0.5, LO([0.1, 0.02, -0.2, -0.75, 0.1, -0.65, 0.35, 0.45, -0.82, 0.3, 0]), 'l'], [0.72, LO([0.26, 0.04, -0.12, -0.45, 0.12, -0.88, 0.4, 0.45, -0.8, 0.3, 0]), 'o']],
+);
+// la siega: la levanta acostada por arriba de la cabeza (la hoja atrás) y la
+// baja: la hoja gira alrededor del asta y cae por el medio
+MOVES.alto.keys = moveKeys(
+  [[0.16, [0.04, 0.26, -0.06, -0.96, 0.18, -0.2, 0, 0.8, 0.6, 0.3, 0], 'io']],
+  [[0.34, [0.04, 0.24, -0.12, -0.96, 0.15, -0.22, 0, 0.95, -0.3, 0.3, 0], 'i'], [0.52, [0.04, 0.02, -0.26, -0.96, 0.08, -0.26, 0, 0.2, -1, 0.3, 0], 'l'], [0.7, [0.04, -0.14, -0.24, -0.96, 0.05, -0.26, 0, -0.6, -0.8, 0.3, 0], 'o']],
+);
+// el remate: el molinete de siempre y el barrido acostado
+MOVES.remate.keys = moveKeys(
+  [[0.09, [-0.05, 0.08, -0.08, 0.6, 0.6, -0.5, -0.3, 0.8, 0.5, 0.35, 0.8], 'io']],
+  [
+    { n: [0, 0.3, 0.95], d0: [1, 0, 0], from: 0.3, to: -2 * Math.PI + 0.33, off0: [-0.1, 0.06, -0.14, 1, 0.4], off1: [-0.1, 0.06, -0.14, 1, 0.4], k0: 0.14, k1: 0.5, tilt: 0.25, pivot: 0.24, ease: 'in' },
+    [0.58, LO([0.22, 0.06, -0.1, -0.5, 0.12, -0.86, -0.3, 0.5, -0.8, 0.3, 0.3]), 'io'],
+    [0.68, LO([0.08, 0.0, -0.2, -0.85, 0.1, -0.5, -0.35, 0.4, -0.85, 0.3, 0]), 'i'],
+    [0.84, LO([-0.14, -0.05, -0.16, -0.97, 0.08, 0.22, -0.25, 0.4, -0.88, 0.3, 0]), 'o'],
+  ],
+);
 export const COMBO = ['diag', 'rev', 'alto', 'remate'];
 // tirar la espectral: un latigazo corto de derecha a izquierda, como quien
 // tira un disco (la guadaña de verdad no se va)
@@ -280,9 +243,7 @@ export const THROW = 0.38;
 // vuelve a agarrar al final: si no, los brazos se cruzaban)
 // (guadana5, segunda vuelta: el tiro también con el asta acostada: un
 // latigazo de derecha a izquierda, la hoja cruza el medio)
-export const THROW_KEYS = !OLD_HOLD2
-  ? moveKeys([[0.2, LO([0.22, 0.06, -0.08, -0.5, 0.12, -0.86, -0.3, 0.45, -0.85, 0.3, 0]), 'io']], [[0.45, LO([0.06, 0.02, -0.2, -0.88, 0.1, -0.46, -0.35, 0.35, -0.87, 0.3, 0]), 'i'], [0.62, LO([-0.12, -0.02, -0.16, -0.97, 0.08, 0.2, -0.25, 0.35, -0.9, 0.3, 0]), 'o']])
-  : moveKeys([[0.2, [0.16, 0.0, 0.05, 0.75, 0.45, -0.5, -0.45, 0.85, 0.2, 0, 1], 'io']], [{ n: [0.1, 1, 0.2], d0: [0, -0.05, -1], from: -0.9, to: 0.9, off0: [0.12, 0.0, 0.03, 1, 0], off1: [-0.12, -0.03, -0.04, 0, 0], k0: 0.36, k1: 0.72, tilt: 0.35, pivot: 0.08 }]);
+export const THROW_KEYS = moveKeys([[0.2, LO([0.22, 0.06, -0.08, -0.5, 0.12, -0.86, -0.3, 0.45, -0.85, 0.3, 0]), 'io']], [[0.45, LO([0.06, 0.02, -0.2, -0.88, 0.1, -0.46, -0.35, 0.35, -0.87, 0.3, 0]), 'i'], [0.62, LO([-0.12, -0.02, -0.16, -0.97, 0.08, 0.2, -0.25, 0.35, -0.9, 0.3, 0]), 'o']]);
 export const THROW_AT = 0.55;
 // la embestida: la baja adelante como un arado (las dos manos, el asta para
 // abajo y adelante, la hoja abajo de punta) y al final la levanta cortando
@@ -290,15 +251,15 @@ export const DASH_KEYS = [
   [0, REST_P],
   [0.14, [0.06, 0.1, -0.06, -0.3, -0.2, -0.93, 0.15, -0.97, 0.18, 0.3, 0], 'o'],
   [0.62, [0.06, 0.08, -0.08, -0.28, -0.17, -0.94, 0.12, -0.98, 0.15, 0.3, 0], 'l'],
-  OLD_HOLD2 ? [0.8, [0.0, 0.04, -0.06, -0.7, 0.4, -0.6, 0.3, 0.9, 0.3, 0.2, 0], 'o'] : [0.8, [0.04, 0.12, -0.2, -0.96, 0.15, -0.22, 0, 1, 0.1, 0.3, 0], 'o'],
+  [0.8, [0.04, 0.12, -0.2, -0.96, 0.15, -0.22, 0, 1, 0.1, 0.3, 0], 'o'],
   [1, REST_P, 'io'],
 ];
 // sacarla: sube de abajo a la derecha dando una vuelta sobre el asta
 export const DRAW = 0.5;
 export const DRAW_KEYS = [
   // (guadana5, segunda vuelta: sube acostada desde abajo a la derecha)
-  OLD_HOLD2 ? [0, [0.14, -0.22, 0.06, -0.3, 0.9, 0.3, 0.9, 0.3, 0.2, 0, 0.8]] : [0, [0.14, -0.24, 0.0, -0.95, 0.1, 0.2, 0, 0.9, 0.3, 0.3, 0.8]],
-  OLD_HOLD2 ? [0.6, [0.07, -0.1, 0.03, -0.8, 0.45, -0.4, 0.3, 0.85, 0.3, 0, 0.1], 'o'] : [0.6, [0.06, -0.02, -0.16, -0.96, 0.12, -0.2, 0, 0.8, -0.5, 0.3, 0.1], 'o'],
+  [0, [0.14, -0.24, 0.0, -0.95, 0.1, 0.2, 0, 0.9, 0.3, 0.3, 0.8]],
+  [0.6, [0.06, -0.02, -0.16, -0.96, 0.12, -0.2, 0, 0.8, -0.5, 0.3, 0.1], 'o'],
   [1, REST_P, 'io'],
 ];
 // mostrarla (inspeccionar): la para delante de la cara (las dos manos en el
@@ -307,12 +268,12 @@ export const DRAW_KEYS = [
 export const INSPECT = 3.8;
 // (guadana5, segunda vuelta: la levanta acostada delante de la cara, la hoja
 // parada mostrando el cosmos; después de canto, el filo)
-export const I_FACE = OLD_HOLD2 ? [-0.06, -0.06, -0.04, -0.3, 0.85, -0.42, 0.95, 0.25, 0.1, 0.35, 0] : [0.0, 0.12, -0.24, -0.96, 0.15, -0.2, 0, 1, 0.15, 0.3, 0];
+export const I_FACE = [0.0, 0.12, -0.24, -0.96, 0.15, -0.2, 0, 1, 0.15, 0.3, 0];
 export const INSPECT_KEYS = [
   [0, REST_P],
   [0.12, I_FACE, 'io'],
-  [0.36, OLD_HOLD2 ? [-0.06, -0.05, -0.05, -0.32, 0.85, -0.4, 0.88, 0.2, 0.42, 0.35, 0] : [0.0, 0.13, -0.24, -0.96, 0.15, -0.2, 0, 0.9, 0.45, 0.3, 0], 'io'],
-  [0.52, OLD_HOLD2 ? [-0.06, -0.06, -0.05, -0.3, 0.85, -0.42, 0.3, 0.38, 0.88, 0.35, 0] : [0.0, 0.12, -0.24, -0.96, 0.15, -0.2, 0, 0.3, -0.95, 0.3, 0], 'io'],
+  [0.36, [0.0, 0.13, -0.24, -0.96, 0.15, -0.2, 0, 0.9, 0.45, 0.3, 0], 'io'],
+  [0.52, [0.0, 0.12, -0.24, -0.96, 0.15, -0.2, 0, 0.3, -0.95, 0.3, 0], 'io'],
   [0.68, I_FACE, 'io'],
   [0.8, I_FACE, 'io'],
   [1, REST_P, 'io'],
@@ -321,8 +282,7 @@ export const INSPECT_KEYS = [
 // cabeza a la altura del pecho (de ahí nace el rayo: Desgarrador.drawBeam) y la
 // hoja parada a la derecha, afuera del medio. Antes la hoja colgaba y el rayo
 // salía de su punta, abajo: tapaba la vista ("sale desde muy abajo").
-// (globalThis.__mduDesgBeamTip: la pose y el rayo de antes)
-export const BEAM_P = globalThis.__mduDesgBeamTip === true ? [0.02, 0.06, -0.06, -0.12, 0.38, -0.92, 0.15, -0.9, -0.38, 0.3, 0] : OLD_HOLD2 ? [0.1, -0.12, -0.16, -0.18, 0.45, -0.87, 0.5, 0.7, 0.5, 0.2, 0] : OLD_HOLD3 ? [0.12, 0.0, -0.2, -0.6, 0.15, -0.79, 0, 0.9, 0.3, 0.3, 0] : [0.12, -0.1, -0.1, -0.25, 0.05, -0.97, 0.3, 0.9, 0, 0.3, 0];
+export const BEAM_P = [0.12, -0.1, -0.1, -0.25, 0.05, -0.97, 0.3, 0.9, 0, 0.3, 0];
 // (guadana5, tercera vuelta: "al tirar el rayo se pone tan al medio que tapa
 // todo": la cabeza del arma -de donde nace el rayo- abajo a la derecha, el asta
 // para adelante y la hoja parada hacia afuera)
@@ -333,7 +293,7 @@ export const BEAM_P = globalThis.__mduDesgBeamTip === true ? [0.02, 0.06, -0.06,
 // arriba a la izquierda, la hoja alta)
 // (guadana5: la levanta con la hoja acostada arriba, cruzando la vista por
 // encima de la mira)
-export const CHARGE_P = OLD_HOLD ? [0.14, 0.02, -0.18, -0.4, 0.85, -0.35, -0.8, 0.1, -0.6, 0.1, 0] : OLD_HOLD2 ? [0.12, 0.04, -0.12, -0.35, 0.8, -0.5, -1, 0.1, 0, 0.45, 0] : [0.02, 0.2, -0.2, -0.96, 0.15, -0.2, 0, 0.9, 0.4, 0.3, 0];
+export const CHARGE_P = [0.02, 0.2, -0.2, -0.96, 0.15, -0.2, 0, 0.9, 0.4, 0.3, 0];
 // el giro (R): la agarra del medio, la sube por arriba de la cabeza y la hace
 // girar acostada (vueltas enteras), soltando la izquierda
 export const SPIN_UP = [-0.02, 0.2, -0.12, 0.0, 0.12, -1, -1, 0.0, 0.0, MID_Y, 1];

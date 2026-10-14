@@ -35,7 +35,6 @@ const ease = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
 // la fuente: al terminar, con el texto corrido de nuevo, el nombre se
 // achicaba un poco (hasta 3 px por letra; el usuario lo notó). Se mide dónde
 // cae cada letra en el texto corrido y se acomoda cada una a ese lugar.
-// (globalThis.__mduNoTitleKern: como antes)
 function textSpots(h1) {
   const tn = h1.firstChild;
   if (!tn || tn.nodeType !== 3 || h1.childNodes.length !== 1) return null;
@@ -168,7 +167,7 @@ export default class TitleIntro {
       }
     }
     s.classList.add('is-intro');
-    if (globalThis.__mduNoTitleKern !== true) fitLetters(h1, spots);
+    fitLetters(h1, spots);
     this.el?.classList.add('is-on');
 
     // el rayo: el cielo y el mapa se alumbran, y el trueno (si hay sonido)

@@ -1,5 +1,5 @@
 import EclipseSable from './eclipseCineSable';
-import EclipseSableTrip, { sableTripOn } from './eclipseSableTrip';
+import EclipseSableTrip from './eclipseSableTrip';
 import { myId } from '../entities/eclipse/common';
 import EclipseEnding, { loadFinClips } from './EclipseEnding';
 
@@ -16,7 +16,7 @@ export function makeEclipseScenes(ee) {
   // antes; igual es con el mapa, escondido, antes de la compilación de la carga)
   let sable = null;
   Promise.resolve().then(() => {
-    if (globalThis.__mduNoEclipseSable === true || ee.disposed) return;
+    if (ee.disposed) return;
     try {
       sable = new EclipseSable(ee);
     } catch (err) {
@@ -26,7 +26,7 @@ export function makeEclipseScenes(ee) {
   // (Game llama ee.sceneCam mientras hay escena: el easter egg no la trae)
   if (!ee.sceneCam) ee.sceneCam = (dt) => (ee.scene ? ee.scene.update(dt) : false);
   // los clips del final, ya (son livianos y así no espera al empezar)
-  if (globalThis.__mduNoEclipseFin !== true) loadFinClips();
+  loadFinClips();
   // El final (ui/EclipseEnding.js): lo llama EclipseEgg.arenaWon en todas las
   // compus. Al terminar: el logro y el fin de la partida (el anfitrión o solo;
   // los invitados reciben el 'win' del anfitrión).
@@ -43,10 +43,9 @@ export function makeEclipseScenes(ee) {
     return true;
   };
   return {
-    // (sesión 1f: el Gil cruza al Monumento y vuelve con el Sable —ui/eclipseSableTrip—;
-    // __mduOldEclSable: los cuatro salen a Eclipse y se lo alcanzan, como antes)
+    // (sesión 1f: el Gil cruza al Monumento y vuelve con el Sable —ui/eclipseSableTrip—)
     sable: (cb) => {
-      if (!sableTripOn() || !sable || ee.scene) return !!sable?.play(cb);
+      if (!sable || ee.scene) return !!sable?.play(cb);
       const g = ee.g;
       let cine;
       try {
@@ -67,7 +66,7 @@ export function makeEclipseScenes(ee) {
       });
       return true;
     },
-    ending: globalThis.__mduNoEclipseFin === true ? null : ending,
+    ending: ending,
     // (Alt+I: el final, desde el campo de San Lorenzo si la arena se puede poner)
     debugEnding: () => {
       const g = ee.g;

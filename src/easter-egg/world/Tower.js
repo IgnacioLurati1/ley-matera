@@ -50,11 +50,10 @@ const LIGHT_OUT = 0.4;
 // `floor`, cuánto pesa que el farol sea de otro piso al repartir las luces
 // (antes 160 por piso: se las llevaban los faroles de arriba y de abajo y el
 // otro lado del piso quedaba negro). Antes: 16 m, 1,7, 26 y 30: de cerca encandilaba y
-// a 7 m ya no alumbraba. (__mduTorreLuzVieja: como antes)
+// a 7 m ya no alumbraba.
 // `k`: los pisos de baldosa clara (la plaza del 5, el patio del 10 y la
 // enfermería del 12) devuelven mucha luz: ahí los faroles van más bajos.
 const LAMP = { dist: 26, decay: 1.2, base: 13, top: 15, floor: 600, k: { 5: 0.7, 10: 0.55, 12: 0.45 } };
-const LAMP_OLD = { dist: 16, decay: 1.7, base: 26, top: 30, floor: 160, k: {} };
 
 export default class Tower {
   constructor(world) {
@@ -707,15 +706,11 @@ export default class Tower {
     // piso de entrada, que se pisa en 0: los personajes caminaban hundidos hasta el
     // tobillo y la rosa de los vientos no se veía. Ahora van solo por afuera de las
     // paredes, en cuatro tiras. El usuario, 2026-10-12: "la hitbox del piso está más
-    // baja que el propio piso". globalThis.__mduTorreBaseVieja: como antes)
+    // baja que el propio piso")
     const [a0, a1, b0, b1] = [T.x0 - 1, T.x1 + 2, T.z0 - 1, T.z1 + 2];
     for (let s = 0; s < 2; s++) {
       const e = 1.6 - s * 0.6;
       const h = 0.12 + s * 0.12;
-      if (globalThis.__mduTorreBaseVieja === true) {
-        gb.box('towerStone', a0 - e, -0.02, b0 - e, a1 + e, h, b1 + e, 2);
-        continue;
-      }
       gb.box('towerStone', a0 - e, -0.02, b0 - e, a1 + e, h, b0, 2);
       gb.box('towerStone', a0 - e, -0.02, b1, a1 + e, h, b1 + e, 2);
       gb.box('towerStone', a0 - e, -0.02, b0, a0, h, b1, 2);
@@ -916,8 +911,8 @@ export default class Tower {
       // (del lado de la escalera que sube de este piso, el farol quedaba a la
       // altura de la cara del que sube y encandilaba: va al pilar de la otra
       // mitad de esa pared. El usuario, 2026-10-10. Lados: 0 norte, 1 este,
-      // 2 sur, 3 oeste. __mduTorreLuzVieja: como antes)
-      const stair = globalThis.__mduTorreLuzVieja === true ? -1 : (T.stairs.find((s) => s.n === n)?.side ?? -1);
+      // 2 sur, 3 oeste)
+      const stair = T.stairs.find((s) => s.n === n)?.side ?? -1;
       const off = (side) => (stair === side ? -3.5 : 3.5);
       const pts = [
         [T.x0 + 0.35, T.cz + off(3), y],
@@ -963,7 +958,7 @@ export default class Tower {
     // las luces de verdad: cada una con su farol (`a`), cuánto está prendida
     // (`k`, 0 a 1), si se está yendo (`out`) y su fuerza (`base`)
     this.lightPool = [];
-    this.lamp = { ...(globalThis.__mduTorreLuzVieja === true ? LAMP_OLD : LAMP) };
+    this.lamp = { ...LAMP };
     // (las que sobran en esta calidad nacen apagadas: la misma cuenta al cargar y al jugar)
     const nOn = Math.min(LIGHTS, w.maxLamps());
     for (let i = 0; i < LIGHTS; i++) {
@@ -1007,14 +1002,31 @@ export default class Tower {
       this.lightT = 0;
     }
     this.lightT -= dt;
+    // (en la escalera y un rato después: se reparten y se mudan más seguido, fastT)
+    const fast = this.fastT > 0 ? 2 : 1;
+    if (this.fastT > 0) this.fastT -= dt;
     if (this.lightT <= 0) {
-      this.lightT = 0.25;
+      this.lightT = 0.25 / fast;
       const cy = cam.position.y;
       const held = new Set();
       for (const L of pool) if (L.userData.a) held.add(L.userData.a);
       // (en qué piso está la cámara, con decimales: subiendo una escalera, entre dos)
       const cf = (cy - 1.65) / this.T.fh;
-      for (const a of this.anchors) a.d = (a.pos.distanceToSquared(cam.position) + Math.abs(a.l - cf) * this.lamp.floor) * (held.has(a) ? 0.6 : 1);
+      // (subiendo una escalera, el piso de arriba pagaba de más hasta llegar (cf) y sus faroles se
+      // prendían recién arriba, de a uno. El usuario, 2026-10-14: "las luces del piso cuando uno
+      // sube por la escalera no aparecen hasta que te acercás a ellas". En la escalera, las luces
+      // se pasan al piso de arriba entre el 30% y el 50% del tramo (los ojos todavía abajo del
+      // piso: cuando asoman ya están prendidas) y se mudan más rápido (fastT); bajando, al revés.
+      // Parado en un piso, igual que antes. __mduTorreLuzEscVieja: como antes)
+      const S = globalThis.__mduTorreLuzEscVieja === true ? null : this.stairUnder(w.g.player?.pos, cam.position);
+      if (S) this.fastT = 1;
+      const F = this.lamp.floor;
+      const pen = (a) => {
+        if (S && a.l === S.lo) return F * Math.min(1, Math.max(0, (S.t - 0.3) / 0.2));
+        if (S && a.l === S.lo + 1) return F * Math.min(1, Math.max(0, (0.5 - S.t) / 0.2));
+        return Math.abs(a.l - cf) * F;
+      };
+      for (const a of this.anchors) a.d = (a.pos.distanceToSquared(cam.position) + pen(a)) * (held.has(a) ? 0.6 : 1);
       const want = new Set([...this.anchors].sort((p, q) => p.d - q.d).slice(0, n));
       // las que sobran se van apagando (y vuelven si las quieren de nuevo)
       for (const L of pool) L.userData.out = !!L.userData.a && !want.has(L.userData.a);
@@ -1039,7 +1051,7 @@ export default class Tower {
     const t = w.g.time;
     pool.forEach((L, i) => {
       const u = L.userData;
-      if (u.a) u.k = u.out ? Math.max(0, u.k - dt / LIGHT_OUT) : Math.min(1, u.k + dt / LIGHT_IN);
+      if (u.a) u.k = u.out ? Math.max(0, u.k - (dt * fast) / LIGHT_OUT) : Math.min(1, u.k + (dt * fast) / LIGHT_IN);
       if (u.out && u.k === 0) {
         // ya apagada: queda libre y en el próximo cuadro se reparte
         u.a = null;
@@ -1049,6 +1061,18 @@ export default class Tower {
       const flick = w.power ? 1 : Math.sin(t * 1.3 + i * 2.1) + Math.sin(t * 3.1 + i) > 1.5 ? 0.3 : 1;
       L.intensity = (u.base || 0) * u.k * on * flick * (0.92 + Math.sin(t * 7 + i * 3) * 0.04);
     });
+  }
+
+  // ¿El jugador (con la cámara encima: no en una cinemática) está en una escalera? El piso de
+  // abajo de la que pisa (lo) y cuánto subió (t, 0 a 1), o null (updateLights).
+  stairUnder(P, cam) {
+    if (!P || (cam && cam.distanceToSquared(P) > 9)) return null;
+    for (let l = 0; l < this.ramps.length; l++) {
+      const R = this.ramps[l];
+      const [x0, z0, x1, z1] = R.rect;
+      if (P.x >= x0 && P.x <= x1 + 1 && P.z >= z0 && P.z <= z1 + 1 && P.y > R.y0 + 0.05 && P.y < R.y1 - 0.05) return { lo: l, t: (P.y - R.y0) / (R.y1 - R.y0) };
+    }
+    return null;
   }
 
   // ---------------- detalle de los pisos ----------------

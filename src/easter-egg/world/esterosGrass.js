@@ -167,7 +167,6 @@ export function tussockGeometry(seed, { leaves = 34, stems = 7, tip = 0.002, wid
 // perdidas en la niebla, nada. Eran ~1,7 millones de triángulos por pasada
 // (mundo, G-buffer y espejo): la mata más cara de la vista. Medido en Épica a
 // 1440p, parado en la tranquera de la laguna mirando al campamento.
-// (globalThis.__mduNoGrassLod: todas enteras, como antes)
 const LODS = [
   {},
   { segs: 3, stemSegs: 2, strandSegs: 1 },
@@ -257,12 +256,11 @@ export function buildTussocks(root, spots, mat, { variants = 3, chunk = 21, seed
   let lastAll = null;
   meshes.lod = (cam) => {
     at.setFromMatrixPosition(cam.matrixWorld);
-    const all = globalThis.__mduNoGrassLod === true;
-    if (all === lastAll && Math.hypot(at.x - lastX, at.z - lastZ) < LOD_STEP) return;
-    lastAll = all;
+    if (lastAll === false && Math.hypot(at.x - lastX, at.z - lastZ) < LOD_STEP) return;
+    lastAll = false;
     lastX = at.x;
     lastZ = at.z;
-    for (const S of sets) relod(S, at, all, far);
+    for (const S of sets) relod(S, at, false, far);
   };
   return meshes;
 }

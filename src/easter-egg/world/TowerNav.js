@@ -103,7 +103,6 @@ export default class TowerNav {
   }
 
   solve(start) {
-    if (globalThis.__mduNavViejo === true) return this.solveOld(start);
     const dist = this.dist;
     dist.fill(Infinity);
     const heap = this.heap;
@@ -135,28 +134,6 @@ export default class TowerNav {
           heap.push(b, nd);
         }
       }
-    }
-  }
-
-  // (el de antes, tal cual: globalThis.__mduNavViejo)
-  solveOld(start) {
-    const dist = this.dist;
-    dist.fill(Infinity);
-    const heap = this.heap;
-    heap.clear();
-    dist[start] = 0;
-    heap.push(start, 0);
-    while (heap.size) {
-      const i = heap.popId();
-      const d = heap.lastKey;
-      if (d > dist[i]) continue;
-      this.each(i, (b, c) => {
-        const nd = d + c;
-        if (nd < dist[b]) {
-          dist[b] = nd;
-          heap.push(b, nd);
-        }
-      });
     }
   }
 
@@ -214,7 +191,6 @@ export default class TowerNav {
   // iba y venía contra la punta hasta que lo sacaba el paso al costado
   // (Zombies.unstick). Medido de a uno, al lado de la baranda: 2 a 4,5 s
   // quietos los que caminan y los que trotan; ahora, nada.
-  // globalThis.__mduNoNavVista: como antes (siempre dos pasos).
   direction(x, z, out, y) {
     const T = this.T;
     let cur = this.node(x, z, y);
@@ -238,7 +214,7 @@ export default class TowerNav {
       if (step === 0 && best === 0) break;
     }
     if (!found) return false;
-    if (cur !== first && globalThis.__mduNoNavVista !== true && !this.straight(from, x, z, cur)) cur = first;
+    if (cur !== first && !this.straight(from, x, z, cur)) cur = first;
     const i = cur % T.WH;
     const cx = i % T.W;
     const cz = (i - cx) / T.W;

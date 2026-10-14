@@ -740,7 +740,7 @@ const LOOKS = {
       steel,
       stripes: (mk) => mk(stripesTex()),
       wool: (mk) => mk(woolTex(), { roughness: 0.95 }),
-      // la luz de la grieta (en la malla suelta, con __mduNoZBatch: un violeta fijo)
+      // la luz de la grieta
       rift: (mk, T) => {
         const m = mk(T.grime, { roughness: 0.6, emissive: 0x5a1aff, emissiveIntensity: 1.3 });
         m.userData.zGlow = RIFT_GLOW;

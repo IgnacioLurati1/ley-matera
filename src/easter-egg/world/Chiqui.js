@@ -338,11 +338,9 @@ export function chiquiHat() {
     const m = SK.hat.clone();
     m.visible = true;
     // (de los dos lados: la malla de Meshy tiene caras dadas vuelta en el ala y
-    // la copa abierta atrás, y de arriba se veían agujeros. __mduNoHatFix: como antes)
-    if (globalThis.__mduNoHatFix !== true) {
-      m.material = m.material.clone();
-      m.material.side = THREE.DoubleSide;
-    }
+    // la copa abierta atrás, y de arriba se veían agujeros)
+    m.material = m.material.clone();
+    m.material.side = THREE.DoubleSide;
     m.position.set(0, 0, 0);
     m.scale.setScalar(1);
     // el modelo lo tiene echado para atrás: lo que sube el ala de adelante

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { PAP } from '../../config/maps/eclipse';
 import { buildProp } from '../../world/props';
 import { QStep, Marker, glowOrb, myId, playerAt } from './common';
-import { ART, buildHojaHoz, buildTacuaral, glowSprite } from './stepArt';
+import { buildHojaHoz, buildTacuaral, glowSprite } from './stepArt';
 
 // Cómo se consigue el Desgarrador Cósmico (entities/EclipseEgg.js, acto I):
 // se arma con dos piezas y se templa en un desgarro abierto.
@@ -40,7 +40,7 @@ export default class Guadana extends QStep {
     }
     // (stepArt) la hoja de verdad: media luna de fierro negro con el filo
     // violeta, clavada de punta en el fardo de arriba
-    if (ART) {
+    {
       const hoja = buildHojaHoz(g);
       hoja.position.set(0.12, 0.93, 0.1);
       // (de plano hacia el este: se entra al establo desde el maizal)
@@ -62,13 +62,9 @@ export default class Guadana extends QStep {
     const halo = glowOrb(0xb088ff, 0.14);
     halo.children[0].visible = false;
     halo.position.set(0.15, 0.95, 0.05);
-    if (!ART) {
-      this.hojaHalo = halo;
-      this.hojaObj.add(blade, edge, halo);
-    }
     this.hojaObj.position.copy(HOJA);
     // (stepArt) el tacuaral de la orilla: la tacuara con la cinta colorada se corta
-    this.tac = ART ? buildTacuaral(g) : null;
+    this.tac = buildTacuaral(g);
     if (this.tac) {
       this.tac.root.position.copy(ASTA);
       this.arts.push(this.tac);

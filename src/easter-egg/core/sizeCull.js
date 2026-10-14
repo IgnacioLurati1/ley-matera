@@ -23,22 +23,18 @@ import { FEATURES } from '../config/map';
 // pools— queda afuera). Lo que se movió fuera de su cuarto se dibuja.
 // Solo mientras on() (Game: jugando con la cámara en los ojos del jugador);
 // en las cinemáticas, que panean el mapa de lejos, se dibuja todo.
-// Para comparar, en vivo: globalThis.__mduNoSizeCull (las chicas) y
-// globalThis.__mduNoRooms (los cuartos).
 // 3. Un cuarto con techo que queda tan lejos que la niebla lo tapa del todo
 //    (FOG_HIDE: 99%) se esconde aunque la consulta lo vea: desde el islote del
 //    penal se veían 15-60 px de la caja del pabellón, del comedor y de las
 //    duchas, a 70-90 m, y se dibujaba todo lo de adentro. Solo lo que la niebla
 //    tapa de verdad (__scFog: material con niebla, sin brillo propio fuerte);
 //    los cuartos sin techo no (sus cosas se recortan contra el cielo).
-//    globalThis.__mduNoFogRooms para comparar.
 // Para ver si una pieza está adentro de un cuarto se usa su caja en el mundo
 // (no la esfera: una pileta de luz en el piso o un grupo largo contra la pared
 // tienen la esfera mucho más grande que lo que ocupan).
 // En el G-buffer de Épica (fx/Epic.js, la oclusión y los reflejos) el umbral es
 // más alto: en una pieza de menos de GB_PX de radio la sombra de contacto y el
 // reflejo no se ven, y cada una era una llamada más de dibujo
-// (globalThis.__mduNoGbCull para comparar).
 
 // 4. Lo plano de una sola cara que mira para arriba (pisos sueltos, tarimas,
 //    calcos, marcas del piso), con la cámara más abajo que la malla: se ve de
@@ -48,14 +44,13 @@ import { FEATURES } from '../config/map';
 //    así. Se mira la geometría de verdad (todos los triángulos horizontales y
 //    con la cara para arriba, no las normales), en cada dibujo la matriz (si la
 //    giran o la espejan, se dibuja) y con margen. Mismo resultado, sin cambio de
-//    imagen. globalThis.__mduNoUpCull: como antes.
+//    imagen.
 
 const MIN_PX = 3.5; // radio en px de pantalla (≈ 7 px de ancho)
 const GB_PX = 8; // en el G-buffer (≈ 16 px de ancho)
 // y si el G-buffer es solo para la oclusión (Alta y Media: sin reflejos ni haces
 // que lean su profundidad), más alto: a media resolución y difuminada, la de una
 // pieza chica no se ve; en una compu lenta el G-buffer era ~15% del cuadro
-// (globalThis.__mduGbAo8: el de siempre)
 const GB_PX_AO = 16;
 const MAX_R = 2; // las chicas: hasta 2 m de radio
 const ROOM_MAX_R = 16; // lo de adentro de un cuarto (si entra entero; ver roomOf)
@@ -67,7 +62,6 @@ const ROOM_STALE = 150; // ms sin dibujar la caja (fuera de cámara): cuenta com
 // (el mirador del castillo) cada cuarto que volvía a entrar en cámara se
 // dibujaba entero 3-4 cuadros hasta la consulta nueva: 200 → 1000 dibujos.
 // Hasta ROOM_KEEP_D m de ahí y ROOM_KEEP_MS ms (una puerta que se abrió).
-// (globalThis.__mduNoRoomKeep: como antes)
 const ROOM_KEEP_D = 1;
 const ROOM_KEEP_MS = 8000;
 const FOG_HIDE = 2.2; // densidad × distancia: 1 - e^(-2,2²) ≈ 99% de niebla
@@ -117,7 +111,7 @@ function spot(m, ...rest) {
 // Eclipse Matero (grafica-v3): mirando de una isla baja a las altas entran en
 // cámara las piezas chicas de todas las islas (la niebla es finita a
 // propósito). De más de ECL_FAR m, las de menos de ECL_FAR_PX de radio no se
-// dibujan. globalThis.__mduNoEclGbFar: como antes (también lo del G-buffer).
+// dibujan.
 const ECL_FAR2 = 55 * 55;
 const ECL_FAR_PX = 10;
 let ECL_ON = false;
@@ -235,7 +229,7 @@ export function markUp(o) {
 // ¿Esta cámara la ve de atrás (está más abajo que toda la malla, que mira para arriba)?
 export function upHidden(o, c) {
   let U = o.__scUp;
-  if (U === undefined || globalThis.__mduNoUpCull === true) return false;
+  if (U === undefined) return false;
   const m = o.material;
   if (m.side !== THREE.FrontSide) return false;
   const geo = o.geometry;
@@ -272,8 +266,8 @@ function test(frustum) {
       return false;
     }
     const R = this.__scRoom;
-    const room = R !== undefined && (R.off || (R.fog && (globalThis.__mduNoFogFar === true ? this.__scFog : this.__scFogW) === true && globalThis.__mduNoFogRooms !== true)) && globalThis.__mduNoRooms !== true;
-    const small = this.__scSmall === true && globalThis.__mduNoSizeCull !== true;
+    const room = R !== undefined && (R.off || (R.fog && this.__scFogW === true));
+    const small = this.__scSmall === true;
     if (room || small) {
       _v.copy(this.geometry.boundingSphere.center).applyMatrix4(this.matrixWorld);
       // (si se la llevaron fuera de su cuarto —una pieza del escudo a la mesa—, se dibuja)
@@ -289,7 +283,7 @@ function test(frustum) {
         const r = this.__scR * k;
         const d2 = dx * dx + dy * dy + dz * dz;
         // (Eclipse: las piezas chicas de las otras islas, de lejos, con un umbral más alto)
-        const pp = ECL_ON && d2 > ECL_FAR2 && px < ECL_FAR_PX && globalThis.__mduNoEclGbFar !== true ? ECL_FAR_PX : px;
+        const pp = ECL_ON && d2 > ECL_FAR2 && px < ECL_FAR_PX ? ECL_FAR_PX : px;
         if (r * r < pp * pp * d2) {
           sizeCullStats.culled++;
           return false;
@@ -337,7 +331,7 @@ function roomTick() {
     const kx = x - (R.hx ?? 1e9);
     const ky = y - (R.hy ?? 1e9);
     const kz = z - (R.hz ?? 1e9);
-    const keep = R.hidden && kx * kx + ky * ky + kz * kz < ROOM_KEEP_D * ROOM_KEEP_D && now - R.hideAt < ROOM_KEEP_MS && globalThis.__mduNoRoomKeep !== true;
+    const keep = R.hidden && kx * kx + ky * ky + kz * kz < ROOM_KEEP_D * ROOM_KEEP_D && now - R.hideAt < ROOM_KEEP_MS;
     if ((now - R.seen > ROOM_STALE && !keep) || dx * dx + dy * dy + dz * dz < ROOM_NEAR * ROOM_NEAR) {
       R.hidden = false;
       R.occ = 0;
@@ -354,7 +348,6 @@ function install(renderer) {
   // el alto del lienzo en px de CSS: leer clientHeight en cada render (4 por
   // cuadro) obligaba al navegador a rehacer el layout si el HUD había cambiado;
   // se guarda y se actualiza cuando cambia de tamaño (mismo valor).
-  // globalThis.__mduNoCanvasH: leerlo cada vez, como antes.
   const el = renderer.domElement;
   let ch = el.clientHeight;
   if (typeof ResizeObserver === 'function') new ResizeObserver(() => (ch = el.clientHeight)).observe(el);
@@ -365,7 +358,7 @@ function install(renderer) {
     const k0 = k;
     if (camera.isPerspectiveCamera && on !== null && on()) {
       cam = camera;
-      const h = (ch > 0 && globalThis.__mduNoCanvasH !== true ? ch : el.clientHeight) || gl.drawingBufferHeight;
+      const h = (ch > 0 ? ch : el.clientHeight) || gl.drawingBufferHeight;
       k = (h * 0.5) / Math.tan((camera.getEffectiveFOV() * Math.PI) / 360);
       kOf.set(camera, k);
       if (MAIN === null && !probe) {
@@ -532,7 +525,7 @@ export function sizeCull(renderer, scene, when, opts = {}) {
         o.__scFog = fogged(o);
       }
       // (un emisivo con mapa pero flojo —las paredes del penal, ×0,05— la
-      // niebla también lo tapa; globalThis.__mduNoFogFar: como antes)
+      // niebla también lo tapa)
       o.__scFogW = fogged(o, true);
       o.__scFR = r;
       if (o.__scSmall || o.__scRoom !== undefined) {
@@ -555,7 +548,7 @@ export function sizeCull(renderer, scene, when, opts = {}) {
 
 // fx/Epic.js: lo que dibuja el G-buffer, con su umbral (true) o el de siempre.
 export function gbufferPass(onGb, aoOnly = false) {
-  px = onGb && globalThis.__mduNoGbCull !== true ? (aoOnly && globalThis.__mduGbAo8 !== true ? GB_PX_AO : GB_PX) : MIN_PX;
+  px = onGb ? (aoOnly ? GB_PX_AO : GB_PX) : MIN_PX;
 }
 
 // fx/Epic.js, G-buffer armado con la lista del pase principal (fromMain): de
@@ -568,8 +561,8 @@ let gbK = 0;
 let gbPx = 0;
 export function gbBegin(camera, aoOnly) {
   gbCam = null;
-  if (MAIN === null || !camera.isPerspectiveCamera || on === null || !on() || globalThis.__mduNoSizeCull === true) return false;
-  const p = globalThis.__mduNoGbCull !== true ? (aoOnly && globalThis.__mduGbAo8 !== true ? GB_PX_AO : GB_PX) : MIN_PX;
+  if (MAIN === null || !camera.isPerspectiveCamera || on === null || !on()) return false;
+  const p = aoOnly ? GB_PX_AO : GB_PX;
   const kk = kOf.get(camera);
   if (p <= MIN_PX || kk === undefined) return false;
   gbCam = camera;
@@ -580,10 +573,10 @@ export function gbBegin(camera, aoOnly) {
 // Eclipse Matero (grafica-v3): desde las islas bajas, mirando a las altas, en
 // cámara entran todas las islas (la niebla es finita a propósito: se tienen
 // que ver de lejos) y el G-buffer las dibujaba enteras otra vez. Más allá de
-// esto la oclusión y los reflejos no se ven. globalThis.__mduNoEclGbFar: como antes.
+// esto la oclusión y los reflejos no se ven.
 const ECL_GB_FAR = 70;
 export function gbDrop(o) {
-  if (FEATURES.eclipse && o.__scFR !== undefined && globalThis.__mduNoEclGbFar !== true) {
+  if (FEATURES.eclipse && o.__scFR !== undefined) {
     _v.copy(o.geometry.boundingSphere.center).applyMatrix4(o.matrixWorld);
     const c = gbCam.matrixWorld.elements;
     const dx = _v.x - c[12];
@@ -601,8 +594,7 @@ export function gbDrop(o) {
   // dan niebla). Desde el islote del penal, mirando al penal, con lo de los
   // cuartos (__scFogW): 880 → 692 dibujos por cuadro a 1440p Épica.
   // La pasada principal no se toca (la silueta contra el cielo queda igual).
-  // globalThis.__mduNoFogFar: como antes.
-  if (o.__scFogW === true && fogFar < Infinity && globalThis.__mduNoFogFar !== true) {
+  if (o.__scFogW === true && fogFar < Infinity) {
     _v.copy(o.geometry.boundingSphere.center).applyMatrix4(o.matrixWorld);
     const c = gbCam.matrixWorld.elements;
     const dx = _v.x - c[12];
@@ -634,7 +626,6 @@ export function roomsState() {
 // están apagados. Lo usa world/eclipse/v5.js zoneCuller: lo de adentro de una
 // sala se dibuja también mirándola por una puerta desde lejos (agente rend).
 export function roomOpen(key) {
-  if (globalThis.__mduNoRooms === true) return null;
   for (const R of rooms) if (R.key === key) return !R.hidden && !R.fog;
   return null;
 }

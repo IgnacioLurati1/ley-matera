@@ -34,11 +34,10 @@ import { windy } from '../fx/grassPush';
 // (2026-10-09, el usuario: "en La Tapera, bajale el brillo a ver el sol de
 // frente, te deja ciego". El sol del atardecer —el de los mapas con día: solo
 // la granja— era el brillo del sprite más el centro del cielo, los dos encima
-// del bloom: una mancha blanca. Más tenues los dos. __mduOldSunGlare: como antes)
-const SUN9 = globalThis.__mduOldSunGlare !== true;
-const SUN9_K = +(globalThis.__mduSunK ?? 0.5);
-const SUN9_CORE = +(globalThis.__mduSunCore ?? 1.15);
-const SUN9_S = +(globalThis.__mduSunS ?? 26);
+// del bloom: una mancha blanca. Más tenues los dos)
+const SUN9_K = 0.5;
+const SUN9_CORE = 1.15;
+const SUN9_S = 26;
 
 export const CELL = { OUT: 0, FLOOR: 1, WALL: 2, DOOR: 3, WINDOW: 4 };
 // Qué es cada celda de borde: pared, alambrado (se ve y se tira por encima) o maíz.
@@ -75,14 +74,14 @@ if (!THREE.ShaderChunk.lights_fragment_begin.includes('FOLIAGE_NOPOINT')) {
 // Cada luz puntual se calculaba en cada píxel aunque no llegue (más allá de su
 // alcance) o esté en 0 (el fuego cuya luz tomó una de las sombras de fx/Epic):
 // su sombra (5 lecturas del cubo) y su brillo. Con el if se saltea entera; el
-// resultado es el mismo (sin luz suma 0). Switch __mduNoLightSkip (al cargar).
+// resultado es el mismo (sin luz suma 0).
 const PL_INFO = 'getPointLightInfo( pointLight, geometryPosition, directLight );';
 const PL_DIRECT = 'RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );';
 {
   const s = THREE.ShaderChunk.lights_fragment_begin;
   const a = s.indexOf(PL_INFO);
   const b = a < 0 ? -1 : s.indexOf(PL_DIRECT, a);
-  if (globalThis.__mduNoLightSkip !== true && b > 0 && !s.includes('MDU_LIGHTSKIP')) {
+  if (b > 0 && !s.includes('MDU_LIGHTSKIP')) {
     const e = b + PL_DIRECT.length;
     THREE.ShaderChunk.lights_fragment_begin = `${s.slice(0, a + PL_INFO.length)}\n\t\t#ifndef MDU_NOSKIP\n\t\tif ( directLight.visible ) { // MDU_LIGHTSKIP\n\t\t#endif${s.slice(a + PL_INFO.length, e)}\n\t\t#ifndef MDU_NOSKIP\n\t\t}\n\t\t#endif${s.slice(e)}`;
   }
@@ -137,7 +136,7 @@ export default class World {
       this.buildLights();
       this.computeNavBlock();
       // manchas de sangre, barro y humedad en los pisos (world/stains.js)
-      if (globalThis.__mduNoStains !== true) buildStains(this, 41);
+      buildStains(this, 41);
       return;
     }
     // el castillo: la montaña, las almenas y los puentes (ganchos de Levels)
@@ -177,7 +176,7 @@ export default class World {
     if (this.sunDir) this.updateDay(0);
     this.computeNavBlock();
     // manchas de sangre, barro y humedad (world/stains.js)
-    if (globalThis.__mduNoStains !== true) buildStains(this, MAP_ID.length * 7 + MAP_ID.charCodeAt(0));
+    buildStains(this, MAP_ID.length * 7 + MAP_ID.charCodeAt(0));
   }
 
   // El pasto alto y el maíz (miles de planos con recorte, uno encima del
@@ -371,8 +370,8 @@ export default class World {
     // (Eclipse Matero junta los tres juegos: cada isla usa los materiales de su mapa)
     // (en Eclipse, el calcáreo de los otros mapas —la capilla del penal y la del
     // castillo, los pisos de la torre— no es el mármol de la Cripta que le pone
-    // monumentoMaterials: vuelve el de siempre. __mduNoEclCalcareo: como antes)
-    const calcareo = FEATURES.eclipse && globalThis.__mduNoEclCalcareo !== true ? M.calcareo : null;
+    // monumentoMaterials: vuelve el de siempre)
+    const calcareo = FEATURES.eclipse ? M.calcareo : null;
     // (y la piedra de siempre con otro nombre, para las secciones que la piden en su
     // LOOK: los calabozos del penal; stoneWall/stoneStep quedan como están)
     const stoneBase = FEATURES.eclipse ? { stoneWallBase: M.stoneWall, stoneStepBase: M.stoneStep } : null;
@@ -951,9 +950,8 @@ export default class World {
       buildCastleSky(this);
       return;
     }
-    // Eclipse Matero: el cielo roto por isla, el eclipse y el vacío (world/eclipseSky.js;
-    // __mduNoEclipseSky: el domo de siempre)
-    if (FEATURES.eclipse && globalThis.__mduNoEclipseSky !== true) {
+    // Eclipse Matero: el cielo roto por isla, el eclipse y el vacío (world/eclipseSky.js)
+    if (FEATURES.eclipse) {
       buildEclipseSky(this);
       return;
     }
@@ -975,7 +973,7 @@ export default class World {
         uHorizon: { value: new THREE.Vector3(...(SKY.colors?.horizon || [0.1, 0.07, 0.09])) },
         uZenith: { value: new THREE.Vector3(...(SKY.colors?.zenith || [0.012, 0.018, 0.04])) },
         uGlow: { value: new THREE.Vector3(...(SKY.colors?.glow || [0.16, 0.04, 0.02])) },
-        uSunCore: { value: SUN9 ? SUN9_CORE : 2.5 },
+        uSunCore: { value: SUN9_CORE },
         // el cielo con volumen (world/skyVol.js; en 0 queda como siempre)
         ...skyVolUniforms(new THREE.Vector3(...((SKY.moon || {}).dir || [-0.45, 0.62, -0.64])).normalize()),
       },
@@ -1065,8 +1063,8 @@ export default class World {
     // el sol del atardecer (solo en los mapas que tienen día)
     if (SKY.daylight) {
       this.sunDir = new THREE.Vector3(...(SKY.sun || [-0.86, 0.1, -0.5])).normalize();
-      const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.T.dot, color: 0xffc27a, fog: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending, opacity: SUN9 ? SUN9_K : 1 }));
-      sun.scale.set(SUN9 ? SUN9_S : 34, SUN9 ? SUN9_S : 34, 1);
+      const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.T.dot, color: 0xffc27a, fog: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending, opacity: SUN9_K }));
+      sun.scale.set(SUN9_S, SUN9_S, 1);
       sun.position.copy(this.sunDir).multiplyScalar(250).add(mapCenter());
       this.root.add(sun);
       this.sunSprite = sun;
@@ -1387,7 +1385,7 @@ export default class World {
       sunDir.y = -0.08 + d * 0.2;
       sunDir.normalize();
       this.sunSprite.position.copy(sunDir).multiplyScalar(250).add(mapCenter());
-      this.sunSprite.material.opacity = Math.min(1, d * 1.5) * (SUN9 ? SUN9_K : 1);
+      this.sunSprite.material.opacity = Math.min(1, d * 1.5) * SUN9_K;
       this.moonSprite.material.opacity = 1 - Math.min(1, d * 1.4);
       this.moonHalo.visible = d < 0.6;
       // la luz grande (y su sombra) se mueve a saltos, de vez en cuando

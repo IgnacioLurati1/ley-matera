@@ -19,8 +19,8 @@ export function crewIds(g) {
   // (en orden también con los de relleno: el invitado arma las entradas
   // cuando todavía no le llegó el anfitrión, y le quedaba [1, 0, 2, 3] contra
   // el [0, 1, 2, 3] del anfitrión: el Valiente y el Miedoso con los ponchos
-  // cambiados entre las dos compus. globalThis.__mduNoCrewSort: como antes)
-  if (globalThis.__mduNoCrewSort !== true) ids.sort((a, b) => a - b);
+  // cambiados entre las dos compus)
+  ids.sort((a, b) => a - b);
   return ids;
 }
 

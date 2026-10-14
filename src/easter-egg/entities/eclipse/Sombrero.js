@@ -28,7 +28,6 @@ import { buildChambergo, buildCinta, buildHebilla, buildFeather, buildCondor, bu
 // La estaca del santuario dice siempre qué falta y dónde. En los muñecos de
 // los compañeros se ve puesto (net/gauchoSkin headProp); en primera persona no
 // se dibuja nada. En línea decide el anfitrión ('pee' k 'somb').
-// globalThis.__mduNoSombrero === true: no se arma nada.
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const tmpV = new THREE.Vector3();
@@ -61,7 +60,7 @@ export default class Sombrero {
     // cayó, 2 juntada); dim: los muertos de la Disformidad; hat: 0, 1 en la
     // estaca, 2 puesto
     this.st = { ci: 0, cn: 0, cx: 0, cz: 0, he: 0, pl: 0, px: 0, pz: 0, dim: 0, hat: 0 };
-    this.on = globalThis.__mduNoSombrero !== true && !!SOMBRERO;
+    this.on = !!SOMBRERO;
     this.t = 0;
     this.wt = 0;
     this.outT = 0;

@@ -155,8 +155,7 @@ function caballero(M) {
 }
 
 const BUILD = { molino: tranquera, granja: paja, penal: barrotes, esteros: yacare, torre: tapaPava, castillo: caballero, monumento: ejercito, eclipse: caballeros };
-// (2026-10-10, Eclipse: el suyo; globalThis.__mduOldEclEscudo: el del molino, como antes)
-if (globalThis.__mduOldEclEscudo === true) BUILD.eclipse = tranquera;
+// (2026-10-10, Eclipse: el suyo)
 
 // Las piezas del escudo (decenas: barrotes, clavos, tientos) en una malla por
 // material: se ve igual y es una llamada de dibujo por material en vez de una

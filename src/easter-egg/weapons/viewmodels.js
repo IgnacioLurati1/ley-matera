@@ -138,9 +138,7 @@ function yerba(r, y, M) {
 // paleta de bulbo cerrada, chata de frente, con el cuellito que la une al caño
 // y cinco ranuras alrededor. No pasa del radio de la media esfera de antes
 // (así no se sale del mate). r: el caño; R: el radio del filtro.
-// __mduFiltroViejo = true: la media esfera de antes.
 function filtroGeo(r, R) {
-  if (globalThis.__mduFiltroViejo === true) return new THREE.SphereGeometry(R, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2).rotateX(Math.PI);
   // (en forma de pera: lo que crece para arriba va por adentro del caño, así
   // para abajo no pasa del radio de antes)
   const pts = [[r * 0.98, R * 0.46], [r * 1.3, R * 0.4], [r * 1.3, R * 0.33], [R * 0.42, R * 0.12], [R * 0.6, -R * 0.08]];
@@ -188,9 +186,9 @@ function bombilla({ len = 0.24, thick = 1, mat, tilt = VM_POSE.bombTilt, count =
     ring.position.y = len * 0.72;
     b.add(ring);
     // el codo: una bolita en el quiebre del pico (si no, al doblarse queda un
-    // hueco; el usuario, 2026-10-13. __mduSinCodo = true: sin él). Va después
+    // hueco; el usuario, 2026-10-13). Va después
     // del anillo: weapons/accesorios.js lo trata como lo pegado (largo y grosor)
-    if (globalThis.__mduSinCodo !== true) {
+    {
       const codo = sph(r, mat || M.silver, 10, 8);
       codo.position.y = len;
       codo.userData.codo = true;

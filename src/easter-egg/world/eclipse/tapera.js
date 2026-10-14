@@ -32,14 +32,17 @@ let live = null;
 
 const fenced = new Set();
 export function build(w, g, isl) {
-  // (globalThis.__mduNoArteA: las islas de arte-A en bloques, para comparar)
-  if (globalThis.__mduNoArteA === true) return;
   const M = w.M;
   const r = rng(6301);
   // (los anclajes del easter egg: la hoja en el medio del establo, la Yerba Madre en el maizal)
   const hoja = zat('H', 0.5, 0.5, true);
   const yerba = ANCHORS?.yerba ? [ANCHORS.yerba.x, ANCHORS.yerba.z] : zat('I', 0.5, 0.5, true);
-  const out = keepOut([[hoja[0], hoja[1], 1.4], [yerba[0], yerba[1], 2.2]]);
+  // (los pasos abiertos entre zonas se reservan como las puertas: desde que se sacó la tranquera 65
+  // del Corral a La Tranquera (10-10) el paso quedó sin la reserva de keepOut y el silo reventado se
+  // plantó delante: ni el jugador ni los muertos pasaban. El usuario, 2026-10-14: "no se puede pasar
+  // a esta zona de vallas". __mduTaperaPasoViejo: como antes)
+  const pasos = globalThis.__mduTaperaPasoViejo === true ? [] : openSteps(w, ISLANDS.tapera);
+  const out = keepOut([[hoja[0], hoja[1], 1.4], [yerba[0], yerba[1], 2.2], ...pasos]);
   const gb = new GeoBuilder();
   const root = new THREE.Group();
   root.name = 'eclipse:tapera';
@@ -57,11 +60,9 @@ export function build(w, g, isl) {
   // (sesión 1f, el usuario: "en La Tapera hay zonas que deberían tener vallas y
   // no tienen y en su lugar hay una pared invisible": el cerco de palo iba solo
   // en el corral y el yerbal; las secciones copiadas —el patio, los tablones,
-  // los silos...— tenían el choque del alambrado sin el cerco. __mduNoTaperaFence)
-  if (globalThis.__mduNoTaperaFence !== true) {
-    const rest = ISLANDS.tapera.zones.filter((k) => ZONES[k]?.edge === 'fence' && k !== 'G' && k !== 'G3');
-    if (rest.length) for (const c of paloFence(w, gb, r, rest, { ground: 'dirt', skip: fenced })) fenced.add(c);
-  }
+  // los silos...— tenían el choque del alambrado sin el cerco)
+  const rest = ISLANDS.tapera.zones.filter((k) => ZONES[k]?.edge === 'fence' && k !== 'G' && k !== 'G3');
+  if (rest.length) for (const c of paloFence(w, gb, r, rest, { ground: 'dirt', skip: fenced })) fenced.add(c);
   // los cordones de las barandas (piedra) salvo los del cerco y del maíz, que tapan los suyos
   curbs(w, 'tapera', gb, (i) => w.edge[i] === EDGE_FENCE || w.edge[i] === EDGE_CORN);
   cliffRocks(w, root, out, r, 'tapera');
@@ -72,6 +73,25 @@ export function build(w, g, isl) {
   w.root.add(arch, root);
   const gr = grime(w, 'tapera', { seed: 6401, damp: 0.14, moss: 0.22, rust: 0.06, mud: 0.07, puddles: 9, out, keys: ['G', 'H', 'H2', 'G3'] });
   live.cull = detailCuller(w, 'tapera', [...root.children.filter((o) => o.userData.detail), ...gr.children]);
+}
+
+// Los pasos abiertos entre dos zonas de la isla (dos celdas de piso de zonas distintas, pegadas,
+// sin puerta ni cerco en el medio): [x, z, radio] para keepOut, con el radio de las puertas.
+function openSteps(w, isl) {
+  const keys = new Set(isl.zones);
+  const [x0, z0, x1, z1] = isl.box;
+  const pts = [];
+  for (let z = z0; z <= z1; z++) {
+    for (let x = x0; x <= x1; x++) {
+      const k = zoneAtCell(w, x + 0.5, z + 0.5);
+      if (!k || !keys.has(k)) continue;
+      for (const [dx, dz] of [[1, 0], [0, 1]]) {
+        const k2 = zoneAtCell(w, x + dx + 0.5, z + dz + 0.5);
+        if (k2 && k2 !== k && keys.has(k2)) pts.push([x + 0.5 + dx / 2, z + 0.5 + dz / 2, 2.3]);
+      }
+    }
+  }
+  return pts;
 }
 
 // El maíz de la granja (en Eclipse M.corn es el junco del estero: este es el
@@ -370,6 +390,13 @@ function buildCorral(w, gb, root, r, out, orbs) {
     const [x, z] = zat('G', u, v, true);
     const p = spot(w, out, K, x, z, rad, 3);
     if (p) put(w, { ...def, pos: p });
+    // (el silo reventado ya no entra delante del paso a La Tranquera y el corral no tiene otro
+    // hueco de su tamaño: va al rincón del noreste, arriba del paso, más chico, en lugar de
+    // quedarse sin él; fuera de la trampa del desgarro. __mduTaperaPasoViejo: como antes)
+    else if (globalThis.__mduTaperaPasoViejo !== true) {
+      const q = spot(w, out, K, bx1 - 4, bz0 + 4.7, rad * 0.75, 2) ?? spot(w, out, K, x, z, rad * 0.75, 3);
+      if (q) put(w, { ...def, pos: q }, { scale: 0.75 });
+    }
   }
   // el corral chico contra el cerco del oeste: palos y tres tablas, con la tranquera abierta
   {

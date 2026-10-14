@@ -78,7 +78,8 @@ function buildShades() {
   return root;
 }
 
-export function introCrew(g, plan, { base = 480, shades = null } = {}) {
+// clipPose: la pose del clip queda tal cual (sin la vida de escena encima; ver update)
+export function introCrew(g, plan, { base = 480, shades = null, clipPose = false } = {}) {
   loadClips();
   // los clips de siempre (net/gauchoSkin, clips.json) se piden recién al primer
   // uso: jugando solo, eso era en Intro.warm, que no los tenía todavía. Los cuatro
@@ -86,8 +87,7 @@ export function introCrew(g, plan, { base = 480, shades = null } = {}) {
   // huesos) se compilaba en plena entrada, al aparecer: un cuadro de ~60 ms
   // (monumento, 2026-10-05). Se piden ya, con el mapa armado detrás del título
   // (apenas está el modelo: sin él, gauchoClip todavía no los pide).
-  // globalThis.__mduNoCrewClipsEarly: como antes
-  if (globalThis.__mduNoCrewClipsEarly !== true) whenGaucho(() => gauchoClip('idle'));
+  whenGaucho(() => gauchoClip('idle'));
   const people = new Avatars(g, null);
   const crew = crewIds(g).map((id, i) => {
     people.add({ id: base + id, name: '', noTag: true, pos: new THREE.Vector3(), yaw: 0, pitch: 0, speed: 0, moving: false });
@@ -113,14 +113,13 @@ export function introCrew(g, plan, { base = 480, shades = null } = {}) {
   // (2026-10-04, el usuario: en la entrada de la torre atravesaban el piso. El
   // piso del mapa (floorAt) da 0 y el entablonado de la planta baja está a 24 cm:
   // el piso es el de la malla que se ve, si está un poco más arriba (sin pasto
-  // ni nada instanciado o recortado).
-  // globalThis.__mduNoCrewRayFloor: como antes)
+  // ni nada instanciado o recortado))
   const floorY = (c, st, x, z) => {
     let y = c.ys.get(st);
     if (y == null) {
       y = g.world.floorAt?.(x, z, (st.y ?? 0) + 1.2);
       if (!Number.isFinite(y)) y = st.y ?? 0;
-      if (globalThis.__mduNoCrewRayFloor !== true && g.world.root) {
+      if (g.world.root) {
         floorRay.set(tmpV.set(x, y + 0.8, z), DOWN);
         floorRay.far = 1.2;
         // (los sprites del mundo la piden)
@@ -201,6 +200,20 @@ export function introCrew(g, plan, { base = 480, shades = null } = {}) {
       a.hand.visible = false;
       if (a.gun) a.gun.visible = false;
       const ok = !!st && !!CLIPS && pose(c, st, tt);
+      // (2026-10-14, el usuario: en la entrada de la torre "los personajes hacen
+      // animaciones raras con las manos". La causa es la misma que en la entrada
+      // de Eclipse (ui/eclipseIntro POSE2, 2026-10-07): con la vida de escena
+      // (ui/cineLife) el modelo vuelve a armar los huesos desde las piezas en
+      // cada cuadro (net/gauchoSkin updateMatrixWorld → pose) y las piezas que
+      // deja un clip tienen los brazos cruzados de lado: el Miedoso que reza
+      // abría las manos, el Valiente no señalaba arriba y el Miedoso agachado
+      // separaba las manos de la cabeza. Se marca el cuadro: queda la pose del
+      // clip (sin respirar ni parpadear, como cuando se aprobó). Solo en la torre
+      // (clipPose); las entradas del castillo y del monumento tienen lo mismo y lo
+      // decide el usuario. globalThis.__mduCrewVidaPiezas = true: como antes)
+      // (2026-10-14, después: net/gauchoSkin clipSet lo arregla en todas las
+      // escenas, con la vida encima del clip; esta marca ya no cambia nada)
+      if (ok && clipPose && a.gs && globalThis.__mduCrewVidaPiezas !== true) a.gs.frame = a.g?.raf;
       a.group.visible = ok;
       any ||= ok;
     }

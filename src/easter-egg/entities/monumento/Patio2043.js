@@ -30,7 +30,7 @@ const tmpW = new THREE.Vector3();
 // La voz de Fortu (la grabó el usuario; sfx/fortu-voz.mp3, nivelada con los
 // otros grabados): una vez cuando termina de subir, en todas las compus, desde
 // la estatua; después, saludarlo (F) o pasarle cerca la repite (cada uno la
-// suya, con espera). __mduNoFortuVoz: sin la voz.
+// suya, con espera).
 const FORTU_VOZ = { url: '/assets/sotano/sfx/fortu-voz.mp3', gain: 1.1, reverb: 0.25, ref: 5 };
 const VOZ_F = 6;
 const VOZ_CERCA = 45;
@@ -123,7 +123,7 @@ export default class Patio2043 {
     this.vozT = -99;
     this.cercaT = -99;
     this.cerca = false;
-    if (globalThis.__mduNoFortuVoz || !A?.ctx) return;
+    if (!A?.ctx) return;
     fetch(FORTU_VOZ.url)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
       .then((ab) => A.ctx.decodeAudioData(ab))
@@ -137,7 +137,7 @@ export default class Patio2043 {
   sayVoz() {
     const g = this.g;
     const A = g.audio;
-    if (globalThis.__mduNoFortuVoz || !this.voz || !A?.ctx) return false;
+    if (!this.voz || !A?.ctx) return false;
     const S = this.statues[0];
     this.vozT = g.time;
     A.playBuffer(this.voz, { pos: tmpV.set(S.x, PATIO.y + 2.7, S.z).clone(), gain: FORTU_VOZ.gain, reverb: FORTU_VOZ.reverb, ref: FORTU_VOZ.ref, bus: A.voice });
@@ -147,7 +147,7 @@ export default class Patio2043 {
   // Ya arriba: saludarlo (F) o pasarle cerca (cada compu la suya).
   vozCerca() {
     const g = this.g;
-    if (globalThis.__mduNoFortuVoz || this.st.fortu !== 2) return;
+    if (this.st.fortu !== 2) return;
     const S = this.statues[0];
     const P = g.player.pos;
     const near = Math.hypot(P.x - S.x, P.z - S.z) < CERCA_R && Math.abs(P.y - PATIO.y) < 3;
@@ -359,7 +359,7 @@ export default class Patio2043 {
       pos: new THREE.Vector3(S.x + Math.sin(face) * 1.0, PATIO.y + 1.2, S.z + Math.cos(face) * 1.0),
       radius: 1.3,
       prompt: () => {
-        if (globalThis.__mduNoFortuVoz || this.st.fortu !== 2 || !this.voz) return null;
+        if (this.st.fortu !== 2 || !this.voz) return null;
         if (g.time - this.vozT < VOZ_F) return null;
         return { text: 'saludar a Fortu', noCost: true };
       },
@@ -647,7 +647,7 @@ export default class Patio2043 {
       case 'fortuUp':
         // (el aviso del anfitrión puede llegar antes de que acá termine de
         // subir: termina ya, con su fogonazo y su voz; antes se los salteaba)
-        if (st.fortu === 1 && !globalThis.__mduNoFortuVoz) this.riseEnd();
+        if (st.fortu === 1) this.riseEnd();
         st.fortu = 2;
         break;
       case 'gol': {
@@ -814,7 +814,7 @@ export default class Patio2043 {
     if (!all) return;
     const R = g.rounds;
     // (la ronda en juego es 'active': con 'playing' nunca se frenaba y seguían saliendo)
-    if (R.state === (globalThis.__mduNoPatioHold ? 'playing' : 'active')) R.spawnT = Math.max(R.spawnT || 0, 2);
+    if (R.state === 'active') R.spawnT = Math.max(R.spawnT || 0, 2);
     else if (R.breakT != null) R.breakT = Math.max(R.breakT, 2);
   }
 

@@ -38,8 +38,7 @@ export async function launch({ onExit, signal, logo = null } = {}) {
   // globalThis.__mduMenuViejo = true: la piel de antes
   if (!globalThis.__mduMenuViejo) root.dataset.skin = 'vidrio';
   // (el desenfoque del vidrio, medido: ~0,25 ms por cuadro sobre la partida a
-  // 960x540; globalThis.__mduVidrioSinBlur = true lo saca en todas las pantallas)
-  if (globalThis.__mduVidrioSinBlur) root.style.setProperty('--vd-bf', 'none');
+  // 960x540)
   document.body.appendChild(root);
   const prevOverflow = document.documentElement.style.overflow;
   document.documentElement.style.overflow = 'hidden';
@@ -67,8 +66,8 @@ export async function launch({ onExit, signal, logo = null } = {}) {
   // la carga pesada arranca con el logo ya en pantalla (sus animaciones
   // corren en el compositor: no se traban mientras carga) y, mientras dure,
   // los lienzos 2D se pintan por software para no ocuparle la placa
-  // (core/softCanvas; globalThis.__mduHardCanvas: como antes)
-  if (logo && globalThis.__mduHardCanvas !== true) logo.done.then(softCanvas());
+  // (core/softCanvas)
+  if (logo) logo.done.then(softCanvas());
   // (y el grano de película espera a que el logo se vaya: ui/studioLogo.css)
   if (logo) {
     root.classList.add('is-logo');

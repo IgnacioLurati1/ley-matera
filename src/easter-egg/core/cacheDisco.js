@@ -11,7 +11,6 @@
 // - Lo nuevo se escribe en los ratos libres, una entrada por nombre y mapa.
 // - En el servidor de desarrollo está apagado (el código cambia a cada rato):
 //   globalThis.__mduCacheDisco = true lo prende (las pruebas).
-// globalThis.__mduSinCacheDisco = true: apagado (todo se arma como antes).
 
 const DB = 'lm-zombies-cache';
 const ST = 'c';
@@ -22,7 +21,7 @@ let flushQueued = false;
 export const cacheStats = { leidas: 0, usadas: 0, armadas: 0, guardadas: 0, abrirMs: 0 };
 
 export function cacheActivo() {
-  if (globalThis.__mduSinCacheDisco === true || typeof indexedDB === 'undefined') return false;
+  if (typeof indexedDB === 'undefined') return false;
   return !import.meta.env?.DEV || globalThis.__mduCacheDisco === true;
 }
 

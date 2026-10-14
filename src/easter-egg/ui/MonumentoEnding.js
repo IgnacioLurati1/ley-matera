@@ -23,7 +23,7 @@ import { warmObject } from './cineWarm';
 // (ui/cineActors) y cada uno con su carácter: el Valiente encara al ánima y
 // después se lleva la mano al pecho, el Miedoso se agacha y reza, el Viejo se
 // arrodilla ante el prócer, y el Canchero (anteojos) ceba como si nada y es el
-// que rodea el mástil para convidarle. globalThis.__mduBlend = false: como antes.
+// que rodea el mástil para convidarle.
 // En línea cada uno la ve en su compu.
 
 const ME = 470;
@@ -65,17 +65,16 @@ export default class MonumentoEnding extends CastleCine {
     this.hoistT = -1;
     // (la Bandera va en el mástil: desde el menú de escenas, o si se llega
     // sin el paso de izarla, no estaba y la escena la subía invisible)
-    if (g.ee?.bnd && g.ee.bnd.st.flag !== 'mast' && globalThis.__mduNoFinFlag !== true) g.ee.bnd.st.flag = 'mast';
+    if (g.ee?.bnd && g.ee.bnd.st.flag !== 'mast') g.ee.bnd.st.flag = 'mast';
     if (g.ee?.bnd) g.ee.bnd.st.hoist = this.flagK;
     // (los muertos quietos de la ronda no entran en la escena)
     this.hidden = [];
     for (const z of g.zombies.pool) if (z.active && !z.dead) this.hidden.push(z);
     g.zombies.root && (g.zombies.root.visible = false);
-    if (globalThis.__mduBlend !== false) this.buildCrew();
-    else this.buildGauchos();
+    this.buildCrew();
     this.buildBelgrano();
     // el sable de San Martín para el Gil (ui/monumentoSableBeat: entre el mate y
-    // la despedida; globalThis.__mduNoSableGil: como antes)
+    // la despedida)
     this.sableBeat = sableBeatOn(this) ? new SableBeat(this) : null;
     const M = this.M;
     const B = this.B;
@@ -162,16 +161,9 @@ export default class MonumentoEnding extends CastleCine {
           this.card('Rosario, 27 de febrero de 1812', 4.2);
           this.bel.solid = true;
           this.bel.look = 'flag';
-          if (globalThis.__mduNoFinFlag === true) {
-            this.shot(7.5, (u, lt, pos, look) => {
-              pos.set(lerp(98.6, 99.2, u), B.y + lerp(1.3, 1.6, u), lerp(26.8, 27.6, smooth(u)));
-              look.set(B.x, B.y + lerp(1.8, 3.4, smooth(u)), B.z);
-            });
-            return;
-          }
           // Belgrano iza la Bandera: abajo en el mástil y, al segundo, sube
           // hasta la mitad mientras él levanta la mano y jura (antes él quedaba
-          // chico abajo y la Bandera fuera de cuadro; switch __mduNoFinFlag)
+          // chico abajo y la Bandera fuera de cuadro)
           this.flagK = 0.0;
           this.hoistTo = 0.42;
           this.hoistT = -1;
@@ -245,8 +237,8 @@ export default class MonumentoEnding extends CastleCine {
         this.later(4.0 + d, () => (this.bel.arm = 3));
         // los de atrás no quedan de estatua mientras Belgrano toma: el
         // Valiente lo saluda y vuelve a la mano en el pecho; el Miedoso se
-        // santigua y sigue rezando (switch __mduNoBelArms)
-        if (C && globalThis.__mduNoBelArms !== true) {
+        // santigua y sigue rezando
+        if (C) {
           each(4.2, { valiente: ['wave', { fade: 0.5 }], miedoso: ['santiguar', { fade: 0.5 }] });
           each(6.4, { valiente: ['chestHand', { loop: true, fade: 0.7 }], miedoso: ['pray', { loop: true, look: 0.15, fade: 0.6 }] });
         }
@@ -343,7 +335,6 @@ export default class MonumentoEnding extends CastleCine {
     C.later(4.2, () => C.act(b.miedoso, 'wave', { fade: 0.6 }));
   }
 
-  // (__mduBlend = false: los de piezas, como antes)
   // Los cuatro gauchos (vos en el medio), mirando al río, al lado del mástil.
   buildGauchos() {
     const g = this.g;
@@ -440,13 +431,11 @@ export default class MonumentoEnding extends CastleCine {
       T.headR = -0.02 * Math.sin(this.t * 0.55);
       T.shLr = 0.12 + 0.03 * Math.sin(this.t * 0.8);
       // (los brazos no cuelgan tiesos de maniquí: los codos apenas doblados y
-      // el izquierdo un poco adelante; switch __mduNoBelArms)
-      if (globalThis.__mduNoBelArms !== true) {
-        T.shLp += -0.1;
-        T.elL = -0.34 + 0.05 * Math.sin(this.t * 0.8 + 0.6);
-        T.elR = -0.26 + 0.04 * Math.sin(this.t * 0.7 + 1.3);
-        T.shRp = -0.06;
-      }
+      // el izquierdo un poco adelante)
+      T.shLp += -0.1;
+      T.elL = -0.34 + 0.05 * Math.sin(this.t * 0.8 + 0.6);
+      T.elR = -0.26 + 0.04 * Math.sin(this.t * 0.7 + 1.3);
+      T.shRp = -0.06;
     }
     if (b.arm === 1) {
       // la mano derecha en alto, hacia la Bandera
@@ -478,9 +467,9 @@ export default class MonumentoEnding extends CastleCine {
     else this.ease(b.r, P, T, b.arm === 1 ? 3.2 : 4.5);
   }
 
-  // ¿Toma con la pose del modelo de verdad? (globalThis.__mduNoBelMate: como antes)
+  // ¿Toma con la pose del modelo de verdad?
   belSip() {
-    return !!this.bel.a.gs && globalThis.__mduNoBelMate !== true;
+    return !!this.bel.a.gs;
   }
 
   // Como ease, pero con inercia (un resorte apenas amortiguado): el brazo
@@ -565,8 +554,8 @@ export default class MonumentoEnding extends CastleCine {
     const bm = b.a.M.belgrano;
     // (baja después de armar la escena: se compila apenas llega, escondido
     // todavía. Si no, al aparecer trababa el cuadro: 0,3 s en Baja y 0,7 s en
-    // Épica, medido. globalThis.__mduNoBelWarm: como antes)
-    if (bm && !this.belWarm && globalThis.__mduNoBelWarm !== true) {
+    // Épica, medido)
+    if (bm && !this.belWarm) {
       this.belWarm = true;
       warmObject(g, b.a.group);
     }
@@ -623,7 +612,7 @@ export default class MonumentoEnding extends CastleCine {
     this.people.update(dt);
     // (Avatars le esconde el mate a las ánimas: Belgrano levantaba la mano
     // vacía a la cara; el mate que le convidan va en su mano)
-    if (b.on && globalThis.__mduNoBelMate !== true) {
+    if (b.on) {
       b.a.hand.visible = b.mate > 0;
       // y es el mate del Canchero, de verdad: con el material del ánima
       // (azul y transparente sobre su cuerpo azul) no se distinguía

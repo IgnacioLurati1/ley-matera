@@ -11,13 +11,11 @@ import { assetUrl } from '../../lib/assets';
 // slam (el bastonazo: lo levanta con las dos manos y lo clava, 'key'), hit
 // (le pegan), cast (invoca), dizzy (aturdido) y muere (nuevo). Los demás
 // (taunt y sus gestos, run, throw, scared, zap, scream, kneel) siguen siendo
-// los de Meshy. Switch: globalThis.__mduNoChiquiBlend = true (antes de bajar
-// el modelo) = como antes; para probar con el switch apagado por defecto:
-// globalThis.__mduChiquiBlend = true.
+// los de Meshy.
 
 const URL = '/assets/sotano/modelos/chiqui/clips-blend.json';
 const DEFAULT_ON = true;
-export const chiquiBlendOn = () => globalThis.__mduNoChiquiBlend !== true && globalThis.__mduBlend !== false && (DEFAULT_ON || globalThis.__mduChiquiBlend === true);
+export const chiquiBlendOn = () => DEFAULT_ON;
 
 const tmpM = new THREE.Matrix4();
 const tmpP = new THREE.Vector3();

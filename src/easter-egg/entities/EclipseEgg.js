@@ -15,8 +15,8 @@ import Mates from './eclipse/Mates';
 import Disformidad from './eclipse/Disformidad';
 import Rincones from './eclipse/Rincones';
 import Sombrero from './eclipse/Sombrero';
-import { Marker, HoldZone, myId, isHost, players, dist2 } from './eclipse/common';
-import { PrimerMateCine, CruceCine, buildCruceRift, cruceOn } from '../ui/eclipseCruce';
+import { Marker, HoldZone, myId, isHost, players } from './eclipse/common';
+import { PrimerMateCine, CruceCine, buildCruceRift } from '../ui/eclipseCruce';
 import { eclAmbience } from '../fx/eclipseAmbience';
 
 // El easter egg de Eclipse Matero: "El Primer Mate".
@@ -332,24 +332,13 @@ export default class EclipseEgg {
   applyEgg(m) {
     const g = this.g;
     if (m.a === 'cebar') {
-      if (cruceOn()) {
-        if (this.cebado) return;
-        this.cebado = 1;
-        this.mF.set(false);
-        g.world.eclipse?.set?.(1, 2);
-        this.step = 3;
-        this.playPrimerMate();
-        return;
-      }
+      if (this.cebado) return;
       this.cebado = 1;
       this.mF.set(false);
-      this.mC.set(true);
       g.world.eclipse?.set?.(1, 2);
-      setTimeout(() => g.world.eclipse?.pulse?.(), 2000);
-      g.fx.sparkle(this.fogon.clone().add(V(0, 1.2, 0)), [1, 0.8, 0.4], 30, 1);
-      g.hud.toast('El Primer Mate');
-      g.hud.subtitle('El mate muestra dónde cortar. Con la Furia Cósmica (H), un tajo ahí.', 6);
       this.step = 3;
+      this.playPrimerMate();
+      return;
     } else if (m.a === 'corte') {
       this.corte = 1;
       this.mC.set(false);
@@ -360,7 +349,7 @@ export default class EclipseEgg {
       this.step = 4;
       this.startArena();
     } else if (m.a === 'cruzar') {
-      if (this.corte || !cruceOn()) return;
+      if (this.corte) return;
       this.corte = 1;
       this.step = 4;
       this.playCruce();
@@ -383,7 +372,7 @@ export default class EclipseEgg {
   }
 
   canCross() {
-    return cruceOn() && !!this.cebado && !this.corte && !this.scene && !this.arena?.active && !!this.rift?.root.visible;
+    return !!this.cebado && !this.corte && !this.scene && !this.arena?.active && !!this.rift?.root.visible;
   }
 
   // El Primer Mate (en todas las compus): el vapor abre el desgarro.
@@ -470,7 +459,6 @@ export default class EclipseEgg {
   onScythe(ev) {
     if (ev.type === 'cut') this.steps.yerba?.onCut(ev);
     this.steps.temple?.onScythe(ev);
-    if (!cruceOn() && ev.type === 'cut' && this.cebado && !this.corte && this.g.weapons.cosmic?.furiaOn && dist2(ev.o, this.cutAt) < (ev.range || 3) + 1) this.sendEgg({ a: 'corte' });
   }
 
   update(dt) {
@@ -525,7 +513,7 @@ export default class EclipseEgg {
   fierro(ask = false) {
     const g = this.g;
     // (el desgarro abierto, esperando: el recordatorio y el aviso)
-    if (cruceOn() && this.cebado && !this.corte && !this.done && !this.scene && !ask) return g.hud.subtitle('El desgarro del claro lleva a San Lorenzo: la batalla final. No hay vuelta.', 5);
+    if (this.cebado && !this.corte && !this.done && !this.scene && !ask) return g.hud.subtitle('El desgarro del claro lleva a San Lorenzo: la batalla final. No hay vuelta.', 5);
     if (this.done || this.cebado) return;
     // (preguntado seguido, las líneas se apilaban en bloque: una cada 3 s como mucho)
     if (ask && g.time - (this.fierroAt || -9) < 3) return;
@@ -606,10 +594,8 @@ export default class EclipseEgg {
     if (m.done != null) this.done = m.done;
     this.mF.set(this.ready() && !this.cebado);
     this.mC.set(!!this.cebado && !this.corte);
-    if (cruceOn()) {
-      this.mC.set(false);
-      if (this.cebado && !this.corte && !this.scene) this.showRift();
-    }
+    this.mC.set(false);
+    if (this.cebado && !this.corte && !this.scene) this.showRift();
   }
 
   // Alt+K: abre todos los portales, da todo lo juntado y la guadaña templada;

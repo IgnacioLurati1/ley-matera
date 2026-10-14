@@ -22,9 +22,6 @@ import { REST_P, NP, sample } from './desgarradorMoves';
 //    un compañero): el polvo que va hacia la guadaña y el estallido.
 //  · furiaSnd: los tres sonidos grabados (fx/eclipseSfx), con la entrada
 //    fundida y desde dónde arranca.
-// (globalThis.__mduOldFuria11: la Furia prende de una y con los sonidos de antes)
-
-export const OLD_FURIA11 = () => globalThis.__mduOldFuria11 === true;
 export const FURIA_SND = ['furia-activa', 'furia-cargada', 'furia-fin'];
 
 // time: cuánto concentra; hit: lo que tarda en bajar el golpe (ahí se desata);
@@ -41,37 +38,7 @@ const smooth = (x) => x * x * (3 - 2 * x);
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const rnd = () => Math.random() - 0.5;
 
-// ---------------- la pose ----------------
-// (weapons/desgarradorMoves.js: [x, y, z], hacia dónde va el asta, hacia dónde
-// sale la hoja, cuánto se corre el asta y cuánto suelta la izquierda)
-// El báculo: el asta parada delante, a la derecha del medio, la cabeza arriba
-// y la hoja como una medialuna hacia la izquierda, por encima de la mira. Las
-// dos manos en el asta (la derecha abajo, la izquierda arriba: no se cruzan).
-// El asta va un poco volcada a la izquierda: con el asta a plomo, la manga
-// izquierda (baja derecho de la mano de arriba) tapaba la mano derecha.
-// (hojas furia11/shots/_v2.png, _v3.png, _v4.png: la "f")
-export const CONC_H0 = [0.16, -0.08, -0.25, -0.36, 0.89, -0.28, -1, -0.04, -0.3, 0.3, 0];
-// sube de a poco mientras junta
-export const CONC_H1 = [0.16, -0.02, -0.25, -0.34, 0.9, -0.27, -1, 0, -0.3, 0.3, 0];
-// la toma de aire antes del golpe
-export const CONC_LIFT = [0.155, 0.045, -0.245, -0.3, 0.92, -0.23, -1, 0.06, -0.32, 0.3, 0];
-// el regatón contra el piso
-export const CONC_STRIKE = [0.165, -0.2, -0.26, -0.37, 0.89, -0.28, -1, -0.05, -0.3, 0.3, 0];
-const CONC_REB = [0.165, -0.175, -0.26, -0.37, 0.89, -0.275, -1, -0.04, -0.3, 0.3, 0];
 const _from = new Array(NP).fill(0);
-const UP_KEYS = [
-  [0, _from],
-  [0.26, CONC_H0, 'io'],
-  [1.14, CONC_H1, 'io'],
-  [CONC.time, CONC_LIFT, 'io'],
-];
-const OUT_KEYS = [
-  [0, CONC_LIFT],
-  [CONC.hit, CONC_STRIKE, 'i'],
-  [CONC.hit + 0.16, CONC_REB, 'o'],
-  [CONC.hit + 0.26, CONC_REB, 'l'],
-  [CONC.hit + CONC.out, REST_P, 'io'],
-];
 // furia12 (2026-10-10, el usuario: "La animación de cargar la furia no me
 // convence. Sugiero que la guadaña se levante de las manos (siguiendo la pose
 // horizontal) como volando, parezca que se está cargando y vuelva a caer a la
@@ -84,8 +51,6 @@ const OUT_KEYS = [
 //  · floatPose: las manos (la pose de siempre, un poco abajo).
 //  · concFloat: cuánto se separa la guadaña de las manos (weapons/Desgarrador
 //    lo pone en el grupo del arma, después de la pose).
-// (globalThis.__mduFuriaBaculo: el báculo y el golpe de furia11)
-export const CONC_FLOAT = () => globalThis.__mduFuriaBaculo !== true;
 // up: cuánto sube; rise: en cuánto; more: la toma de altura del final y desde
 // cuándo antes de caer (air); fall: cuánto antes de CONC.time empieza a caer;
 // hands: cuánto bajan las manos al soltarla; give: cuánto ceden al atajarla
@@ -148,28 +113,7 @@ export function concFloat(t, time, out) {
 // t: segundos desde la H; from: la pose en la que estaba (sin salto); time:
 // para el temblor. Devuelve cuánto giran los aros (0..1, para el que lo quiera).
 export function concPose(t, from, time, P) {
-  if (CONC_FLOAT()) return floatPose(t, from, P);
-  if (t < CONC.time) {
-    for (let j = 0; j < NP; j++) _from[j] = from?.[j] ?? REST_P[j];
-    sample(UP_KEYS, t, P);
-    // tiembla cada vez más (el poder que no entra)
-    const k = clamp01(t / CONC.time);
-    const a = 0.0006 + 0.0034 * k * k;
-    P[0] += Math.sin(time * 61) * a;
-    P[1] += Math.sin(time * 53 + 1.3) * a;
-    P[2] += Math.sin(time * 47 + 2.1) * a * 0.5;
-    return k;
-  }
-  const u = t - CONC.time;
-  sample(OUT_KEYS, Math.min(u, CONC.hit + CONC.out), P);
-  // el golpe: un rebote corto que se apaga
-  if (u > CONC.hit) {
-    const d = u - CONC.hit;
-    const a = 0.006 * Math.exp(-d * 14);
-    P[1] += Math.sin(d * 70) * a;
-    P[0] += Math.sin(d * 55 + 1) * a * 0.4;
-  }
-  return 1;
+  return floatPose(t, from, P);
 }
 
 // ---------------- las chispas que se le meten (la escena de la mano) ----------------

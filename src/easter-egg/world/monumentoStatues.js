@@ -298,22 +298,17 @@ export function statue(kind, mat, x, y, z, ry = 0, s = 1) {
       // los colosos del agua: sentados, una mano en la rodilla y la otra sobre el ánfora
       const body = [];
       figure(body, { robe: false, armL: [[0.5, -0.8], [0.3, -1.2]], armR: [[-0.6, -0.3], [-0.2, -0.9]] });
-      if (globalThis.__mduNoColosos === true) {
-        for (const g of body) parts.push(g.translate(0, -0.45, 0));
-        parts.push(ball(V(0, 0.45, -0.05), 0.42, 1.1, 0.5, 1.2));
-      } else {
-        // sentado de verdad en una piedra: del cuerpo de pie va de la cintura
-        // para arriba (las seis primeras piezas son las piernas) y las piernas
-        // se arman dobladas, los muslos hacia adelante y las canillas al piso
-        // (antes era una figura parada hundida hasta las rodillas con un plato
-        // enorme en la cintura, como un tutú)
-        for (const g of body.slice(6)) parts.push(g.translate(0, -0.46, 0));
-        parts.push(ball(V(0, 0.2, -0.06), 0.3, 1.25, 0.72, 1.05));
-        for (const s of [-1, 1]) {
-          parts.push(limb(V(s * 0.1, 0.42, -0.02), V(s * 0.13, 0.46, 0.4), 0.085, 0.075));
-          parts.push(limb(V(s * 0.13, 0.46, 0.4), V(s * 0.14, 0.06, 0.47), 0.07, 0.06));
-          parts.push(ball(V(s * 0.14, 0.04, 0.54), 0.07, 1, 0.6, 1.6));
-        }
+      // sentado de verdad en una piedra: del cuerpo de pie va de la cintura
+      // para arriba (las seis primeras piezas son las piernas) y las piernas
+      // se arman dobladas, los muslos hacia adelante y las canillas al piso
+      // (antes era una figura parada hundida hasta las rodillas con un plato
+      // enorme en la cintura, como un tutú)
+      for (const g of body.slice(6)) parts.push(g.translate(0, -0.46, 0));
+      parts.push(ball(V(0, 0.2, -0.06), 0.3, 1.25, 0.72, 1.05));
+      for (const s of [-1, 1]) {
+        parts.push(limb(V(s * 0.1, 0.42, -0.02), V(s * 0.13, 0.46, 0.4), 0.085, 0.075));
+        parts.push(limb(V(s * 0.13, 0.46, 0.4), V(s * 0.14, 0.06, 0.47), 0.07, 0.06));
+        parts.push(ball(V(s * 0.14, 0.04, 0.54), 0.07, 1, 0.6, 1.6));
       }
       parts.push(ball(V(-0.55, 0.45, 0.25), 0.22, 1, 1.3, 1));
       parts.push(limb(V(-0.55, 0.75, 0.25), V(-0.55, 0.88, 0.25), 0.08, 0.1, 8));

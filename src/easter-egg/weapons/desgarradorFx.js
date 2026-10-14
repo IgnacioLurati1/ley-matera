@@ -249,8 +249,6 @@ void main(){
 // rayo de vacío. Un núcleo GRUESO de negro con estrellas que corren y el borde
 // de neón violeta (se dibuja normal, no sumado: oscurece lo que tapa), adentro
 // de un resplandor grande y dos hebras que se enroscan para lados contrarios.
-// (globalThis.__mduDesgOldBeam: el rayo de la v4)
-const OLD_BEAM = globalThis.__mduDesgOldBeam === true;
 const VOID_FS = `
 uniform float uLen, uTime, uGrow, uK, uOwn;
 uniform vec3 uA, uB;
@@ -328,7 +326,6 @@ const prep = (o, order = 8) => {
 // ---------------- la burbuja del tiempo / la cáscara del pozo ----------------
 // Una esfera de luz: casi nada adentro y el borde encendido (fresnel), con
 // ondas que corren. (sin pow sobre lo que puede dar negativo)
-const OLD_BUBBLES = globalThis.__mduDesgOldBubbles === true;
 const BUBBLE_VS = `
 varying vec3 vN; varying vec3 vV; varying vec3 vP;
 void main(){
@@ -361,33 +358,24 @@ class Rig {
     this.LEN = { value: 1 };
     this.GROW = { value: 0 };
     this.K = { value: 1 };
-    // (v4) cuántos metros tarda en engrosarse (globalThis.__mduDesgBeamTip: como antes, 1,4)
+    // (v4) cuántos metros tarda en engrosarse
     // (guadana5: nace fino, a la derecha, y a los 4 m ya es grueso: cerca de la
     // cámara se ve de punta y tapaba la mira con un disco)
-    this.TAPER = { value: globalThis.__mduDesgBeamTip === true ? 1.4 : OLD_BEAM ? 7 : 3 };
-    this.MIN = { value: OLD_BEAM ? 0.07 : 0.2 };
+    this.TAPER = { value: 3 };
+    this.MIN = { value: 0.2 };
     this.OWN = { value: 0 };
     const tube = (r, sharp, flow, gain, near, a, b, fs = TUBE_FS, blending = THREE.AdditiveBlending) =>
-      prep(new THREE.Mesh(G.tube, shader({ uLen: this.LEN, uTime: this.TIME, uGrow: this.GROW, uK: this.K, uTaper: this.TAPER, uMin: this.MIN, uOwn: this.OWN, uEnd: { value: OLD_BEAM ? 0 : 1 }, uR: { value: r }, uSharp: { value: sharp }, uFlow: { value: flow }, uGain: { value: gain }, uNear: { value: near }, uA: { value: new THREE.Color(a) }, uB: { value: new THREE.Color(b) } }, TUBE_VS, fs, blending)));
+      prep(new THREE.Mesh(G.tube, shader({ uLen: this.LEN, uTime: this.TIME, uGrow: this.GROW, uK: this.K, uTaper: this.TAPER, uMin: this.MIN, uOwn: this.OWN, uEnd: { value: 1 }, uR: { value: r }, uSharp: { value: sharp }, uFlow: { value: flow }, uGain: { value: gain }, uNear: { value: near }, uA: { value: new THREE.Color(a) }, uB: { value: new THREE.Color(b) } }, TUBE_VS, fs, blending)));
     const helix = (r, hex, dir) => prep(new THREE.Mesh(G.helix, shader({ uLen: this.LEN, uTime: this.TIME, uGrow: this.GROW, uK: this.K, uTaper: this.TAPER, uMin: this.MIN, uOwn: this.OWN, uDir: { value: dir }, uR: { value: r }, uA: { value: new THREE.Color(hex).multiplyScalar(1.2) } }, HELIX_VS, HELIX_FS)));
-    if (OLD_BEAM) {
-      this.MIN.value = 0.07;
-      this.glow = tube(0.24, 1.2, 1, 0.42, 0.22, 0x7a1cff, 0xd060ff);
-      this.core = tube(0.06, 2.6, 0.4, 0.85, 0.8, 0xc890ff, 0xfff0ff);
-      this.R0 = [0.24, 0.06, 0.4];
-      this.helix = helix(0.4, 0xff6ae0, 1);
-      this.root.add(this.glow, this.core, this.helix);
-    } else {
-      // el resplandor grande (atrás), el núcleo de vacío (encima, normal) y un
-      // hilo caliente en el medio; dos hebras: rosa y violeta, al revés
-      this.glow = prep(tube(0.7, 1.1, 1, 0.5, 0.12, 0x5a10e0, 0xc050ff), 7);
-      this.voidT = prep(tube(0.24, 1, 0, 1, 1, 0x9a40ff, 0xf0c8ff, VOID_FS, THREE.NormalBlending), 9);
-      this.core = prep(tube(0.035, 3, 0.5, 0.7, 0.6, 0xd0a0ff, 0xffffff), 10);
-      this.helix = prep(helix(0.62, 0xff6ae0, 1), 10);
-      this.helix2 = prep(helix(0.5, 0x9a5cff, -1.35), 10);
-      this.R0 = [0.7, 0.035, 0.62, 0.24, 0.5];
-      this.root.add(this.glow, this.voidT, this.core, this.helix, this.helix2);
-    }
+    // el resplandor grande (atrás), el núcleo de vacío (encima, normal) y un
+    // hilo caliente en el medio; dos hebras: rosa y violeta, al revés
+    this.glow = prep(tube(0.7, 1.1, 1, 0.5, 0.12, 0x5a10e0, 0xc050ff), 7);
+    this.voidT = prep(tube(0.24, 1, 0, 1, 1, 0x9a40ff, 0xf0c8ff, VOID_FS, THREE.NormalBlending), 9);
+    this.core = prep(tube(0.035, 3, 0.5, 0.7, 0.6, 0xd0a0ff, 0xffffff), 10);
+    this.helix = prep(helix(0.62, 0xff6ae0, 1), 10);
+    this.helix2 = prep(helix(0.5, 0x9a5cff, -1.35), 10);
+    this.R0 = [0.7, 0.035, 0.62, 0.24, 0.5];
+    this.root.add(this.glow, this.voidT, this.core, this.helix, this.helix2);
     this.ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xb070ff).multiplyScalar(1.9), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true, toneMapped: false, fog: false });
     this.rings = [];
     for (let i = 0; i < RINGS; i++) {
@@ -403,14 +391,12 @@ class Rig {
     this.hit.add(this.hitRays, this.hitFlare);
     // (guadana5) donde pega: tres ondas de choque que se abren (de cara al rayo)
     this.shocks = [];
-    if (!OLD_BEAM) {
-      const sm = new THREE.MeshBasicMaterial({ map: ringTex(), color: new THREE.Color(0.75, 0.4, 1).multiplyScalar(1.6), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false });
-      for (let i = 0; i < 3; i++) {
-        const m = prep(new THREE.Mesh(G.shock, sm.clone()), 9);
-        m.visible = false;
-        this.hit.add(m);
-        this.shocks.push({ m, t: i / 3 });
-      }
+    const sm = new THREE.MeshBasicMaterial({ map: ringTex(), color: new THREE.Color(0.75, 0.4, 1).multiplyScalar(1.6), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false });
+    for (let i = 0; i < 3; i++) {
+      const m = prep(new THREE.Mesh(G.shock, sm.clone()), 9);
+      m.visible = false;
+      this.hit.add(m);
+      this.shocks.push({ m, t: i / 3 });
     }
     this.root.add(this.hit);
     this.tip = prep(sprite(flareTexture(), 0xf0d0ff, 1.8));
@@ -438,14 +424,11 @@ class Rig {
   set(a, b, k, grow, wall, time, dt, tip, ws = 1) {
     // (guadana5, tercera vuelta: el propio -sin la chispa de la punta- en
     // primera persona: nace más fino, tarda más en engrosarse y se aclara en la
-    // mira; el de un compañero, visto de afuera, igual de grande.
-    // globalThis.__mduDesgOldBeamFp: el propio como el de afuera)
-    const own = !tip && !OLD_BEAM && globalThis.__mduDesgOldBeamFp !== true;
+    // mira; el de un compañero, visto de afuera, igual de grande)
+    const own = !tip;
     this.OWN.value = own ? 1 : 0;
-    if (!OLD_BEAM) {
-      this.MIN.value = own ? 0.06 : 0.2;
-      this.TAPER.value = own ? 6.5 : 3;
-    }
+    this.MIN.value = own ? 0.06 : 0.2;
+    this.TAPER.value = own ? 6.5 : 3;
     this.glow.material.uniforms.uR.value = this.R0[0] * ws;
     this.core.material.uniforms.uR.value = this.R0[1] * ws;
     this.helix.material.uniforms.uR.value = this.R0[2] * ws;
@@ -723,15 +706,14 @@ export default class DesgarradorFx {
     h.disk2.visible = gold;
     // (guadana5: la cáscara de luz del agujero se veía como una pompa de jabón
     // -"burbujitas totalmente de más"-: solo el núcleo negro y el disco que
-    // gira. globalThis.__mduDesgOldBubbles: vuelve)
-    h.shell.visible = OLD_BUBBLES;
+    // gira)
+    h.shell.visible = false;
     h.U.uCol.value.setRGB(...(PAL[pal] || PAL.base).edge);
     this.g.fx.flash(p, pal === 'exec' ? 0xff60c0 : 0x9040ff, 5, 0.25, 8);
     // (guadana5: el nuevo, con cuerpo audible y más fuerte; el de la v4 se
-    // tapaba. globalThis.__mduDesgOldHoleSnd: el de antes)
+    // tapaba)
     if (sound) {
-      if (globalThis.__mduDesgOldHoleSnd === true) this.play('desg-agujero', { pos: own ? null : p, gain: own ? 0.75 : 0.9 });
-      else this.play('desg-agujero5', { pos: own ? null : p, gain: own ? 1 : 1.15 });
+      this.play('desg-agujero5', { pos: own ? null : p, gain: own ? 1 : 1.15 });
     }
     return h;
   }
@@ -759,8 +741,8 @@ export default class DesgarradorFx {
     h.disk2.scale.setScalar(s * 2.4);
     // lo que entra en espiral (guadana5: menos y más chicos: eran puntitos
     // redondos que se leían como burbujas)
-    if (Math.random() < (OLD_BUBBLES ? 0.9 : 0.45)) {
-      for (let i = 0; i < (OLD_BUBBLES ? 3 : 1); i++) {
+    if (Math.random() < 0.45) {
+      for (let i = 0; i < 1; i++) {
         const a = Math.random() * Math.PI * 2;
         const r = h.R * (2.5 + Math.random() * 3);
         const x = h.p.x + Math.cos(a) * r;
@@ -1283,7 +1265,7 @@ export default class DesgarradorFx {
     const g = this.g;
     // (v3) tragado por una grieta: z.swallowAt lo puso el que pegó (o llegó por 'desg' w)
     const W = z.swallowAt;
-    if (W && g.time - W.t < 1.5 && globalThis.__mduNoSwallow !== true) {
+    if (W && g.time - W.t < 1.5) {
       this.swallow(z, W.p, W.dur);
       return;
     }
@@ -1410,9 +1392,8 @@ export default class DesgarradorFx {
     tmpV.set(z.pos.x, (z.baseY ?? z.pos.y ?? 0) + 1.1 * (z.scale || 1), z.pos.z);
     g.fx.flash(tmpV.lerp(p, 0.5), 0xa050ff, 3.5, 0.22, 6);
     // (v4) suena a agujero negro, y no más de uno cada 0,1 s (se traga a muchos
-    // de una: antes sonaban todos encimados). globalThis.__mduDesgOldTrago: el de antes
-    if (globalThis.__mduDesgOldTrago === true) this.play('desg-trago', { pos: p, gain: 0.8, rate: 0.9 + Math.random() * 0.2 });
-    else if (g.time - (this.tragoT ?? -9) > 0.1) {
+    // de una: antes sonaban todos encimados).
+    if (g.time - (this.tragoT ?? -9) > 0.1) {
       this.tragoT = g.time;
       this.play('desg-trago4', { pos: p, gain: 0.75, rate: 0.92 + Math.random() * 0.16 });
     }
@@ -1557,7 +1538,7 @@ export default class DesgarradorFx {
     }
     this.dashStreaks(a, b, pal);
     // (el estallido del final: el daño lo pone el que embistió, Desgarrador.stepDash)
-    this.nova(b, cfg?.burst?.radius || 3.4, { pal, dust: true, big: globalThis.__mduNoDesgFx4 === true ? 1 : 1.3 });
+    this.nova(b, cfg?.burst?.radius || 3.4, { pal, dust: true, big: 1.3 });
     if (!own) this.play('desg-embestida', { pos: b, gain: 0.9 });
   }
 
@@ -1593,11 +1574,9 @@ export default class DesgarradorFx {
   }
 
   // ---------------- v4: un escalón más de peso y lectura ----------------
-  // (globalThis.__mduNoDesgFx4: como en la v3)
   // El corte en el muerto: una raja finita que lo cruza (se lee dónde pegó),
   // un soplo de vacío y chispas para el lado del tajo.
   cutMark(p, dir, pal = 'base') {
-    if (globalThis.__mduNoDesgFx4 === true) return;
     const g = this.g;
     const yaw = Math.atan2(dir.x, dir.z) + Math.PI / 2;
     this.rift({ o: p, yaw, roll: (Math.random() - 0.5) * 0.9, kind: 'line', len: 1.15, w: 0.05, life: 0.42, sweep: 0.03, pal, own: false });
@@ -1608,7 +1587,6 @@ export default class DesgarradorFx {
 
   // La espectral sale: el destello en la mano y un abanico de chispas adelante.
   launchFx(o, f, pal = 'base', up = false) {
-    if (globalThis.__mduNoDesgFx4 === true) return;
     const g = this.g;
     g.fx.flash(o, up ? 0xffc060 : 0xa050ff, 5, 0.16, 6);
     const D = (PAL[pal] || PAL.base).dust;
@@ -1620,7 +1598,6 @@ export default class DesgarradorFx {
 
   // La embestida deja el aire rajado: estelas largas a lo largo del camino.
   dashStreaks(a, b, pal = 'base') {
-    if (globalThis.__mduNoDesgFx4 === true) return;
     const g = this.g;
     const dx = b.x - a.x;
     const dz = b.z - a.z;
@@ -1638,12 +1615,10 @@ export default class DesgarradorFx {
   spinFx(p, dur, pal) {
     const g = this.g;
     // (v4) el aro de chispas que sale girando
-    if (globalThis.__mduNoDesgFx4 !== true) {
-      const D = (PAL[pal] || PAL.base).dust;
-      for (let i = 0; i < 30; i++) {
-        const a = (i / 30) * Math.PI * 2;
-        g.fx.add.spawn(p.x + Math.cos(a) * 1.2, p.y + 1.2 + rnd() * 0.3, p.z + Math.sin(a) * 1.2, -Math.sin(a) * 7 + Math.cos(a) * 2, rnd(), Math.cos(a) * 7 + Math.sin(a) * 2, { color: D[i % 3], size: 0.05, size1: 0, life: 0.4, drag: 2 });
-      }
+    const D = (PAL[pal] || PAL.base).dust;
+    for (let i = 0; i < 30; i++) {
+      const a = (i / 30) * Math.PI * 2;
+      g.fx.add.spawn(p.x + Math.cos(a) * 1.2, p.y + 1.2 + rnd() * 0.3, p.z + Math.sin(a) * 1.2, -Math.sin(a) * 7 + Math.cos(a) * 2, rnd(), Math.cos(a) * 7 + Math.sin(a) * 2, { color: D[i % 3], size: 0.05, size1: 0, life: 0.4, drag: 2 });
     }
     this.nova(p, 3.1, { pal, dust: true, big: 0.6, life: Math.min(1, dur * 0.7), h: 0.25, w: 0.18, sound: false });
     // el remolino de polvo alrededor (gira con la guadaña)
@@ -1689,7 +1664,7 @@ export default class DesgarradorFx {
     const fy0 = g.world.floorAt(c.x, c.z, c.y + 0.5);
     const fy = Number.isFinite(fy0) && fy0 > c.y - 3 ? fy0 : c.y;
     // (v4) en el medio, el agujero negro que se los traga (el del golpe cargado, grande)
-    if (globalThis.__mduNoSlashHole !== true) this.hole(_n2.set(c.x, fy + 1.4, c.z), big ? 0.95 : 0.6, big ? 1.25 : 1.0, { pal, gold: true, own });
+    this.hole(_n2.set(c.x, fy + 1.4, c.z), big ? 0.95 : 0.6, big ? 1.25 : 1.0, { pal, gold: true, own });
     if (big) {
       // más rajas paradas alrededor, como un vidrio roto en el aire
       for (let i = 0; i < 4; i++) this.rift({ o: tmpV.set(c.x + rnd() * 5, fy + 1 + Math.random() * 2.2, c.z + rnd() * 5), yaw: Math.random() * 6, roll: Math.PI / 2 + rnd() * 1.2, kind: 'line', len: 2 + Math.random() * 2.5, w: 0.1, life: 2.4, sweep: 0.1 + Math.random() * 0.2, pal, own: false, glass: 10 });
@@ -1759,7 +1734,7 @@ export default class DesgarradorFx {
     w.core.scale.setScalar(0.01);
     w.shell.scale.setScalar(0.01);
     w.core.visible = true;
-    w.shell.visible = OLD_BUBBLES;
+    w.shell.visible = false;
     w.U.uCol.value.setRGB(...(PAL[pal] || PAL.base).edge);
     // el disco que gira alrededor (un anillo de grieta casi acostado)
     w.ring = this.rift({ o: p, yaw: 0, roll: 0.25, kind: 'arc', R: W.core * 0.7, half: Math.PI, w: 0.12, life: W.time + 0.2, sweep: 0.2, pal, own: false });

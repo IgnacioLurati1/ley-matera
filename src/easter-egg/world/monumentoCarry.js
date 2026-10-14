@@ -53,7 +53,7 @@ export function itemModel(kind, M, vm = false) {
     // la caña de pescar con su reel, inclinada hacia adelante (al río), y el
     // hilo que cuelga de la punta derecho al agua. (Antes iba de punta hacia
     // atrás: en la mano quedaba detrás de la cámara y no se veía.)
-    const tilt = globalThis.__mduNoCanaVm ? 0 : -0.9;
+    const tilt = -0.9;
     const arm = new THREE.Group();
     arm.rotation.x = tilt;
     g.add(arm);
@@ -97,7 +97,7 @@ export function itemModel(kind, M, vm = false) {
 const VM = {
   antorcha: { pos: [0.27, -0.62, -0.62], rot: [-0.35, 0.2, -0.32], s: 0.85 },
   pava: { pos: [0.0, -0.46, -0.62], rot: [0.1, 0.4, 0], s: 0.9 },
-  cana: globalThis.__mduNoCanaVm ? { pos: [0.18, -0.34, -0.42], rot: [0.9, 0, -0.1], s: 1 } : { pos: [0.2, -0.42, -0.4], rot: [0, -0.12, -0.08], s: 1 },
+  cana: { pos: [0.2, -0.42, -0.4], rot: [0, -0.12, -0.08], s: 1 },
   celeste: { pos: [0.12, -0.3, -0.5], rot: [0.2, 0.3, 0.1], s: 0.9 },
   blanca: { pos: [0.12, -0.3, -0.5], rot: [0.2, 0.3, 0.1], s: 0.9 },
   bandera: { pos: [0.12, -0.3, -0.5], rot: [0.2, 0.3, 0.1], s: 0.9 },
@@ -156,7 +156,7 @@ export default class Carry {
   input(input) {
     if (input.mouse.leftPressed && this.swingT <= 0) {
       // (el golpe se ve solo con la antorcha: con la caña el clic recoge)
-      if (this.kind === 'antorcha' || globalThis.__mduNoCanaVm) this.swingT = 0.45;
+      if (this.kind === 'antorcha') this.swingT = 0.45;
       this.onSwing?.(this.kind);
     }
     if (input.hit('KeyG')) this.onDrop?.(this.kind);
@@ -177,9 +177,6 @@ export default class Carry {
         this.vm.position.set(v.pos[0] - k * 0.3, v.pos[1] + Math.sin(t * 7) * 0.008 + k * 0.1, v.pos[2] - k * 0.2);
         this.vm.rotation.set(v.rot[0] - k * 1.2, v.rot[1] + k * 0.8, v.rot[2]);
       }
-      // la pava: sin armas, pero se puede correr (el usuario, 2026-10-05; antes
-      // pesaba y se caminaba despacio: __mduNoPavaRun)
-      if (this.kind === 'pava' && globalThis.__mduNoPavaRun) g.player.slowT = Math.max(g.player.slowT, 0.1);
     } else if (this.wm) {
       // en la mano del compañero (o a la altura del pecho, adelante)
       const p = g.net?.remote.get(this.id);

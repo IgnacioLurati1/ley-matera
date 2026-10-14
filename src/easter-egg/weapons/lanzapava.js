@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import * as Armas from '../core/armas';
 import { buildGrenade } from './viewmodels';
-import { GRENADE } from '../config/weapons';
 
 // El Lanzapava: el especialista del Mate 47 (el usuario, 2026-10-12). Con una
 // tecla (la N; Controles, "Lanzapava") el 47 pasa a lanzagranadas: la pava de
@@ -13,14 +12,10 @@ import { GRENADE } from '../config/weapons';
 // vuelve solo al fusil. En línea los compañeros ven la tapa abierta (Session
 // 'wpn': lanzapavaAbierta), oyen el cerrojo, y ven la pavita volar y reventar
 // ('lpava'; el daño lo hace el que tiró).
-// __mduSinLanzapava = true: no hay. __mduSinEspecialistas = true: como el
-// 12 de octubre (sin repuesto, vuelve con las bajas, pega como la bomba de yerba).
 
 const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
 const ease = (t) => t * t * (3 - 2 * t);
 const LP = () => Armas.ARMERIA.lanzapava;
-// (lo del 12 de octubre: __mduSinEspecialistas)
-const viejo = () => Armas.sinNuevos();
 // lo que tarda en cebar la pava con uno del repuesto (s)
 const CEBA = 1.1;
 
@@ -33,13 +28,11 @@ export class Lanzapava {
     this.k = 0;
     this.tiros = LP().tiros;
     this.reserva = LP().reserva;
-    this.prog = 0;
     this.cd = 0;
     this.backT = 0;
     // cebando: lo que falta (s)
     this.cebaT = 0;
     this.slot = null;
-    Armas.onBaja((id) => this.baja(id));
   }
 
   // al empezar una partida (Weapons.reset): con los dos tiros y en fusil
@@ -48,14 +41,12 @@ export class Lanzapava {
     this.k = 0;
     this.tiros = LP().tiros;
     this.reserva = LP().reserva;
-    this.prog = 0;
     this.backT = 0;
     this.cebaT = 0;
   }
 
   // El Max Ammo (Weapons.maxAmmo): los dos cargados y el repuesto lleno.
   lleno() {
-    if (viejo()) return;
     this.tiros = LP().tiros;
     this.reserva = LP().reserva;
     this.cebaT = 0;
@@ -64,7 +55,7 @@ export class Lanzapava {
 
   // Cebar uno del repuesto (sin tiros cargados, o con la R).
   cebar() {
-    if (viejo() || this.cebaT > 0 || this.reserva <= 0 || this.tiros >= LP().tiros) return false;
+    if (this.cebaT > 0 || this.reserva <= 0 || this.tiros >= LP().tiros) return false;
     this.cebaT = CEBA;
     this.backT = 0;
     this.cerrojo(null, false);
@@ -73,7 +64,6 @@ export class Lanzapava {
 
   // ¿Lo tiene? (el Mate 47 en la mano con el especialista puesto)
   ready() {
-    if (globalThis.__mduSinLanzapava === true || globalThis.__mduSinAccesorios === true) return false;
     const s = this.W.slot;
     return !!s && !s.temp && s.id === 'mate47' && !!Armas.especialista('mate47')?.on;
   }
@@ -200,13 +190,13 @@ export class Lanzapava {
 
   // Lo que dice el HUD en modo lanzapava (Weapons.updateHud).
   hud() {
-    return { name: 'Lanzapava', mag: this.tiros, reserve: viejo() ? LP().tiros : this.reserva, upgraded: false, desc: '' };
+    return { name: 'Lanzapava', mag: this.tiros, reserve: this.reserva, upgraded: false, desc: '' };
   }
 
   P() {
     // fijo: mata de un tiro hasta la ronda 20 (core/armas.js ARMERIA.lanzapava);
     // (antes: como la bomba de yerba, que crece con la ronda)
-    const dmg = viejo() ? GRENADE.damage + (this.g.rounds?.round || 1) * 40 : LP().danio;
+    const dmg = LP().danio;
     return { speed: 30, gravity: 9, radius: 4.2, damage: dmg, splash: dmg, color: 0xffa040, size: 0.08, selfDamage: 40 };
   }
 
@@ -246,7 +236,7 @@ export class Lanzapava {
     W.updateHud();
     // sin tiros: ceba uno del repuesto, y si no hay, vuelve solo al fusil
     if (this.tiros <= 0) {
-      if (!viejo() && this.reserva > 0) this.W.g.later(0.35, () => this.on && this.tiros <= 0 && this.cebar());
+      if (this.reserva > 0) this.W.g.later(0.35, () => this.on && this.tiros <= 0 && this.cebar());
       else this.backT = 0.55;
     }
   }
@@ -255,26 +245,5 @@ export class Lanzapava {
   ghost(m) {
     const W = this.W;
     W.spawnProjectile({ kind: 'shot', pos: new THREE.Vector3(m.x, m.y, m.z), vel: new THREE.Vector3(m.vx, m.vy, m.vz), gravity: 9, P: this.P(), st: { id: 'mate47', headMult: 1, upgraded: false }, mesh: this.mesh(), life: 5, ghost: true });
-  }
-
-  // Una baja con el Mate 47: junta para el próximo tiro (core/armas.js onBaja).
-  baja(id) {
-    // (ahora se llena con el Max Ammo: lleno())
-    if (!viejo() || id !== 'mate47' || !this.ready()) return;
-    if (this.tiros >= LP().tiros) {
-      this.prog = 0;
-      return;
-    }
-    if (++this.prog < LP().bajas) return;
-    this.prog = 0;
-    this.tiros++;
-    // (se oye que volvió un tiro: un tin de la tapa)
-    const A = this.g.audio;
-    try {
-      if (A?.ctx) A.tone(A.out({ gain: 0.4, reverb: 0.05 }), { t: A.now, dur: 0.18, type: 'triangle', freq: 1760, gain: 0.08 });
-    } catch (e) {
-      console.error(e);
-    }
-    this.W.updateHud();
   }
 }

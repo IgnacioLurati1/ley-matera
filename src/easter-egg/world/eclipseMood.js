@@ -26,8 +26,7 @@ import { LIGHTS, ZONES } from '../config/map';
 //     son pocas a la vez (World.cullLights, tope 10): de lejos los cuartos
 //     quedaban negros aunque tuvieran sus faroles; el charco está siempre y se
 //     baja cuando la luz de verdad está prendida al lado.
-// globalThis.__mduNoEclMood: nada de esto. __mduNoEclMoodFx: sin partículas.
-// __mduNoEclPools: sin charcos.
+// globalThis.__mduNoEclMood: nada de esto.
 
 const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
 
@@ -215,25 +214,22 @@ export function moodPrep(w) {
   // estatuas del Monumento (casi blanco: al lado de un farol, una mancha sin
   // forma). Antes de que v5 funda lo quieto (el color va a los
   // vértices) y de World.buildLights: world/Eclipse.js lo llama primero.
-  // (__mduNoEclBurn: como antes)
-  if (globalThis.__mduNoEclBurn !== true) {
-    for (const L of LIGHTS) {
-      if (L.burnFix || !(L.intensity >= 30) || ZONES[L.zone]?.outdoor) continue;
-      L.burnFix = true;
-      L.intensity *= 0.6;
-    }
-    if (w.M?.marble && !w.M.marble.userData.burnFix) {
-      w.M.marble.userData.burnFix = true;
-      w.M.marble.color.multiplyScalar(0.55);
-    }
-    // (las estatuas que bañan los reflectores: el emisivo que les pone
-    // world/monumentoLuces las dejaba blancas, sin forma, de noche)
-    const ML = w.M?.marbleLit;
-    if (ML && !ML.userData.burnFix) {
-      ML.userData.burnFix = true;
-      ML.color.multiplyScalar(0.55);
-      ML.emissive.multiplyScalar(0.25);
-    }
+  for (const L of LIGHTS) {
+    if (L.burnFix || !(L.intensity >= 30) || ZONES[L.zone]?.outdoor) continue;
+    L.burnFix = true;
+    L.intensity *= 0.6;
+  }
+  if (w.M?.marble && !w.M.marble.userData.burnFix) {
+    w.M.marble.userData.burnFix = true;
+    w.M.marble.color.multiplyScalar(0.55);
+  }
+  // (las estatuas que bañan los reflectores: el emisivo que les pone
+  // world/monumentoLuces las dejaba blancas, sin forma, de noche)
+  const ML = w.M?.marbleLit;
+  if (ML && !ML.userData.burnFix) {
+    ML.userData.burnFix = true;
+    ML.color.multiplyScalar(0.55);
+    ML.emissive.multiplyScalar(0.25);
   }
 }
 
@@ -262,61 +258,57 @@ export function buildMood(w) {
   let U = null;
   let mist = null;
   let MU = null;
-  if (globalThis.__mduNoEclMoodFx !== true) {
-    const geo = new THREE.BufferGeometry();
-    const seed = new Float32Array(COUNT * 4);
-    for (let i = 0; i < COUNT * 4; i++) seed[i] = Math.random();
-    // (la posición no se usa: todo sale de seed; three la pide para contar)
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(COUNT * 3), 3));
-    geo.setAttribute('seed', new THREE.BufferAttribute(seed, 4));
-    U = {
-      uBox: { value: new THREE.Vector3(R, R * 0.45, R) },
-      uYOff: { value: 0 },
-      uSoft: { value: 3.2 },
-      uCam: { value: new THREE.Vector3() },
-      uTime: { value: 0 },
-      uDens: { value: 0 },
-      uSize: { value: 0.05 },
-      uRise: { value: 0 },
-      uDrift: { value: 0.5 },
-      uBlink: { value: 0 },
-      uPx: { value: 500 },
-      uC1: { value: new THREE.Color() },
-      uC2: { value: new THREE.Color() },
-      uA: { value: 1 },
-    };
-    const mat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false });
-    pts = new THREE.Points(geo, mat);
-    pts.frustumCulled = false;
-    pts.renderOrder = 3;
-    pts.name = 'eclMood';
-    g.scene.add(pts);
-    // la neblina baja de afuera: pocas manchas grandes y tenues a la altura de
-    // los pies, del color de la niebla de la isla (__mduNoEclMist)
-    if (globalThis.__mduNoEclMist !== true) {
-      const mg = new THREE.BufferGeometry();
-      const ms = new Float32Array(MIST * 4);
-      for (let i = 0; i < MIST * 4; i++) ms[i] = Math.random();
-      mg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MIST * 3), 3));
-      mg.setAttribute('seed', new THREE.BufferAttribute(ms, 4));
-      MU = THREE.UniformsUtils.clone(U);
-      MU.uBox.value.set(26, 0.5, 26);
-      MU.uYOff.value = -1.25;
-      MU.uSoft.value = 1.6;
-      MU.uSize.value = 6;
-      MU.uRise.value = 0;
-      MU.uDrift.value = 2.5;
-      MU.uBlink.value = 0;
-      const mm = new THREE.ShaderMaterial({ uniforms: MU, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false });
-      mist = new THREE.Points(mg, mm);
-      mist.frustumCulled = false;
-      mist.renderOrder = 3;
-      mist.name = 'eclMist';
-      g.scene.add(mist);
-    }
-  }
+  const geo = new THREE.BufferGeometry();
+  const seed = new Float32Array(COUNT * 4);
+  for (let i = 0; i < COUNT * 4; i++) seed[i] = Math.random();
+  // (la posición no se usa: todo sale de seed; three la pide para contar)
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(COUNT * 3), 3));
+  geo.setAttribute('seed', new THREE.BufferAttribute(seed, 4));
+  U = {
+    uBox: { value: new THREE.Vector3(R, R * 0.45, R) },
+    uYOff: { value: 0 },
+    uSoft: { value: 3.2 },
+    uCam: { value: new THREE.Vector3() },
+    uTime: { value: 0 },
+    uDens: { value: 0 },
+    uSize: { value: 0.05 },
+    uRise: { value: 0 },
+    uDrift: { value: 0.5 },
+    uBlink: { value: 0 },
+    uPx: { value: 500 },
+    uC1: { value: new THREE.Color() },
+    uC2: { value: new THREE.Color() },
+    uA: { value: 1 },
+  };
+  const mat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false });
+  pts = new THREE.Points(geo, mat);
+  pts.frustumCulled = false;
+  pts.renderOrder = 3;
+  pts.name = 'eclMood';
+  g.scene.add(pts);
+  // la neblina baja de afuera: pocas manchas grandes y tenues a la altura de
+  // los pies, del color de la niebla de la isla
+  const mg = new THREE.BufferGeometry();
+  const ms = new Float32Array(MIST * 4);
+  for (let i = 0; i < MIST * 4; i++) ms[i] = Math.random();
+  mg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MIST * 3), 3));
+  mg.setAttribute('seed', new THREE.BufferAttribute(ms, 4));
+  MU = THREE.UniformsUtils.clone(U);
+  MU.uBox.value.set(26, 0.5, 26);
+  MU.uYOff.value = -1.25;
+  MU.uSoft.value = 1.6;
+  MU.uSize.value = 6;
+  MU.uRise.value = 0;
+  MU.uDrift.value = 2.5;
+  MU.uBlink.value = 0;
+  const mm = new THREE.ShaderMaterial({ uniforms: MU, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, toneMapped: false });
+  mist = new THREE.Points(mg, mm);
+  mist.frustumCulled = false;
+  mist.renderOrder = 3;
+  mist.name = 'eclMist';
+  g.scene.add(mist);
   const sz = new THREE.Vector2();
-  const pools = globalThis.__mduNoEclPools !== true ? buildPools(w, g) : null;
+  const pools = buildPools(w, g);
   hookAtmos();
   hook = (A) => {
     if (A.g !== g) return;
@@ -345,8 +337,8 @@ export function buildMood(w) {
       // (la niebla de Eclipse era diez veces más fina que la del estero o el
       // penal —0,003 contra 0,026—, para ver las otras islas: sin aire entre
       // las cosas todo se veía plano y simplón. Más espesa, con la luna
-      // pegándole; las otras islas siguen asomando. __mduNoEclFogK)
-      if (globalThis.__mduNoEclFogK !== true && fog.isFogExp2 && !((A.dim || 0) > 0.5) && !((A.abyss || 0) > 0.3)) fog.density *= FOG_DENS_K;
+      // pegándole; las otras islas siguen asomando)
+      if (fog.isFogExp2 && !((A.dim || 0) > 0.5) && !((A.abyss || 0) > 0.3)) fog.density *= FOG_DENS_K;
       const SU = w.sky?.material?.uniforms;
       SU?.uFogColor?.value.copy(fog.color);
     }

@@ -13,8 +13,8 @@ import PapGrietas from './papGrietas';
 //      lleva a un jirón de la dimensión oscura donde se aguanta un encierro de
 //      30 s; al salir se cose y suelta un objeto. Los cuatro objetos van a los
 //      pilares del Nudo y el portal sellado se abre.
-//      (Antes, y con globalThis.__mduOldPapGrietas === true al cargar: "las tres
-//      cicatrices" del claro, que se cerraban a tiros con la luz prendida.)
+//      (Antes: "las tres cicatrices" del claro, que se cerraban a tiros con la
+//      luz prendida.)
 //  II. "Los cuatro ojos" (en la Disformidad): alrededor del Pack-a-Pava hay
 //      cuatro ojos cerrados. Cada uno se abre con el caos de los muertos que
 //      caen a su lado (bajas a menos de 7 m; escala con los jugadores).
@@ -131,8 +131,8 @@ export default class PapDesgarro {
     g.scene.add(this.root);
     this.time = { value: 0 };
     const mat = (frag, seed) => new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: frag, uniforms: { uTime: this.time, uK: { value: 0 }, uFlash: { value: 0 }, uSeed: { value: seed } }, side: THREE.DoubleSide, ...PREMUL });
-    // I. las cuatro grietas (world/papGrietas.js); con __mduOldPapGrietas, las cicatrices del claro
-    this.gr = globalThis.__mduOldPapGrietas === true ? null : new PapGrietas(this);
+    // I. las cuatro grietas (world/papGrietas.js)
+    this.gr = new PapGrietas(this);
     this.scars = (this.gr ? [] : SCARS).map(([dx, dy, dz], i) => {
       const x = C[0] + dx;
       const z = C[1] + dz;
@@ -183,11 +183,10 @@ export default class PapDesgarro {
   // sonidos". Los de antes eran ruido filtrado. Ahora voces de verdad: dos
   // grabaciones de voz susurrada de dominio público (CC0, Wikimedia Commons:
   // Thorsten Müller y Mx. Granger) armadas en un lazo de 40 s de muchas voces,
-  // diez voces sueltas y una al oído (scratchpad gen_susurros/gen.py).
-  // globalThis.__mduOldDimWhisper: los sintetizados de antes)
+  // diez voces sueltas y una al oído (scratchpad gen_susurros/gen.py))
   loadWhispers() {
     const a = this.g.audio;
-    if (!a?.ctx || globalThis.__mduOldDimWhisper === true) return;
+    if (!a?.ctx) return;
     this.wbuf = { voz: [] };
     const get = (name) =>
       fetch(assetUrl(`/assets/sotano/sfx/${name}.mp3`))
@@ -247,10 +246,9 @@ export default class PapDesgarro {
 
   // (2026-10-09, el usuario: "los susurros están bugueados, volvés al menú y
   // siguen sonando": el lazo se apaga desde update(), y en el menú update ya
-  // no corre. Un vigía aparte: fuera de la partida, se calla.
-  // globalThis.__mduOldDimWhisper: sin vigía, como antes)
+  // no corre. Un vigía aparte: fuera de la partida, se calla)
   watchWhisper() {
-    if (!this.whisper || this.whisperWatch || globalThis.__mduOldDimWhisper === true) return;
+    if (!this.whisper || this.whisperWatch) return;
     const g = this.g;
     this.whisperWatch = setInterval(() => {
       if (this.whisper && (g.state === 'playing' || g.state === 'paused')) return;
@@ -426,13 +424,11 @@ export default class PapDesgarro {
     this.ring.visible = false;
     const g = this.g;
     // (mundo, it. 4) el final: seis rayos juntos sobre la máquina y un fogonazo
-    if (globalThis.__mduNoRitualBolts !== true) {
-      for (let k = 0; k < 6; k++) {
-        const a = (k / 6) * Math.PI * 2;
-        g.fx.lightning?.(new THREE.Vector3(this.pap.x + Math.cos(a) * 7, this.pap.y + 26, this.pap.z + Math.sin(a) * 7), this.pap.clone().setY(this.pap.y + 1.5), 0xd090ff, 0.6);
-      }
-      g.post?.flash?.(0.35);
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2;
+      g.fx.lightning?.(new THREE.Vector3(this.pap.x + Math.cos(a) * 7, this.pap.y + 26, this.pap.z + Math.sin(a) * 7), this.pap.clone().setY(this.pap.y + 1.5), 0xd090ff, 0.6);
     }
+    g.post?.flash?.(0.35);
     g.fx.sparkle?.(this.pap.clone().add(new THREE.Vector3(0, 1.5, 0)), [1, 0.6, 1], 40, 1.4);
     g.fx.addShake?.(0.6);
     g.world.eclipse?.pulse?.();
@@ -476,7 +472,7 @@ export default class PapDesgarro {
     // (mundo, it. 4) en La Disformidad de afuera, además, voces sueltas alrededor:
     // cada 1,2-2,6 s un pedazo del susurro desde un lugar distinto, a 3-9 m
     const ab = g.weather?.atmos?.abyss || 0;
-    if (ab > 0.5 && g.state === 'playing' && globalThis.__mduNoAbyssVoices !== true) {
+    if (ab > 0.5 && g.state === 'playing') {
       this.voiceT = (this.voiceT ?? 1) - dt;
       if (this.voiceT <= 0) {
         this.voiceT = 1.2 + Math.random() * 1.4;
@@ -526,16 +522,14 @@ export default class PapDesgarro {
       }
       // (mundo, it. 4: el ritual, allá en el altar, con todo: rayos violetas que caen
       // del cielo de la dimensión sobre los ojos y la máquina, cada vez más seguido)
-      if (globalThis.__mduNoRitualBolts !== true) {
-        this.boltT = (this.boltT ?? 0) - dt;
-        if (this.boltT <= 0) {
-          this.boltT = 1.6 - 1.1 * this.ritK + Math.random() * 0.5;
-          const e = this.eyes[Math.floor(Math.random() * (this.eyes.length + 1))];
-          const to = e ? e.center : this.pap;
-          tmpV.set(to.x + (Math.random() - 0.5) * 6, to.y + 22, to.z + (Math.random() - 0.5) * 6);
-          g.fx.lightning?.(tmpV.clone(), to.clone().setY(to.y + 0.2), 0xb070ff, 0.35);
-          g.fx.sparkle?.(to.clone().setY(to.y + 0.5), [0.8, 0.4, 1], 10, 0.8);
-        }
+      this.boltT = (this.boltT ?? 0) - dt;
+      if (this.boltT <= 0) {
+        this.boltT = 1.6 - 1.1 * this.ritK + Math.random() * 0.5;
+        const e = this.eyes[Math.floor(Math.random() * (this.eyes.length + 1))];
+        const to = e ? e.center : this.pap;
+        tmpV.set(to.x + (Math.random() - 0.5) * 6, to.y + 22, to.z + (Math.random() - 0.5) * 6);
+        g.fx.lightning?.(tmpV.clone(), to.clone().setY(to.y + 0.2), 0xb070ff, 0.35);
+        g.fx.sparkle?.(to.clone().setY(to.y + 0.5), [0.8, 0.4, 1], 10, 0.8);
       }
       if (this.ritK >= 1 && !g.net?.guest) this.endRitual();
     }

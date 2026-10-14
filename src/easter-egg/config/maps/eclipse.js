@@ -47,7 +47,11 @@ export const ZONES = {
   H2: { name: 'La Casa de la Tapera', sub: 'La casa de la familia', y: 12, roof: 16.5, rects: [[17, 262, 35, 272]], floor: 'planks', wall: 'adobe', ext: 'adobe', ceil: 'planksDark', isla: 'tapera' },
   G3: { name: 'El Yerbal', sub: 'Las plantas madre', y: 12, rects: [[37, 268, 55, 269], [37, 270, 58, 272], [37, 273, 57, 276], [37, 277, 56, 278], [37, 279, 37, 279], [46, 279, 54, 279]], floor: 'dirt', edge: 'fence', fence: true, cliff: 'rock', outdoor: true, isla: 'tapera' },
   I9: { name: 'El molino de viento, suelto', sub: '', y: 20, rects: [[70, 252, 73, 256]], floor: 'dirt', edge: 'fence', fence: true, cliff: 'rock', outdoor: true, frag: true, isla: 'tapera' },
-  G5: { name: 'La Tranquera', sub: 'El camino al patio de la granja', y: 12, with: 'G', rects: [[55, 230, 63, 236], [54, 232, 54, 233]], floor: 'dirt', edge: 'rail', outdoor: true, isla: 'tapera' },
+  // (la punta del sudeste de La Tranquera, x 61-63 z 236, tocaba el patio (gA, x 62-63 z 237) sin cerco:
+  // un boquete entre las vallas por donde se pasaba al patio sin pagar la tranquera 66. Como en la
+  // granja (la esquina de C contra A): la fila queda de cerco. El usuario, 2026-10-14: "hay un boquete
+  // entre las vallas". Editado a mano (el script de emit.py no lo sabe). __mduTaperaBoqueteViejo: como antes, al cargar)
+  G5: { name: 'La Tranquera', sub: 'El camino al patio de la granja', y: 12, with: 'G', rects: globalThis.__mduTaperaBoqueteViejo === true ? [[55, 230, 63, 236], [54, 232, 54, 233]] : [[55, 230, 63, 235], [55, 236, 60, 236], [54, 232, 54, 233]], floor: 'dirt', edge: 'rail', outdoor: true, isla: 'tapera' },
   gA: { name: 'El Patio de la Tapera', sub: 'Chacra de los Cuervos · Misiones, 1987', y: 12, rects: [[78, 224, 82, 225], [65, 226, 90, 236], [62, 237, 90, 245]], floor: 'dirt', cliff: 'rock', edge: 'fence', fence: true, outdoor: true, tp: { src: 'granja', key: 'A' }, isla: 'tapera' },
   gD: { name: 'El Establo', sub: 'Los caballos se fueron. Algo volvió', y: 12, roof: 18.2, rects: [[92, 226, 111, 228], [92, 229, 116, 234], [92, 235, 102, 235], [112, 235, 116, 238], [92, 236, 96, 237], [92, 238, 102, 241], [97, 236, 102, 237, 12, 18.2]], floor: 'dirtDark', wall: 'barn', ext: 'barn', ceil: 'planksDark', cliff: 'barn', tp: { src: 'granja', key: 'D' }, isla: 'tapera' },
   gH: { name: 'El Pajar', sub: 'Arriba de los boxes, entre los fardos', y: 15.6, roof: 18.2, rects: [[103, 235, 111, 241]], floor: 'planks', wall: 'barn', ext: 'barn', ceil: 'planksDark', cliff: 'barn', tp: { src: 'granja', key: 'H' }, isla: 'tapera' },
@@ -1313,8 +1317,7 @@ const BENCH = { pos: [147.5, 177.5], rot: 0 };
 // castillo y el zuncho de hierro en la Galería de los Arcos de la torre.
 // La mejora (world/shieldNudo): en El Nudo, el altar del nudo y los cuatro
 // mates de piedra de los caballeros; aguanta mejor las embestidas de los
-// jinetes (Player.damage). globalThis.__mduOldEclEscudo: gratis y sin mejora, como antes.
-const OLD_ESCUDO = globalThis.__mduOldEclEscudo === true;
+// jinetes (Player.damage).
 const SHIELD_PARTS = [
   // (las tablas, arriba de la pila de tarimas del Acopio)
   { id: 'quebracho', name: 'Tablas de quebracho', pos: [34.0, 38.637, 82.5], zone: 'nG' },
@@ -1325,11 +1328,9 @@ export const ACT = {
   jars: [],
   traps: [],
   radios: [],
-  parts: OLD_ESCUDO ? [] : SHIELD_PARTS,
+  parts: SHIELD_PARTS,
   bench: BENCH,
-  shield: OLD_ESCUDO
-    ? { name: 'Escudo de los Caballeros', hp: 1000, where: 'el banco del Claro', plan: 'ESCUDO: (falta)' }
-    : {
+  shield: {
         name: 'Escudo de los Caballeros',
         hp: 1000,
         where: 'el banco del Claro',

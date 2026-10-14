@@ -417,8 +417,8 @@ export function buildDecor(w) {
     if (o.isMesh) o.receiveShadow = true;
   });
   // (lo fijo, una malla por material: world/props compactGroup; lo que flota
-  // sigue a la creciente y va aparte. globalThis.__mduNoMerge2: como antes)
-  if (globalThis.__mduNoMerge2 !== true) compactGroup(fixed);
+  // sigue a la creciente y va aparte)
+  compactGroup(fixed);
   w.root.add(fixed, float);
   w.estero.float = float;
 }

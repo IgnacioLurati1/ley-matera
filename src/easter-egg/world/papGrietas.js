@@ -39,8 +39,7 @@ import { eclSfx } from '../fx/eclipseSfx';
 // En línea decide el anfitrión; todo viaja por 'papq' con `gr` (la grieta):
 // eventos { gr, a: 'go' | 'in' | 'win' | 'fail' | 'take' | 'put' }, pedidos de
 // los invitados { gr, q: 'go' | 'take' | 'put' } y el estado entero { gr: [..] }.
-// Lo arma world/papDesgarro.js. globalThis.__mduOldPapGrietas === true (al
-// cargar): las tres cicatrices del claro, como antes.
+// Lo arma world/papDesgarro.js.
 
 const SECS = 30;
 const OPEN_T = 1.3;
@@ -50,8 +49,7 @@ const TRIP_T = 1.5;
 const SEW_WAIT = 2.0;
 // (lo que crece el sonido del cosido, fx/eclipseSfx portal-cose: 3,9 s y se corta)
 const SEW_T = 3.9;
-// los sonidos grabados de los portales (con __mduOldPortalSfx, los sintetizados)
-const OLD_SFX = () => globalThis.__mduOldPortalSfx === true;
+// los sonidos grabados de los portales
 const STITCHES = 11;
 const NEAR_R = 9;
 const PULL_R = 16;
@@ -197,7 +195,7 @@ export default class PapGrietas {
     // lo de arriba de los pilares (la sombra de cada objeto, el objeto puesto,
     // el aro), todo junto: lejos de El Nudo no se dibuja. Desde el Claro, a 190
     // m, eran ~30 dibujos por cuadro de cosas de dos píxeles (medido, Épica
-    // 1440p). globalThis.__mduPilaresLejos: como antes
+    // 1440p).
     this.pilG = new THREE.Group();
     this.root.add(this.pilG);
     this.warm.push(this.pilG);
@@ -208,7 +206,7 @@ export default class PapGrietas {
     for (const R of this.rifts) this.paint(R, true);
     // el portal negro: adónde van los rayos cuando se completan los pilares
     this.bake();
-    if (!OLD_SFX()) eclSfx(g).load(['portal-cose', 'portal-caos-abre']);
+    eclSfx(g).load(['portal-cose', 'portal-caos-abre']);
     this.checkT = 0;
   }
 
@@ -568,7 +566,7 @@ export default class PapGrietas {
       R.k = 0;
       R.A.U.uFlash.value = 1;
       if (!quiet) {
-        if (OLD_SFX() || !eclSfx(g).has('portal-caos-abre')) this.play('gr-abre', R.at, 1.1);
+        if (!eclSfx(g).has('portal-caos-abre')) this.play('gr-abre', R.at, 1.1);
         // (el rugido del portal negro, desde donde ya ruge; suena en la grieta:
         // al que se traga lo deja atrás)
         else eclSfx(g).play('portal-caos-abre', { pos: R.at.clone().setY(R.at.y + 2), gain: 0.75, reverb: 0.2, ref: 7, offset: 1.7 });
@@ -662,7 +660,7 @@ export default class PapGrietas {
     const t = this.time.value;
     const playing = g.state === 'playing';
     const cam = g.camera.position;
-    this.pilG.visible = globalThis.__mduPilaresLejos === true || cam.distanceToSquared(this.pilC) < PIL_SEE * PIL_SEE;
+    this.pilG.visible = cam.distanceToSquared(this.pilC) < PIL_SEE * PIL_SEE;
     for (const R of this.rifts) {
       R.t += dt;
       if (playing) this.logic(R, dt);
@@ -775,7 +773,7 @@ export default class PapGrietas {
       }
       // el cosido: una puntada cada tanto, y al final suelta el objeto
       const k = (R.t - SEW_WAIT) / SEW_T;
-      const rec = !OLD_SFX() && eclSfx(g).has('portal-cose');
+      const rec = eclSfx(g).has('portal-cose');
       if (k > 0) {
         const n = Math.min(STITCHES, Math.floor(k * STITCHES) + 1);
         if (n > R.stitch) {
@@ -899,7 +897,7 @@ export default class PapGrietas {
     const base = P15 ? P15.ends[0].pos : null;
     const to = base ? base.clone().setY(base.y + 3) : null;
     const hit = (t) => before < t && this.openT >= t;
-    if (before === 0 && to && !OLD_SFX() && PT) {
+    if (before === 0 && to && PT) {
       PT.caosAt = g.time;
       eclSfx(g).play('portal-caos-abre', { pos: to, gain: 1, reverb: 0.25, ref: 10 });
     }

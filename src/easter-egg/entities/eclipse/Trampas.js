@@ -12,16 +12,14 @@ import { TrapLook, bakeTrapSounds } from './trampaLook';
 
 // (zona de la v4, que no se mueve; x, z finales; delante de una puerta)
 // (arte6: con el círculo nuevo de 3,6 m, las de centro, molino, tapera, penal y
-// torre corridas 2,5-10 m a lo más llano y libre de su zona: t_llano.mjs.
-// Con __mduOldTrampas, donde estaban)
-const OLDT = globalThis.__mduOldTrampas === true;
+// torre corridas 2,5-10 m a lo más llano y libre de su zona: t_llano.mjs)
 const SPOTS = [
-  { isla: 'centro', zone: 'A', pos: OLDT ? [135.5, 167] : [143.5, 166.5] },
-  { isla: 'molino', zone: 'C', pos: OLDT ? [40.5, 94.5] : [35.5, 94.5] },
-  { isla: 'tapera', zone: 'G', pos: OLDT ? [43.5, 241] : [46, 231.5] },
-  { isla: 'penal', zone: 'pA', pos: OLDT ? [142.5, 305] : [143, 300.5] },
+  { isla: 'centro', zone: 'A', pos: [143.5, 166.5] },
+  { isla: 'molino', zone: 'C', pos: [35.5, 94.5] },
+  { isla: 'tapera', zone: 'G', pos: [46, 231.5] },
+  { isla: 'penal', zone: 'pA', pos: [143, 300.5] },
   { isla: 'monumento', zone: 'mA', pos: [299.5, 241] },  // (el descanso al pie de las gradas: a 274 caía en la escalinata)
-  { isla: 'torre', zone: 'O', pos: OLDT ? [284, 94.5] : [281.5, 94.5] },
+  { isla: 'torre', zone: 'O', pos: [281.5, 94.5] },
   { isla: 'castillo', zone: 'kA', pos: [152.5, 33] },  // (al costado de la escalera al gran salón, no encima)
 ];
 const COST = 1000;
@@ -36,7 +34,6 @@ const SWALLOW_T = 0.35;
 // chupa hacia el tajo a los que pasan a R + 3,5 m y se traga al instante a los
 // que entran en R. Descansa 45 s (las otras trampas: 22 s prendidas, 35 de
 // descanso, un rectángulo de ~30 m²; esta: 41 m² + la onda de 113 m²).
-// globalThis.__mduOldTrampas al cargar: como era.
 const NEW_R = 3.6;
 const NEW_CD = 45;
 const NEW_SWALLOW = 0.08;
@@ -53,7 +50,7 @@ export default class Trampas {
     this.root = new THREE.Group();
     this.root.name = 'eclipse:trampas';
     this.time = 0;
-    this.neu = globalThis.__mduOldTrampas !== true;
+    this.neu = true;
     if (this.neu) bakeTrapSounds(g.audio);
     // materiales compartidos (se compilan en la carga con las mallas visibles)
     this.discMat = new THREE.MeshBasicMaterial({ color: 0x050208, transparent: true, opacity: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });

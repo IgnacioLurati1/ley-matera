@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import GeoBuilder from '../GeoBuilder';
-import { quad } from '../monumentoKit';
 import { PAP as PAPDEF } from '../../config/map';
 import { PORTALS, ISLANDS, RISERS } from '../../config/maps/eclipse';
 import { keepOut } from './centro';
@@ -20,16 +19,14 @@ import { buildAbismoVida } from './abismoVida';
 //    arriba y más abajo, y lejos, monolitos con un ojo que mira el camino;
 //  - al final, el altar: atrás del Pack-a-Pava un telón de cristales altos y dos
 //    colmillos de obsidiana que se cierran arriba como un arco.
-// globalThis.__mduNoAbismoArt: solo los bloques y la roca.
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 let LIVE = null;
 
 export function build(w, g, isl) {
-  if (globalThis.__mduNoAbismoArt === true) return;
   // (el Nudo, la zona central: lo que le da forma; va acá, una vez)
   try {
-    if (ISLANDS.desgarro && globalThis.__mduNoNudoArt !== true) buildNudo(w, ISLANDS.desgarro);
+    if (ISLANDS.desgarro) buildNudo(w, ISLANDS.desgarro);
   } catch (e) {
     console.error('El Nudo: no se armó', e);
   }
@@ -135,12 +132,7 @@ export function build(w, g, isl) {
     crack(x, z, rnd() * Math.PI * 2, 2 + rnd() * 5, 0.04 + rnd() * 0.04, 0);
   }
   let softG = null;
-  if (globalThis.__mduOldCracks !== true) softG = softCracks(strips);
-  else for (const [px, pz, nx, nz, ux, uz, pw, nw, fy] of strips) {
-    const S = (k, yy) => [[px - ux * pw * k, yy, pz - uz * pw * k], [px + ux * pw * k, yy, pz + uz * pw * k], [nx + ux * nw * k, yy, nz + uz * nw * k], [nx - ux * nw * k, yy, nz - uz * nw * k]];
-    quad(gb, 'crackLip', S(2.4, fy - 0.006), [0, 1, 0]);
-    quad(gb, 'crack', S(1, fy), [0, 1, 0]);
-  }
+  softG = softCracks(strips);
   const stat = bake(w, gb, M, [...rocks.map((gg) => [gg, 'obsidian']), ...crystals.map((gg) => [gg, 'crystal'])], { noShadow: ['crystal', 'crack', 'crackLip'], isla: 'abismo' });
 
   // ---- lejos, en la oscuridad: monolitos con un ojo que mira el camino
@@ -235,7 +227,6 @@ export function update(dt, t) {
 //  - peñascos negros grandes por la explanada, con su choque (arman pasillos) y
 //    manojos de cristales violetas que les crecen;
 //  - a cada portal de las islas, dos pilares de piedra que lo enmarcan.
-// globalThis.__mduNoNudoArt: sin esto.
 function buildNudo(w, isl) {
   const M = riftMats(w);
   const cells = islandCells(w, isl.zones);

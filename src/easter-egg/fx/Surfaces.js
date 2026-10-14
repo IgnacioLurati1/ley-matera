@@ -44,8 +44,8 @@ const K = 6;
 const POM_FAR2 = 13;
 const EXTRA_DEPTH = { terracotta: 0.016, calcareo: 0.008, damero: 0.005, azulejo: 0.004, rock: 0.035, concrete: 0.006 };
 const Q_ORDER = ['perf', 'low', 'medium', 'high', 'ultra', 'epic'];
-// (compartidos por todos los materiales con paralaje: el alcance y, para
-// medir, prendido o no: globalThis.__mduSinPom lo apaga)
+// (compartidos por todos los materiales con paralaje: el alcance y si está
+// prendido)
 export const POM_U = { far: { value: POM_FAR }, on: { value: 1 } };
 const extras = new Set();
 function plus2() {
@@ -471,7 +471,7 @@ export default class Surfaces {
   applyPlus() {
     const on = plus2();
     POM_U.far.value = on ? POM_FAR2 : POM_FAR;
-    POM_U.on.value = globalThis.__mduSinPom === true ? 0 : 1;
+    POM_U.on.value = 1;
     for (const e of extras) {
       if (!saved.has(e.m)) extras.delete(e);
       else e.depthU.value = on ? e.extra : 0;

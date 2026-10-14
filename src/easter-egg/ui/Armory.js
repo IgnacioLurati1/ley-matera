@@ -797,7 +797,7 @@ class ArmoryStage {
     // los accesorios de su categoría, todos, escondidos: entran y salen
     // animados (ui/Armory accShown; weapons/accesorios.js)
     const accIds = [...Armas.lista(id).map((a) => a.id), ...(id === 'mate47' ? ['lanzapava'] : [])].filter(tieneModelo);
-    if (accIds.length && globalThis.__mduSinAccesorios !== true) ponerAccesorios(m, accIds, this.T, { armeria: true });
+    if (accIds.length) ponerAccesorios(m, accIds, this.T, { armeria: true });
     const g = new THREE.Group();
     g.add(mate);
     g.userData.acc = m.acc || null;

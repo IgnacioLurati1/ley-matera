@@ -27,8 +27,6 @@ const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 let live = null;
 
 export function build(w, g, isl) {
-  // (globalThis.__mduNoArteA: las islas de arte-A en bloques, para comparar)
-  if (globalThis.__mduNoArteA === true) return;
   const M = w.M;
   const r = rng(7411);
   const celda = ANCHORS?.celda ? [[ANCHORS.celda.x, ANCHORS.celda.z, 1.2]] : [];
@@ -230,7 +228,7 @@ function buildTorreSuelta(w, r, orbs) {
     res.obj.position.set(-0.3, 0, 0.2);
     res.obj.rotation.y = 0.6;
     g.add(res.obj);
-    // (arte6: partida, más volcada y con la garita suelta; __mduNoPenalCaos: como estaba)
+    // (arte6: partida, más volcada y con la garita suelta)
     breakTower(res.obj, g, M);
   }
   // un pedazo del muro con el alambre de púas, colgando del canto

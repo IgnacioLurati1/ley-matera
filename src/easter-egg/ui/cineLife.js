@@ -10,7 +10,6 @@ import * as THREE from 'three';
 // liveAfter).
 // Quién habla: talkAs(a, 'fierro') en la escena; la boca sale de lo que
 // murmura ese personaje (core/audio talkLevel).
-// window.__mduNoLife = true: sin esto (para comparar).
 
 // la respiración: ciclos por segundo y cuánto se mueve el pecho (rad)
 const BREATH_HZ = 0.23;
@@ -48,7 +47,7 @@ export const scenePlaying = (g) => !!g && (!!g.sceneOn || !!g.cine || g.state ==
 
 export function liveOn(G) {
   const a = G.a;
-  return globalThis.__mduNoLife !== true && !!a.people && !a.people.team && scenePlaying(a.g);
+  return !!a.people && !a.people.team && scenePlaying(a.g);
 }
 
 // Quién habla por este muñeco (el nombre de core/audio: 'fierro', 'nicanor'...).
@@ -100,8 +99,8 @@ export function liveBegin(G, headW0) {
   S.lid = S.blinkT < 0 ? 0 : Math.sin((S.blinkT / BLINK_DUR) * Math.PI);
   // desmayado (la escena lo marca: a.faint, de 0 a 1): los ojos cerrados, sin
   // parpadear ni mirar al que habla (el usuario, 2026-10-05: "cuando están
-  // desmayados parpadean"). globalThis.__mduNoMolOjos: como antes
-  const shut = globalThis.__mduNoMolOjos === true ? 0 : Math.max(0, Math.min(1, G.a.faint || 0));
+  // desmayados parpadean").
+  const shut = Math.max(0, Math.min(1, G.a.faint || 0));
   if (shut > 0) S.lid = Math.max(S.lid * (1 - shut), shut);
   // la mirada: al que habla (el más cerca), si no lo que pide la escena
   const head = G.bones.Head.getWorldPosition(vA);
@@ -133,7 +132,9 @@ export function liveBegin(G, headW0) {
 
 // Cada hueso, con su giro en el mundo ya puesto (d.W): la respiración en el
 // pecho y los hombros, la mirada y el cabeceo en el cuello y la cabeza.
-export function liveBone(S, d) {
+// clip: la pose es la de un clip (net/gauchoSkin clipSet): la mirada la trae el
+// clip, hecha en Blender; queda la respiración y el cabeceo al hablar.
+export function liveBone(S, d, clip = false) {
   switch (d.name) {
     case 'Spine':
       d.W.multiply(qA.setFromAxisAngle(X, -BREATH * S.breath));
@@ -146,10 +147,10 @@ export function liveBone(S, d) {
       d.W.multiply(qA.setFromAxisAngle(Z, (d.name[0] === 'L' ? -1 : 1) * BREATH * 0.6 * S.breath));
       break;
     case 'neck':
-      d.W.premultiply(qA.copy(qI).slerp(S.look, 0.4));
+      if (!clip) d.W.premultiply(qA.copy(qI).slerp(S.look, 0.4));
       break;
     case 'Head':
-      d.W.premultiply(S.look);
+      if (!clip) d.W.premultiply(S.look);
       if (S.jaw > 0.01) d.W.multiply(qA.setFromAxisAngle(X, -NOD * S.jaw));
       break;
     default:

@@ -405,33 +405,32 @@ const BUILDERS = {
   // de piso a techo. `a`: [desde, hasta] en x local, de pared a pared (medido
   // en el juego): la reja va entera ahí y la puerta queda donde estaba. `h`:
   // el techo: la reja y el marco llegan hasta él, y arriba de la puerta va un
-  // tramo fijo. Sin `a` ni `h`, como antes. globalThis.__mduRejasViejas: como estaba.)
+  // tramo fijo. Sin `a` ni `h`, como antes.)
   celdaK(M, o, r) {
     const g = new THREE.Group();
     const w = o.w || 6;
     const d = o.d || 6;
-    const nueva = !globalThis.__mduRejasViejas;
-    const [xa, xb] = nueva && o.a ? o.a : [-w / 2, w / 2];
-    const e = nueva && o.a ? 0.02 : 0.05;
-    const H = nueva && o.h ? o.h - 0.065 : 3.2;
+    const [xa, xb] = o.a ? o.a : [-w / 2, w / 2];
+    const e = o.a ? 0.02 : 0.05;
+    const H = o.h ? o.h - 0.065 : 3.2;
     const f = d / 2;
     const door = o.door || 1.1;
     const dh = 2.9;
     bars(g, M, xa + e, -door / 2, f, H, 0.16);
     bars(g, M, door / 2, xb - e, f, H, 0.16);
-    if (nueva && o.h) {
+    if (o.h) {
       // el dintel y los barrotes de arriba de la puerta, hasta el marco
       B(g, door, 0.05, 0.04, M.bars || M.iron, 0, dh + 0.025, f);
       const n = Math.max(1, Math.round(door / 0.16));
       for (let k = 1; k < n; k++) C(g, 0.018, 0.018, H - dh, M.bars || M.iron, -door / 2 + (door * k) / n, (H + dh) / 2, f, 0, 0, 0, 5);
     }
-    if (!o.open) bars(g, M, -door / 2, door / 2, f, nueva && o.h ? dh : H - 0.3, 0.16);
+    if (!o.open) bars(g, M, -door / 2, door / 2, f, o.h ? dh : H - 0.3, 0.16);
     else {
       // la puerta quedó abierta hacia afuera
       const dg = new THREE.Group();
       dg.position.set(door / 2, 0, f);
       dg.rotation.y = o.swing ?? -1.9;
-      bars(dg, M, -door, 0, 0, nueva && o.h ? dh : H - 0.3, 0.16);
+      bars(dg, M, -door, 0, 0, o.h ? dh : H - 0.3, 0.16);
       g.add(dg);
     }
     B(g, xb - xa, 0.12, 0.08, M.iron, (xa + xb) / 2, H, f);

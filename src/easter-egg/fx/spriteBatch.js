@@ -7,7 +7,6 @@ import * as THREE from 'three';
 // su material) y sync() los copia acá y los esconde. Los de mezcla normal
 // (sort) van de atrás para adelante, como los ordena three. Los sprites tienen
 // que colgar todos del mismo padre (el de la malla).
-// globalThis.__mduNoSpriteBatch (al cargar): sprites sueltos, como antes.
 // globalThis.__mduSpriteBatchAB: __mduSpriteBatchToggle(on) para comparar.
 
 const QUAD = (() => {
@@ -26,9 +25,6 @@ const _q = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 const _f = new THREE.Vector3();
 const _c = new THREE.Vector3();
-
-export const spriteBatchOn = () => globalThis.__mduNoSpriteBatch !== true;
-
 export class SpriteBatch {
   constructor(sprites, { sort = false } = {}) {
     this.sprites = sprites;

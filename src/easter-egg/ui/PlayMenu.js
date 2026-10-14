@@ -2,8 +2,6 @@
 // elegido arriba y, abajo, la entrada a la versión original.
 
 import { mapChip } from './MapSelect';
-import { rushOff } from '../core/bossRush';
-import { mayhemOff } from '../core/rushMayhem';
 import { diaDelMate } from '../core/diaDelMate';
 import './playMenu.css';
 import './rush.css';
@@ -47,8 +45,8 @@ export const HORNS = '<svg viewBox="0 0 24 24"><path d="M2 18 L2.6 4.5 L7.2 11 L
 // (con el Mayhem: uno u otro; el Mayhem es el rush con mayhemPick)
 function syncRush(menus) {
   const R = menus.g.rush;
-  const on = !!R?.pick && !rushOff();
-  const mh = on && !!R.mayhemPick && !mayhemOff();
+  const on = !!R?.pick;
+  const mh = on && !!R.mayhemPick;
   const s = menus.screens.play;
   s.querySelector('[data-act="rush"]')?.setAttribute('aria-pressed', String(on && !mh));
   s.querySelector('[data-act="mayhem"]')?.setAttribute('aria-pressed', String(mh));
@@ -78,7 +76,7 @@ export default class PlayMenu {
       'play',
       `<h2 class="mdu-kit-title">Jugar</h2>
        <div class="mdu-play__map">${mapChip()}</div>
-       ${rushOff() ? '' : `<div class="mdu-rushrow"><button class="mdu-rushpick" data-act="rush" aria-pressed="false"><i aria-hidden="true">${CROWN}</i><span><b>Rush de jefes</b><small>Los seis, uno atrás del otro</small></span></button>${mayhemOff() ? '' : `<button class="mdu-rushpick mdu-rushpick--mayhem" data-act="mayhem" aria-pressed="false"><i aria-hidden="true">${HORNS}</i><span><b>Boss Rush Mayhem</b><small>Más bravos, sin grises</small></span></button>`}</div>`}
+       ${`<div class="mdu-rushrow"><button class="mdu-rushpick" data-act="rush" aria-pressed="false"><i aria-hidden="true">${CROWN}</i><span><b>Rush de jefes</b><small>Los seis, uno atrás del otro</small></span></button>${`<button class="mdu-rushpick mdu-rushpick--mayhem" data-act="mayhem" aria-pressed="false"><i aria-hidden="true">${HORNS}</i><span><b>Boss Rush Mayhem</b><small>Más bravos, sin grises</small></span></button>`}</div>`}
        <div class="mdu-play">
          <button class="mdu-kit-card mdu-play__card" data-act="solo">
            <span class="mdu-play__art">${SOLO}</span>
@@ -109,7 +107,7 @@ export default class PlayMenu {
     // mismo rush, con jefes más bravos y combos
     menus.acts.mayhem = () => {
       const R = menus.g.rush;
-      if (!R || mayhemOff()) return;
+      if (!R) return;
       const on = !(R.pick && R.mayhemPick);
       R.pick = on;
       R.mayhemPick = on;

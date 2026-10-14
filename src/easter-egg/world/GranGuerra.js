@@ -11,7 +11,6 @@ import { buildFragments, floatingRocks, FRAGMENTS } from './eterFragments';
 import { warmScene } from '../ui/cineWarm';
 import { sleepHidden } from './castleLean';
 import CastleClips, { personaLetter } from '../ui/castleClips';
-import { flightShot, flightShotsEnd } from './flightShots';
 
 // La Gran Guerra: la pelea final contra el Chiquitijuein, en el Éter.
 //  · El vuelo: después del juramento, el Mateendrache sale de la cumbre con
@@ -187,8 +186,8 @@ export default class GranGuerra extends Arena {
     // arranca en blanco y se aclara (el salto de la vista del jugador al lomo
     // del dragón no se ve; antes el fundido iba de 0 a 0 y no tapaba nada)
     // (más corto y sin llegar al blanco entero: después de la jura con su
-    // cámara la pantalla quedaba casi blanca; globalThis.__mduNoJuraCine, como antes)
-    const w0 = globalThis.__mduNoJuraCine === true ? 1 : 0.8;
+    // cámara la pantalla quedaba casi blanca)
+    const w0 = 0.8;
     this.ov.now = w0;
     this.ov.fade.style.opacity = String(w0);
     this.fadeTo(0, w0 < 1 ? 0.7 : 1.1);
@@ -294,8 +293,6 @@ export default class GranGuerra extends Arena {
       }
       if (t >= FLIGHT.end) this.flightEnd();
     }
-    // (las tomas de afuera, apagadas: world/flightShots.js, __mduFlightShots)
-    if (this.flightOn) flightShot(this, t, dt);
     D.update(dt);
     return true;
   }
@@ -421,7 +418,6 @@ export default class GranGuerra extends Arena {
     const g = this.g;
     if (!this.flightOn) return;
     this.flightOn = false;
-    flightShotsEnd(this);
     this.D.flapK = 1;
     this.rideYaw = null;
     this.rideQ = null;
@@ -1803,9 +1799,7 @@ export default class GranGuerra extends Arena {
   // sujetando al duende, tiran de la cadena de luz (kPin). Sin mate en la mano
   // (el de siempre quedaba torcido con el brazo arriba). Va igual en todas las
   // compus: sale de la etapa y de los altares, que están sincronizados.
-  // globalThis.__mduBlend = false: la pose de piezas de antes.
   knightClips(dt) {
-    if (globalThis.__mduBlend === false) return;
     const C = (this.kClips ||= new CastleClips());
     this.knightIds.forEach((id, i) => {
       const a = this.knights.list.get(id);
@@ -2342,7 +2336,7 @@ export default class GranGuerra extends Arena {
     // (rompiéndole las gemas, quieto entre ataque y ataque: parado en un cuadro
     // del de parado, sin gestos y casi sin hamacarse; si no, la gema que
     // brilla no paraba de moverse y no se le podía pegar)
-    const still = this.stage === 'gems' && !globalThis.__mduColSway;
+    const still = this.stage === 'gems';
     C.rig.idle = still ? 'idle' : 'taunt';
     C.rig.still = still ? 0 : null;
     const sw = still ? 0.25 : 1;

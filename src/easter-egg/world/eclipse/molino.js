@@ -143,8 +143,6 @@ function zoneWindows(w, gb, k, sides, glass, frame, o = {}, step = 3.4) {
 let live = null;
 
 export function build(w, g, isl) {
-  // (globalThis.__mduNoArteA: las islas de arte-A en bloques, para comparar)
-  if (globalThis.__mduNoArteA === true) return;
   registerMolinoProps();
   const M = w.M;
   const r = rng(5203);
@@ -702,7 +700,7 @@ function buildPatio(w, gb, root, r, out, orbs) {
     const [x, z] = zat('G2', u, v, true);
     // (mundo, it. 4) los catres y la pila de bolsas (2,75 m) con radio 0,7-0,9: la pila quedaba a 0,4 m de la
     // puerta a la oficina del patrón. Lejos de las puertas del patio, a su medida.
-    const big = (def.type === 'rack' || def.type === 'bigsacks') && globalThis.__mduNoRackDoor !== true;
+    const big = def.type === 'rack' || def.type === 'bigsacks';
     const doorOut = (px, pz, rr) => out(px, pz, rr) || DOORS.some((D) => D.zones.includes('G2') && D.cells.some(([cx, cz]) => Math.hypot(px - cx - 0.5, pz - cz - 0.5) < rr + 1.9));
     const p = big ? spot(w, doorOut, K, x, z, 1.4, 4) : spot(w, out, K, x, z, rad, 2.5);
     if (p) put(w, { ...def, pos: p });

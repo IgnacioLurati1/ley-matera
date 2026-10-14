@@ -11,10 +11,9 @@ import PalomaRig from './monumento/Palomas';
 import { buildBossRig } from './bossRig';
 import { updateBossSkin, skinBoneAt, skinHit } from './bossSkin';
 import ZombieSkins from './zombieSkin';
-import ZombieBatch, { zombieBatchOn } from './zombieBatch';
+import ZombieBatch from './zombieBatch';
 import { zombieLook, lookGeometries } from './zombieLooks';
 import { gaitOf, gaitPose, idlePose, attackPose } from './zombieGaits';
-import { blendTear, blendClimb, blendRise, blendDeath, blendCrawl } from './zombieBlend';
 import { soak, zombieWaterSpeed, updateNavCost, hasWater, submerged } from './swim';
 import { luisonGait, luisonIdle, luisonRoar, luisonSlam, luisonDazed, luisonLow, POUNCE, HOWL_AT, LUISON_END, SUMMON_POUND } from './luison';
 import { reachableSpot } from './reach';
@@ -32,7 +31,7 @@ import * as Armas from '../core/armas';
 // render instanciado (una llamada de dibujo por tipo de parte) y daño.
 
 // (Eclipse Matero: San Lorenzo pide muchos más —el usuario, 2026-10-07: "tendrían
-// que salir como 5 veces más zombies"—: el depósito, 64. __mduNoEclPool: 40)
+// que salir como 5 veces más zombies"—: el depósito, 64)
 let MAX = 40;
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 const blobM = new THREE.Matrix4();
@@ -126,19 +125,13 @@ function firmes(z, dt) {
   // la venia: el brazo afuera, el codo al costado y adelante, la mano en la
   // sien (por afuera de la cabeza y del ala del morrión). Antes el brazo se
   // cruzaba por delante y la mano les atravesaba la cara y el pecho (el
-  // usuario, 2026-10-05; __mduNoVenia: como antes). Lo resolvió una búsqueda
+  // usuario, 2026-10-05). Lo resolvió una búsqueda
   // con el esqueleto (S/monu-pasada/surubi/firmes/ik.mjs).
-  if (globalThis.__mduNoVenia) {
-    to('shRp', -1.2);
-    to('shRr', -1.25);
-    to('elR', -2.35);
-  } else {
-    to('shRp', -1.55);
-    to('shRr', 0.73);
-    to('shRy', -0.385);
-    to('elR', -2.23);
-    z.venia = true;
-  }
+  to('shRp', -1.55);
+  to('shRr', 0.73);
+  to('shRy', -0.385);
+  to('elR', -2.23);
+  z.venia = true;
   to('hipLp', 0);
   to('hipRp', 0);
   to('hipLr', 0.02);
@@ -262,7 +255,11 @@ function rim(mat) {
 
 export default class Zombies {
   constructor(game) {
-    MAX = FEATURES.eclipse && globalThis.__mduNoEclPool !== true ? 64 : 40;
+    MAX = FEATURES.eclipse ? 64 : 40;
+    // (la torre en grupo, el usuario 2026-10-14: el tope de vivos sube con cada jugador,
+    // config/rules.js towerAlive, y con 40 no pasaba de 40. Jugando solo se usan los 40 de
+    // siempre: freeSlot. __mduTorreGrupoViejo: 40)
+    if (FEATURES.tower && globalThis.__mduTorreGrupoViejo !== true) MAX = 64;
     this.g = game;
     // cómo se visten los de este mapa: telas, prendas propias y el color de los ojos
     const L = (this.look = zombieLook(MAP_ID));
@@ -298,7 +295,7 @@ export default class Zombies {
       return { ...M, im };
     });
     // todo el cuerpo en una llamada por pasada (entities/zombieBatch.js)
-    this.batch = zombieBatchOn() ? new ZombieBatch(this, this.meshes, MAX) : null;
+    this.batch = new ZombieBatch(this, this.meshes, MAX);
     if (this.batch) game.scene.add(this.batch.mesh);
     this.pool = [];
     for (let i = 0; i < MAX; i++) this.pool.push(this.makeZombie(i));
@@ -664,11 +661,17 @@ export default class Zombies {
   }
 
   freeSlot() {
-    let z = this.pool.find((p) => !p.active);
+    // (la torre jugando solo: los 40 de siempre, como antes del depósito de 64)
+    const lim = FEATURES.tower && !this.g.net ? Math.min(40, this.pool.length) : this.pool.length;
+    let z = null;
+    for (let i = 0; i < lim && !z; i++) if (!this.pool[i].active) z = this.pool[i];
     if (!z) {
       // reciclar el cadáver más viejo
       let oldest = null;
-      for (const p of this.pool) if (p.dead && (!oldest || p.corpseT > oldest.corpseT)) oldest = p;
+      for (let i = 0; i < lim; i++) {
+        const p = this.pool[i];
+        if (p.dead && (!oldest || p.corpseT > oldest.corpseT)) oldest = p;
+      }
       if (!oldest) return null;
       this.free(oldest);
       z = oldest;
@@ -681,8 +684,7 @@ export default class Zombies {
   // salen en un punto fijo, salvo los peones del jefe; y la defensa del yerbal)
   spawn(round, health, at = null, hold = !!at) {
     // (el rush de jefes: los muertos de la pelea, con la vida del lugar del
-    // jefe en el orden y la velocidad de las arenas; core/rushPelea.js.
-    // globalThis.__mduRushZombiesViejos = true: como venían)
+    // jefe en el orden y la velocidad de las arenas; core/rushPelea.js)
     const RZ = this.g.rush?.pelea?.zombi(round, health);
     if (RZ) {
       round = RZ.round;
@@ -978,9 +980,9 @@ export default class Zombies {
   // Eclipse Matero: el que sale en La Disformidad (la zona `dim` del config)
   // viene deforme: más grande, torcido, la cabeza caída, los brazos dispares,
   // la ropa negra violácea. Se decide con la posición ya puesta y con el id
-  // (anfitrión e invitado igual). globalThis.__mduNoDisforme: como siempre.
+  // (anfitrión e invitado igual).
   deformIf(z) {
-    if (!FEATURES.eclipse || globalThis.__mduNoDisforme === true) return;
+    if (!FEATURES.eclipse) return;
     const kz = this.g.world?.zoneAt?.(z.pos.x, z.pos.z, z.pos.y);
     if (!kz || !ZONES[kz]?.dim) return;
     const r = rng((z.id & 0xffff) * 2654435 + 77);
@@ -1907,8 +1909,8 @@ export default class Zombies {
         // (Eclipse Matero, 2026-10-07, el usuario: "los zombies que mata Cabral
         // quedan volando quietos": caían hasta la altura del piso donde
         // murieron, y el que salía volando por la barranca quedaba en el aire
-        // sobre la playa. El piso de donde está ahora. __mduOldFlungFloor: como antes)
-        if (FEATURES.eclipse && globalThis.__mduOldFlungFloor !== true && g.world.floorAt) {
+        // sobre la playa. El piso de donde está ahora)
+        if (FEATURES.eclipse && g.world.floorAt) {
           floorY = g.world.floorAt(z.pos.x, z.pos.z, Math.max(z.pos.y, floorY) + 0.3);
           z.baseY = floorY;
         }
@@ -2106,7 +2108,7 @@ export default class Zombies {
 
   // Los que no sangran (las palomas del Monumento: plumas). rig.noBlood
   dry(z) {
-    return !!z.dog && !!this.rigOf(z).noBlood && globalThis.__mduNoPluma !== true;
+    return !!z.dog && !!this.rigOf(z).noBlood;
   }
 
   bleed(z, p, dir, n) {
@@ -2135,9 +2137,9 @@ export default class Zombies {
   chase(z, dt, t, player, distP) {
     const g = this.g;
     // (la torre: el señuelo —el Mark III— solo tira de los muertos de su piso; los de los otros
-    // pisos siguen al jugador. El usuario, 2026-10-12. globalThis.__mduLureTodos: como antes)
+    // pisos siguen al jugador. El usuario, 2026-10-12)
     const T = g.world.tower;
-    const lure = this.lure && T && globalThis.__mduLureTodos !== true && T.levelOf(z.pos.y + 0.5) !== T.levelOf(this.lure.pos.y + 0.5) ? null : this.lure;
+    const lure = this.lure && T && T.levelOf(z.pos.y + 0.5) !== T.levelOf(this.lure.pos.y + 0.5) ? null : this.lure;
     // va por el jugador de pie más cercano: a los tirados no los buscan (ni al
     // sumergido: solo los yacarés, que lo siguen abajo del agua pero no lo muerden)
     const target = g.nearestPlayer(z.pos.x, z.pos.z, z.pos.y, z.dog && !!this.rigOf(z).sinks);
@@ -2240,9 +2242,9 @@ export default class Zombies {
     // (y lo mismo los de abajo, contra el costado de la escalera, con el jugador
     // en los primeros escalones). El usuario, 2026-10-12: "se quedan trabados en
     // las esquinas de las escaleras en lugar de bordearlas y subir por ellas".
-    // Con algo en el medio siguen el camino. globalThis.__mduNoCercaLibre: como antes.
+    // Con algo en el medio siguen el camino.
     let near = dist < 1.6 && vert;
-    if (near && g.world.tower && globalThis.__mduNoCercaLibre !== true) near = g.world.sweepFree(z.pos.x, z.pos.z, tx, tz, 0.26, (z.baseY || 0) + 0.15, (z.baseY || 0) + 1.6);
+    if (near && g.world.tower) near = g.world.sweepFree(z.pos.x, z.pos.z, tx, tz, 0.26, (z.baseY || 0) + 0.15, (z.baseY || 0) + 1.6);
     if (near || z.los || wander) {
       mx = dx / (dist || 1);
       mz = dz / (dist || 1);
@@ -2556,9 +2558,7 @@ export default class Zombies {
           mx = dirOut.x;
           mz = dirOut.z;
         }
-        // (el Luisón, si ya está encima, pega sin dar un paso más: era un cuadro
-        // corrido de 15 cm entre el tirón y el zarpazo; solo con el de Blender, __mduLuisonBlend)
-        if (!(z.kind === 'luison' && distP < 2.9 && z.stateT < 0.05 && globalThis.__mduLuisonBlend === true)) this.moveBoss(z, mx, mz, z.speed, dt, t);
+        this.moveBoss(z, mx, mz, z.speed, dt, t);
         if (distP < (z.kind === 'luison' ? LUISON_REACH.start : 2.3) && levelOf(pp.y) === 0 && Math.abs((pp.y || 0) - (z.baseY || 0)) < 1.5 && (player.canBeHit ? player.canBeHit() : !player.downed && !player.dead) && !g.defense?.shielded?.(z, pp)) {
           this.setState(z, 'slam');
           z.attackHit = false;
@@ -3357,8 +3357,6 @@ export default class Zombies {
   }
 
   poseTear(z, t) {
-    // (los clips de Blender, apagados: entities/zombieBlend.js, __mduZombieBlend)
-    if (blendTear(z, t)) return;
     const P = z.P;
     const s = Math.sin(t * 7 + z.slot);
     this.poseIdle(z, t);
@@ -3400,7 +3398,6 @@ export default class Zombies {
   }
 
   poseClimb(z, k) {
-    if (blendClimb(z, k)) return;
     const P = z.P;
     P.hipY = 0.92;
     P.torsoP = 0.7 - k * 0.3;
@@ -3417,7 +3414,6 @@ export default class Zombies {
   }
 
   poseRise(z, t) {
-    if (blendRise(z)) return;
     const P = z.P;
     const s = Math.sin(t * 5 + z.slot);
     P.hipY = 0.92;
@@ -3443,7 +3439,6 @@ export default class Zombies {
         return;
       }
     }
-    if (blendCrawl(z, dt)) return;
     const P = z.P;
     z.phase += dt * 3;
     const s = Math.sin(z.phase);
@@ -3545,7 +3540,6 @@ export default class Zombies {
   poseDeath(z) {
     const P = z.P;
     if (z.static) return;
-    if (blendDeath(z)) return;
     const k = Math.min(1, z.stateT / 0.75);
     const e = k * k;
     const back = z.deathBack ? -1 : 1;
@@ -3680,11 +3674,11 @@ export default class Zombies {
     // de lejos y con muchos cuadros por segundo, la pose de cada uno se arma
     // un cuadro sí y otro no (la mitad cada cuadro): a más de 90 fps no se
     // nota. Nunca cuando quedan pocos (los últimos, con la silueta a la vista),
-    // ni a los jefes ni a los que caen (globalThis.__mduFullPose: siempre)
+    // ni a los jefes ni a los que caen
     const g = this.g;
     let live = 0;
     for (const z of this.pool) if (z.active && !z.dead) live++;
-    const half = (g.frameMs ?? 16) < HALF_MS && live > HALF_MIN && globalThis.__mduFullPose !== true;
+    const half = (g.frameMs ?? 16) < HALF_MS && live > HALF_MIN;
     const cam = g.camera?.position;
     this.poseTick = (this.poseTick || 0) ^ 1;
     for (const z of this.pool) {
@@ -3831,6 +3825,9 @@ export default class Zombies {
       const r = 1.25 * z.scale;
       if (perp2 > r * r) return;
       const h = hitParts(z.mats, o, d, maxT, z.hidden);
+      // (Zombies gauchescos: al zombi-jugador le pega solo lo que lo ve, sin un
+      // pajonal de por medio, y dentro del alcance del mate; Gauchescos.shotBlocked)
+      if (h && z.gz != null && (this.g.gz?.outOfRange(h.t) || this.g.gz?.shotBlocked(z, new THREE.Vector3().copy(o).addScaledVector(d, h.t)))) return;
       if (h) hits.push({ z, t: h.t, zone: z.boss && h.zone === 'head' && z.hatHp > 0 ? 'hat' : h.zone, part: h.part, arm: h.arm, leg: h.leg });
     };
     for (const z of this.pool) test(z);
@@ -4154,7 +4151,7 @@ export default class Zombies {
       this.paint(z, type === 'melt' ? 0x4e5a34 : 0xc0503a);
       if (type === 'melt') z.corpseT = 8.3;
       g.fx.steam(tmpV.set(z.pos.x, (z.baseY || 0) + 1.2, z.pos.z), 10, 0.6);
-    } else if (type === 'slice' && !z.boss && g.weapons?.cosmic && globalThis.__mduNoSlice !== true) {
+    } else if (type === 'slice' && !z.boss && g.weapons?.cosmic) {
       // partido al medio (la guadaña del Desgarrador Cósmico): las piernas se
       // desploman y la mitad de arriba sale volando (weapons/desgarradorFx.js)
       z.state = 'sliced';
@@ -4224,7 +4221,7 @@ export default class Zombies {
         const hp = new THREE.Vector3().setFromMatrixPosition(z.mats[2]);
         z.hidden |= HIDE_HEAD;
         // con los mates de daño alto la cabeza revienta: pone su sangre, sus
-        // pedazos y su crujido (core/sentirTiro.js; __mduSinCabezaRevienta: como antes)
+        // pedazos y su crujido (core/sentirTiro.js)
         const rev = !!g.sentir?.reventar(z, info, hp);
         if (!rev) g.fx.blood(hp, { x: 0, y: 1.2, z: 0 }, 26, 1.4);
         // (a la altura de su piso: con y fijo en 0, en la Proa del Monumento
@@ -4250,8 +4247,8 @@ export default class Zombies {
         g.fx.fire(tmpV.set(z.pos.x, (z.baseY || 0) + 0.8, z.pos.z), 0.5, 8);
       }
     }
-    // la baja confirmada y hacia dónde cae el cuerpo (core/sentirTiro.js:
-    // __mduSinBajaConfirmada, __mduSinCaidaFuerza). Lo que suelta sale de
+    // la baja confirmada y hacia dónde cae el cuerpo (core/sentirTiro.js).
+    // Lo que suelta sale de
     // donde murió (spot, abajo): el cuerpo se corre después.
     g.sentir?.alMorir(z, info, type);
     // lo que dan las bajas en el rush de jefes (core/rushBuild.js)

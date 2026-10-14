@@ -30,61 +30,11 @@ const FLAG_VS = `
   }`;
 
 // La bandera argentina (con el Sol de Mayo), pintada en un canvas: la de
-// world/monumentoTextures.js, la misma para todas (globalThis.__mduNoSolNuevo:
-// la de antes, más chica).
+// world/monumentoTextures.js, la misma para todas.
 let flagTex = null;
 function argentina() {
   if (flagTex) return flagTex;
-  if (globalThis.__mduNoSolNuevo !== true) return (flagTex = banderaTexture());
-  const c = document.createElement('canvas');
-  c.width = 384;
-  c.height = 240;
-  const x = c.getContext('2d');
-  x.fillStyle = '#74acdf';
-  x.fillRect(0, 0, 384, 240);
-  x.fillStyle = '#f4f2ec';
-  x.fillRect(0, 80, 384, 80);
-  // el Sol de Mayo: 32 rayos rectos y flamígeros alternados, con su cara
-  x.save();
-  x.translate(192, 120);
-  x.fillStyle = '#f6b40e';
-  x.strokeStyle = '#85340a';
-  x.lineWidth = 1;
-  for (let i = 0; i < 32; i++) {
-    x.save();
-    x.rotate((i / 32) * Math.PI * 2);
-    x.beginPath();
-    if (i % 2) {
-      x.moveTo(13, -2.5);
-      x.quadraticCurveTo(22, 4, 31, 0);
-      x.quadraticCurveTo(22, -4, 13, 2.5);
-    } else {
-      x.moveTo(13, -3);
-      x.lineTo(34, 0);
-      x.lineTo(13, 3);
-    }
-    x.closePath();
-    x.fill();
-    x.stroke();
-    x.restore();
-  }
-  x.beginPath();
-  x.arc(0, 0, 13, 0, Math.PI * 2);
-  x.fill();
-  x.stroke();
-  x.fillStyle = '#85340a';
-  x.beginPath();
-  x.arc(-4, -2, 1.4, 0, Math.PI * 2);
-  x.arc(4, -2, 1.4, 0, Math.PI * 2);
-  x.fill();
-  x.beginPath();
-  x.arc(0, 3, 4, 0.2, Math.PI - 0.2);
-  x.stroke();
-  x.restore();
-  flagTex = new THREE.CanvasTexture(c);
-  flagTex.colorSpace = THREE.SRGBColorSpace;
-  flagTex.anisotropy = 4;
-  return flagTex;
+  return (flagTex = banderaTexture());
 }
 
 // Una bandera que flamea (tela con su sombreado de luz de noche).
@@ -336,7 +286,7 @@ export function buildDecor(w) {
   for (const [kind, x, y, z, ry] of lola) {
     // (el pie arranca 5 cm abajo del fondo del estanque: a 10 cm, la cara de
     // abajo caía justo en el techo de la Sala de las Banderas y titilaba)
-    bbox(gb, 'travertino', x - 0.6, y - (globalThis.__mduNoZfix === true ? 0.1 : 0.05), z - 0.5, x + 0.6, y + 0.75, z + 0.5, { b: 0.05, top: 'travStep' });
+    bbox(gb, 'travertino', x - 0.6, y - 0.05, z - 0.5, x + 0.6, y + 0.75, z + 0.5, { b: 0.05, top: 'travStep' });
     extra.push(...statue(kind, M.marble, x, y + 0.75, z, ry, kind === 'granadero' ? 0.9 : 1.05));
     if (y > 3.2) w.addBox([x - 0.6, y - 0.1, z - 0.5, x + 0.6, y + 2.6, z + 0.5], { kind: 'prop' });
   }
@@ -413,8 +363,8 @@ export function buildDecor(w) {
   // los globos de las cruces de los mástiles del Patio (cuatro por farola, el
   // mismo vidrio prendido, sin sombra): una malla por cruz, eran 48 dibujos y
   // quedan 12. Cada cruz se recorta de lejos como un globo solo (userData.scR,
-  // core/sizeCull), así se ve igual. Los sueltos quedan armados y escondidos
-  // (globalThis.__mduNoGlobos); al armar el mapa se ven todos (sizeCull anota
+  // core/sizeCull), así se ve igual. Los sueltos quedan armados y escondidos;
+  // al armar el mapa se ven todos (sizeCull anota
   // los dos) y el primer update deja unos u otros.
   const globos = new THREE.Group();
   const crossed = [];
@@ -435,11 +385,10 @@ export function buildDecor(w) {
   const prev = w.extraUpdate;
   w.extraUpdate = (dt, t) => {
     prev?.(dt, t);
-    const mg = globalThis.__mduNoGlobos !== true;
-    if (mg !== globosOn) {
-      globosOn = mg;
-      globos.visible = mg;
-      for (const l of loose) l.visible = !mg;
+    if (globosOn !== true) {
+      globosOn = true;
+      globos.visible = true;
+      for (const l of loose) l.visible = false;
     }
     w.mon.flagT.value = t;
     if (w.mon.beacon) w.mon.beacon.emissiveIntensity = Math.sin(t * 2.4) > 0.6 ? 4 : 0.4;

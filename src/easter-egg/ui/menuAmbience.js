@@ -22,7 +22,7 @@ import { MAP_ID } from '../config/map';
 //    tormenta lejana del penal.
 // Se baja solo el del mapa elegido, cuando se lo elige. Va por el volumen de
 // Ambiente (core/audio.js cats.world). En la pulpería y la armería (menús con
-// escena propia) queda más bajo. globalThis.__mduNoMenuAmb = true: sin ambiente.
+// escena propia) queda más bajo.
 
 const DIR = '/assets/sotano/sfx/menu/';
 const MAPS = ['molino', 'granja', 'penal', 'esteros', 'torre', 'castillo', 'monumento', 'eclipse'];
@@ -44,7 +44,7 @@ export default class MenuAmbience {
 
   // Cada cuadro (Game.loop): qué tiene que sonar.
   tick(g) {
-    const on = g.state === 'title' && globalThis.__mduNoMenuAmb !== true && MAPS.includes(MAP_ID);
+    const on = g.state === 'title' && MAPS.includes(MAP_ID);
     const want = on ? MAP_ID : null;
     if (want !== this.want) this.set(want);
     if (!this.cur) return;

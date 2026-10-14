@@ -158,7 +158,7 @@ export default {
   // el latigazo sale de la mano que baja en el clip (la derecha)
   alias: { whip: 'RightHand' },
   // los tiros le pegan al modelo que se ve (volando no está donde las piezas;
-  // entities/bossSkin.js skinHit, __mduNoSkinHit: a las piezas)
+  // entities/bossSkin.js skinHit)
   hitSkin: true,
 
   ready(S) {

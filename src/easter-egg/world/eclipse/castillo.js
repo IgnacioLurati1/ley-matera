@@ -34,7 +34,6 @@ import { fragment, orbiters, grime, wallCrack, portalOrbs, keepOut, tpShift } fr
 // barandas de piedra de las escaleras, las grietas de la disformidad, el
 // torreón suelto (Q9) y las piedras que rondan los portales. Oclusión,
 // humedad y musgo con el ayudante de las islas (centro.grime).
-// __mduNoEclipseCastleArt: solo los bloques y lo transplantado.
 
 const FLOOR = 1;
 const WALL = 2;
@@ -54,7 +53,6 @@ const ceilOf = (k) => ZONES[k].roof ?? (ZONES[k].y || 0) + WALL_H;
 let LIVE = null;
 
 export function build(w, g, isl) {
-  if (globalThis.__mduNoEclipseCastleArt === true) return;
   const M = w.M;
   const K = keysOf(isl);
   const mine = isl.zones.filter((k) => !ZONES[k].frag);
@@ -992,7 +990,6 @@ function stairRails(w, gb, mine) {
   // (2026-10-07: el choque de estas barandas lo ponía Levels al costado de
   // toda escalera; ahora en Eclipse lo saca —sin baranda dibujada uno se tira
   // para abajo, M3— y lo pone cada baranda que se dibuja: estas)
-  const own = globalThis.__mduNoEclStairRail !== true && globalThis.__mduOldEclStairWall !== true;
   for (const R of RAMPS) {
     const [x0, z0, x1, z1] = R.rect;
     const k = w.zone[w.idx(x0, z0)] >= 0 ? w.zoneKeys[w.zone[w.idx(x0, z0)]] : null;
@@ -1035,12 +1032,10 @@ function stairRails(w, gb, mine) {
           const [bx, bz] = alongX ? [x0 + a, s] : [s, z0 + a];
           gb.box('woodDark', bx - 0.025, yy + 0.1, bz - 0.025, bx + 0.025, yy + 1.08, bz + 0.025, 1);
         }
-        if (own) {
-          for (let c = 0; c < len; c++) {
-            const y0 = Math.min(yAt(c + 0.001), yAt(c + 0.999));
-            const y1 = Math.max(yAt(c + 0.001), yAt(c + 0.999)) + 1.18;
-            w.addBox(alongX ? [x0 + c, y0, s - 0.07, x0 + c + 1, y1, s + 0.07] : [s - 0.07, y0, z0 + c, s + 0.07, y1, z0 + c + 1], { kind: 'rail', shoot: false });
-          }
+        for (let c = 0; c < len; c++) {
+          const y0 = Math.min(yAt(c + 0.001), yAt(c + 0.999));
+          const y1 = Math.max(yAt(c + 0.001), yAt(c + 0.999)) + 1.18;
+          w.addBox(alongX ? [x0 + c, y0, s - 0.07, x0 + c + 1, y1, s + 0.07] : [s - 0.07, y0, z0 + c, s + 0.07, y1, z0 + c + 1], { kind: 'rail', shoot: false });
         }
         continue;
       }
@@ -1048,7 +1043,7 @@ function stairRails(w, gb, mine) {
         const top = Math.max(yAt(c + 0.001), yAt(c + 0.999)) + 1.15;
         const A = c;
         const Bq = c + 1;
-        if (own) w.addBox(alongX ? [x0 + A, lo, s - hw, x0 + Bq, top + 0.07, s + hw] : [s - hw, lo, z0 + A, s + hw, top + 0.07, z0 + Bq], { kind: 'wall' });
+        w.addBox(alongX ? [x0 + A, lo, s - hw, x0 + Bq, top + 0.07, s + hw] : [s - hw, lo, z0 + A, s + hw, top + 0.07, z0 + Bq], { kind: 'wall' });
         if (alongX) {
           gb.box('castleStone', x0 + A, lo, s - hw, x0 + Bq, top, s + hw, 1);
           gb.box('castleStoneDark', x0 + A - 0.01, top, s - hw - 0.03, x0 + Bq + 0.01, top + 0.07, s + hw + 0.03, 1);

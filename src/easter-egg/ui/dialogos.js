@@ -22,7 +22,7 @@ import './dialogos.css';
 // mientras hablan, se callan (core/audio.js say low / onYield).
 // En línea: las charlas las elige el anfitrión y las ven todos; las frases de
 // las cosas las oyen todos, pero el subtítulo es solo del que la dice (el
-// usuario). globalThis.__mduNoDialogos = true: sin nada de esto.
+// usuario).
 
 const VOICE = { valiente: 'gil', miedoso: 'benito', canchero: 'cirilo', viejo: 'anacleto' };
 const NAME = { valiente: 'El Valiente', miedoso: 'El Miedoso', canchero: 'El Canchero', viejo: 'El Viejo' };
@@ -62,7 +62,7 @@ export default class Dialogos {
   }
 
   off() {
-    return globalThis.__mduNoDialogos === true;
+    return false;
   }
 
   named() {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { TORRE, miradorRas } from './monumentoTorre';
+import { TORRE } from './monumentoTorre';
 import { PROP, COLS } from './monumentoPropileo';
 import { WALL_BUYS } from '../config/map';
 
@@ -186,21 +186,18 @@ export function buildLuces(w) {
   // la Torre: las cuatro caras de blanco tibio y las fajas de las esquinas celestes
   const yM = Tr.mir;
   const yL = Tr.lint + 0.4;
-  // La Torre entera, de abajo arriba (globalThis.__mduNoTorreLuz: como antes,
-  // con el Mirador a oscuras, el remate como una placa celeste en el aire y
-  // las estatuas negras): la luz de las caras se apaga recién arriba del todo
+  // La Torre entera, de abajo arriba: la luz de las caras se apaga recién arriba del todo
   // (antes llegaba al Mirador casi apagada) y sigue por el antepecho, los
   // parantes y el dintel del Mirador; el remate, celeste, escalón por escalón
   // sobre su piedra (el lavado de antes flotaba 25 cm adelante, contra el cielo).
-  const fix = globalThis.__mduNoTorreLuz !== true;
-  const G = fix ? { base: 11.4, top: 60 } : {};
+  const G = { base: 11.4, top: 60 };
   wash(Tr.x0, 11.4, yM, Tr.cz, Tr.z1 - Tr.z0 - 1.2, 'x', -1, warm, 1.25, G);
   wash(Tr.x1, 11.4, yM, Tr.cz, Tr.z1 - Tr.z0 - 1.2, 'x', 1, warm, 1.25, G);
   wash(Tr.cx, 11.4, yM, Tr.z0, Tr.x1 - Tr.x0 - 1.2, 'z', -1, warm, 1.1, G);
   wash(Tr.cx, 11.4, yM, Tr.z1, Tr.x1 - Tr.x0 - 1.2, 'z', 1, warm, 1.1, G);
   // (las fajas celestes, hasta donde llega la piedra de la faja: más arriba
   // el lavado quedaba delante de las ventanas del Mirador)
-  const yF = fix ? Tr.mir - 1.2 : yL;
+  const yF = Tr.mir - 1.2;
   for (const z of [Tr.z0 + 1.3, Tr.z1 - 1.3]) {
     wash(Tr.x0 - 0.12, 11.4, yF, z, 0.6, 'x', -1, blue, 2.6, { fall: 0.6, edge: 0.2 });
     wash(Tr.x1 + 0.12, 11.4, yF, z, 0.6, 'x', 1, blue, 2.6, { fall: 0.6, edge: 0.2 });
@@ -209,16 +206,14 @@ export function buildLuces(w) {
     wash(x, 11.4, yF, Tr.z0 - 0.12, 0.6, 'z', -1, blue, 2.6, { fall: 0.6, edge: 0.2 });
     wash(x, 11.4, yF, Tr.z1 + 0.12, 0.6, 'z', 1, blue, 2.6, { fall: 0.6, edge: 0.2 });
   }
-  if (fix) {
+  {
     // el Mirador: el antepecho y el dintel corridos, y los parantes entre las ventanas
     const sill = Tr.mir + 1.05;
     // (con el remate nuevo, liso, el dintel es parte del remate: lo lava abajo)
-    const nuevo = globalThis.__mduNoRemate !== true;
     // (con el Mirador a ras de la Torre, las esquinas ochavadas: los lavados
     // de las caras no llegan a la ochava, que va celeste como la del remate)
-    const ras = miradorRas();
-    const cc = ras ? Tr.chamfer : 0;
-    for (const [y0, y1] of nuevo ? [[Tr.mir - 0.01, sill]] : [[Tr.mir - 0.01, sill], [Tr.lint, yL]]) {
+    const cc = Tr.chamfer;
+    for (const [y0, y1] of [[Tr.mir - 0.01, sill]]) {
       wash(Tr.x0, y0, y1, Tr.cz, Tr.z1 - Tr.z0 - 2 * cc, 'x', -1, warm, 1.25, { ...G, edge: 0.02 });
       wash(Tr.x1, y0, y1, Tr.cz, Tr.z1 - Tr.z0 - 2 * cc, 'x', 1, warm, 1.25, { ...G, edge: 0.02 });
       wash(Tr.cx, y0, y1, Tr.z0, Tr.x1 - Tr.x0 - 2 * cc, 'z', -1, warm, 1.1, { ...G, edge: 0.02 });
@@ -227,8 +222,8 @@ export function buildLuces(w) {
     const piersZ = [];
     for (let i = 0; i <= 4; i++) {
       const z = Tr.z0 + (i * (Tr.z1 - Tr.z0)) / 4;
-      if (ras && i === 0) piersZ.push([Tr.z0 + cc, Tr.z0 + 1]);
-      else if (ras && i === 4) piersZ.push([Tr.z1 - 1, Tr.z1 - cc]);
+      if (i === 0) piersZ.push([Tr.z0 + cc, Tr.z0 + 1]);
+      else if (i === 4) piersZ.push([Tr.z1 - 1, Tr.z1 - cc]);
       else piersZ.push([Math.max(Tr.z0, z - 0.35), Math.min(Tr.z1, z + 0.35)]);
     }
     for (const [a, b] of piersZ) {
@@ -239,7 +234,7 @@ export function buildLuces(w) {
       wash((a + b) / 2, sill, Tr.lint, Tr.z0, b - a, 'z', -1, warm, 1.1, { ...G, edge: 0.05 });
       wash((a + b) / 2, sill, Tr.lint, Tr.z1, b - a, 'z', 1, warm, 1.1, { ...G, edge: 0.05 });
     }
-    if (nuevo) {
+    {
       // el remate liso: las caras de blanco tibio hasta la losa, las ochavas
       // celestes (en la Torre de verdad las esquinas van celestes hasta arriba)
       // y la losa del coronamiento
@@ -253,7 +248,7 @@ export function buildLuces(w) {
         const cx = (sx < 0 ? Tr.x0 : Tr.x1) - (sx * c) / 2;
         const cz = (sz < 0 ? Tr.z0 : Tr.z1) - (sz * c) / 2;
         // (a ras: la ochava sube desde el piso del Mirador)
-        const yC = ras ? Tr.mir - 0.01 : Tr.lint;
+        const yC = Tr.mir - 0.01;
         wash(cx, yC, yR, cz, c * Math.SQRT2, Math.atan2(sx, sz), 0, blue, 2.6, { fall: 0.6, edge: 0.15, base: yC - 2 });
       }
       for (const [ax, sg, wd, cx, cz] of [['x', -1, Tr.z1 - Tr.z0, Tr.x0 - 0.07, Tr.cz], ['x', 1, Tr.z1 - Tr.z0, Tr.x1 + 0.07, Tr.cz], ['z', -1, Tr.x1 - Tr.x0, Tr.cx, Tr.z0 - 0.07], ['z', 1, Tr.x1 - Tr.x0, Tr.cx, Tr.z1 + 0.07]]) {
@@ -263,22 +258,6 @@ export function buildLuces(w) {
     // el remate escalonado (los cuerpos de monumentoTorre buildMirador: el
     // primero sale 20 cm, los otros dos entran 0,6 y 1,4)
     let y = yL;
-    for (const [d, h] of nuevo ? [] : [[-0.2, 0.9], [0.6, 1.1], [1.4, 0.8]]) {
-      const wx = Tr.x1 - Tr.x0 - 2 * d;
-      const wz = Tr.z1 - Tr.z0 - 2 * d;
-      const o = { fall: 0.5, edge: 0.03, base: y - 0.6, top: y + h };
-      wash(Tr.cx, y, y + h, Tr.z0 + d, wx, 'z', -1, blue, 1.9, o);
-      wash(Tr.cx, y, y + h, Tr.z1 - d, wx, 'z', 1, blue, 1.9, o);
-      wash(Tr.x0 + d, y, y + h, Tr.cz, wz, 'x', -1, blue, 1.9, o);
-      wash(Tr.x1 - d, y, y + h, Tr.cz, wz, 'x', 1, blue, 1.9, o);
-      y += h;
-    }
-  } else {
-    // el remate celeste
-    wash(Tr.cx, yL, Tr.top, Tr.z0 - 0.45, Tr.x1 - Tr.x0 + 0.6, 'z', -1, blue, 1.6, { fall: 0.4, edge: 0.04 });
-    wash(Tr.cx, yL, Tr.top, Tr.z1 + 0.45, Tr.x1 - Tr.x0 + 0.6, 'z', 1, blue, 1.6, { fall: 0.4, edge: 0.04 });
-    wash(Tr.x0 - 0.45, yL, Tr.top, Tr.cz, Tr.z1 - Tr.z0 + 0.6, 'x', -1, blue, 1.6, { fall: 0.4, edge: 0.04 });
-    wash(Tr.x1 + 0.45, yL, Tr.top, Tr.cz, Tr.z1 - Tr.z0 + 0.6, 'x', 1, blue, 1.6, { fall: 0.4, edge: 0.04 });
   }
   // el cuerpo alto y el basamento (cálidos, desde los reflectores del piso)
   wash(69.5, 6.2, 11.4, 30.5, 15.6, 'x', -1, 0xffd9a8, 1.0, { fall: 1.0, edge: 0.03 });
@@ -290,17 +269,15 @@ export function buildLuces(w) {
     // (antes iba pegado a la piedra, 3 mm, detrás de los pizarrones de las
     // compras de pared, que si no quedaban lavados; a 36 m, desde el Propileo,
     // titilaba con la piedra en rayas. Ahora a 3 cm, con los huecos de los
-    // pizarrones en el shader. __mduNoWashHoles: como antes)
-    const offA = globalThis.__mduNoWashHoles === true ? 0.003 : 0.03;
+    // pizarrones en el shader)
+    const offA = 0.03;
     wash(66, y0, 6.2, (z0 + z1) / 2, z1 - z0, 'x', -1, 0xffd9a8, 0.8, { fall: 1.2, edge: 0.02, base: 0.8, off: offA });
   }
   // el nicho de la Madre Patria: el fondo (con el abanico de la bóveda, lo de
   // afuera del arco lo tapa la pared) y el frente del pedestal
-  if (fix) {
-    // (a 3 cm del fondo y del pedestal: a 4 mm, desde el Propileo titilaban)
-    wash(66.85, 1.1, 5.6, 30.5, 4.2, 'x', -1, 0xffd9a8, 1.1, { fall: 1.0, edge: 0.03, base: 0.8, off: 0.03 });
-    wash(66.05, 0.8, 1.4, 30.5, 2.6, 'x', -1, 0xffd9a8, 1.0, { fall: 1.0, edge: 0.03, off: 0.03 });
-  }
+  // (a 3 cm del fondo y del pedestal: a 4 mm, desde el Propileo titilaban)
+  wash(66.85, 1.1, 5.6, 30.5, 4.2, 'x', -1, 0xffd9a8, 1.1, { fall: 1.0, edge: 0.03, base: 0.8, off: 0.03 });
+  wash(66.05, 0.8, 1.4, 30.5, 2.6, 'x', -1, 0xffd9a8, 1.0, { fall: 1.0, edge: 0.03, off: 0.03 });
   // el Propileo: las columnas de los frentes, bañadas de celeste desde el piso
   for (const [x, sign] of [[PROP.rows[0] - 0.38, -1], [PROP.rows[3] + 0.38, 1]]) {
     for (const z of COLS) wash(x, PROP.y + 0.22, 12.9, z, 0.42, 'x', sign, blue, 2.2, { fall: 0.8, edge: 0.12, off: 0.006 });
@@ -310,11 +287,11 @@ export function buildLuces(w) {
   wash(PROP.x0 - 0.05, 12.9, 14.3, 30, 27, 'x', -1, 0xffe0b8, 0.9, { fall: 0.8, edge: 0.02, off: 0.03 });
   // todos los lavados en una sola malla (eran ~50 dibujos): suman luz, así que
   // el orden no cambia nada; lo de cada uno va por vértice. Los sueltos quedan
-  // armados y escondidos: globalThis.__mduNoLavados
+  // armados y escondidos.
   // los huecos de los pizarrones de las armas de pared (como los arma
-  // world/Monumento.js buildPizarrones; globalThis.__mduNoWashHoles: sin huecos)
+  // world/Monumento.js buildPizarrones)
   const holes = { a: [], b: [] };
-  for (const wb of globalThis.__mduNoWashHoles === true ? [] : WALL_BUYS) {
+  for (const wb of WALL_BUYS) {
     if (holes.a.length >= 6) break;
     const a = w.wallAnchor(wb.cell, wb.face, 0);
     if (wb.slide) {
@@ -329,14 +306,12 @@ export function buildLuces(w) {
   }
   // y los frisos del Propileo con la frase del Himno (se iluminan solos:
   // monumentoPropileo frieze; con el lavado delante no se leían)
-  if (globalThis.__mduNoFrisoLuz !== true) {
-    const zf = (PROP.z0 + PROP.z1) / 2;
-    const hl = (PROP.z1 - PROP.z0 - 2.2) / 2 + 0.05;
-    const hh = ((PROP.z1 - PROP.z0 - 2.2) * 160) / 4096 / 2 + 0.03;
-    for (const x of [PROP.x1 + 0.066, PROP.x0 - 0.066]) {
-      holes.a.push(new THREE.Vector3(x - 0.06, 12.9 + 0.75 - hh, zf - hl));
-      holes.b.push(new THREE.Vector3(x + 0.06, 12.9 + 0.75 + hh, zf + hl));
-    }
+  const zf = (PROP.z0 + PROP.z1) / 2;
+  const hl = (PROP.z1 - PROP.z0 - 2.2) / 2 + 0.05;
+  const hh = ((PROP.z1 - PROP.z0 - 2.2) * 160) / 4096 / 2 + 0.03;
+  for (const x of [PROP.x1 + 0.066, PROP.x0 - 0.066]) {
+    holes.a.push(new THREE.Vector3(x - 0.06, 12.9 + 0.75 - hh, zf - hl));
+    holes.b.push(new THREE.Vector3(x + 0.06, 12.9 + 0.75 + hh, zf + hl));
   }
   while (holes.a.length < 8) {
     holes.a.push(new THREE.Vector3(1e6, 1e6, 1e6));
@@ -347,7 +322,7 @@ export function buildLuces(w) {
   // el Mirador prendido (la luz de adentro por las ventanas) y una luz de verdad ahí
   const mir = new THREE.PointLight(0x9ac8ff, 0, 14, 1.6);
   // (a un metro del techo: con el remate nuevo el techo del Mirador baja a 47)
-  mir.position.set(Tr.cx, Tr.mir + (globalThis.__mduNoRemate === true ? 2.4 : 2.0), Tr.cz);
+  mir.position.set(Tr.cx, Tr.mir + 2.0, Tr.cz);
   w.scene.add(mir);
   w.mon.luces = {
     on: false,
@@ -372,11 +347,10 @@ export function buildLuces(w) {
       for (const m of w.mon.litMats || []) m.emissiveIntensity = this.k * (m.userData.litK ?? 1.4);
     },
     update(dt) {
-      const mg = globalThis.__mduNoLavados !== true;
-      if (mg !== this.merged) {
-        this.merged = mg;
-        one.visible = mg;
-        for (const m of list) m.visible = !mg;
+      if (this.merged !== true) {
+        this.merged = true;
+        one.visible = true;
+        for (const m of list) m.visible = false;
       }
       const target = this.on ? 1 : 0;
       if (this.k === target) return;

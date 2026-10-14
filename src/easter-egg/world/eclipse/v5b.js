@@ -33,8 +33,6 @@ import { consolidate, zoneCuller } from './v5';
 // con la cámara afuera (v5.zoneCuller); lo de afuera, junto por isla y
 // escondido de lejos. Lo que flota: unas pocas mallas instanciadas de todo el
 // mapa, que se mueven solo cerca de la cámara.
-// globalThis.__mduNoEclV5B: nada de esto (o __mduNoEclV5B = 'deforme' /
-// 'llenar' para apagar solo una de las dos).
 
 const FLOOR = 1;
 const WALL = 2;
@@ -127,14 +125,13 @@ const NO_DEFORM = new Set(['B', 'gH', 'H2', 'P', 'P2', 'pP', 'I', 'I9', 'U']);  
 // lo que no tiene que quedar cerca (además de g.interact): los mates perdidos y las trampas (entities/eclipse)
 const MATES = [[126.5, 177.5], [40.3, 111.2], [105.5, 237.5], [120.5, 336.5], [307.5, 247.5], [238.5, 113.5], [186.3, 49.3]];
 // (arte6: las nuevas, corridas a lo llano; entities/eclipse/Trampas.js SPOTS)
-const TRAMPAS = globalThis.__mduOldTrampas === true ? [[135.5, 167], [40.5, 94.5], [43.5, 241], [142.5, 305], [299.5, 241], [284, 94.5], [152.5, 33]] : [[143.5, 166.5], [35.5, 94.5], [46, 231.5], [143, 300.5], [299.5, 241], [281.5, 94.5], [152.5, 33]];
+const TRAMPAS = [[143.5, 166.5], [35.5, 94.5], [46, 231.5], [143, 300.5], [299.5, 241], [281.5, 94.5], [152.5, 33]];
 
 let W = null;
 let LIVE = null;
-const OFF = () => globalThis.__mduNoEclV5B;
 
 export function build(w) {
-  if (OFF() === true || globalThis.__mduEclipse !== true) return;
+  if (globalThis.__mduEclipse !== true) return;
   W = w;
   LIVE = { built: false, culls: [], floats: null };
 }
@@ -180,13 +177,12 @@ function keepPoints(w, g) {
   }
   for (const [x, z] of MATES) add(x, z, 1.6);
   // (arte6: la trampa nueva marca 3,6 m y su ancla va afuera del círculo)
-  for (const [x, z] of TRAMPAS) add(x, z, globalThis.__mduOldTrampas === true ? 2.2 : 4.6);
+  for (const [x, z] of TRAMPAS) add(x, z, 4.6);
   return (x, z, rad = 0) => K.some(([px, pz, r]) => (x - px) ** 2 + (z - pz) ** 2 < (r + rad) ** 2);
 }
 
 // ---------------- armado ----------------
 function armar(w, g) {
-  const off = OFF();
   const busy = keepPoints(w, g);
   // las cajas de utilería que ya hay, por zona (la misma cuenta de t_dens)
   const have = {};
@@ -219,7 +215,7 @@ function armar(w, g) {
       if (!info) continue;
       // (primero la deformación: aparta su lugar —info.reserved— y el relleno no lo toca)
       try {
-        if (off !== 'deforme' && !NO_DEFORM.has(k)) deform(w, k, info, busy, zg, floats);
+        if (!NO_DEFORM.has(k)) deform(w, k, info, busy, zg, floats);
       } catch (e) {
         console.error(`Eclipse v5b: ${k}: no se deformó`, e);
       }
@@ -227,29 +223,27 @@ function armar(w, g) {
     }
     // por isla: al menos 2 rincones arrancados en las paredes de afuera (vistas
     // desde los patios) y un techo abierto en una techada
-    if (off !== 'deforme') {
-      const have2 = (kind, outd) => (w.v5bDeform || []).filter((d) => d[1] === kind && ZONES[d[0]]?.isla === isla && !!ZONES[d[0]].outdoor === outd).length;
-      const order = [...infos.keys()].filter((k) => !NO_DEFORM.has(k)).sort((a, b) => infos.get(b)[0].cells.size - infos.get(a)[0].cells.size);
-      for (const k of order.filter((k) => ZONES[k].outdoor)) {
-        if (have2('rincon', true) >= 2) break;
-        try {
-          deform(w, k, infos.get(k)[0], busy, infos.get(k)[1], floats, 'rincon');
-        } catch (e) {
-          console.error(`Eclipse v5b: ${k}: rincón`, e);
-        }
+    const have2 = (kind, outd) => (w.v5bDeform || []).filter((d) => d[1] === kind && ZONES[d[0]]?.isla === isla && !!ZONES[d[0]].outdoor === outd).length;
+    const order = [...infos.keys()].filter((k) => !NO_DEFORM.has(k)).sort((a, b) => infos.get(b)[0].cells.size - infos.get(a)[0].cells.size);
+    for (const k of order.filter((k) => ZONES[k].outdoor)) {
+      if (have2('rincon', true) >= 2) break;
+      try {
+        deform(w, k, infos.get(k)[0], busy, infos.get(k)[1], floats, 'rincon');
+      } catch (e) {
+        console.error(`Eclipse v5b: ${k}: rincón`, e);
       }
-      for (const k of order.filter((k) => !ZONES[k].outdoor)) {
-        if (have2('techo', false) >= 1) break;
-        try {
-          deform(w, k, infos.get(k)[0], busy, infos.get(k)[1], floats, 'techo');
-        } catch (e) {
-          console.error(`Eclipse v5b: ${k}: techo`, e);
-        }
+    }
+    for (const k of order.filter((k) => !ZONES[k].outdoor)) {
+      if (have2('techo', false) >= 1) break;
+      try {
+        deform(w, k, infos.get(k)[0], busy, infos.get(k)[1], floats, 'techo');
+      } catch (e) {
+        console.error(`Eclipse v5b: ${k}: techo`, e);
       }
     }
     for (const [k, [info, zg]] of infos) {
       try {
-        if (off !== 'llenar' && !NO_FILL.has(k)) added[k] = fill(w, k, info, busy, have[k] || 0, zg);
+        if (!NO_FILL.has(k)) added[k] = fill(w, k, info, busy, have[k] || 0, zg);
       } catch (e) {
         console.error(`Eclipse v5b: ${k}: no se llenó`, e);
       }
@@ -1073,7 +1067,7 @@ const _rc = new THREE.Raycaster();
 // se prueban solo los de la casilla de (x, z), con el mismo criterio de lado
 // que el Raycaster (FrontSide: solo los que miran para abajo). Las instanciadas,
 // con el Raycaster de siempre si su caja cruza el tramo. Se arma una vez por
-// mundo y se suelta al terminar armar(). globalThis.__mduNoV5bCeilBox: como antes
+// mundo y se suelta al terminar armar().
 let CEIL_C = null;
 const _cb = new THREE.Box3();
 const CC = 2;
@@ -1181,24 +1175,20 @@ function ceilY(w, x, z, fy, fallback) {
   _rc.far = Math.max(1, fallback - fy);
   _rc.camera = w.g.camera;
   const skip = (o) => /v5b/.test(o.parent?.name || '') || o.visible === false || !o.layers.test(_rc.layers);
-  if (globalThis.__mduNoV5bCeilBox !== true) {
-    const ya = fy + 2.0;
-    const yb = ya + _rc.far;
-    let best = Infinity;
-    const objs = [];
-    for (const c of ceilCands(w)) {
-      if (x < c.x0 || x > c.x1 || z < c.z0 || z > c.z1 || c.y1 < ya || c.y0 > yb || skip(c.o)) continue;
-      if (c.ray) objs.push(c.o);
-      else best = Math.min(best, ceilHit(c, x, z, ya, yb));
-    }
-    if (objs.length) {
-      const h = _rc.intersectObjects(objs, false)[0];
-      if (h) best = Math.min(best, h.point.y);
-    }
-    return best < Infinity ? best : fallback;
+  const ya = fy + 2.0;
+  const yb = ya + _rc.far;
+  let best = Infinity;
+  const objs = [];
+  for (const c of ceilCands(w)) {
+    if (x < c.x0 || x > c.x1 || z < c.z0 || z > c.z1 || c.y1 < ya || c.y0 > yb || skip(c.o)) continue;
+    if (c.ray) objs.push(c.o);
+    else best = Math.min(best, ceilHit(c, x, z, ya, yb));
   }
-  const hit = _rc.intersectObjects(w.root.children, true).find((h) => h.object.isMesh && !/v5b/.test(h.object.parent?.name || '') && h.object.visible !== false);
-  return hit ? hit.point.y : fallback;
+  if (objs.length) {
+    const h = _rc.intersectObjects(objs, false)[0];
+    if (h) best = Math.min(best, h.point.y);
+  }
+  return best < Infinity ? best : fallback;
 }
 
 // Las cosas que flotan (muebles reconocibles): cada clase armada una vez con su

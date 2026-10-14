@@ -132,9 +132,7 @@ function block(gb, extra, w, x0, x1, zf, depth, yb, hgt, face, fi, r) {
   // altura de los de la fachada (la textura tiene 7, 8 o 9 pisos en 24 m: con
   // las losas cada 3 m cortaban las ventanas) y la baranda con sus parantes
   // (antes era un caño solo, volando delante de las ventanas).
-  // globalThis.__mduNoBalcones: como antes.
-  const fix = globalThis.__mduNoBalcones !== true;
-  const rowH = fix ? 24 / (mat.userData.rows || 8) : 3;
+  const rowH = 24 / (mat.userData.rows || 8);
   for (let y = yb + rowH; y < yt - 1; y += rowH) {
     const z0 = zf;
     const z1 = zf + face * 0.9;
@@ -142,10 +140,9 @@ function block(gb, extra, w, x0, x1, zf, depth, yb, hgt, face, fi, r) {
     const zr0 = face > 0 ? z1 - 0.04 : z1;
     const zr1 = face > 0 ? z1 : z1 + 0.04;
     // (la baranda va sobre el borde de la losa, que llega a 0,88 de la pared)
-    const zb0 = fix ? zr0 - face * 0.03 : zr0;
-    const zb1 = fix ? zr1 - face * 0.03 : zr1;
+    const zb0 = zr0 - face * 0.03;
+    const zb1 = zr1 - face * 0.03;
     bbox(gb, 'ironBar', x0 + 0.3, y + 0.9, Math.min(zb0, zb1), x1 - 0.3, y + 0.95, Math.max(zb0, zb1), { b: 0.005 });
-    if (!fix) continue;
     // los parantes (cada ~0,9 m) y los de las puntas, que bajan a la losa
     const n = Math.max(1, Math.round((x1 - x0 - 0.6) / 0.9));
     for (let k = 0; k <= n; k++) {
@@ -177,7 +174,7 @@ function buildBuildings(w, gb, extra) {
       // a veces un pasillo angosto entre dos edificios: con su piso
       const gap = r() < 0.2 ? 0.4 : 0;
       // (al lado de la avenida el piso es la vereda de la avenida: dos pisos en el mismo plano titilaban)
-      if (gap && (x1 < 82 || globalThis.__mduNoZfix === true)) quad(gb, 'adoquin', [[x1, streetY(x1) + 0.1, zf], [x1 + gap, streetY(x1 + gap) + 0.1, zf], [x1 + gap, streetY(x1 + gap) + 0.1, zf - face * 14], [x1, streetY(x1) + 0.1, zf - face * 14]], [0, 1, 0]);
+      if (gap && (x1 < 82)) quad(gb, 'adoquin', [[x1, streetY(x1) + 0.1, zf], [x1 + gap, streetY(x1 + gap) + 0.1, zf], [x1 + gap, streetY(x1 + gap) + 0.1, zf - face * 14], [x1, streetY(x1) + 0.1, zf - face * 14]], [0, 1, 0]);
       x = x1 + gap;
     }
     // el fondo de la manzana (lo que se ve al final de los pasillos)
@@ -227,8 +224,8 @@ function buildCatedral(w, gb, extra) {
   bbox(gb, 'revoque', -8, y0 + 14, z + 2, -2, y0 + 26, z + 8, { b: 0.06, corners: true });
   bbox(gb, 'revoqueDark', -8.4, y0 + 26, z + 1.6, -1.6, y0 + 27, z + 8.4, { b: 0.04 });
   const dome = lathe([[0, 0], [5.2, 0], [5.2, 3.2], [5.0, 3.6], [4.6, 5.2], [3.8, 6.8], [2.6, 8.0], [1.2, 8.8], [0.6, 9.0], [0.6, 10.2], [0.9, 10.6], [0, 11.6]], 32);
-  // (UV en metros: si no, el revoque quedaba estirado alrededor; __mduNoCylUV)
-  const uvm = (g) => (globalThis.__mduNoCylUV === true ? g : cylUV(g));
+  // (UV en metros: si no, el revoque quedaba estirado alrededor)
+  const uvm = (g) => cylUV(g);
   const tamb = uvm(new THREE.CylinderGeometry(5.6, 5.8, 4, 32));
   const domeMat = new THREE.MeshStandardMaterial({ color: 0x6aa08a, roughness: 0.55, metalness: 0.4, emissive: 0x1a3a30, emissiveIntensity: 0.6 });
   extra.push(place(tamb, M.revoque, 6, y0 + 16, z + 9));
@@ -246,11 +243,11 @@ function buildPalacio(w, gb, extra) {
   const y0 = 3.3;
   // (la azotea a la altura de la balaustrada: el cuerpo subía hasta 13 m y la
   // balaustrada quedaba metida adentro de la pared, con el pasamanos asomando)
-  bbox(gb, 'revoque', -14, y0 - 1, -4, 20.4, y0 + (globalThis.__mduNoPalacio === true ? 13 : 9.8), z, { b: 0.06, skip: ['bottom'] });
+  bbox(gb, 'revoque', -14, y0 - 1, -4, 20.4, y0 + 9.8, z, { b: 0.06, skip: ['bottom'] });
   // (las columnas bajan hasta la vereda: arrancaban 30 cm arriba, en el aire)
   for (let x = -12; x <= 19; x += 3.1) {
     for (const dx of [-0.32, 0.32]) {
-      const col = globalThis.__mduNoCylUV === true ? new THREE.CylinderGeometry(0.2, 0.22, 8.9, 12) : cylUV(new THREE.CylinderGeometry(0.2, 0.22, 8.9, 12));
+      const col = cylUV(new THREE.CylinderGeometry(0.2, 0.22, 8.9, 12));
       extra.push(place(col, w.M.revoque, x + dx, y0 + 4.45, z + 0.25));
     }
   }

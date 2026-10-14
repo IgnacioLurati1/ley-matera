@@ -767,7 +767,7 @@ function granito({ seed }) {
 // Las que se pueden pintar en otro hilo (core/texturePool.js las pide al abrir
 // el juego; acá se toman con takePre). Sesión 1f, el usuario: "la pantalla de
 // cambio de mapa tarda una eternidad": eran ~2,7 s en el hilo principal al
-// elegir Eclipse o el Monumento. __mduNoMonuWorker: se pintan acá, como antes.
+// elegir Eclipse o el Monumento.
 export const MONU_PAINT = {
   'monu:travertino': () => travertino({ seed: 1812 }),
   'monu:travertinoBig': () => travertino({ seed: 1813, rows: 3, stain: 0.8 }),
@@ -787,8 +787,7 @@ export const MONU_PAINT = {
 // Las texturas del Monumento (una vez).
 export function monumentoTextures(T) {
   if (T.travertino) return T;
-  const pre = globalThis.__mduNoMonuWorker !== true;
-  for (const [k, fn] of Object.entries(MONU_PAINT)) T[k.slice(5)] = toTexture((pre && takePre(k)) || fn());
+  for (const [k, fn] of Object.entries(MONU_PAINT)) T[k.slice(5)] = toTexture(takePre(k) || fn());
   const f1 = fachada({ seed: 11, base: 0x9a9284, cols: 5, rows: 8, lit: 0.32 });
   const f2 = fachada({ seed: 12, base: 0x7a7a7e, cols: 4, rows: 7, lit: 0.26, warm: false });
   const f3 = fachada({ seed: 13, base: 0xb0a48e, cols: 6, rows: 9, lit: 0.4 });

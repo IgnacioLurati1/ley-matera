@@ -1040,23 +1040,18 @@ function buildConvento(P, G) {
     P.push(box(u0 - 0.1, u1 + 0.1, y + 2.3, y + 2.5, v0 - 0.1, v1 + 0.1, COL.tejaOsc));
   };
   // (la del sur, 3 m más afuera: entre ella y el claustro pasa la caballería; ver abajo)
-  const OT = globalThis.__mduOldSlTapia === true;
-  T(-104, -103.4, OT ? -42 : -45, 17);
+  T(-104, -103.4, -45, 17);
   T(-104, -103.4, 27, 30);
-  if (OT) T(-104, -70, -42.6, -42);
-  else T(-104, -70, -45.6, -45);
+  T(-104, -70, -45.6, -45);
   T(-104, -66, 30, 30.6);
   T(-60, -53, 30, 30.6);
   // (2026-10-07, el usuario: "los granaderos salen de atrás de la pared del
   // convento y se quedan trabados corriendo contra la pared": la caballería
   // del sur sale de adentro de la tapia y la cruzaba por este tramo. Ahora es
-  // el portón: dos pilares y abierto. __mduOldSlTapia: la pared de antes)
-  if (OT) T(-70.6, -70, -42, -36);
-  else {
-    for (const vv of [-45.2, -36.0]) {
-      P.push(box(-70.75, -69.85, y - 0.4, y + 2.9, vv - 0.45, vv + 0.45, COL.adobe, 0.06));
-      P.push(at(paint(new THREE.ConeGeometry(0.62, 0.5, 4), COL.tejaOsc), -70.3, y + 3.15, vv, Math.PI / 4));
-    }
+  // el portón: dos pilares y abierto)
+  for (const vv of [-45.2, -36.0]) {
+    P.push(box(-70.75, -69.85, y - 0.4, y + 2.9, vv - 0.45, vv + 0.45, COL.adobe, 0.06));
+    P.push(at(paint(new THREE.ConeGeometry(0.62, 0.5, 4), COL.tejaOsc), -70.3, y + 3.15, vv, Math.PI / 4));
   }
   // la huerta: el muro de ladrillo revocado con su caballete y los pilares de los portones
   const W = F.wallU;

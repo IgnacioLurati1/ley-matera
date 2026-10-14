@@ -138,14 +138,12 @@ export default class MonumentoFog {
     // (tampoco sobre las paredes macizas: su "piso" es el del lugar caminable
     // más cercano, y la Proa, que queda cerca del Mirador, tenía niebla a 44 m,
     // una mancha flotando delante de la cima de la Torre; ni arriba de 40 m:
-    // el Mirador va bajo techo y el patio de la 2043 apaga la niebla.
-    // globalThis.__mduNoFogAlto: como antes)
-    const alto = globalThis.__mduNoFogAlto !== true;
+    // el Mirador va bajo techo y el patio de la 2043 apaga la niebla)
     const solid = (x, z) => w.grid[w.idx(x, z)] === 2 && w.edge[w.idx(x, z)] === 0;
     for (let z = 0; z < w.H; z++) {
       for (let x = 0; x < w.W; x++) {
         const f = skip(x, z) ? NaN : hAt(x + 0.5, z + 0.5);
-        floorY[z * w.W + x] = alto && (f > 40 || solid(x, z)) ? NaN : f;
+        floorY[z * w.W + x] = (f > 40 || solid(x, z)) ? NaN : f;
       }
     }
     let lo = Infinity;
@@ -163,7 +161,7 @@ export default class MonumentoFog {
           // solo en las rampas: al lado de un desnivel las esquinas caían en la
           // celda de abajo y la celda llevaba capas de punta a punta, una
           // cortina de rebanadas pegada a la Torre del lado del río)
-          const ramp = !alto || (w.inside(x, z) && w.rampAt[w.idx(x, z)] >= 0);
+          const ramp = w.inside(x, z) && w.rampAt[w.idx(x, z)] >= 0;
           const fa = ramp ? Math.min(f, hAt(x, z), hAt(x + 1, z + 1)) : f;
           const fb = ramp ? Math.max(f, hAt(x, z), hAt(x + 1, z + 1)) : f;
           if (y < fa + 0.04 || y > fb + 1.15) continue;
@@ -177,7 +175,7 @@ export default class MonumentoFog {
     // tienen el mismo color, y "encima" con el mismo color da lo mismo en
     // cualquier orden. Las pares van primero: en Baja se dibuja ese tramo.
     // Las capas sueltas de antes siguen armadas sobre la misma memoria (cada una
-    // su tramo, su esfera y su caja), escondidas: globalThis.__mduNoFogMerge.
+    // su tramo, su esfera y su caja), escondidas.
     const order = [...lays.keys()].sort((a, b) => (a % 2) - (b % 2) || a - b);
     const at = new Array(lays.length);
     let n = 0;
@@ -234,15 +232,14 @@ export default class MonumentoFog {
   update(dt, t) {
     const g = this.g;
     const q = g.tier?.('night') || g.settings?.quality || 'medium';
-    const mg = globalThis.__mduNoFogMerge !== true;
-    if (q !== this.q || mg !== this.merged) {
+    if (q !== this.q || this.merged !== true) {
       const k = TIER[q] ?? 1;
       if (q !== this.q) this.root.visible = k > 0;
       this.q = q;
-      this.merged = mg;
+      this.merged = true;
       // en Baja una capa sí y otra no (más gruesas)
-      this.layers.forEach((m, i) => (m.visible = !mg && (k >= 0.8 || i % 2 === 0)));
-      this.all.visible = mg;
+      this.layers.forEach((m, i) => (m.visible = false));
+      this.all.visible = true;
       this.all.geometry.setDrawRange(0, k >= 0.8 ? Infinity : this.evenCount);
       this.u.uA.value = this.base * (k >= 0.8 ? 1 : 1.7);
     }

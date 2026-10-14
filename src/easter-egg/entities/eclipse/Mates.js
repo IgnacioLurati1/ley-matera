@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ZONES } from '../../config/map';
-import { Pickup, glowMate, glowOrb, isHost, myId } from './common';
-import { ART, buildLostMate } from './stepArt';
+import { Pickup, isHost, myId } from './common';
+import { buildLostMate } from './stepArt';
 import { unlock as unlockLogro } from '../../core/logros';
 import { PERKS } from '../../config/perks';
 
@@ -38,7 +38,7 @@ export default class Mates {
       const pos = new THREE.Vector3(S.pos[0], y + 0.22, S.pos[1]);
       // (stepArt) cada uno, un mate de su mapa de origen (sin la mano), con un
       // halo violeta chico de la disformidad
-      const obj = ART ? buildLostMate(g, i) : glowMate(0xb088ff);
+      const obj = buildLostMate(g, i);
       obj.rotation.y = i * 0.9;
       const pk = new Pickup(g, obj, pos, { radius: 1.5, text: 'agarrar el mate perdido', col: 0xa070ff });
       pk.onTake = () => this.request(i);
@@ -46,12 +46,6 @@ export default class Mates {
       // (sin luz: siete luces más en escena todo el tiempo le cuestan a cada píxel
       // del mapa; el mate se ve por su brillo propio y un halo chico)
       pk.light.intensity = 0;
-      if (!ART) {
-        const halo = glowOrb(0x9a70ff, 0.16);
-        halo.children[0].visible = false;
-        halo.position.y = 0.2;
-        obj.add(halo);
-      }
       return { i, S, pk, pos };
     });
   }
@@ -133,7 +127,7 @@ export default class Mates {
     for (const M of this.list) {
       if (M.pk.taken) continue;
       M.pk.obj.position.y = M.pos.y + Math.sin(t * 1.6 + M.i) * 0.05;
-      M.pk.obj.rotation.y += dt * (ART ? 0.35 : 0.6);
+      M.pk.obj.rotation.y += dt * 0.35;
       M.pk.obj.userData.tick?.(dt, t);
     }
   }

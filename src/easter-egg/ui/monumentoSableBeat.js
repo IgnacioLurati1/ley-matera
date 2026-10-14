@@ -32,7 +32,7 @@ import { assetUrl } from '../../lib/assets';
 // contado desde la hora programada del paso (ui/castleCine stepAt).
 // Luces: ninguna nueva (los fogonazos son los de fx, que ya existen); el
 // desgarro, el Gil y el sable se arman escondidos y se compilan al empezar la
-// escena (ui/cineWarm). globalThis.__mduNoSableGil: la escena como antes.
+// escena (ui/cineWarm).
 
 const URL = '/assets/sotano/modelos/gaucho/cine-sable.json';
 let CLIPS = null;
@@ -76,7 +76,6 @@ const DUR = 19.9;
 // La despedida con más aire (el usuario, 2026-10-07: las tomas del final iban
 // apuradas, y la de Belgrano saludando al Gil duraba 1 s): cuánto más dura la
 // toma del sable en alto y cuánto más la de Belgrano; lo que sigue se corre.
-// (globalThis.__mduNoGilPausa: como antes)
 const LIFT_X = 0.5;
 const NOD_X = 1.9;
 // el desgarro: alto, ancho (medio, en el medio) y el plano del halo
@@ -258,8 +257,8 @@ export const sableClips = () => CLIPS;
 
 export function sableBeatOn(cine) {
   // (el Gil viene a buscar el sable; el usuario la quiso en el juego antes de
-  // que salga el mapa que sigue, 2026-10-06. __mduNoSableGil: la escena como antes)
-  return globalThis.__mduNoSableGil !== true && !!cine.crew;
+  // que salga el mapa que sigue, 2026-10-06)
+  return !!cine.crew;
 }
 
 export default class SableBeat {
@@ -394,10 +393,9 @@ export default class SableBeat {
     const act = (r, clip, o = {}) => (late) => r && C.act(r, clip, { ...o, t: (o.t || 0) + (o.keep ? 0 : late) });
     const pd = (k) => PERSONA_T[k]?.delay || 0;
     const portalAt = new THREE.Vector3(P.x, P.y, P.z - 1.2);
-    const slow = globalThis.__mduNoGilPausa !== true;
     // (x1: lo que se corre la toma de Belgrano; x2: todo lo de después)
-    const x1 = slow ? LIFT_X : 0;
-    const x2 = slow ? LIFT_X + NOD_X : 0;
+    const x1 = LIFT_X;
+    const x2 = LIFT_X + NOD_X;
 
     // 1. se raja el aire (la cámara, del lado del río, entre los troncos)
     ev(0, () => {
@@ -525,13 +523,13 @@ export default class SableBeat {
     });
     // Belgrano lo saluda: una inclinación de cabeza lenta, con la cámara que se le acerca
     ev(15.1 + x1, () => {
-      cine.shot(1.0 + (slow ? NOD_X : 0), (u, lt, pos, look) => {
-        const k = slow ? smooth(u) : u;
-        pos.set(lerp(101.0, slow ? 101.3 : 101.05, k), my + 1.45, lerp(28.7, slow ? 29.0 : 28.75, k));
+      cine.shot(1.0 + NOD_X, (u, lt, pos, look) => {
+        const k = smooth(u);
+        pos.set(lerp(101.0, 101.3, k), my + 1.45, lerp(28.7, 29.0, k));
         look.set(103.0, my + 1.55, 30.75);
       });
     });
-    ev(15.15 + x1 + (slow ? 0.45 : 0), () => (this.nodAt = cine.t));
+    ev(15.15 + x1 + 0.45, () => (this.nodAt = cine.t));
     ev(15.0, (late) => {
       b.canchero.mate = false;
       C.act(b.canchero, 'cool', { loop: true, fade: 0.5, t: late });
@@ -659,7 +657,7 @@ export default class SableBeat {
     // Belgrano asiente cuando el Gil alza el sable
     const bel = cine.bel;
     // (despacio: baja la cabeza, la sostiene y vuelve; antes, un cabeceo de 1,3 s)
-    if (bel && globalThis.__mduNoGilPausa !== true) {
+    if (bel) {
       const k = this.nodAt != null ? Math.min(1, Math.max(0, (cine.t - this.nodAt) / 2.1)) : 0;
       bel.nod = 0.36 * smoothW(k, 0, 0.32) * (1 - smoothW(k, 0.68, 1));
     } else if (bel) bel.nod = this.nodAt != null ? 0.32 * Math.sin(Math.PI * Math.min(1, Math.max(0, (cine.t - this.nodAt) / 1.3))) : 0;

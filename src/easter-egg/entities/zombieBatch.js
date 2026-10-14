@@ -14,15 +14,10 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 // farol de las ánimas...), que ya no se dibujan: antes de dibujar se copian a
 // una textura (una fila por zombie) y el vértice busca ahí su matriz.
 // Los ojos siguen aparte (brillan, sin luz ni sombra).
-// (globalThis.__mduNoZBatch, al armar el mapa: como antes)
 
 const CELL = 512;
 const PAD = 16;
 const TEX_PER_COL = 5; // 4 de la matriz + el color
-
-export function zombieBatchOn() {
-  return globalThis.__mduNoZBatch !== true;
-}
 
 // El código de vértice que pone cada pieza en su lugar (color, G-buffer, sombras).
 function patchVertex(s, U) {
@@ -98,8 +93,7 @@ function buildAtlas(texs) {
 
 // El brillo propio de una prenda (las grietas de luz de Eclipse:
 // material.userData.zGlow, cuánto brilla el color de la pieza).
-// (globalThis.__mduNoZGlow, al armar el mapa: sin brillo)
-const glowOf = (m) => (globalThis.__mduNoZGlow === true ? 0 : m.userData?.zGlow || 0);
+const glowOf = (m) => (m.userData?.zGlow || 0);
 
 // Un trozo de la geometría con sus atributos de pieza (zcol), atlas (zuv) y
 // rugosidad/metal (zmr); gl: su brillo (zgl), solo si alguna prenda brilla.
@@ -261,15 +255,9 @@ export default class ZombieBatch {
   // Zombies.render: cuántas filas se dibujan. (La sombra la prende fx/Epic
   // shadowCasters, como a las de siempre.)
   frame() {
-    // (para comparar en vivo: globalThis.__mduZBatchOff = true dibuja las de siempre)
-    const off = globalThis.__mduZBatchOff === true;
-    if (off !== !!this.off) {
-      this.off = off;
-      for (const M of this.list) M.im.layers.set(off ? 0 : 31);
-    }
-    if (off) {
-      this.mesh.visible = false;
-      return;
+    if (this.off) {
+      this.off = false;
+      for (const M of this.list) M.im.layers.set(31);
     }
     let rows = 0;
     for (const M of this.list) if (M.im.visible) rows = Math.max(rows, Math.ceil(M.im.count / M.parts.length));

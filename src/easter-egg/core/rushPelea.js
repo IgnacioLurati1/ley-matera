@@ -22,10 +22,6 @@
 //   llegaban (la partida recién empieza: salen del lado de la entrada, con las
 //   puertas cerradas). En el rush, las rondas ahí no corren y sale una horda
 //   como la del coloso alrededor de los que pelean (ESTERO).
-//
-// globalThis.__mduRushMunicionVieja = true: la munición como antes (cada arena la suya).
-// globalThis.__mduRushZombiesViejos = true: los muertos como antes (vida 3000,
-// 2600 en el castillo; el estero con las rondas de la partida).
 import * as THREE from 'three';
 
 // ---- los números (para ajustar) ----
@@ -46,11 +42,8 @@ export const ZOMBI_RONDA = 15;
 // (por cada compañero, la mitad más: como el coloso, GranGuerra.team), a qué
 // distancia de uno de los que pelean (m)
 export const ESTERO = { primera: 4, cada: 12, tanda: 6, tope: 10, cerca: [10, 16] };
-
-export const municionVieja = () => globalThis.__mduRushMunicionVieja === true;
-export const zombiesViejos = () => globalThis.__mduRushZombiesViejos === true;
 // (world/Infierno.js y los que tiran munición por su cuenta) ¿la reparte el rush?
-export const municionDelRush = (g) => !!g.rush?.on && !municionVieja();
+export const municionDelRush = (g) => !!g.rush?.on;
 
 const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
@@ -74,7 +67,7 @@ export default class RushPelea {
   // (Zombies.spawn, anfitrión) La ronda y la vida de un muerto de la pelea; null: como venía.
   zombi(round, health) {
     const R = this.rush;
-    if (!R.on || !R.entered || zombiesViejos()) return null;
+    if (!R.on || !R.entered) return null;
     const V = R.mayhem ? ZOMBI_VIDA.mayhem : ZOMBI_VIDA.rush;
     return { round: Math.max(round | 0, ZOMBI_RONDA), health: V[R.i] ?? V[V.length - 1] ?? health };
   }
@@ -100,18 +93,16 @@ export default class RushPelea {
     if (!this.rush.entered) return;
     const A = g.arena;
     // (el reloj propio de cada arena, quieto: la reparte el rush)
-    if (A?.active && !municionVieja()) A.ammoT = 1e9;
-    if (this.rush.cur.map === 'esteros' && !zombiesViejos()) this.sinRondas();
+    if (A?.active) A.ammoT = 1e9;
+    if (this.rush.cur.map === 'esteros') this.sinRondas();
     if (!this.fighting()) return;
     this.t += dt;
-    if (!municionVieja()) {
-      this.ammoT -= dt;
-      if (this.ammoT <= 0) {
-        this.ammoT = MUNICION.cada;
-        this.dropAmmo();
-      }
+    this.ammoT -= dt;
+    if (this.ammoT <= 0) {
+      this.ammoT = MUNICION.cada;
+      this.dropAmmo();
     }
-    if (this.rush.cur.map === 'esteros' && !zombiesViejos()) {
+    if (this.rush.cur.map === 'esteros') {
       this.hordaT -= dt;
       if (this.hordaT <= 0) {
         this.hordaT = ESTERO.cada;

@@ -77,7 +77,6 @@ export function gilVincha(a) {
 // con las puntas más cortas: la colorada de puntas largas sigue siendo solo la
 // del Gil (lo que lo distingue). La pone net/Avatars.update en los juegos de
 // muñecos que la piden (`bandanas`), solo en esos dos mapas.
-// globalThis.__mduNoBandanas: sin ellas.
 export const BANDANA_MAPS = new Set(['esteros', 'eclipse']);
 const darker = new THREE.Color();
 export function crewBandana(a) {

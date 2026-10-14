@@ -80,7 +80,7 @@ export const TRACKS = {
   // Wikimedia Commons, San_Lorenzo_-_U.S._Marine_Band.ogg. Entera, de la
   // introducción al acorde final)
   'marcha-san-lorenzo': { name: 'La Marcha de San Lorenzo', gain: 1, loop: [0.1, 230.4] },
-  // el final nuevo de San Lorenzo (entities/eclipse/slFinal.js, a medias, __mduSlFinal): la del
+  // el final nuevo de San Lorenzo (entities/eclipse/slFinal.js; __mduSlFinal = false: el viejo): la del
   // usuario, "Dark Cinematic Finale" (royaltyfreemusicstudio); entra con la corona rota y su
   // final abrupto (69,4 s) cae en el salto del Gil
   'final-eclipse': { name: 'El final de San Lorenzo', gain: 0.7 },
@@ -256,8 +256,8 @@ export default class Music {
     // (g.defense.quiet: el asedio del castillo no lleva música, ni esta)
     if (!this.cur && b && g.state === 'playing' && !g.arena?.active && !g.ee?.scene && !g.intro?.active && !songOn() && !g.defense?.quiet) {
       // (y se va si arranca una escena con el jefe todavía vivo: seguía sonando arriba de la cinemática
-      // final del Challenge de la torre. El usuario, 2026-10-12. globalThis.__mduJefeEnEscena: como antes)
-      this.play(Math.random() < 0.5 ? 'jefe-generico' : 'jefe-generico-2', { loop: true, while: (G) => (G.zombies?.boss === b || (G.crow?.z === b && b.active)) && !b.dead && (G.state === 'playing' || G.state === 'paused') && (!G.ee?.scene || globalThis.__mduJefeEnEscena === true) });
+      // final del Challenge de la torre. El usuario, 2026-10-12)
+      this.play(Math.random() < 0.5 ? 'jefe-generico' : 'jefe-generico-2', { loop: true, while: (G) => (G.zombies?.boss === b || (G.crow?.z === b && b.active)) && !b.dead && (G.state === 'playing' || G.state === 'paused') && !G.ee?.scene });
     }
     // (Alt+I) arrancó la partida: se salta a la escena elegida
     const J = this.jump;

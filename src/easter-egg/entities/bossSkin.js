@@ -201,9 +201,8 @@ export function forgetBossSkins(scene) {
   for (const [k, S] of Object.entries(LOADED)) {
     if (S.scene !== scene) continue;
     // (su geometría y sus huesos: el modelo es de esta escena, sacado de ella
-    // ya no lo suelta Game.disposeScene. globalThis.__mduNoBossFree: como antes)
-    if (globalThis.__mduNoBossFree !== true)
-      S.root?.traverse((o) => {
+    // ya no lo suelta Game.disposeScene)
+    S.root?.traverse((o) => {
         o.geometry?.dispose();
         if (o.isSkinnedMesh) o.skeleton?.dispose();
       });
@@ -470,7 +469,6 @@ export function skinBoneAt(zs, name, out) {
 // él. Francisco volando (la cadera arriba, echado adelante, los brazos
 // abiertos) se veía en un lado y los tiros le pegaban a las piezas, que
 // seguían caminando en el piso (el usuario, 2026-10-05).
-// globalThis.__mduNoSkinHit: como antes (las piezas).
 // [pieza, hueso, hueso de abajo, hasta la punta de la mano]
 const HIT_SEG = [
   [0, 'Hips', 'Spine01'],
@@ -495,7 +493,7 @@ const hq = new THREE.Quaternion();
 // null si no corre (otro jefe, sin modelo, apagado).
 export function skinHitBoxes(zs, z) {
   const S = shown;
-  if (globalThis.__mduNoSkinHit || !S || !S.skin.hitSkin || S.state !== 2 || !S.root.visible) return null;
+  if (!S || !S.skin.hitSkin || S.state !== 2 || !S.root.visible) return null;
   if (!z || zs.boss !== z || zs.bossRig?.kind !== S.skin.kind) return null;
   // (los huesos de la punta no siempre son huesos: head_end se busca por nombre)
   if (!S.hitSeg) {
@@ -648,8 +646,8 @@ export function updateBossSkin(zs, dt) {
     if (S) S.handPart = null;
     // (el sombrero del Capataz es la pieza 13 del de piezas, que se vuelve a mostrar sobre el modelo:
     // entities/skins/capataz.js. Acá se acaba de esconder todo de nuevo y su marca seguía en "ya está":
-    // la segunda vez que aparecía, venía sin sombrero. El usuario, 2026-10-12. __mduNoHatFix: como antes)
-    if (S && globalThis.__mduNoHatFix !== true) S.hatOn = false;
+    // la segunda vez que aparecía, venía sin sombrero. El usuario, 2026-10-12)
+    if (S) S.hatOn = false;
   }
   shown = on ? S : null;
   if (!on) return;

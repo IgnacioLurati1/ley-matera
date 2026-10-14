@@ -21,10 +21,10 @@ export default class LoadScreen {
 
   // { name, sub, image, tip, quick, map }: quick = cambio de mapa en el título (sin consejo ni jugadores);
   // map: el nombre grande va con la letra del propio mapa, la de su entrada (ui/intro.css;
-  // el usuario, 2026-10-13. __mduPostalLetraVieja = true: Creepster en todos)
+  // el usuario, 2026-10-13)
   open({ name, sub = '', image = null, tip = '', quick = false, map = '' }) {
     this.close();
-    const dm = map && globalThis.__mduPostalLetraVieja !== true ? ` data-map="${esc(map)}"` : '';
+    const dm = map ? ` data-map="${esc(map)}"` : '';
     const el = h(`<div class="mdu-arrive${quick ? ' is-quick' : ''}"${dm} role="status" aria-live="polite">
       <div class="mdu-arrive__bg"></div>
       <div class="mdu-arrive__grid">

@@ -671,14 +671,14 @@ function bombillaNueva(m, M, id, o) {
     r2.scale.setScalar(G);
     // (lo que va pegado: el anillo del Rayo, la mira del Torpedo, las aletas del Campanario)
     // se corre entero, sin separarse: la lente de la mira del Torpedo quedaba
-    // volando con la bombilla larga (el usuario, 2026-10-13; __mduPegadoViejo =
-    // true: cada pieza en proporción, como antes). El codo va al quiebre.
+    // volando con la bombilla larga (el usuario, 2026-10-13). El codo va al
+    // quiebre.
     const pegado = extra.filter((e) => !e.userData.codo);
     const ancla = pegado.length ? pegado.reduce((s, e) => s + e.position.y, 0) / pegado.length : 0;
     x2.forEach((x, i) => {
       // (lo que gira o late en la de siempre, también en la nueva: los aros del Caótico)
       for (const k of ['spin', 'glow']) if (m.anim?.[k]?.includes(extra[i])) m.anim[k].push(x);
-      x.position.y = extra[i].userData.codo || globalThis.__mduPegadoViejo === true ? extra[i].position.y * K : extra[i].position.y + ancla * (K - 1);
+      x.position.y = extra[i].userData.codo ? extra[i].position.y * K : extra[i].position.y + ancla * (K - 1);
       if (Math.abs(x.position.z) > 1e-4) x.position.z += Math.sign(x.position.z) * r * (G - 1);
       else x.scale.multiplyScalar(G);
     });
@@ -1197,7 +1197,7 @@ function esparcir(g, { R, sup, libre }, n, seed, make, { dMin = 0.12, dMax = 0.7
     o.position.x = x;
     o.position.z = z;
     const L = o.userData.tumbado;
-    if (L && globalThis.__mduPalitosViejos !== true) {
+    if (L) {
       // (acostado sobre la curva del montón: las dos puntas apoyan, ninguna
       // queda en el aire; el usuario, 2026-10-13: "vuelan los pedacitos")
       const d = v3(0, 1, 0).applyQuaternion(o.quaternion);
@@ -1247,12 +1247,7 @@ const YERBAS = {
     alto: 0.021,
     cosas(g, c) {
       // (todos acostados y separados: parados o apilados se veían volando;
-      // el usuario, 2026-10-13. __mduPalitosViejos: como antes)
-      if (globalThis.__mduPalitosViejos === true) {
-        let n = 0;
-        esparcir(g, c, 10, 91, (k, i, a) => palito(c.M, 0.006 + hash(i, 3, 91) * 0.006, 0.0007 + hash(i, 4, 91) * 0.0004, a, ++n % 4 === 0, 91, i), { dMin: 0.15, dMax: 0.6 });
-        return;
-      }
+      // el usuario, 2026-10-13)
       esparcir(g, c, 10, 91, (k, i, a) => palito(c.M, 0.006 + hash(i, 3, 91) * 0.006, 0.0007 + hash(i, 4, 91) * 0.0004, a, false, 91, i), { dMin: 0.15, dMax: 0.6, sep: 0.0075, lejos: 0.016 });
     },
   },
@@ -1588,7 +1583,7 @@ export const tieneModelo = (id) => !!BUILD[id];
 
 // Pone los accesorios en el mate armado (m: lo que devuelve buildMate).
 export function ponerAccesorios(m, ids, T, { armeria = false } = {}) {
-  if (!m?.mate || !ids?.length || globalThis.__mduSinAccesorios === true) return m;
+  if (!m?.mate || !ids?.length) return m;
   const M = mats(T);
   m.acc = {};
   const list = ids.filter((id) => BUILD[id]).sort((a, b) => BUILD[a][2] - BUILD[b][2]);

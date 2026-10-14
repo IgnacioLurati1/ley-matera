@@ -12,7 +12,6 @@ import { forgetBossSkins } from '../entities/bossSkin';
 // con el mapa nuevo ya compilado) libera lo que el mapa nuevo no usa. Así lo
 // compartido entre los dos (lo de core/textures, los mates, cachés de los
 // módulos) no se vuelve a subir ni a compilar.
-// (globalThis.__mduNoFlush: como antes)
 
 let retired = null;
 
@@ -138,17 +137,14 @@ export function retireScene(g) {
   if (!scene) return;
   // (los jefes de verdad se sueltan después de juntar sus materiales y
   // texturas: sacados antes, su textura de 1024² quedaba en la placa en cada
-  // partida nueva. globalThis.__mduNoBossFree: como antes)
-  const bossLate = globalThis.__mduNoBossFree !== true;
-  if (!bossLate || globalThis.__mduNoFlush === true) forgetBossSkins(scene);
-  if (globalThis.__mduNoFlush === true) return;
+  // partida nueva)
   const t0 = performance.now();
   epoch++;
   retired ||= { mats: new Set(), tex: new Set(), geos: new Set() };
   const R = { mats: new Set(), tex: new Set(), geos: retired.geos };
   // (las geometrías de la escena las tira Game.disposeScene, como siempre)
   scene.traverse((o) => collect(o, R.mats, R.tex));
-  if (bossLate) forgetBossSkins(scene);
+  forgetBossSkins(scene);
   for (const t of [scene.background, scene.environment]) if (t?.isTexture) R.tex.add(t);
   try {
     offScene(g, scene, R);

@@ -6,8 +6,7 @@ import { PLAYER_START } from '../config/map';
 // ver si valen la pena): sangre seca, barro y humedad (en el piso al pie de las
 // paredes y subiendo por la pared). Texturas hechas a mano en un canvas, cuatro
 // mallas instanciadas (cuatro dibujos), sin sombra ni profundidad: se pegan al
-// piso con polygonOffset. En todos los mapas (el usuario, 2026-10-04);
-// globalThis.__mduNoStains = true (al cargar): sin manchas.
+// piso con polygonOffset. En todos los mapas (el usuario, 2026-10-04).
 
 const rnd = (seed) => {
   let s = seed >>> 0;
@@ -131,8 +130,7 @@ export function buildStains(w, seed = 1) {
   // dos anillos de puntos de la mancha: piso común (ni escalera, ni rampa, ni
   // puerta) a la misma altura; si no entra, se achica, y si queda chiquita, no
   // va. `wallOk`: la humedad al pie de una pared puede meterse abajo de la pared
-  // (maciza: sin baranda ni reja). globalThis.__mduNoStainFit: como antes.
-  const fitOn = globalThis.__mduNoStainFit !== true;
+  // (maciza: sin baranda ni reja).
   const flatAt = (px, pz, y, wallOk) => {
     const cx = Math.floor(px);
     const cz = Math.floor(pz);
@@ -153,7 +151,6 @@ export function buildStains(w, seed = 1) {
   };
   // el tamaño que entra (la mancha mide s; su borde llega a s/2), o 0
   const fit = (x, z, s, ok) => {
-    if (!fitOn) return s;
     for (let k = s; k >= 0.45; k *= 0.82) {
       const R = k * 0.5;
       let good = ok(x, z);
@@ -196,7 +193,7 @@ export function buildStains(w, seed = 1) {
       if (start && Math.hypot(x + 0.5 - start[0], z + 0.5 - start[1]) < 5) continue;
       const y = w.groundCell?.[i] ? w.groundAt(x + 0.5, z + 0.5) : w.fy[i];
       // (la pared de al lado, maciza: no una baranda ni una reja, que dejan ver el desnivel)
-      const walls = DIRS.filter(([dx, dz]) => at(x + dx, z + dz) === CELL.WALL && (!fitOn || !w.edge || w.edge[w.idx(x + dx, z + dz)] === 0));
+      const walls = DIRS.filter(([dx, dz]) => at(x + dx, z + dz) === CELL.WALL && (!w.edge || w.edge[w.idx(x + dx, z + dz)] === 0));
       const u = r();
       const ok = (px, pz) => flatAt(px, pz, y, false);
       if (walls.length && u < 0.07) {
@@ -208,25 +205,23 @@ export function buildStains(w, seed = 1) {
         // (la de la pared, solo si la del piso entró y la pared llega hasta arriba de la mancha)
         const h = 0.8 + r() * 0.9;
         const top = w.top?.[w.idx(x + dx, z + dz)];
-        const tall = !fitOn || top == null || top >= y + h;
+        const tall = top == null || top >= y + h;
         // (y a lo largo de la pared no se pasa de donde hay pared y piso: en la
         // punta de un muro o en el vano de una puerta quedaba en el aire)
         let ws = 1.2 + r() * 1.4;
-        if (fitOn) {
-          const along = (k) => {
-            for (let t = -k / 2; t <= k / 2 + 1e-6; t += 0.25) {
-              const px = x + 0.5 + dz * t;
-              const pz = z + 0.5 + dx * t;
-              if (!flatAt(px, pz, y, false)) return false;
-              const wx = Math.floor(px + dx * 0.75);
-              const wz = Math.floor(pz + dz * 0.75);
-              if (at(wx, wz) !== CELL.WALL || (w.edge && w.edge[w.idx(wx, wz)] !== 0)) return false;
-            }
-            return true;
-          };
-          while (ws >= 0.6 && !along(ws)) ws *= 0.8;
-          if (ws < 0.6) ws = 0;
-        }
+        const along = (k) => {
+          for (let t = -k / 2; t <= k / 2 + 1e-6; t += 0.25) {
+            const px = x + 0.5 + dz * t;
+            const pz = z + 0.5 + dx * t;
+            if (!flatAt(px, pz, y, false)) return false;
+            const wx = Math.floor(px + dx * 0.75);
+            const wz = Math.floor(pz + dz * 0.75);
+            if (at(wx, wz) !== CELL.WALL || (w.edge && w.edge[w.idx(wx, wz)] !== 0)) return false;
+          }
+          return true;
+        };
+        while (ws >= 0.6 && !along(ws)) ws *= 0.8;
+        if (ws < 0.6) ws = 0;
         if (list.damp.length > n0 && tall && ws) list.wall.push({ x: x + 0.5 + dx * 0.49, y, z: z + 0.5 + dz * 0.49, s: ws, h, dx, dz });
       } else if (u < 0.085) {
         push(list.blood, { x: x + 0.2 + r() * 0.6, y, z: z + 0.2 + r() * 0.6, s: 0.5 + r() * 1.3, a: r() * 6.3 }, ok);

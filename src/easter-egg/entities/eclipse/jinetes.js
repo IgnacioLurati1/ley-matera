@@ -9,16 +9,12 @@ import { eclSfx } from '../../fx/eclipseSfx';
 // del caos —fx/eclipseSfx—: el ataque (el alarido antes de la picada), dos
 // tomas, la 1 más baja y con eco porque venía "muy seca y con mucho volumen";
 // la risa mientras rondan, de a ratos y de a uno; la risa demoníaca alguna vez,
-// al rondar o al salir de la grieta. Sin grabación, los sintetizados.
-// globalThis.__mduOldJineteSfx: los sintetizados, como antes)
-const REC = globalThis.__mduOldJineteSfx !== true;
+// al rondar o al salir de la grieta. Sin grabación, los sintetizados)
 const REC_IDS = ['jinete-ataque-1', 'jinete-ataque-2', 'jinete-risa', 'risa-demoniaca', 'jinete-golpe'];
 // (2026-10-09, el usuario: "el de cuando el jinete te ataca y te pega: sacá el
 // que está ahora y poné este" —dragon-studio "ghost horror sound"—: el golpe de
 // la embestida (antes sintetizado). Es la misma toma que el ataque 2: el
-// alarido de antes de la picada queda con la 1, así no suena dos veces.
-// globalThis.__mduOldJineteGolpe: el sintetizado y las dos tomas en el alarido)
-const GOLPE = REC && globalThis.__mduOldJineteGolpe !== true;
+// alarido de antes de la picada queda con la 1, así no suena dos veces)
 
 // Los jinetes del apocalipsis del Desgarro Cósmico (entities/eclipse/Desgarro10.js):
 // ánimas encapuchadas, estilo dementor, sobre caballos de hueso. Vuelan en
@@ -527,7 +523,6 @@ export default class Jinetes {
 
   // ---------------- el modelo de Meshy (si ya está) ----------------
   loadModel() {
-    if (globalThis.__mduNoJineteModel === true) return;
     fetch(assetUrl(MODEL_URL))
       .then((r) => (r.ok ? r.arrayBuffer() : null))
       .then((buf) => {
@@ -574,7 +569,6 @@ export default class Jinetes {
   // (ITERACION-8) Uno de los grabados (fx/eclipseSfx); false si todavía no bajó
   // (se pide) o si está apagado: suena el sintetizado.
   rec(id, pos, gain, ref, reverb) {
-    if (!REC) return false;
     const E = eclSfx(this.g);
     if (!E.has(id)) {
       E.load(REC_IDS);
@@ -635,8 +629,7 @@ export default class Jinetes {
     J.t = 0;
     if (s === S.wind) {
       // (el ataque: la toma 1, 3 dB más baja y con más eco)
-      const one = GOLPE || Math.random() < 0.5;
-      if (!this.rec(one ? 'jinete-ataque-1' : 'jinete-ataque-2', J.pos, one ? 0.95 : 1.3, 14, one ? 0.8 : 0.45)) this.snd('d10Shriek', J.pos, 1.3, 1, 14);
+      if (!this.rec('jinete-ataque-1', J.pos, 0.95, 14, 0.8)) this.snd('d10Shriek', J.pos, 1.3, 1, 14);
     }
     if (s === S.dive) {
       J.diveN++;
@@ -679,7 +672,7 @@ export default class Jinetes {
     for (let i = 0; i < 22; i++) g.fx.add.spawn(J.pos.x + rnd() * 1.2, J.pos.y + rnd() * 1.6, J.pos.z + rnd() * 1.2, rnd() * 3, rnd() * 3, rnd() * 3, { color: i % 3 ? [0.7, 0.25, 1] : [1, 0.6, 1], size: 0.22, size1: 0, life: 0.9 + Math.random() * 0.5, drag: 1.2 });
     this.snd('d10Shriek', J.pos, 0.8, 0.6, 16);
     // (alguna vez, la risa demoníaca al salir)
-    if (REC && Math.random() < 0.3 && (this.g.time || 0) - (this.laughAt ?? -99) > 6 && this.rec('risa-demoniaca', J.pos, 0.85, 16, 0.6)) this.laughAt = this.g.time || 0;
+    if (Math.random() < 0.3 && (this.g.time || 0) - (this.laughAt ?? -99) > 6 && this.rec('risa-demoniaca', J.pos, 0.85, 16, 0.6)) this.laughAt = this.g.time || 0;
   }
 
   // (en todas) Uno bajado: se deshace en luz violeta.
@@ -1006,7 +999,7 @@ export default class Jinetes {
         if (J.moanT <= 0) {
           J.moanT = 7 + Math.random() * 9;
           // (rondando: la risa, de a ratos; si no, el lamento sintetizado)
-          if (REC && this.laugh(J, 0.75)) J.moanT += 6 + Math.random() * 8;
+          if (this.laugh(J, 0.75)) J.moanT += 6 + Math.random() * 8;
           else this.snd('d10Shriek', J.pos, 0.45, 0.55, 14);
         }
       }
@@ -1041,7 +1034,7 @@ export default class Jinetes {
       g.fx.addShake?.(0.55);
       g.post?.flash?.(0.18);
       g.fx.flash(c, 0xa040ff, 6, 0.3, 8);
-      if (!(GOLPE && this.rec('jinete-golpe', c, 1.4, 6, 0.3))) this.snd('d10Ram', c, 1.3, 1, 6);
+      if (!this.rec('jinete-golpe', c, 1.4, 6, 0.3)) this.snd('d10Ram', c, 1.3, 1, 6);
     }
   }
 

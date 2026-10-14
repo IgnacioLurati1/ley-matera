@@ -54,8 +54,7 @@ const SHARE = 500;
 const BOX_OFF = 0.58;
 // Dos cajas a la vez (Eclipse Matero, FEATURES.twoBoxes): cada una en una isla distinta; al empezar,
 // una del lado izquierdo del mapa y otra del derecho (BOX_SPOTS `side`). El usuario, 2026-10-11.
-// globalThis.__mduUnaCaja: una sola, como antes.
-const twoBoxes = () => !!FEATURES.twoBoxes && globalThis.__mduUnaCaja !== true;
+const twoBoxes = () => !!FEATURES.twoBoxes;
 // (la isla de un lugar de la caja; en los mapas de una sola pieza, su zona)
 const isleOf = (i) => BOX_SPOTS[i].isle ?? BOX_SPOTS[i].zone;
 const LID_OPEN = FEATURES.castle ? 1.12 : 1.32;
@@ -200,13 +199,13 @@ export default class Interactables {
         }
         // (la reja corre entera: sus 17-20 barrotes, una malla por material; la
         // cerradura de gaucho life, aparte —brilla—. En el penal de Eclipse eran
-        // 68 dibujos por pase en cuatro rejas. globalThis.__mduNoRejaMerge: como antes)
-        if (!(globalThis.__mduNoMerge || globalThis.__mduNoRejaMerge)) compactGroup(slide);
+        // 68 dibujos por pase en cuatro rejas)
+        if (!globalThis.__mduNoMerge) compactGroup(slide);
         group.add(slide);
         // (2026-10-08, el usuario: en el Monumento de Eclipse las rejas al abrirse
         // atravesaban la pared —corrían de costado y asomaban arriba del parapeto—.
-        // Ahí se hunden en el piso y desaparecen. globalThis.__mduOldEclReja: como antes)
-        if (FEATURES.eclipse && ZONES[d.zones[0]]?.isla === 'monumento' && globalThis.__mduOldEclReja !== true) pieces.push({ obj: slide, sink: DOOR_H + 0.1 });
+        // Ahí se hunden en el piso y desaparecen)
+        if (FEATURES.eclipse && ZONES[d.zones[0]]?.isla === 'monumento') pieces.push({ obj: slide, sink: DOOR_H + 0.1 });
         else pieces.push({ obj: slide, side: 1, slide: width });
       } else if (d.kind === 'cerro') {
         // el portón de la capilla al cerro: madera vieja, cintas coloradas y un candado enorme
@@ -275,8 +274,8 @@ export default class Interactables {
         vallaDoor(M, group, pieces, width, i + 1);
         // (cerradas no se mueven: una copia junta, una malla por material; eran
         // ~28 mallas por valla, 625 en el mapa. Al abrir vuelven las sueltas, que
-        // salen volando: openDoor. globalThis.__mduNoVallaMerge: como antes)
-        if (!(globalThis.__mduNoMerge || globalThis.__mduNoVallaMerge)) {
+        // salen volando: openDoor)
+        if (!globalThis.__mduNoMerge) {
           closed = compactGroup(new THREE.Group().add(...pieces.map((p) => p.obj.clone())));
           for (const p of pieces) p.obj.removeFromParent();
           group.add(closed);
@@ -327,9 +326,9 @@ export default class Interactables {
       // las puertas de dos hojas, las tranqueras y el portón del cerro: cerradas
       // tampoco se mueven, así que se dibuja una copia de las dos hojas juntas
       // (en el penal, 6 dibujos por puerta pasan a 3); al abrir vuelven las
-      // hojas sueltas, como el escombro (globalThis.__mduNoDoorMerge: como antes)
+      // hojas sueltas, como el escombro
       // (el castillo: solo las de dos hojas, castleDoorsOn; world/staticLean)
-      if (!closed && pieces.length > 1 && (d.kind === 'door' || d.kind === 'gate' || d.kind === 'cerro') && (!FEATURES.castle || (d.kind === 'door' && castleDoorsOn())) && !(FEATURES.monumento && globalThis.__mduNoMonuDoorMerge) && !(globalThis.__mduNoMerge || globalThis.__mduNo1d || globalThis.__mduNoDoorMerge)) {
+      if (!closed && pieces.length > 1 && (d.kind === 'door' || d.kind === 'gate' || d.kind === 'cerro') && (!FEATURES.castle || (d.kind === 'door' && castleDoorsOn())) && !(globalThis.__mduNoMerge || globalThis.__mduNo1d)) {
         closed = compactGroup(new THREE.Group().add(...pieces.map((p) => p.obj.clone())));
         for (const p of pieces) p.obj.removeFromParent();
         group.add(closed);
@@ -338,8 +337,7 @@ export default class Interactables {
       // (abierto, el escombro y el maíz quedan escondidos: core/matrixCache.js mcSleep)
       group.mcSleep = !(globalThis.__mduNoMerge || globalThis.__mduNo1d);
       // (cerrada no se mueve, core/matrixCache no recorre sus piezas
-      // —mcFrozen—; openDoor la suelta y abierta del todo la vuelve a congelar.
-      // globalThis.__mduNoFreeze: como antes; ver world/staticLean.js)
+      // —mcFrozen—; openDoor la suelta y abierta del todo la vuelve a congelar; ver world/staticLean.js)
       if (freezeDoors()) {
         group.mcFrozen = true;
         (world.frozen ||= []).push(group);
@@ -438,8 +436,7 @@ export default class Interactables {
       // abierta del todo, las hojas ya no se mueven: otra vez una copia junta
       // (una malla por material), como cerrada. Con todas las puertas abiertas
       // eran 6 dibujos por puerta en cada pasada; quedan 3
-      // (globalThis.__mduNoOpenMerge: como antes)
-      if (k >= 1 && (door.def.kind === 'door' || door.def.kind === 'gate' || door.def.kind === 'cerro') && (!FEATURES.castle || (door.def.kind === 'door' && castleDoorsOn())) && !(FEATURES.monumento && globalThis.__mduNoMonuDoorMerge) && !(globalThis.__mduNoMerge || globalThis.__mduNo1d || globalThis.__mduNoDoorMerge || globalThis.__mduNoOpenMerge)) {
+      if (k >= 1 && (door.def.kind === 'door' || door.def.kind === 'gate' || door.def.kind === 'cerro') && (!FEATURES.castle || (door.def.kind === 'door' && castleDoorsOn())) && !(globalThis.__mduNoMerge || globalThis.__mduNo1d)) {
         const objs = door.pieces.map((p) => p.obj).filter((o) => o.visible && o.parent === door.group);
         if (objs.length > 1) {
           door.group.add(compactGroup(new THREE.Group().add(...objs.map((o) => o.clone()))));
@@ -462,10 +459,9 @@ export default class Interactables {
   // que queda por pagar sea más o menos lo de Der Mateendrache (FEATURES.doorBudget), sin sacar
   // puertas: las que sobran se dan por abiertas al empezar, parejo por isla (a cada isla le queda
   // por pagar la misma parte de lo suyo), y cuáles son cambia de partida en partida.
-  // globalThis.__mduPuertasTodas: todas cerradas, como antes.
   pickPreDoors() {
     const budget = FEATURES.doorBudget;
-    if (!budget || globalThis.__mduPuertasTodas === true) return [];
+    if (!budget) return [];
     const groups = new Map();
     let total = 0;
     DOORS.forEach((d, i) => {
@@ -854,7 +850,7 @@ export default class Interactables {
         }
         const tier = tierOf(s.up);
         // (el Sable Corvo no es un mate: Sable de San Lorenzo es su mejora)
-        if (tier >= maxTier(s.id)) return { text: WEAPONS[s.id].kind === 'sable' && !globalThis.__mduNoPapSableText ? 'El sable ya está mejorado' : tier >= 2 ? 'Ese mate ya tiene las dos mejoras' : 'Ese mate ya está mejorado', noCost: true };
+        if (tier >= maxTier(s.id)) return { text: WEAPONS[s.id].kind === 'sable' ? 'El sable ya está mejorado' : tier >= 2 ? 'Ese mate ya tiene las dos mejoras' : 'Ese mate ya está mejorado', noCost: true };
         const what = tier ? `segunda mejora de ${weaponStats(s.id, 1).name}: ${ELEM_INFO[WEAPONS[s.id].pap.elem].desc}` : `mejorar ${WEAPONS[s.id].name}`;
         if (g.activities?.freePap) return { text: `${what} gratis (regalo de las ánimas)`, noCost: true };
         return what;
@@ -1003,7 +999,7 @@ export default class Interactables {
         if (!guest) g.net?.event('pap', { s: 'idle' });
       } else if (pap.t > (guest ? 16 : 12)) {
         const by = pap.entry.remote;
-        if (this.papMine()) g.hud.subtitle(`El Pack-a-Pava se quedó con tu ${pap.entry.id === 'sable' && !globalThis.__mduNoPapSableText ? 'sable' : 'mate'}. Nunca lo dejes esperando.`, 3);
+        if (this.papMine()) g.hud.subtitle(`El Pack-a-Pava se quedó con tu ${pap.entry.id === 'sable' ? 'sable' : 'mate'}. Nunca lo dejes esperando.`, 3);
         this.clearPap();
         if (!guest) g.net?.event('pap', { s: 'idle', lost: by ?? g.net.id });
       }
@@ -1453,8 +1449,7 @@ export default class Interactables {
     // la taza de café aparece a partir del 4to uso (no en fire sale). Se muda menos:
     // 10% el 4to uso y 2% más por cada uno (era 18% + 3%: unos 7 usos en promedio
     // antes de mudarse; ahora unos 10). El usuario, 2026-10-12, todos los mapas.
-    // globalThis.__mduCajaMudaVieja: como antes)
-    const [c0, cStep] = globalThis.__mduCajaMudaVieja === true ? [0.18, 0.03] : [0.1, 0.02];
+    const [c0, cStep] = [0.1, 0.02];
     const coffeeChance = box.uses >= 4 && box.sale == null && !g.powerups.active.firesale ? c0 + (box.uses - 4) * cStep : 0;
     box.coffee = Math.random() < coffeeChance;
     // (no ofrece lo que ya tiene el que la abrió: antes, con un invitado, se
@@ -1623,8 +1618,8 @@ export default class Interactables {
           // (ni arriba de una de la liquidación que alguien está usando: quedaban dos encimadas)
           const free = options.filter((i) => !(this.saleBoxes[i]?.group.visible && this.saleBoxes[i].state !== 'closed'));
           if (free.length) options = free;
-          // (la torre: no al azar, stackedNext. __mduBoxAzar: como antes)
-          const up = FEATURES.tower && globalThis.__mduBoxAzar !== true ? stackedNext(box.spot) : -1;
+          // (la torre: no al azar, stackedNext)
+          const up = FEATURES.tower ? stackedNext(box.spot) : -1;
           const next = up >= 0 ? up : options[Math.floor(Math.random() * options.length)];
           box.group.visible = true;
           box.beam.visible = true;
@@ -1826,9 +1821,8 @@ export default class Interactables {
     let best = null;
     let bestScore = -Infinity;
     // (el rush de jefes y el Mayhem: no se compra nada ni se convida plata; el
-    // usuario, 2026-10-13: "no se puede comprar y no hay puntos en ningún rush".
-    // __mduRushConPuntos = true: como antes)
-    const noBuy = !!g.rush?.on && globalThis.__mduRushConPuntos !== true;
+    // usuario, 2026-10-13: "no se puede comprar y no hay puntos en ningún rush")
+    const noBuy = !!g.rush?.on;
     for (const it of this.list) {
       let ix = it.pos.x;
       let iz = it.pos.z;

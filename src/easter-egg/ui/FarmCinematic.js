@@ -8,6 +8,7 @@ import { scarecrowProp, scarecrowPose, scarecrowFallEnd } from '../entities/skin
 import { preloadBossSkin } from '../entities/bossSkin';
 import { prefetchTrack } from '../core/music';
 import { shownChars } from '../core/voice';
+import { revealSub } from './subReveal';
 import { cineClip, poseCineClip, gauchoClip, cineSnap, headProp, FACE_EYES } from '../net/gauchoSkin';
 import { assetUrl } from '../../lib/assets';
 
@@ -175,11 +176,11 @@ export default class FarmCinematic {
     this.root.add(this.shadesHand);
     // los segadores con movimientos animados a mano en Blender, cada uno con su
     // carácter (ui/cineCrew PERSONA; C:/Users/ignac/Tools/mdu-blender
-    // granja_clips.py). globalThis.__mduBlend = false: como antes.
+    // granja_clips.py).
     this.PC = null;
     // (las duraciones de las tomas dependen del interruptor, no de si el json
     // ya llegó: en línea todos tienen el mismo guion en hora)
-    this.blend = globalThis.__mduBlend !== false;
+    this.blend = true;
     if (this.blend) {
       fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-granja.json'))
         .then((r) => r.json())
@@ -355,8 +356,7 @@ export default class FarmCinematic {
         // (el negro dura un poco más: las primeras décimas la placa termina
         // de armar lo de la escena y los segadores (warmReapers) y se traba
         // dos veces ~0,2 s; en negro no se ve)
-        if (globalThis.__mduNoReapWarm) this.black(0, 1.6);
-        else this.later(0.75, () => this.black(0, 1.5));
+        this.later(0.75, () => this.black(0, 1.5));
         this.shotKneel();
         g.audio.caw(tmpV.copy(this.O), 2);
         return 3.6;
@@ -413,17 +413,10 @@ export default class FarmCinematic {
         // (mientras habla: el Canchero, de cerca, con la hoz al hombro, le
         // levanta el antebrazo y le cabecea despacio, aprobando; después los
         // cuatro. Los anteojos, solo en el penal y la torre: el usuario,
-        // 2026-10-04; globalThis.__mduShadesAll: como antes)
+        // 2026-10-04)
         const cc = this.reapers.find((r) => r.persona === 'canchero');
         if (this.blend && cc) {
-          if (globalThis.__mduShadesAll) {
-            this.act(cc, 'shadesL', { fade: 0.4 });
-            this.shadesT = this.now;
-            if (this.PC) {
-              this.shadesR = cc;
-              this.shadesGrip(cc);
-            }
-          } else this.act(cc, 'hozNod', { fade: 0.4 });
+          this.act(cc, 'hozNod', { fade: 0.4 });
           this.shotShades(cc, 2.3);
           this.later(2.2, () => this.act(cc, 'hozShoulder', { loop: true, fade: 0.35 }));
           this.later(2.3, () => this.shotFront(Math.max(1, d - 2.3), true));
@@ -500,7 +493,7 @@ export default class FarmCinematic {
     // se leía; con sombra oscura, ui/style.css .mdu-fcine--granja.is-vozluz)
     this.el.classList.toggle('is-vozluz', who === 'entidad');
     this.el.classList.toggle('is-secreto', secret);
-    this.sub = { text, t0: this.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.05)), marks: globalThis.__mduSubViejo === true ? null : this.g.audio.sayMarks, k: -1 };
+    this.sub = { text, t0: this.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.05)), marks: this.g.audio.sayMarks, k: -1 };
     return d;
   }
 
@@ -765,11 +758,10 @@ export default class FarmCinematic {
     const fz = -Math.cos(r.yaw);
     // (sin los anteojos: de medio cuerpo, para que se vea la palma arriba y el
     // cabeceo; de cerca, la hoz en el hombro le quedaba en la cara)
-    const wide = !globalThis.__mduShadesAll;
     this.shot(dur, (u) => {
-      const k = (wide ? 2.6 : 1.3) - 0.3 * u;
-      tmpV.set(h.x + fx * k - fz * (wide ? 0.6 : 0.25), h.y + (wide ? -0.08 : 0.02), h.z + fz * k + fx * (wide ? 0.6 : 0.25));
-      tmpW.set(h.x, h.y + (wide ? -0.22 : 0.12), h.z);
+      const k = 2.6 - 0.3 * u;
+      tmpV.set(h.x + fx * k - fz * 0.6, h.y - 0.08, h.z + fz * k + fx * 0.6);
+      tmpW.set(h.x, h.y - 0.22, h.z);
     }, 38);
   }
 
@@ -911,7 +903,7 @@ export default class FarmCinematic {
       const k = sub.marks ? shownChars(sub.text, sub.marks, t - sub.t0) : Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
       if (k !== sub.k) {
         sub.k = k;
-        this.span.textContent = sub.text.slice(0, k);
+        revealSub(this.span, sub.text, k);
       }
     }
     // el oído va con la cámara
@@ -930,7 +922,6 @@ export default class FarmCinematic {
   // shaders al dibujarlos, aunque three ya los haya compilado, y sube sus
   // mallas y texturas). Se los dibuja una vez acá, todavía en negro, delante
   // de la cámara; al cuadro siguiente vuelven a su lugar, escondidos.
-  // globalThis.__mduNoReapWarm = true: como antes.
   warmReapers() {
     const P = this.people.root;
     if (this.warmT != null) {
@@ -943,7 +934,7 @@ export default class FarmCinematic {
     // (los primeros cuadros de la escena, todavía en negro: el fundido arranca
     // con el primer paso del guion; en línea t puede arrancar adelantado)
     this.nf = (this.nf || 0) + 1;
-    if (globalThis.__mduNoReapWarm || P.visible || this.nf < 2) return;
+    if (P.visible || this.nf < 2) return;
     if (this.nf > 6) {
       this.warmT = -1;
       this.warmDone = true;
@@ -1273,7 +1264,7 @@ export default class FarmCinematic {
     hzY.normalize().multiplyScalar(kUp).addScaledVector(hzA, 1 - kUp);
     if (hzY.lengthSq() < 1e-6) hzY.copy(hzA);
     hzY.normalize();
-    if (r.hzY && globalThis.__mduNoHozSmooth !== true) {
+    if (r.hzY) {
       hzY.lerp(r.hzY, Math.exp(-(this.dt || 1 / 30) * 14));
       hzY.addScaledVector(hzF, -hzY.dot(hzF)).normalize();
     }
@@ -1378,21 +1369,6 @@ export default class FarmCinematic {
     const sk = a.gs.mesh.skeleton;
     const hi = sk.bones.indexOf(head);
     return out.copy(head.matrixWorld).multiply(sk.boneInverses[hi]).multiply(a.gs.mesh.bindMatrix);
-  }
-
-  // Dónde queda la muñeca izquierda cuando ya se los calzó (el clip en
-  // SHADES_ON), en el espacio de la cara: mientras los lleva, los anteojos van
-  // pegados a la mano a esa distancia y al llegar quedan justo en su lugar,
-  // sin deslizarse. (Se posa un momento en ese cuadro; poseReapers lo vuelve a
-  // posar en este mismo cuadro.)
-  shadesGrip(r) {
-    this.shadesO = null;
-    const a = this.people.list.get(r.id);
-    const c = this.clipOf('shadesL');
-    if (!a?.gs?.on || !c) return;
-    if (!poseCineClip(a, c, SHADES_ON, r.pos.x, r.pos.y, r.pos.z, (r.yaw || 0) + Math.PI)) return;
-    const hand = a.gs.bones.LeftHand.getWorldPosition(new THREE.Vector3());
-    this.shadesO = hand.applyMatrix4(this.faceM(a, tmpM).invert());
   }
 
   updateShades() {

@@ -919,8 +919,8 @@ export default class PulperiaScene {
       };
       // (2026-10-05: compilar de una trababa el título 1,2 s, justo cuando uno
       // abría el libro o cualquier cosa; ahora la placa compila de a poco y el
-      // cuadro de afuera va cuando terminó. globalThis.__mduNoPulpAsync: como antes)
-      if (renderer.compileAsync && globalThis.__mduNoPulpAsync !== true) {
+      // cuadro de afuera va cuando terminó)
+      if (renderer.compileAsync) {
         renderer
           .compileAsync(this.scene, this.camera)
           .then(frame)

@@ -43,8 +43,7 @@ export const MOTE_SPEC = {
 const ULTRA = 0.6;
 // (el usuario, 2026-10-13: "son demasiadas y quizás muy grandes": el 40 % del
 // polvo, la ceniza y las hojas, y un tercio más chicas; las brasas de los
-// fuegos quedan igual. __mduMotasViejas = true: como antes)
-const viejas = () => globalThis.__mduMotasViejas === true;
+// fuegos quedan igual)
 const MENOS = 0.4;
 const CHICAS = 0.65;
 
@@ -158,7 +157,7 @@ function cloud(kind, n, scaleU, maskU) {
   const U = {
     uTime: { value: 0 },
     uScale: scaleU,
-    uSize: { value: D.size * (kind === 'ember' || viejas() ? 1 : CHICAS) },
+    uSize: { value: D.size * (kind === 'ember' ? 1 : CHICAS) },
     uSwirl: { value: D.swirl || 0 },
     uWhere: { value: D.where || 0 },
     uGain: { value: D.gain },
@@ -248,7 +247,7 @@ export default class LitMotes {
     const part = (g.tier?.('base') ?? g.settings?.quality) === 'epic' ? 1 : ULTRA;
     if (part !== this.part) {
       this.part = part;
-      for (const c of this.clouds) c.pts.geometry.setDrawRange(0, Math.ceil(c.n * part * (c.kind === 'ember' || viejas() ? 1 : MENOS)));
+      for (const c of this.clouds) c.pts.geometry.setDrawRange(0, Math.ceil(c.n * part * (c.kind === 'ember' ? 1 : MENOS)));
     }
     // (al prender o apagar, de a poco: nada aparece de golpe)
     // (al cargar el mapa, ya en su lugar)

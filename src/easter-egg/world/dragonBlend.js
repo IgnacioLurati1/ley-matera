@@ -17,15 +17,13 @@ import { assetUrl } from '../../lib/assets';
 //   · la mirada (look) y la boca (open/roarJaw) van encima del clip: el cuello
 //     se curva hacia lo que mira con los mismos topes de siempre (reachable).
 // Modelo: el mismo modelo.glb (probé arreglar los pesos de las escamas sueltas,
-// drag_reweight*.py, y quedaba peor). Switch:
-// globalThis.__mduNoDragonBlend = true (antes de armar el dragón) = como antes.
-// Para probar con el switch apagado por defecto: globalThis.__mduDragonBlend = true.
+// drag_reweight*.py, y quedaba peor).
 
 const CLIPS_URL = '/assets/sotano/modelos/mateendrache/clips-blend.json';
 // (el mismo modelo: probé arreglar los pesos de las escamas sueltas y quedaba peor)
 export const BLEND_GLB = '/assets/sotano/modelos/mateendrache/modelo.glb';
 const DEFAULT_ON = true;
-export const dragonBlendOn = () => globalThis.__mduNoDragonBlend !== true && globalThis.__mduBlend !== false && (DEFAULT_ON || globalThis.__mduDragonBlend === true);
+export const dragonBlendOn = () => DEFAULT_ON;
 
 const C = { p: null, data: null };
 export function loadDragonClips() {
@@ -135,9 +133,8 @@ export class DragonBlend {
       this.takeoff = !!(this.takeoff && clips.despegue);
       this.landing = !!(want === 'stand' && this.state === 'fly' && clips.aterrizaje && D.blendDur > 0.3);
       // (de lo que estaba volando al aterrizaje, en LAND_XF s: el clip arranca con
-      // las alas arriba y el ala saltaba de abajo a arriba en un cuadro.
-      // globalThis.__mduNoLandFix = true: como antes)
-      if (this.landing && this.T && globalThis.__mduNoLandFix !== true) {
+      // las alas arriba y el ala saltaba de abajo a arriba en un cuadro)
+      if (this.landing && this.T) {
         this.X ||= this.T.map(() => ({ p: new THREE.Vector3(), q: new THREE.Quaternion() }));
         this.T.forEach((b, i) => (this.X[i].p.copy(b.p), this.X[i].q.copy(b.q)));
         this.xf = 0;
@@ -274,14 +271,12 @@ export class DragonBlend {
     // 30 a cada vuelta, con el ala a la vista: el ala saltaba cada ~7 s, también
     // aterrizando en el final del castillo. Sin planeo, de corrido; planeando, el
     // salto queda escondido en el medio del planeo y el aleteo vuelve a arrancar
-    // justo al terminar. globalThis.__mduNoFlyWrap = true: como antes)
+    // justo al terminar)
     const vd = clips.vuelo.dur;
     const cyc = vd + GLIDE;
     let ut = this.flyT % cyc;
-    if (globalThis.__mduNoFlyWrap !== true) {
-      if (!(k < 0.8 && clips.planeo)) ut = this.flyT;
-      else if (ut >= vd + GLIDE / 2) ut = (((ut - cyc) % vd) + vd) % vd;
-    }
+    if (!(k < 0.8 && clips.planeo)) ut = this.flyT;
+    else if (ut >= vd + GLIDE / 2) ut = (((ut - cyc) % vd) + vd) % vd;
     if (this.glideW < 0.999) sample(clips.vuelo, ut, out);
     if (this.glideW > 0.001) {
       sample(clips.planeo, this.flyT, this.A);

@@ -12,7 +12,6 @@
 // Los modelos de los accesorios: weapons/accesorios.js. La pantalla:
 // ui/Armory.js. El aviso en la partida: ui/armeriaAviso.js.
 //
-// __mduSinAccesorios = true: ni efectos, ni modelos, ni puntos (como antes).
 
 import * as P from './progress';
 import { WEAPONS } from '../config/weapons';
@@ -23,7 +22,7 @@ import { keyOf } from './controls';
 export const ARMERIA = {
   // el último nivel que da algo (accesorios, lugares, especialista); después
   // se sigue subiendo hasta `tope` sin premio (el usuario, 2026-10-13: "que
-  // puedan subir hasta 999"; __mduArmasTope20 = true: tope en el 20, como antes)
+  // puedan subir hasta 999")
   max: 20,
   tope: 999,
   // puntos por baja con ese mate (cuenta también mejorado); a la cabeza, un poco más
@@ -42,7 +41,7 @@ export const ARMERIA = {
   especialista: 20,
   // qué bajas cuentan (no el cuchillo, ni las trampas, ni las bombas atómicas).
   // 'burn': las quemaduras que dejó el tiro, para el mate que las prendió (el
-  // usuario, 2026-10-12; __mduSinQuemaduras: no cuentan)
+  // usuario, 2026-10-12)
   tipos: ['bullet', 'explosive', 'burn'],
   // la baja de un jefe vale más (el usuario, 2026-10-12)
   jefe: 10,
@@ -55,7 +54,7 @@ export const ARMERIA = {
   // danio: fijo, en el centro de la explosión (la vida de un muerto común es
   // 2.710 en la ronda 20 y 2.981 en la 21: config/rules zombieHealth; al borde
   // pega el 40 %, como toda explosión). Ese es el tope: no crece con la ronda.
-  // bajas: lo de antes (__mduSinEspecialistas: vuelve uno cada 8 bajas, sin
+  // bajas: lo de antes (vuelve uno cada 8 bajas, sin
   // reserva, y pega 400 + 40 por ronda como la bomba de yerba).
   lanzapava: { tiros: 2, reserva: 4, danio: 2750, bajas: 8 },
 };
@@ -64,14 +63,13 @@ export const ARMERIA = {
 // aprobó el 2026-10-12: "que no den invencibilidad" y "nada a medio hacer").
 // Lo que hacen: especial() (lo fijo, sobre las estadísticas) y
 // weapons/especialistas.js (lo que pasa en la partida).
-// __mduSinEspecialistas = true: solo los dos de antes (Último sorbo y Lanzapava).
 export const ESP = {
   // las últimas balas del cargador pegan por mult (con estela dorada)
   ultimoSorbo: { balas: 3, mult: 2 },
   // cada baja a la cabeza pasa balas de la reserva al cargador (no crea balas)
   bendicion: { balas: 1 },
   // dos balas por gatillo (gastan una del cargador: el usuario, 2026-10-13), cadencia y patada
-  // (cabeza: +25 % a la cabeza, el usuario 2026-10-13; __mduSorboViejo = true: sin eso)
+  // (cabeza: +25 % a la cabeza, el usuario 2026-10-13)
   dobleSorbo: { balas: 2, gasta: 1, cadencia: -0.35, retroceso: 0.6, cabeza: 0.25 },
   // si el tiro mata, el siguiente sale a los `espera` s (sin el cerrojo)
   cerrojo: { espera: 0.12 },
@@ -294,16 +292,12 @@ export const ESPECIALISTA = {
   bombillazo: { id: 'voluntad', name: 'A voluntad', txt: 'Gatillo otra vez: revienta' },
   explosivo: { id: 'salva', name: 'Salva', txt: 'Mantené el gatillo: hasta 4 juntas' },
 };
-// (los dos de antes de la segunda vuelta: __mduSinEspecialistas deja solo estos)
-const VIEJOS = new Set(['ultimoSorbo', 'lanzapava']);
-export const sinNuevos = () => globalThis.__mduSinEspecialistas === true;
 
 // ---------------- niveles ----------------
 export const tieneNiveles = (id) => CAMOABLE.includes(id);
-const off = () => globalThis.__mduSinAccesorios === true;
 
 // Puntos para pasar del nivel n al n + 1.
-const tope = () => (globalThis.__mduArmasTope20 === true ? ARMERIA.max : ARMERIA.tope);
+const tope = () => ARMERIA.tope;
 export function need(n) {
   if (n >= tope()) return Infinity;
   // (pasado el 20, cada nivel cuesta lo mismo que el del 19 al 20)
@@ -385,7 +379,6 @@ export function puestos(id) {
 // Lo que va en el modelo (en la mano, en la armería y en la de los compañeros).
 // (más el Lanzapava del Mate 47 si tiene el especialista puesto: weapons/lanzapava.js)
 export const modelo = (id) => {
-  if (off()) return [];
   const out = puestos(id);
   if (id === 'mate47' && especialista(id)?.on) out.push('lanzapava');
   return out;
@@ -415,7 +408,7 @@ export function sacar(id, acc) {
 // El especialista: { ...datos, ok (ganado), on (prendido) } o null.
 export function especialista(id) {
   const E = ESPECIALISTA[id];
-  if (!E || !tieneNiveles(id) || (sinNuevos() && !VIEJOS.has(E.id))) return null;
+  if (!E || !tieneNiveles(id)) return null;
   const d = dato(id, false);
   const ok = nivelDe(d.xp).level >= ARMERIA.especialista;
   // (los de una tecla dicen cuál: la que eligió en Controles)
@@ -450,7 +443,7 @@ P.on('change', () => memo.clear());
 // weapons/config weaponStats (una copia nueva cada vez: se puede tocar).
 // slot: { id, mag } (para el especialista que mira el cargador).
 export function aplicar(st, slot) {
-  if (!st || !slot || slot.temp || off() || !tieneNiveles(slot.id)) return st;
+  if (!st || !slot || slot.temp || !tieneNiveles(slot.id)) return st;
   // (se pide muchas veces por cuadro: lo puesto se guarda hasta que cambie el perfil)
   let c = memo.get(slot.id);
   if (!c) memo.set(slot.id, (c = { acc: puestos(slot.id), E: especialista(slot.id) }));
@@ -504,7 +497,7 @@ function especial(id, st, slot) {
   } else if (id === 'dobleSorbo') {
     if (st.rpm) st.rpm *= 1 + N.cadencia;
     st.recoil *= 1 + N.retroceso;
-    if (st.headMult && globalThis.__mduSorboViejo !== true) st.headMult *= 1 + N.cabeza;
+    if (st.headMult) st.headMult *= 1 + N.cabeza;
   } else if (id === 'trilladora') {
     // (sin mira: el clic derecho no hace nada, weapons/Weapons wantAds noAds)
     st.noAds = true;
@@ -528,16 +521,16 @@ function especial(id, st, slot) {
 // Los puntos de una baja (si cuenta). boss: un jefe vale ARMERIA.jefe.
 export function puntos(type, zone, boss = false) {
   if (!cuenta(type)) return 0;
-  if (boss && globalThis.__mduJefeComun !== true) return ARMERIA.jefe;
+  if (boss) return ARMERIA.jefe;
   return zone === 'head' ? ARMERIA.cabeza : ARMERIA.baja;
 }
-const cuenta = (type) => ARMERIA.tipos.includes(type || 'bullet') && !(type === 'burn' && globalThis.__mduSinQuemaduras === true);
+const cuenta = (type) => ARMERIA.tipos.includes(type || 'bullet');
 
 // ¿Esta baja (o este tiro de un invitado) es del mate que tiene en la mano?
 // Devuelve su id o null.
 export function deQuien(g, type) {
   // (la quemadura es del mate que la prendió, no del que tiene en la mano: Zombies burnWp)
-  if (off() || type === 'burn' || !cuenta(type)) return null;
+  if (type === 'burn' || !cuenta(type)) return null;
   const s = g.weapons?.slot;
   return s && !s.temp && tieneNiveles(s.id) ? s.id : null;
 }
@@ -545,7 +538,7 @@ export function deQuien(g, type) {
 // Una baja propia (entities/Zombies kill). wp: el mate que prendió el fuego
 // (las quemaduras); boss: si era un jefe.
 export function baja(g, type, zone, { wp = null, boss = false } = {}) {
-  const id = type === 'burn' ? (!off() && cuenta(type) && wp && tieneNiveles(wp) ? wp : null) : deQuien(g, type);
+  const id = type === 'burn' ? (cuenta(type) && wp && tieneNiveles(wp) ? wp : null) : deQuien(g, type);
   if (!id) return;
   sumar(g, { [id]: puntos(type, zone, boss) });
   for (const fn of bajaSubs) fn(id);
@@ -558,7 +551,7 @@ export const onBaja = (fn) => (bajaSubs.add(fn), () => bajaSubs.delete(fn));
 const subs = new Set();
 export const onNivel = (fn) => (subs.add(fn), () => subs.delete(fn));
 export function sumar(g, por, { red = false } = {}) {
-  if (off() || g?.cheated || !por || typeof por !== 'object') return;
+  if (g?.cheated || !por || typeof por !== 'object') return;
   let up = false;
   for (const [id, n] of Object.entries(por)) {
     if (!tieneNiveles(id) || !(n > 0) || n > 1000) continue;
@@ -615,12 +608,12 @@ export function partida() {
 // del botón, como los camuflajes; el usuario, 2026-10-12). Se guardan en el
 // perfil: { [mate]: { visto: [ids] } }.
 export function nuevos(id) {
-  if (off() || !tieneNiveles(id)) return [];
+  if (!tieneNiveles(id)) return [];
   const d = dato(id, false);
   const seen = new Set(Array.isArray(d.visto) ? d.visto : []);
   return lista(id).filter((a) => a.ok && !seen.has(a.id)).map((a) => a.id);
 }
-export const cuantosNuevos = () => (off() ? 0 : CAMOABLE.reduce((n, id) => n + nuevos(id).length, 0));
+export const cuantosNuevos = () => CAMOABLE.reduce((n, id) => n + nuevos(id).length, 0);
 export function verNuevos(id) {
   const fresh = nuevos(id);
   if (!fresh.length) return;

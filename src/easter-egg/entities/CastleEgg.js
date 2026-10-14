@@ -509,9 +509,8 @@ export default class CastleEgg {
     if (!isHost(g) || this.step >= 9) return;
     this.debugStep(8);
     // (los pasos de golpe: cuatro altares que explotan y el retumbe de la cueva en el
-    // mismo cuadro sacudían la cámara al máximo; queda un golpe leve.
-    // globalThis.__mduNoJuraCalm = true: como antes)
-    if (globalThis.__mduNoJuraCalm !== true) g.fx.shake = Math.min(g.fx.shake, 0.12);
+    // mismo cuadro sacudían la cámara al máximo; queda un golpe leve)
+    g.fx.shake = Math.min(g.fx.shake, 0.12);
     const D = this.dragon;
     D.flight = null;
     D.place('cumbre');

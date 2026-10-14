@@ -5,9 +5,9 @@ import { clampT } from '../bossSkin';
 // El Luisón animado en Blender (C:/Users/ignac/Tools/mdu-blender/luboss_clips.py):
 // clips hechos a mano con IK y el paso medido, y el modelo con la mandíbula de
 // verdad (modelo-blend.glb: toda la mandíbula de abajo al hueso luJaw, la boca
-// por dentro oscura y los dientes). Lo usa skins/luison.js mientras no esté
-// globalThis.__mduNoLuisonBlend (antes de que cargue el jefe: el modelo y los
-// clips se eligen al bajarlos).
+// por dentro oscura y los dientes). El modelo y los clips de Blender no se
+// piden desde el 2026-10-05; skins/luison.js usa esto con los clips que traen
+// stalk.
 //
 // Clips (clips-blend.json, en el lugar; los que andan con speed en m/s del
 // modelo, sin patinar a ritmo v/speed): idle, walk, run, stalk (en cuatro patas,
@@ -349,10 +349,10 @@ function floorGuard(S, ctx, z) {
 // El pie más bajo en el piso (la llegada, ui/LuisonArrival): los clips de parado,
 // aullando y agachado lo dejaban hasta 14 cm en el aire sobre la loma (t_cineqa
 // FLOTA). Baja la cadera lo que sobra entre el pie más bajo y el piso; si
-// sobra poco, nada. (globalThis.__mduNoLuFloor: como antes)
+// sobra poco, nada.
 let SOLE = null;
 function floorSnap(S, ctx, z) {
-  if (globalThis.__mduNoLuFloor || !S.ground) return;
+  if (!S.ground) return;
   // (parado, la punta del pie queda 1,5-2,5 cm adentro del pasto de la loma: medido, t_cineqa FLOTA apoyo)
   SOLE ??= -0.015;
   let lo = Infinity;

@@ -10,13 +10,11 @@ import { assetUrl } from '../../lib/assets';
 // 'irse' (bosteza, se desenrosca por afuera de la máquina, camina con las patas
 // de a pares cruzados, entra al agua, nada con la cola y se hunde). Los tiempos
 // de todo (el pescado, el chapuzón, cuándo libera la máquina) siguen siendo los
-// de world/papYacare.js; esto pone solo la pose. Switch:
-// globalThis.__mduNoYacareBlend = true = como antes; para probar con el switch
-// apagado por defecto: globalThis.__mduYacareBlend = true.
+// de world/papYacare.js; esto pone solo la pose.
 
 const URL = '/assets/sotano/modelos/yacare/pap-clips.json';
 const DEFAULT_ON = true;
-export const yacareBlendOn = () => globalThis.__mduNoYacareBlend !== true && globalThis.__mduBlend !== false && (DEFAULT_ON || globalThis.__mduYacareBlend === true);
+export const yacareBlendOn = () => DEFAULT_ON;
 
 const C = { p: null, data: null };
 export function loadYacareClips() {

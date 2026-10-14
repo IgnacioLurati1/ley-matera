@@ -69,8 +69,8 @@ export const PERKS = {
     color: '#e8a21c',
     glyph: '✠',
     // (el 2.0, el usuario 2026-10-13: "saca el +33 de cadencia, ya dispara el
-    // doble"; weapons/Weapons.js dobleTap; __mduDoubleTapViejo: el de antes)
-    desc: globalThis.__mduDoubleTapViejo === true ? 'Disparás más rápido.' : 'Cada bala sale doble.',
+    // doble"; weapons/Weapons.js dobleTap)
+    desc: 'Cada bala sale doble.',
     // lo que pega la segunda bala, por categoría del mate (core/armas.js
     // categoria): "nerfea un poquito el daño de aquellas armas que se ven
     // beneficiados por su efecto" (el usuario, 2026-10-13). Las que tiran
@@ -117,8 +117,7 @@ export const PERKS = {
     label: {
       brand: 'Nadarias',
       // (ahora sí hace algo: +25% a la cabeza, +15% al cuerpo, el usuario
-      // 2026-10-05; en dos renglones para que entre en el cartel. Con
-      // __mduNoLemaNuevo, el de antes: core/textures.js paintPerkLabel)
+      // 2026-10-05; en dos renglones para que entre en el cartel)
       tagline: 'LA YERBA URUGUAYA\nQUE AHORA SÍ HACE ALGO',
       taglineOld: 'LA YERBA URUGUAYA QUE NO HACE NADA',
       bg: '#f5cf1f',
@@ -233,7 +232,10 @@ PERKS.wish = {
   cost: 4000,
   color: '#a3123a',
   glyph: '✟',
-  desc: 'El golpe que te iba a tirar no te tira: 5 segundos inmortal. Tarda 3 minutos en volver.',
+  // (la recarga, entities/dyingWish.js wishCd: 6 minutos desde el 2026-10-14; __mduWishViejo: 3)
+  get desc() {
+    return `El golpe que te iba a tirar no te tira: 5 segundos inmortal. Tarda ${globalThis.__mduWishViejo === true ? 3 : 6} minutos en volver.`;
+  },
   label: {
     brand: 'Extremaunión',
     tagline: 'SUAVE HASTA EL ÚLTIMO MATE',

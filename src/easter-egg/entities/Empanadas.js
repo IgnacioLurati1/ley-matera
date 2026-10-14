@@ -346,7 +346,7 @@ export default class Empanadas {
   warmVm() {
     const g = this.g;
     const W = g.weapons;
-    if (!W?.vmRoot || globalThis.__mduNoEmpWarm === true) return null;
+    if (!W?.vmRoot) return null;
     if (!W.drinkFrame) {
       W.drinkFrame = new THREE.Group();
       W.vmRoot.add(W.drinkFrame);

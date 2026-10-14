@@ -15,7 +15,6 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 //     del final);
 //  3. el polvo que sube: lo pone world/eclipseMood con la dimensión (A.abyss).
 // Una malla por pedazo (color por vértice) y una por figura; sin luces.
-// globalThis.__mduNoAbismoVida: sin esto.
 
 const tmpM = new THREE.Matrix4();
 const tmpQ = new THREE.Quaternion();
@@ -103,7 +102,6 @@ function headGeo() {
 }
 
 export function buildAbismoVida(w, isl, cells, rnd) {
-  if (globalThis.__mduNoAbismoVida === true) return null;
   const g = w.g;
   const { isFloor } = cells;
   const [bx0, bz0, bx1, bz1] = cells.box;

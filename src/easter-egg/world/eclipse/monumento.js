@@ -24,7 +24,7 @@ import { statue } from '../monumentoStatues';
 // bronce con su cruz de cuatro globos sobre el parapeto (donde están las luces
 // del patio) y los cuatro pebeteros de la escalinata y las gradas. La proa
 // suelta (N9), con el mástil y la bandera que flamea. Manchas de humedad y
-// charcos (centro.grime). __mduNoEclipseMonuArt: solo los bloques y lo transplantado.
+// charcos (centro.grime).
 
 let LIVE = null;
 
@@ -32,7 +32,6 @@ let LIVE = null;
 const nearPortal = (x, z, r = 0) => PORTALS.some((p) => [p.a, p.b].some((e) => Math.hypot(e.pos[0] - x, e.pos[1] - z) < 2.6 + r));
 
 export function build(w, g, isl) {
-  if (globalThis.__mduNoEclipseMonuArt === true) return;
   const M = w.M;
   const mine = isl.zones.filter((k) => !ZONES[k].frag);
   const cells = islandCells(w, mine.filter((k) => ZONES[k].outdoor));
@@ -59,8 +58,8 @@ export function build(w, g, isl) {
   // el nicho queda tapado por la pared del borde del Patio y la estatua quedaba
   // adentro, con las manos asomando: 2026-10-09, el usuario, "la estatua del
   // frente del Monumento está bugueada"): delante de la pared, bajo el arco,
-  // en su pedestal. globalThis.__mduOldEclMadre: en el nicho, como antes
-  if (S && globalThis.__mduOldEclMadre !== true) {
+  // en su pedestal.
+  if (S) {
     const mx = 66 + S.dx - 0.5;
     const my = 0.8 + S.dy;
     const mz = 30.5 + S.dz;

@@ -18,7 +18,6 @@
 //   demás ven el efecto ('rush' 'fx'). El Rebencazo y el Viento Zonda empujan
 //   muertos: eso lo hace el anfitrión (los muertos son de él).
 //
-// globalThis.__mduRushViejo = true: sin nada de esto (core/rushCards.js no las reparte).
 import * as THREE from 'three';
 import { MEJORAS, RAROS, HABILIDADES, HAB_CD_MIN, TOPE, sumaMej } from './rushCards';
 import { keyLabel } from './controls';
@@ -55,8 +54,6 @@ const NO_MULT = new Set(['nuke', 'juicio', 'burn', 'vida', 'trapfire']);
 const SND_DIR = '/assets/sotano/sfx/rush/';
 // tomas de ElevenLabs (sound-generation, 2026-10-12; scratchpad opt/jefes/snd: gen.py, proc.py)
 const SONIDOS = ['pique', 'rebencazo', 'humareda', 'paye', 'cuero', 'heredero', 'resurgir'];
-
-const off = () => globalThis.__mduRushViejo === true;
 const tmpV = new THREE.Vector3();
 const tmpD = new THREE.Vector3();
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
@@ -97,7 +94,7 @@ export default class RushBuild {
   set(D) {
     const g = this.g;
     this.reset();
-    if (off() || !D) return;
+    if (!D) return;
     this.on = true;
     const sum = (id) => Math.min(sumaMej(D, id), TOPE[id] ?? Infinity);
     for (const id of Object.keys(MEJORAS)) this.v[id] = sum(id);
@@ -210,7 +207,7 @@ export default class RushBuild {
   // invitado, el anfitrión se las avisa.
   alMorir(z, info, type) {
     const g = this.g;
-    if (!g.rush?.on || off() || type === 'nuke' || type === 'juicio') return;
+    if (!g.rush?.on || type === 'nuke' || type === 'juicio') return;
     const p = z.pos;
     const y = (z.baseY ?? p.y) || 0;
     if (this.mine(info)) {

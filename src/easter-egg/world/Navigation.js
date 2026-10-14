@@ -17,7 +17,7 @@ const NAV_BUDGET = 6000;
 // (3 090 celdas sin camino) y los muertos no llegaban. El usuario, 2026-10-10,
 // de a 4: "durante la inundación, al anfitrión le fue como el orto, totalmente
 // injugable" (el anfitrión rehace un campo por jugador) y "no salían casi
-// zombies". globalThis.__mduNoNavEps: como antes.
+// zombies".
 const NAV_EPS = 1e-3;
 
 // Campo de flujo: distancia (Dijkstra, 8 vecinos) desde la celda del jugador a
@@ -46,7 +46,7 @@ const NB = [
 // (bit k: se puede pasar hacia NB[k]) que se arma la primera vez que un cálculo
 // pasa por la celda, y la comparten todos los campos del mismo mundo. El
 // resultado da igual bit a bit: mismo orden de vecinos, misma cola con los
-// mismos empates, mismas cuentas. globalThis.__mduNavViejo: el de antes, tal cual.
+// mismos empates, mismas cuentas.
 //
 // Cuándo queda vieja: navBlock y navEdge solo cambian en World.computeNavBlock
 // (arreglos nuevos y navVersion + 1: puertas, escombros, el asedio, el penal,
@@ -181,7 +181,6 @@ export default class Navigation {
 
   // Lo mismo que solveOld, sobre la máscara y con la cola a mano (ver STEP).
   solve(start) {
-    if (globalThis.__mduNavViejo === true) return this.solveOld(start);
     const w = this.w;
     const dist = this.dist;
     dist.fill(Infinity);
@@ -195,8 +194,8 @@ export default class Navigation {
     const off = M.off;
     const cost = w.navCost;
     const links = w.navLinks;
-    const budget = FEATURES.eclipse && globalThis.__mduNoNavBudget !== true ? NAV_BUDGET : Infinity;
-    const eps = globalThis.__mduNoNavEps === true ? 0 : NAV_EPS;
+    const budget = FEATURES.eclipse ? NAV_BUDGET : Infinity;
+    const eps = NAV_EPS;
     dist[start] = 0;
     let size = heapPush(ids, keys, 0, start, 0);
     let popped = 0;
@@ -257,65 +256,6 @@ export default class Navigation {
       }
     }
     heap.size = size;
-  }
-
-  // El cálculo de antes (globalThis.__mduNavViejo), tal cual.
-  solveOld(start) {
-    const w = this.w;
-    const W = w.W;
-    const dist = this.dist;
-    dist.fill(Infinity);
-    const heap = this.heap;
-    heap.clear();
-    dist[start] = 0;
-    heap.push(start, 0);
-    // lo que cuesta cada celda (el agua honda, entities/swim.js); sin agua, todo 1
-    const cost = w.navCost;
-    // (Eclipse Matero: el mapa entero son ~40 000 celdas unidas por portales y
-    // el campo completo tardaba ~190 ms cada vez que el jugador cambiaba de
-    // celda —el usuario: "tirones tremendos, injugable" en la zona del medio—.
-    // Se corta en las NAV_BUDGET celdas más cercanas: los muertos aparecen
-    // cerca; más lejos van derecho. globalThis.__mduNoNavBudget: como antes)
-    const budget = FEATURES.eclipse && globalThis.__mduNoNavBudget !== true ? NAV_BUDGET : Infinity;
-    const eps = globalThis.__mduNoNavEps === true ? 0 : NAV_EPS;
-    let popped = 0;
-    while (heap.size) {
-      // (sin armar un arreglo por celda: era basura de memoria en cada cálculo)
-      const i = heap.pop();
-      const d = heap.lastKey;
-      if (d > dist[i]) continue;
-      if (++popped > budget) break;
-      const x = i % W;
-      const z = (i - x) / W;
-      for (const [dx, dz, c] of NB) {
-        const nx = x + dx;
-        const nz = z + dz;
-        if (this.blocked(nx, nz)) continue;
-        // sin cortar esquinas en diagonal
-        if (dx && dz && (this.blocked(x + dx, z) || this.blocked(x, z + dz))) continue;
-        // con alturas: no se cruza un desnivel (solo escaleras y rampas)
-        if (w.pass && !canStep(w, x, z, dx, dz)) continue;
-        if (!this.edgeOpen(x, z, dx, dz)) continue;
-        const ni = nz * W + nx;
-        const nd = d + (cost ? c * cost[ni] : c);
-        if (nd < dist[ni] - eps) {
-          dist[ni] = nd;
-          heap.push(ni, nd);
-        }
-      }
-      // lo que une dos lugares sin caminar (la telesilla del penal): world.navLinks,
-      // celda → [[celda, costo], ...]
-      const links = w.navLinks?.get(i);
-      if (links) {
-        for (const [ni, c] of links) {
-          const nd = d + c;
-          if (nd < dist[ni] - eps) {
-            dist[ni] = nd;
-            heap.push(ni, nd);
-          }
-        }
-      }
-    }
   }
 
   // ¿Se puede ir en línea recta de (ax, az) a (bx, bz) sin pisar una celda

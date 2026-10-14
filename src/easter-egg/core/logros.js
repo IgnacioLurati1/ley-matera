@@ -41,12 +41,10 @@ const GENERAL = [
   { id: 'prest', name: 'Prestigio', desc: 'Prestigiá por primera vez.', icon: 'sun', tier: 'oro' },
   { id: 'super', name: 'Super easter egg', desc: 'Todos los easter eggs.', icon: 'egg', tier: 'platino' },
   // ganar el rush de jefes entero (core/bossRush.js; el usuario, 2026-10-12).
-  // Sin el modo (globalThis.__mduSinRush = true) no se lista.
-  ...(globalThis.__mduSinRush === true ? [] : [{ id: 'rush', name: 'Ni uno en pie', desc: 'Ganá el rush de jefes.', icon: 'crown', tier: 'platino' }]),
+  { id: 'rush', name: 'Ni uno en pie', desc: 'Ganá el rush de jefes.', icon: 'crown', tier: 'platino' },
   // ganar el Boss Rush Mayhem (core/bossRush.js MAYHEM_PREMIO; el usuario,
-  // 2026-10-13: "el doble que el rush normal más logro"). Sin el Mayhem
-  // (__mduSinMayhem) o con __mduMayhemPremioViejo, no se lista.
-  ...(globalThis.__mduSinRush === true || globalThis.__mduSinMayhem === true || globalThis.__mduMayhemPremioViejo === true ? [] : [{ id: 'mayhem', name: 'Ni el diablo', desc: 'Ganá el Boss Rush Mayhem.', icon: 'horns', tier: 'platino' }]),
+  // 2026-10-13: "el doble que el rush normal más logro").
+  { id: 'mayhem', name: 'Ni el diablo', desc: 'Ganá el Boss Rush Mayhem.', icon: 'horns', tier: 'platino' },
 ];
 
 // Lo de cada mapa: el easter egg, la ronda 20 y los anunciados.
@@ -84,7 +82,7 @@ const EE_TITLE = { molino: 'La Ronda del Abuelo', eclipse: 'El que cebó el Prim
 export const MAPS = MAP_LIST.map((m) => ({ id: m.id, name: m.name, bonus: !!m.bonus }));
 // (el easter egg de un mapa bonus, cuando sea jugable: sacarlo de acá. El del
 // Monumento ya se juega y lo da MonumentoEgg.playEnding, como Game.win)
-const NO_EE = new Set(MAP_LIST.filter((m) => m.bonus && (m.id !== 'monumento' || globalThis.__mduNoEggLogro)).map((m) => m.id));
+const NO_EE = new Set(MAP_LIST.filter((m) => m.bonus && m.id !== 'monumento').map((m) => m.id));
 const PER_MAP = MAPS.flatMap((m) => [
   ...(NO_EE.has(m.id) ? [] : [{ id: `ee_${m.id}`, name: EE_TITLE[m.id] || `${m.name}: easter egg`, desc: `Terminá el easter egg de ${m.name}.`, icon: 'egg', tier: 'oro', cat: m.id, title: EE_TITLE[m.id] }]),
   { id: `r20_${m.id}`, name: `Ronda 20 en ${m.name}`, desc: `Llegá a la ronda 20 en ${m.name}.`, icon: 'round', tier: 'plata', cat: m.id, stat: `ronda:${m.id}`, goal: 20 },

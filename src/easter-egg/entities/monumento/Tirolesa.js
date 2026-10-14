@@ -36,7 +36,7 @@ export default class Tirolesa {
     this.dir.normalize();
     // se cuelga al costado del cable (a la derecha, mirando la bajada): justo
     // debajo, el cable bajaba empinado por el medio de la vista como una cuña negra
-    const side = globalThis.__mduNoTiroSide ? 0 : 0.5;
+    const side = 0.5;
     this.side = new THREE.Vector3(-this.dir.z, 0, this.dir.x).normalize().multiplyScalar(side);
     // el cable (con una comba apenas) y su sombra no hace falta
     const pts = [];

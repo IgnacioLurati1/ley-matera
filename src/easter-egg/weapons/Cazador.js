@@ -212,7 +212,7 @@ export default class Cazador {
   input(input, st, p) {
     if (st?.kind !== 'cazador') return false;
     if (!p.alive || p.downed) return true;
-    if (st.chain && globalThis.__mduCazV3 !== true) {
+    if (st.chain) {
       if (input.mouse.leftPressed || (input.mouse.left && this.chainCd <= 0)) this.tryChain(st);
     } else if (input.mouse.leftPressed || (input.mouse.left && this.mistCd <= 0)) this.tryMist(st);
     if (input.mouse.rightPressed) this.trySuck(st);
@@ -319,7 +319,7 @@ export default class Cazador {
     for (let i = 0; i < 6; i++) g.fx.add.spawn(b.x, b.y, b.z, rnd() * 4, Math.random() * 3, rnd() * 4, { color: MIST[i % 3], size: 0.05, size1: 0, life: 0.35, drag: 3 });
   }
 
-  // ---------------- la bruma que se tira (la v3; con __mduCazV3) ----------------
+  // ---------------- la bruma que se tira (la v3) ----------------
   tryMist(st) {
     const g = this.g;
     if (this.mistCd > 0) return false;
@@ -415,7 +415,7 @@ export default class Cazador {
     // (el agujero: adelante, a la altura del pecho; si hay pared, antes)
     const at = S.at || 0;
     let H;
-    if (at > 0 && globalThis.__mduCazV3 !== true) {
+    if (at > 0) {
       const wall = g.world.raycast(eye, f, at + 0.5, hitTmp);
       const dd = Math.max(1.2, Math.min(at, (Number.isFinite(wall) ? wall : at + 0.5) - 0.5));
       H = new THREE.Vector3(P.x + f.x * dd, eye.y - 0.35, P.z + f.z * dd);
@@ -493,7 +493,7 @@ export default class Cazador {
       this.d.ripSeed = Math.random() * 50;
     }
     // (v4) el agujero negro que se los traga (con su sonido)
-    if (holeOn && globalThis.__mduCazV3 !== true) this.d.fx.hole(H, 0.7, 1.15, { pal: 'exec', gold: false, own });
+    if (holeOn) this.d.fx.hole(H, 0.7, 1.15, { pal: 'exec', gold: false, own });
     this.d.fx.play('caz-succion', { pos: own ? null : H, gain: 1 });
     if (n) this.d.fx.play('caz-ojos', { pos: own ? null : H, gain: 0.8 });
   }
@@ -511,7 +511,7 @@ export default class Cazador {
       const F = weaponStats('desgarrador', s.up)?.furia;
       if (F) D.addKill(F, 1);
     }
-    if (shards && st.shards && globalThis.__mduCazV3 !== true) this.shards(z);
+    if (shards && st.shards) this.shards(z);
     D.emit({ type: 'kill', how: heal ? 'caos' : 'bruma', z, pos: z.pos.clone() });
   }
 
@@ -575,10 +575,6 @@ export default class Cazador {
     this.suckCd = 0;
     this.chainCd = 0;
     this.form = 0;
-    if (globalThis.__mduCazV3 === true) {
-      D.fx.play('caz-bruma', { gain: 0.6, rate: 0.7 });
-      return;
-    }
     D.fx.play('caz-toma', { gain: 1 });
     this.hum?.stop(0.1);
     this.hum = D.fx.loop('caz-zumbido', null, { gain: 0.32, fadeIn: 1.2, from: 2, to: 6 });
@@ -600,7 +596,6 @@ export default class Cazador {
     const g = this.g;
     this.hum?.stop(0.8);
     this.hum = null;
-    if (globalThis.__mduCazV3 === true) return;
     this.d.fx.play('caz-fin', { gain: 0.8 });
     const at = this.hand(tmpV);
     g.fx.flash(at, 0x9040ff, 5, 0.3, 6);

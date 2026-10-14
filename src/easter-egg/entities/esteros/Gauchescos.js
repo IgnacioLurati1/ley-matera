@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { EE } from '../../config/map';
-import { GZ, GZ_LADDER } from '../../config/gauchescos';
+import { GZ, GZ_LADDER, GZ_SHOTS } from '../../config/gauchescos';
 import { WEAPONS } from '../../config/weapons';
 import { PLAYER } from '../../config/rules';
 import ZombieHands from './gzHands';
@@ -725,7 +725,14 @@ export default class Gauchescos {
       return;
     }
     const zs = this.g.zombies;
-    const ok = (x, z) => zs.cellKind(x, z) <= 1;
+    // (el usuario, 2026-10-14: "las puertas no se pueden atravesar aunque
+    // aparezcan abiertas". Esto frenaba a todos, también al humano, en las
+    // celdas de puerta: Zombies.cellKind las cuenta como pared, abiertas o no.
+    // Ahora las puertas abiertas se pasan: cellOk. Al humano la paja y las
+    // paredes ya lo frenan solas; esto le queda para no irse del mapa por el agua.
+    // globalThis.__mduConvPuertasViejo = true: como antes)
+    const viejo = globalThis.__mduConvPuertasViejo === true;
+    const ok = viejo ? (x, z) => zs.cellKind(x, z) <= 1 : (x, z) => this.cellOk(x, z);
     const L = this.lastGood || (this.lastGood = P.pos.clone());
     if (ok(P.pos.x, P.pos.z)) {
       L.copy(P.pos);
@@ -744,6 +751,62 @@ export default class Gauchescos {
       P.vel.x = 0;
       P.vel.z = 0;
     }
+  }
+
+  // ¿Se puede pisar (x, z)? El piso y la paja (Zombies.cellKind 0 y 1; al
+  // humano la paja ya lo frena al chocar),
+  // las puertas abiertas y, de lo de afuera, la paja y el río que quedan
+  // adentro del mapa (innerMask); el pajonal que bordea todo el mapa sigue
+  // frenando (el usuario, 2026-10-14: "los zombies no pueden atravesar el pasto
+  // alto que está dentro del mapa (no me refiero el que bordea todo...)" y "zonas
+  // como el río que el zombie no puede avanzar y se queda bugueado").
+  // globalThis.__mduConvPajaViejo = true: lo de afuera frena entero, como antes.
+  cellOk(x, z) {
+    const w = this.g.world;
+    if (this.g.zombies.cellKind(x, z) <= 1) return true;
+    const cx = Math.floor(x);
+    const cz = Math.floor(z);
+    if (!w.inside(cx, cz)) return false;
+    const i = w.idx(cx, cz);
+    // (world/World.js CELL: 3 la puerta, 0 afuera)
+    if (w.grid[i] === 3) return !!w.doorOpen[w.doorAt[i]];
+    return w.grid[i] === 0 && globalThis.__mduConvPajaViejo !== true && this.innerMask()[i] === 1;
+  }
+
+  // Lo de afuera (paja y agua sin zona) que queda adentro del mapa: lo que
+  // tiene zonas o paja para los cuatro lados, y los pasillos angostos (hasta 4
+  // celdas) entre eso. Lo que da derecho al borde del mapa es el pajonal que lo
+  // bordea todo (y el riacho al norte del puente, que se va del mapa).
+  innerMask() {
+    if (this.inner) return this.inner;
+    const w = this.g.world;
+    const W = w.W;
+    const H = w.H;
+    const out = (x, z) => w.grid[w.idx(x, z)] === 0;
+    const M = new Uint8Array(W * H);
+    const hits = (x, z, dx, dz) => {
+      for (x += dx, z += dz; x >= 0 && z >= 0 && x < W && z < H; x += dx, z += dz) if (!out(x, z)) return true;
+      return false;
+    };
+    for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) if (out(x, z) && hits(x, z, -1, 0) && hits(x, z, 1, 0) && hits(x, z, 0, -1) && hits(x, z, 0, 1)) M[w.idx(x, z)] = 1;
+    const near = (x, z, dx, dz) => {
+      for (let k = 1; k <= 4; k++) {
+        x += dx;
+        z += dz;
+        if (x < 0 || z < 0 || x >= W || z >= H) return false;
+        if (!out(x, z) || M[w.idx(x, z)]) return true;
+      }
+      return false;
+    };
+    const F = M.slice();
+    for (let z = 0; z < H; z++) {
+      for (let x = 0; x < W; x++) {
+        if (!out(x, z) || M[w.idx(x, z)]) continue;
+        if ((near(x, z, 0, -1) && near(x, z, 0, 1)) || (near(x, z, -1, 0) && near(x, z, 1, 0))) F[w.idx(x, z)] = 1;
+      }
+    }
+    this.inner = F;
+    return F;
   }
 
   // Ir a `spot` con el fundido (kind 'human': de blanco; 'rise': sale de la tierra).
@@ -1045,6 +1108,8 @@ export default class Gauchescos {
       z.yaw = r.yaw + Math.PI;
       return;
     }
+    const ox = z.pos.x;
+    const oz = z.pos.z;
     // (esperando que su compu lo traiga al lugar nuevo: quieto)
     if (!this.pend.has(z.gz)) {
       z.pos.x = r.pos.x;
@@ -1052,7 +1117,24 @@ export default class Gauchescos {
     }
     z.baseY = g.world.floorAt(z.pos.x, z.pos.z, (r.pos.y || 0) + 0.5);
     z.pos.y = z.baseY;
-    let d = r.yaw + Math.PI - z.yaw;
+    // Para dónde mira el cuerpo (el usuario, 2026-10-14: "¿puede ser que el
+    // zombie no tenga animación de correr?"). Corre con la corrida de los
+    // muertos, pero el cuerpo miraba para donde mira la cámara del jugador: en
+    // diagonal o de costado (W+D, D) las piernas iban para un lado y el cuerpo
+    // para el otro, y patinaba sin apoyar nunca un pie. Andando, ahora mira para
+    // donde va, como los muertos; quieto o despacio, para donde mira el jugador.
+    // globalThis.__mduConvCorreViejo = true: como antes
+    let face = r.yaw + Math.PI;
+    if (globalThis.__mduConvCorreViejo !== true && dt > 0) {
+      const jump = Math.hypot(z.pos.x - ox, z.pos.z - oz);
+      const k = Math.min(1, dt * 10);
+      if (jump < 1.5) {
+        z.gzVx = (z.gzVx || 0) + ((z.pos.x - ox) / dt - (z.gzVx || 0)) * k;
+        z.gzVz = (z.gzVz || 0) + ((z.pos.z - oz) / dt - (z.gzVz || 0)) * k;
+      }
+      if ((r.speed || 0) > 1.2 && Math.hypot(z.gzVx, z.gzVz) > 0.8) face = Math.atan2(z.gzVx, z.gzVz);
+    }
+    let d = face - z.yaw;
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;
     z.yaw += d * Math.min(1, dt * 14);
@@ -1077,12 +1159,79 @@ export default class Gauchescos {
     if (!z.active || z.dead || this.role !== 'human' || this.phase !== 'play' || !(amount > 0)) return false;
     // (saliendo de la tierra no se lo puede bajar)
     if (z.state === 'rise' || this.pend.has(z.gz)) return false;
+    // (lo que no lo ve no le pega: la paja de por medio; shotBlocked)
+    if (this.shotBlocked(z, info.point)) return false;
+    // El tope por disparo (el usuario, 2026-10-14: "el humano ganaba siempre
+    // porque el zombie moría muy rápido, por eso forzar 3 o 4 tiros por arma"):
+    // un disparo le saca como mucho 1/n de la vida (GZ_SHOTS: las automáticas 4,
+    // las de a un tiro y las fuertes 3), cabeza incluida. Los perdigones de un
+    // disparo y una explosión llegan en el mismo cuadro: suman juntos contra el
+    // mismo tope. globalThis.__mduConvTopeViejo = true: el daño de siempre
+    if (globalThis.__mduConvTopeViejo !== true) {
+      const n = info.type === 'knife' ? GZ.shotsElse : GZ_SHOTS[g.weapons?.slot?.id] ?? GZ.shotsElse;
+      if (z.gzShotT !== g.time) {
+        z.gzShotT = g.time;
+        z.gzShotLeft = Math.ceil(z.maxHp / n);
+      }
+      amount = Math.min(amount, z.gzShotLeft);
+      z.gzShotLeft -= amount;
+    }
     z.hp -= amount;
     if (info.point) g.zombies.bleed(z, info.point, info.dir ? tmpV.copy(info.dir).multiplyScalar(0.6) : { x: 0, y: 0.5, z: 0 }, info.zone === 'head' ? 14 : 8);
     if (z.hp > 0) return true;
     this.puppetDie(z, info.dir);
     this.send('kill', { v: z.gz });
     return true;
+  }
+
+  // ¿La paja tapa al zombi `z` para el humano? (el usuario, 2026-10-14: "el
+  // humano disparaba al azar para todos lados y mataba todos los zombies del
+  // mapa": en este modo la paja no frena las balas, y tirando para cualquier
+  // lado se bajaba a los que estaban escondidos adentro del pajonal, sin verlos.)
+  // Se mide cuánta paja hay entre los ojos del humano y el golpe (`at`, o el
+  // pecho): más de GZ.grassSee m, no le pega. Lo que vuela por arriba de la
+  // paja (desde la galería de la Casona) sí. Las paredes ya frenan solas.
+  // globalThis.__mduConvVistaViejo = true: como antes
+  shotBlocked(z, at = null) {
+    if (globalThis.__mduConvVistaViejo === true || this.role !== 'human') return false;
+    const g = this.g;
+    const w = g.world;
+    const P = g.player;
+    const ex = P.pos.x;
+    const ey = P.pos.y + (P.eye || 1.6);
+    const ez = P.pos.z;
+    const e = z.mats?.[1]?.elements;
+    const tx = at ? at.x : e ? e[12] : z.pos.x;
+    const ty = at ? at.y : e ? e[13] : z.pos.y + 1.1;
+    const tz = at ? at.z : e ? e[14] : z.pos.z;
+    const len = Math.hypot(tx - ex, ty - ey, tz - ez);
+    const STEP = 0.25;
+    let grass = 0;
+    for (let s = 0.3; s < len; s += STEP) {
+      const k = s / len;
+      const x = ex + (tx - ex) * k;
+      const y = ey + (ty - ey) * k;
+      const zz = ez + (tz - ez) * k;
+      const cx = Math.floor(x);
+      const cz = Math.floor(zz);
+      if (!w.inside(cx, cz)) continue;
+      const i = w.idx(cx, cz);
+      // (la paja: las celdas de pajonal con caja y el pajonal suelto de afuera; el agua abierta no)
+      const corn = g.zombies.cellKind(x, zz) === 1;
+      if (!corn && !(w.grid[i] === 0 && (w.waterDepth?.(x, zz) || 0) < 0.3)) continue;
+      if (y > w.floorAt(x, zz, y) + GZ.grassH) continue;
+      grass += STEP;
+      if (grass > GZ.grassSee) return true;
+    }
+    return false;
+  }
+
+  // ¿Más lejos que el alcance del mate? (Zombies.raycast, solo los tiros
+  // derechos: antes llegaban hasta 1,6 veces el alcance; mismo interruptor)
+  outOfRange(t) {
+    if (globalThis.__mduConvVistaViejo === true || this.role !== 'human') return false;
+    const st = this.g.weapons?.stats;
+    return !!st && st.kind === 'hitscan' && st.range > 0 && t > st.range;
   }
 
   // ---------------- cada cuadro ----------------
@@ -1131,9 +1280,8 @@ export default class Gauchescos {
     const top = list[0];
     const last = GZ_LADDER.length - 1;
     const sub = top && top.lv >= last ? `Llegó ${this.winner === me ? 'al' : 'al'} ${WEAPONS[GZ_LADDER[last]]?.name}` : 'Se terminó el tiempo';
-    // (el anfitrión arranca otra con los mismos; el usuario, 2026-10-13.
-    // __mduGzSinOtra = true: sin el botón)
-    const again = this.isHost() && globalThis.__mduGzSinOtra !== true;
+    // (el anfitrión arranca otra con los mismos; el usuario, 2026-10-13)
+    const again = this.isHost();
     const el = document.createElement('div');
     el.className = 'mdu-gzend';
     el.innerHTML = `<div class="mdu-gzend__card"><p class="mdu-gzend__k">Zombies gauchescos</p><h2>${wname}</h2><p class="mdu-gzend__sub">${sub}</p><ol>${list
@@ -1235,9 +1383,8 @@ export function gzBlockStart(g) {
   const msg = `Mínimo ${GZ.minPlayers} jugadores`;
   if (g.net && g.menus?.lobby?.status) {
     // (usuario 10-13, el mismo arreglo de Porteño, pzBlockStart: la sala ya se
-    // había escondido al apretar Empezar; vuelve, con el aviso.
-    // globalThis.__mduNoGzSala: como antes, queda escondida)
-    if (globalThis.__mduNoGzSala !== true && g.state === 'title' && !g.menus.current) g.menus.show('online');
+    // había escondido al apretar Empezar; vuelve, con el aviso)
+    if (g.state === 'title' && !g.menus.current) g.menus.show('online');
     g.menus.lobby.status(msg);
   } else {
     const scr = g.menus?.screens?.[g.menus.current];

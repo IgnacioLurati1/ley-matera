@@ -47,8 +47,8 @@ const PERSONAL = {
   dragon: ['dragon', 25],
   facon: ['facon', 25],
   // (sin la guadaña en la mano: su arma propia, la bruma violeta, weapons/Cazador.js;
-  // con ella, la ejecutora, ver applyEffect. globalThis.__mduNoCazador: el farol, como antes)
-  caos: [globalThis.__mduNoCazador === true ? 'farol' : 'cazador', 20],
+  // con ella, la ejecutora, ver applyEffect)
+  caos: ['cazador', 20],
 };
 
 export default class Powerups {
@@ -75,9 +75,9 @@ export default class Powerups {
       // (el Challenge de la torre suma los suyos: balas infinitas y botas)
       for (const k of FEATURES.pups || []) if (NAMES[k]) this.bag.push(k);
       // (y la munición máxima le sale más seguido: FEATURES.ammoBag copias de más. El usuario,
-      // 2026-10-12. globalThis.__mduNoRetoAmmo: como antes)
+      // 2026-10-12)
       // (con decimales: la parte entera, siempre; el resto, la probabilidad de una más en esta bolsa)
-      const extra = globalThis.__mduNoRetoAmmo !== true ? FEATURES.ammoBag || 0 : 0;
+      const extra = FEATURES.ammoBag || 0;
       for (let k = 0; k < Math.floor(extra) + (Math.random() < extra % 1 ? 1 : 0); k++) this.bag.push('maxammo');
       for (let i = this.bag.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -96,9 +96,8 @@ export default class Powerups {
 
   // Lo que suelta un minijefe al caer: en el Challenge de la torre, siempre munición máxima
   // (FEATURES.bossAmmo; el usuario, 2026-10-12); en lo demás, lo que toque de la bolsa (null).
-  // globalThis.__mduNoRetoAmmo: como antes.
   bossType() {
-    return FEATURES.bossAmmo && globalThis.__mduNoRetoAmmo !== true ? 'maxammo' : null;
+    return FEATURES.bossAmmo ? 'maxammo' : null;
   }
 
   onKill(pos) {
@@ -130,7 +129,7 @@ export default class Powerups {
     const mesh = this.model(type);
     mesh.position.set(p.x, p.y + 1, p.z);
     g.scene.add(mesh);
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: type === 'caos' && globalThis.__mduNoCazador !== true ? 0x9a40ff : 0x40ff60, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.7 }));
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: type === 'caos' ? 0x9a40ff : 0x40ff60, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.7 }));
     glow.scale.setScalar(1.6);
     mesh.add(glow);
     const id = (this.nextId = (this.nextId || 0) + 1);
@@ -155,7 +154,7 @@ export default class Powerups {
     const mesh = this.model(m.type);
     mesh.position.set(m.x, (m.y || 0) + 1, m.z);
     g.scene.add(mesh);
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: m.type === 'caos' && globalThis.__mduNoCazador !== true ? 0x9a40ff : 0x40ff60, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.7 }));
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: m.type === 'caos' ? 0x9a40ff : 0x40ff60, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.7 }));
     glow.scale.setScalar(1.6);
     mesh.add(glow);
     // (age: el que entra tarde lo recibe con los segundos que ya lleva en el piso)
@@ -191,9 +190,9 @@ export default class Powerups {
   // Lo que armó warmGroup para calentar (ui/Arrival), ya fuera de la escena:
   // sus texturas propias (el x2 y el $10) quedaban en la placa en cada carga
   // (dos por partida). Los materiales no: liberarlos recompilaría al salir el
-  // primero. (globalThis.__mduNoPupFree: como antes)
+  // primero.
   releaseWarm(grp) {
-    if (!grp || globalThis.__mduNoPupFree === true) return;
+    if (!grp) return;
     grp.traverse((o) => {
       const t = o.material?.map;
       if (t?.userData?.pup) t.dispose();
@@ -311,12 +310,9 @@ export default class Powerups {
       }
       // el Cazador del Caos (Eclipse Matero): una bruma violeta con un ojo adentro
       case 'caos': {
-        // (v4: el ojo de vacío con el anillo de oro, weapons/cazadorModels.js;
-        // globalThis.__mduNoCazador: la bola de antes)
-        if (globalThis.__mduNoCazador !== true) {
-          g.add(cazadorPickup());
-          break;
-        }
+        // (v4: el ojo de vacío con el anillo de oro, weapons/cazadorModels.js)
+        g.add(cazadorPickup());
+        break;
         add(new THREE.SphereGeometry(0.2, 16, 12), new THREE.MeshPhysicalMaterial({ color: 0x8a40ff, roughness: 0.1, transparent: true, opacity: 0.35, depthWrite: false, emissive: 0x4a10a0, emissiveIntensity: 0.6 }), 0, 0.02);
         add(new THREE.SphereGeometry(0.11, 14, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xd070ff).multiplyScalar(1.6), toneMapped: false }), 0, 0.02);
         add(new THREE.SphereGeometry(0.045, 10, 8), new THREE.MeshBasicMaterial({ color: 0x120018 }), 0, 0.02, 0.1);

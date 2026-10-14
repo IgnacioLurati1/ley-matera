@@ -500,9 +500,8 @@ export default class PenalBoat {
   placeLocal(i) {
     const p = this.g.player;
     this.seatWorld(i, tmpV);
-    // (el timonel, parado en su tarima: ve el río por arriba de los sentados;
-    // globalThis.__mduHelmLow: sentado como antes, para comparar)
-    const up = i === 0 && globalThis.__mduHelmLow !== true;
+    // (el timonel, parado en su tarima: ve el río por arriba de los sentados)
+    const up = i === 0;
     p.pos.set(tmpV.x, DECK + this.bobY + (up ? HELM_UP : 0), tmpV.z);
     p.vel.set(0, 0, 0);
     p.onGround = true;
@@ -549,7 +548,7 @@ export default class PenalBoat {
       if (i < 0 || (this.state !== 'moored' && this.state !== 'sail')) return;
       const st = this.fixStep;
       this.toWorld(this.pos.x + st.x, this.pos.z + st.z, this.yaw + st.yaw, SEATS[i][0], SEATS[i][1], tmpR);
-      const up = i === 0 && globalThis.__mduHelmLow !== true;
+      const up = i === 0;
       r.pos.set(tmpR.x, DECK + this.bobY + (up ? HELM_UP : 0), tmpR.z);
       r.speed = 0;
     };
@@ -1224,7 +1223,7 @@ export default class PenalBoat {
     this.exWheel.visible = this.timon === 'chapel';
     // el que va sentado: se lo acomoda al asiento después de mover el bote
     this.syncLocalSeat();
-    if (g.net && globalThis.__mduNoRiderFix !== true) this.fixRiders();
+    if (g.net) this.fixRiders();
     const i = this.seats.indexOf(this.myId());
     if (i >= 0 && g.player.ride && g.player.alive) {
       g.player.yaw += this.dyaw;

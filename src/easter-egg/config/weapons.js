@@ -715,6 +715,8 @@ export const WEAPONS = {
     pen: 3,
     sound: 'lmg',
     recoil: 0.012,
+    // (la mira sube un cuarto de lo que patea: Weapons.fire climb; el usuario, 2026-10-14)
+    climb: 0.25,
     moveMult: 0.9,
     temp: true,
     // contra los jefes pega mucho menos (Zombies.damage; al Luisón, menos todavía)
@@ -740,6 +742,8 @@ export const WEAPONS = {
     pen: 12,
     sound: 'sniper',
     recoil: 0.028,
+    // (la mira sube un cuarto de lo que patea: Weapons.fire climb; el usuario, 2026-10-14)
+    climb: 0.25,
     moveMult: 1,
     temp: true,
     bossMult: 0.05,
@@ -845,6 +849,8 @@ export const WEAPONS = {
     pen: 2,
     sound: 'gatling',
     recoil: 0.005,
+    // (la mira sube un cuarto de lo que patea: Weapons.fire climb; el usuario, 2026-10-14)
+    climb: 0.25,
     moveMult: 0.88,
     noAds: true,
     rapid: true,

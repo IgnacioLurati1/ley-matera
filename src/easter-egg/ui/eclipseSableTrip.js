@@ -32,7 +32,6 @@ import { addPerson } from '../entities/eclipse/montar';
 //  4. el Gil vuelve a entrar (blanco) y sale en Eclipse con el sable en la mano;
 //     el desgarro se cierra. Al terminar, el Sable es del Gil (el 'take' del paso).
 // En línea cada compu la ve con el reloj de la escena desde 'lit' (ui/castleCine).
-// globalThis.__mduOldEclSable: la escena de antes (los cuatro salen a Eclipse).
 
 const GIL_ID = 901;
 const ROW_BACK = 0.6;
@@ -69,8 +68,7 @@ const ECLIPSE_ONLY = /flotan|eclMood|eclMist|cristal|crystal|eclPools|trampa|gri
 // las tomas son las mismas, metro por metro—, con la luz de allá (medida en el
 // juego durante el paso del sable), el mástil con la Bandera izada, el ánima
 // de Belgrano en el borde de la barranca, el Canchero a su lado, y la ciudad y
-// el río alrededor (los mismos constructores: world/monumentoCity).
-// globalThis.__mduOldTripPlace: el lugar libre al alba, como antes)
+// el río alrededor (los mismos constructores: world/monumentoCity))
 const NOCHE = { sun: 0xcedaff, sunI: 0.85, dir: [0.88, 0.406, -0.248], hs: 0x93a0bc, hg: 0x6e5238, hI: 0.9, amb: 0x505060, ambI: 0.5, fog: 0x10161f, fogD: 0.02 };
 // (el color del mapa del Monumento: fx/PostFX MAP_GRADE.monumento)
 const GRADE_NOCHE = { sat: 0.8, con: 1.1, sh: [-0.016, 0.0, 0.03], hi: [0.032, 0.026, 0.008], gain: [1.0, 1.0, 1.02], lift: [0, 0, 0.003] };
@@ -81,13 +79,7 @@ const PARQUE_ONLY = /rincon|eclipseGfx:faroles/i;
 const BELGRANO_ID = 467;
 const RIVER_Y = -5.2;
 const MAST_H = 9.5;
-const realOn = () => globalThis.__mduOldTripPlace !== true;
 const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-
-export function sableTripOn() {
-  return globalThis.__mduOldEclSable !== true;
-}
-
 export default class EclipseSableTrip extends CastleCine {
   // base: la escena de siempre (ui/eclipseCineSable: la Llama y el lugar libre)
   constructor(ee, base) {
@@ -130,17 +122,15 @@ export default class EclipseSableTrip extends CastleCine {
       return true;
     };
     // (G1) el mismo lugar del Monumento: el Parque trasplantado, sin girar
-    if (realOn()) {
-      const zg = ZONES.mG;
-      const mg = MON_ZONES.G;
-      if (zg?.tp?.src === 'monumento' && zg.rects?.[0] && mg?.rects?.[0]) {
-        const dx = zg.rects[0][0] - mg.rects[0][0];
-        const dz = zg.rects[0][1] - mg.rects[0][1];
-        const y = w.floorAt(PX + dx, PZ + dz);
-        if (Math.abs(y - zg.y) < 0.6) {
-          this.real = { dx, dz, dy: zg.y - mg.y };
-          return this.setFrame(new THREE.Vector3(PX + dx, y, PZ + dz), new THREE.Vector3(0, 0, 1));
-        }
+    const zg = ZONES.mG;
+    const mg = MON_ZONES.G;
+    if (zg?.tp?.src === 'monumento' && zg.rects?.[0] && mg?.rects?.[0]) {
+      const dx = zg.rects[0][0] - mg.rects[0][0];
+      const dz = zg.rects[0][1] - mg.rects[0][1];
+      const y = w.floorAt(PX + dx, PZ + dz);
+      if (Math.abs(y - zg.y) < 0.6) {
+        this.real = { dx, dz, dy: zg.y - mg.y };
+        return this.setFrame(new THREE.Vector3(PX + dx, y, PZ + dz), new THREE.Vector3(0, 0, 1));
       }
     }
     const ZS = w.zoneKeys;

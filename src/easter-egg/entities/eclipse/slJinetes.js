@@ -24,6 +24,12 @@ const WAVES = {
   2: { first: 16, every: 45, n: 4 },
   4: { first: 4, every: 40, n: 5, sub: 'corona' },
 };
+// (2026-10-14, el final nuevo —entities/eclipse/slFinal.js, fase 4—: en la carrera del Gil por la rampa, una
+// tanda que sale de adelante, del lado de El Eclipse, y se tira solo contra él; los de abajo los bajan. Al Gil
+// no lo tocan: lo cubre la luz del facón (slFinal.gilShield). slFinal.jinetesOn dice cuándo y
+// globalThis.__mduSlFinalSinJinetes la apaga)
+const RUN_WAVE = { first: 0, every: 0, n: 3 };
+const RUN_R = 14;
 // de a uno cada tanto, y no más de tantos en el aire
 const SPAWN_EVERY = 0.9;
 const CAP = 7;
@@ -46,6 +52,7 @@ export default class SlJinetes {
     c.y += 4;
     // (sin cúpula: f > 1 es "afuera")
     this.cupula = { c, R: 60, Ry: 12, f: () => 9 };
+    this.home = { c: c.clone(), R: 60 };
     this.jin = new Jinetes(this);
     this.prevYasy = null;
     this.adapter = this.makeAdapter();
@@ -75,7 +82,8 @@ export default class SlJinetes {
   }
 
   shielded() {
-    return false;
+    // (la carrera del final nuevo: al Gil no lo tocan)
+    return !!(this.run && this.sl.fin?.gilShield?.());
   }
 
   domeHit() {}
@@ -83,6 +91,7 @@ export default class SlJinetes {
   // A quién se tira (el que no tenga ya uno encima, si hay).
   pickTarget(list) {
     const g = this.g;
+    if (this.run) return this.gilTarget();
     const out = [];
     if (g.player.alive && !g.player.downed) out.push({ id: myId(g), pos: g.player.pos });
     if (g.net) for (const r of g.net.remote.values()) if (!r.dead && !r.downed && !r.ghost && r.pos) out.push({ id: r.id, pos: r.pos });
@@ -91,6 +100,15 @@ export default class SlJinetes {
     const free = out.filter((p) => !busy.has(p.id));
     const pool = free.length ? free : out;
     return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  // (la carrera del final nuevo) El Gil, esté en esta compu o en otra.
+  gilTarget() {
+    const g = this.g;
+    const ee = this.sl.ee;
+    if (ee?.isGil?.() || !g.net || !ee?.roles?.size) return g.player.alive ? { id: myId(g), pos: g.player.pos } : null;
+    for (const r of g.net.remote.values()) if (ee.isGil(r.id) && r.pos) return { id: r.id, pos: r.pos };
+    return null;
   }
 
   playerPos(id) {
@@ -173,8 +191,26 @@ export default class SlJinetes {
     const sl = this.sl;
     const S2 = sl.st;
     const ph = S2.phase;
-    const W = WAVES[ph];
-    const fight = !!W && (!W.sub || S2.sub === W.sub) && !sl.ee.scene && !sl.scene;
+    // (el final nuevo: la tanda de la carrera, adelante del Gil; al terminar, se van al cielo)
+    const run = ph === 5 && !!sl.fin?.jinetesOn?.();
+    if (run !== !!this.run) {
+      this.run = run;
+      const D = this.cupula;
+      if (run) {
+        sl.fin.jinetesCenter(D.c);
+        D.R = RUN_R;
+        D.Ry = 2;
+        this.waveT = 0;
+        this.waveN = 0;
+      } else {
+        D.c.copy(this.home.c);
+        D.R = this.home.R;
+        D.Ry = 12;
+        this.flee();
+      }
+    }
+    const W = run ? RUN_WAVE : WAVES[ph];
+    const fight = run || (!!W && (!W.sub || S2.sub === W.sub) && !sl.ee.scene && !sl.scene);
     if (fight) this.install();
     // (cambió la fase o la parte: el reloj de las tandas vuelve a empezar)
     if (ph !== this.phase || S2.sub !== this.sub) {

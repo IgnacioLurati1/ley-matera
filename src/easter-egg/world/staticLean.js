@@ -16,8 +16,7 @@ import { MAP_ID, FEATURES } from '../config/map';
 //    material de perkMachines.flatten). Estaba en todo el mapa (nunca se
 //    escondía por cuarto): no cambia qué se recorta. El castillo ya lo hace en
 //    su gancho (Castle.js). Penal: 28 mallas → 3.
-//    globalThis.__mduNoStaticFlat (todos), __mduNoFlat_<mapa> (uno; el viejo
-//    __mduNoPenalFlat sigue andando) o __mduNoMerge, al cargar: como antes.
+//    globalThis.__mduNoFlat_<mapa> (uno) o __mduNoMerge, al cargar: como antes.
 // B. Lo que core/matrixCache igual recorre en cada cuadro: las mallas de
 //    finalizeStatic (a un grupo `statics`), los grupos de GeoBuilder
 //    (arquitectura, terreno: mallas sin hijos con la matriz fija), los haces de
@@ -25,22 +24,18 @@ import { MAP_ID, FEATURES } from '../config/map';
 //    congelados (mcFrozen: no se recorren mientras la raíz no se mueva); el mate
 //    supremo del altar del penal, escondido hasta el final, dormido (mcSleep).
 //    Las puertas: world/Interactables (freezeDoors).
-//    globalThis.__mduNoFreeze (todos) o __mduNoFreeze_<mapa>, al cargar: como antes.
 // C. Grupos de decorado quieto armados pieza por pieza (la red y los horcones
 //    del secadero del cráneo en el estero: 18 dibujos), una malla por material
 //    (leanGroup = props.compactGroup). Solo lo que no se mueve ni se usa.
-//    globalThis.__mduNoGroupMerge (todos) o __mduNoGroupMerge_<mapa>, al cargar:
-//    como antes.
 // Para la prueba de imagen en la misma página, al cargar: __mduFlatAB = true
 // arma también las mallas de antes y deja globalThis.__mduFlatToggle(on);
 // __mduFreezeAB = true deja globalThis.__mduFreezeToggle(on); __mduMergeAB =
 // true deja la copia suelta de cada grupo de C y globalThis.__mduGroupToggle(on).
-export const flatOn = () => !FEATURES.castle && !globalThis.__mduNoMerge && !globalThis.__mduNoStaticFlat && !globalThis[`__mduNoFlat_${MAP_ID}`] && !(MAP_ID === 'penal' && globalThis.__mduNoPenalFlat);
-export const freezeOn = () => !globalThis.__mduNoFreeze && !globalThis[`__mduNoFreeze_${MAP_ID}`];
+export const flatOn = () => !FEATURES.castle && !globalThis.__mduNoMerge && !globalThis[`__mduNoFlat_${MAP_ID}`];
 // (no en el castillo: sus puertas son otras —puente, hielo—. El Monumento sí:
 // las vallas, los portones de bronce y las rejas solo se mueven al abrir, como
-// las de los otros mapas; globalThis.__mduNoMonuFreeze: como antes)
-export const freezeDoors = () => freezeOn() && !FEATURES.castle && !(FEATURES.monumento && globalThis.__mduNoMonuFreeze);
+// las de los otros mapas)
+export const freezeDoors = () => !FEATURES.castle;
 
 // D. El castillo (2026-10-05, Mirador con 28 zombies ~1000 dibujos): la
 //    arquitectura sale de varios constructores (Levels, Castle, castleRooms,
@@ -49,17 +44,17 @@ export const freezeDoors = () => freezeOn() && !FEATURES.castle && !(FEATURES.mo
 //    material, atributos y sombras va a una malla (mergeStructure, lo de 97 que
 //    había quedado guardado). Todo eso ya estaba en todo el mapa (no se
 //    escondía por cuarto). Y los marcos de piedra de las puertas (nunca se
-//    mueven; las hojas sí) van juntos. globalThis.__mduNoCastleStruct /
-//    __mduNoCastleFrames (o __mduNoMerge), al cargar: como antes. Prueba:
+//    mueven; las hojas sí) van juntos. globalThis.__mduNoMerge, al
+//    cargar: como antes. Prueba:
 //    __mduStructAB → __mduStructToggle(on).
-export const structOn = () => FEATURES.castle && !globalThis.__mduNoMerge && !globalThis.__mduNoCastleStruct;
-export const framesOn = () => FEATURES.castle && !globalThis.__mduNoMerge && !globalThis.__mduNoCastleFrames;
+export const structOn = () => FEATURES.castle && !globalThis.__mduNoMerge;
+export const framesOn = () => FEATURES.castle && !globalThis.__mduNoMerge;
 // las hojas de las puertas del castillo (las de dos hojas), cerradas o abiertas
 // del todo, en una copia junta como en los otros mapas (world/Interactables).
 // (el rastrillo no: el asedio lo sube y lo baja por su cuenta)
-export const castleDoorsOn = () => FEATURES.castle && !globalThis.__mduNoMerge && !globalThis.__mduNoCastleDoors;
+export const castleDoorsOn = () => FEATURES.castle && !globalThis.__mduNoMerge;
 
-export const groupOn = () => !globalThis.__mduNoMerge && !globalThis.__mduNoGroupMerge && !globalThis[`__mduNoGroupMerge_${MAP_ID}`];
+export const groupOn = () => !globalThis.__mduNoMerge;
 export function leanGroup(obj) {
   if (!groupOn() || !obj?.isObject3D) return obj;
   const ab = globalThis.__mduMergeAB === true;
@@ -108,10 +103,8 @@ export function leanGroup(obj) {
 
 export function installStaticLean(w) {
   const flat = flatOn();
-  const freeze = freezeOn();
   const struct = structOn();
   const frames = framesOn();
-  if (!flat && !freeze && !struct && !frames) return;
   const fin = w.finalizeStatic;
   w.finalizeStatic = function () {
     const ab = flat && globalThis.__mduFlatAB === true ? keepCopies(this) : null;
@@ -144,7 +137,7 @@ export function installStaticLean(w) {
         return { juntas: AB.reduce((n, x) => n + x[0].length, 0), sueltas: AB.reduce((n, x) => n + x[1].length, 0) };
       };
     }
-    if (freeze) freezeStatics(this, before);
+    freezeStatics(this, before);
     return r;
   };
 }

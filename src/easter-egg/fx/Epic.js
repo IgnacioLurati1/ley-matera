@@ -38,7 +38,6 @@ export const LEVELS = {
 const SHADOW_LIGHTS = Math.max(5, globalThis.__mduLamparasSombra | 0);
 const REFL_STEPS = 16;
 // (los reflejos: cuánto corre cada píxel el arranque de la marcha, y si promedia el color del choque)
-const OLD_SSR = globalThis.__mduOldSsr === true;
 // La oclusión de cada mapa. El castillo tiene salones enormes y techos altos:
 // con el radio de siempre solo se notaba en los rincones chicos.
 const AO_BASE = { radius: 0.7, distanceExponent: 1.2, thickness: 1.2, scale: 1.1, blend: 0.95, more: 0 };
@@ -52,20 +51,19 @@ const AO_BASE = { radius: 0.7, distanceExponent: 1.2, thickness: 1.2, scale: 1.1
 // (Eclipse Matero, sesión 1f: la luz volumétrica pintaba de bruma gris el
 // cielo alrededor del eclipse y dejaba rayos de sombra en el aire —las rejas
 // "volando" que vio el usuario—; con la niebla más espesa de eclipseMood,
-// todavía más. globalThis.__mduNoEclVol: como antes)
-const VOL_MAP = { esteros: { scatter: 0.6, sky: 0.25 }, monumento: { sky: 0.15 }, ...(globalThis.__mduNoEclVol === true ? {} : { eclipse: { scatter: 0.35, sky: 0.1 } }) };
+// todavía más)
+const VOL_MAP = { esteros: { scatter: 0.6, sky: 0.25 }, monumento: { sky: 0.15 }, eclipse: { scatter: 0.35, sky: 0.1 } };
 const AO_MAP = {
   castillo: { radius: 1.4, distanceExponent: 1.4, thickness: 2.4, scale: 1.8, blend: 1, more: 4 },
   // Eclipse Matero (grafica-v3): islas abiertas con muros, utilería grande y
   // barrancos; con el radio de los cuartos chicos "no se veía la oclusión"
-  // (globalThis.__mduNoEclAo: la de siempre)
   // (pow: la oclusión elevada, más marcada en los rincones; islas abiertas de noche)
   // (2026-10-09, el usuario: "la oclusión en el mapa está medio rara": con
   // radio 1,8, grosor 2,6, escala 2,2 y elevada a 2,2 oscurecía cosas enteras
   // —la máquina del molino, las rejas del penal, la estatua del Monumento— y
   // se comía los charcos de luz y los faroles. Más suave: sigue marcando los
-  // rincones. globalThis.__mduOldEclAo10: como antes)
-  eclipse: globalThis.__mduOldEclAo10 === true ? { radius: 1.8, distanceExponent: 1.4, thickness: 2.6, scale: 2.2, blend: 1, more: 4, pow: 2.2 } : { radius: 1.2, distanceExponent: 1.4, thickness: 1.6, scale: 1.5, blend: 1, more: 4, pow: 1.3 },
+  // rincones)
+  eclipse: { radius: 1.2, distanceExponent: 1.4, thickness: 1.6, scale: 1.5, blend: 1, more: 4, pow: 1.3 },
 };
 // Cómo se elige qué fuego tira sombra (Epic.pickLamps).
 const LAMP_FALL = 7; // a esta distancia un fuego cuenta la mitad
@@ -313,8 +311,7 @@ class GBufferPass extends Pass {
     if (this.mrt) return;
     this.nSwapped = 0;
     this.nHidden = 0;
-    // (globalThis.__mduNoGbList: recorriendo la escena, como antes)
-    const fromMain = globalThis.__mduNoGbList !== true && this.fromMain(renderer);
+    const fromMain = this.fromMain(renderer);
     if (!fromMain) scene.traverseVisible((o) => {
       if (o.isSprite || o.isPoints || o.isLine) {
         o.visible = false;
@@ -529,7 +526,7 @@ noShadow.needsUpdate = true;
 // Reflejos en pantalla + la luz volumétrica de la luna (que llega hecha de
 // VolPass, a media resolución), en una sola pasada.
 const LightShader = {
-  defines: { REFL_STEPS, SSR_JIT: OLD_SSR ? '0.1' : '0.0', SSR_BLUR: OLD_SSR ? 0 : 1 },
+  defines: { REFL_STEPS, SSR_JIT: '0.0', SSR_BLUR: 1 },
   uniforms: {
     tDiffuse: { value: null },
     tVol: { value: null },
@@ -689,7 +686,7 @@ const LightShader = {
           // (2026-10-05, el usuario: el reflejo de las lámparas se veía hecho de
           // puntitos: cada píxel arrancaba la marcha en otro lugar (ign) y unos
           // chocaban con la lámpara y otros no. Ahora todos igual y el color del
-          // choque promediado con sus vecinos. globalThis.__mduOldSsr: como antes)
+          // choque promediado con sus vecinos)
           float stepLen = 0.12 + SSR_JIT * jit;
           vec2 hit = vec2(-1.0);
           float fade = 0.0;
@@ -907,16 +904,14 @@ const SETTLE = 240;
 // cosas: volver una sola (el mate de un potenciador que cayó, algo suelto)
 // rehacía todas las sombras guardadas, y al levantarla otra vez. Pocas
 // quietas entre las que se mueven cuestan menos que rehacer todo
-// (globalThis.__mduIdleAll: como antes)
 const IDLE_MIN = 6;
 const NONE = [];
 // Lo que cambia seguido aunque pase ratos quieto (userData.shadowDyn: las tablas
 // de las ventanas, world/Barriers) va siempre con lo que se mueve: cada tabla
 // arrancada o repuesta rehacía todo lo guardado (la luna y cada cubo de fuego,
 // ~550-2000 llamadas en un cuadro). Quien lo mueve avisa con Epic.kickShadow.
-// Switch __mduNoShadowDyn (como antes).
 function keepDyn(o) {
-  return o.userData.shadowDyn === true && globalThis.__mduNoShadowDyn !== true;
+  return o.userData.shadowDyn === true;
 }
 
 function look(m) {
@@ -1023,12 +1018,11 @@ class ShadowCache {
   // el blanco: la crea a mano (WebGLTextures setupDepthTexture) y al soltarla solo
   // borra las que tiene anotadas. Cada fuego que salía de este caché dejaba unos 6 MB
   // en la placa para siempre: Eclipse en Épica pasaba de 1 a 3,5 GB de texturas en dos
-  // vueltas por el mapa. Acá se borra a mano. (2026-10-12, tanda de optimización;
-  // globalThis.__mduNoCubeDepthFree: como antes)
+  // vueltas por el mapa. Acá se borra a mano. (2026-10-12, tanda de optimización)
   freeRT(rt) {
     if (!rt) return;
     const d = rt.depthTexture;
-    const tex = d?.isCubeDepthTexture && globalThis.__mduNoCubeDepthFree !== true ? this.renderer.properties.get(d).__webglTexture : null;
+    const tex = d?.isCubeDepthTexture ? this.renderer.properties.get(d).__webglTexture : null;
     rt.dispose();
     if (tex) this.renderer.getContext().deleteTexture(tex);
   }
@@ -1217,7 +1211,7 @@ class ShadowCache {
       this.dirty = true;
     }
     // lo que dejó de moverse vuelve a lo guardado (no más de una vez cada tanto)
-    if (this.idle >= (globalThis.__mduIdleAll === true ? 1 : IDLE_MIN) && this.stamp - this.settled > SETTLE * 2) {
+    if (this.idle >= IDLE_MIN && this.stamp - this.settled > SETTLE * 2) {
       this.settled = this.stamp;
       this.dirty = true;
     }
@@ -1377,7 +1371,7 @@ const zSphere = new THREE.Sphere();
 // lo de la cabeza y los adornos chicos no se distinguen en la pared. Y solo
 // los ZLAMPS fuegos más cerca de la cámara (con margen, para que no salten):
 // los otros, con lo quieto. Peleando en el penal eran ~70 de ~380 llamadas por
-// cuadro (globalThis.__mduZShadowAll: como antes).
+// cuadro.
 const ZSMALL = new Set(['foot', 'eye', 'headx', 'hair', 'boina', 'scarf', 'susp', 'shackle', 'cuff', 'num', 'cord', 'belts', 'algae', 'algaeS', 'bonete', 'faja', 'snow', 'chullo']);
 const ZLAMPS = 2;
 const ZLAMP_HOLD = 2;
@@ -1542,7 +1536,7 @@ export default class Epic {
     this.gbuffer.scale = c.gres || (c.light ? 1 : 0.5);
     this.gbuffer.setSize(this.gbuffer.w, this.gbuffer.h);
     if (c.ao) {
-      const A = (game?.mapId === 'eclipse' && globalThis.__mduNoEclAo === true ? null : AO_MAP[game?.mapId]) || AO_BASE;
+      const A = AO_MAP[game?.mapId] || AO_BASE;
       this.gtao.updateGtaoMaterial({ radius: A.radius, distanceExponent: A.distanceExponent, thickness: A.thickness, scale: A.scale, samples: c.ao + A.more });
       this.gtao.updatePdMaterial({ samples: c.ao >= 12 ? 8 : 6 });
       this.gtao.blendIntensity = A.blend;
@@ -1734,7 +1728,7 @@ export default class Epic {
       r.s = (l.intensity * r.v) / (1 + (d / LAMP_FALL) ** 2);
       // (y la que ya tiene sombra y se movió, la suelta: una luz que anda
       // rehacía lo quieto de su sombra en cada cuadro, ~400 llamadas)
-      if (r.since < LAMP_WAIT && (!this.holds(l) || (r.since === 0 && globalThis.__mduMovingLamps !== true))) continue;
+      if (r.since < LAMP_WAIT && (!this.holds(l) || (r.since === 0))) continue;
       if (this.holds(l)) r.s *= LAMP_HOLD;
       ranked.push(r);
     }
@@ -1933,11 +1927,10 @@ export default class Epic {
     const Z = this.game?.zombies;
     if (!Z?.meshes) return;
     const p = l.position;
-    const all = globalThis.__mduZShadowAll === true;
     // (de los fuegos con sombra, ¿este está entre los ZLAMPS más cerca de la cámara?)
     let near = true;
     const cam = this.game?.camera;
-    if (!all && cam) {
+    if (cam) {
       const c = cam.position;
       const d = p.distanceTo(c) - (l.userData.zNear ? ZLAMP_HOLD : 0);
       let closer = 0;
@@ -1964,7 +1957,7 @@ export default class Epic {
     const ims = Z.batch ? [{ key: 'batch', im: Z.batch.mesh }, ...Z.meshes.filter((M) => M.key === 'eye')] : Z.meshes;
     for (const M of ims) {
       const im = M.im;
-      if (!all && ZSMALL.has(M.key) && im.visible) {
+      if (ZSMALL.has(M.key) && im.visible) {
         im.visible = false;
         off.push(im);
         continue;

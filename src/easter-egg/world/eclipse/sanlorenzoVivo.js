@@ -14,7 +14,7 @@ import { F, hLoc, edgeU, farBank, WATER_Y, IC } from './sanlorenzoCampo';
 //    reman en el sombreador); avisan cuando desembarcan (onLand).
 // Todo instanciado y movido en los sombreadores: por cuadro, un uniforme de
 // tiempo y las matrices de seis botes. Todo en coordenadas del campo (va
-// adentro del grupo del campo). __mduNoSlVivo: sin esto.
+// adentro del grupo del campo).
 
 const tmpM = new THREE.Matrix4();
 const tmpQ = new THREE.Quaternion();
@@ -251,7 +251,7 @@ export default class CampoVivo {
     campo.root.add(this.root);
     this.time = { value: 0 };
     this.k = { value: 1 };
-    this.off = globalThis.__mduNoSlVivo === true;
+    this.off = false;
     if (this.off) return;
     this.buildFires();
     this.buildSmoke();

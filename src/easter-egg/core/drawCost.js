@@ -12,7 +12,6 @@ ownToArray(THREE.Matrix4);
 //    de cada matriz). three ya sube las luces solo al cambiar de programa o de
 //    cámara (markUniformsLightsNeedsUpdate): esas matrices son parte de las
 //    luces y no cambian entre esos momentos; acá van con la misma marca.
-//    globalThis.__mduNoShadowMatGate: como antes.
 // 2. Un material compartido entre un InstancedMesh y mallas comunes (los de la
 //    biblioteca: hierro, madera, bronce...) hacía que three buscara de nuevo el
 //    programa en cada paso de uno al otro (getProgram + getParameters, ~8 por
@@ -23,14 +22,13 @@ ownToArray(THREE.Matrix4);
 //    onBeforeCompile corre con this = gemelo: los de este juego (fx/Surfaces,
 //    TAA, ...) arman los uniforms con lo que tiene el material o con objetos
 //    compartidos y no se guardan el shader, así que queda igual.
-//    globalThis.__mduNoInstTwin: como antes.
 // 3. Las luces (~20 puntuales en el penal, con sus sombras) se volvían a subir
 //    en cada cambio de programa: con ~130 cambios por cuadro, el mismo programa
 //    recibía las mismas luces varias veces. Los uniforms quedan guardados en
 //    cada programa, y dentro de un mismo render (misma cámara, mismas luces)
 //    no cambian: se suben la primera vez que se usa el programa en ese render.
 //    Un render adentro de otro (o el siguiente) cuenta como otro: se vuelven a
-//    subir. globalThis.__mduNoLightOnce: como antes.
+//    subir.
 // 4. Lo transparente de doble cara con mezcla normal (los fantasmas azules del
 //    penal, op 0,42) three lo dibuja en dos pasadas, atrás y adelante,
 //    cambiándole side y needsUpdate al material: cada pasada volvía a buscar el
@@ -40,7 +38,6 @@ ownToArray(THREE.Matrix4);
 //    rebuscar. El material queda con forceSinglePass para que three lo mande
 //    una vez. Sin los de transmisión (su pasada propia mira forceSinglePass)
 //    ni ShaderMaterial (uniformsNeedUpdate se escribe en el material).
-//    globalThis.__mduNoTwoPassTwin: como antes.
 // 5. Las luces de un render al siguiente: el primer dibujo de cada programa en
 //    cada render volvía a subir todas las luces (23 puntuales en el penal, sus
 //    sombras, matrices, la sonda...: ~140 uniforms comparados uno por uno, ~30
@@ -54,14 +51,13 @@ ownToArray(THREE.Matrix4);
 //    solo cambiaron los colores (los fuegos titilan) se suben solo los colores
 //    de cada luz, no posición, alcance y caída (antes ~92 uniforms por programa
 //    con 23 puntuales, ahora ~23).
-//    globalThis.__mduNoLightVer: como antes. (__mduLightVerCheck: compara lo que
+//    (__mduLightVerCheck: compara lo que
 //    se saltea con lo último subido; las diferencias en __mduLightVerBad.)
 // 6. Un InstancedMesh sin copias (count 0: los zombies de un tipo que no está,
 //    los calcos y pedazos sin usar...) se mandaba igual: programa, uniforms y
 //    una llamada que no dibuja nada (~10-20 µs). En Eclipse eran ~9 por cuadro
 //    en la pantalla y ~20 por pasada del espejo del agua. Sin copias no se
 //    manda (su onBeforeRender ya corrió: si pone copias, se dibuja).
-//    globalThis.__mduNoEmptyInst: como antes.
 
 const SHADOW_MATS = ['sunShadowMatrix', 'directionalShadowMatrix', 'spotLightMatrix', 'pointShadowMatrix'];
 // las que three marca en markUniformsLightsNeedsUpdate (sin los samplers: sus
@@ -285,7 +281,7 @@ function lightVer(seq, values, gl, textures) {
     const v = values[u.id];
     if (v === undefined || v.needsUpdate === false) continue;
     const val = v.value;
-    if (globalThis.__mduNoLightField !== true && structList(u, val)) {
+    if (structList(u, val)) {
       // por campo: los que cambiaron, de todas las luces; los demás ya están
       const d = fieldsOf(val);
       const keys = d.keys;
@@ -356,7 +352,7 @@ function gateShadowMatrices(U) {
     const pl = values.pointLights;
     if (pl !== undefined) {
       // (la marca que three acaba de poner a las luces de este material)
-      const nu = globalThis.__mduNoShadowMatGate === true ? undefined : pl.needsUpdate;
+      const nu = pl.needsUpdate;
       for (let i = 0; i < SHADOW_MATS.length; i++) {
         const v = values[SHADOW_MATS[i]];
         if (v !== undefined) v.needsUpdate = nu;
@@ -364,19 +360,16 @@ function gateShadowMatrices(U) {
       // (el primer uniform de la lista es del programa: marca que ya tiene las luces de este render)
       if (pl.needsUpdate === true && seq.length > 0) {
         const k = seq[0];
-        const once = globalThis.__mduNoLightOnce !== true;
-        if (once && k.__mduLit === pass) {
+        if (k.__mduLit === pass) {
           if (globalThis.__mduLightOnceCheck === true) check(upload, gl, seq, values, textures);
           for (let i = 0; i < LIGHTS.length; i++) {
             const v = values[LIGHTS[i]];
             if (v !== undefined) v.needsUpdate = false;
           }
         } else {
-          if (once) {
-            k.__mduLit = pass;
-            if (globalThis.__mduLightOnceCheck === true) for (const u of seq) if (SHADOW_MATS.includes(u.id)) u.__mduSnap = snapOf(values[u.id].value);
-          }
-          if (globalThis.__mduNoLightVer !== true) lightVer(seq, values, gl, textures);
+          k.__mduLit = pass;
+          if (globalThis.__mduLightOnceCheck === true) for (const u of seq) if (SHADOW_MATS.includes(u.id)) u.__mduSnap = snapOf(values[u.id].value);
+          lightVer(seq, values, gl, textures);
         }
       }
     }
@@ -401,13 +394,12 @@ export function drawCost(renderer) {
   // compile() y compileAsync() sin blanco armaban los programas para la pantalla (sRGB y
   // ACES), que no usa nadie: Eclipse en Épica compilaba ~330 de más al cargar y los de
   // verdad recién al primer uso. Se compila con un blanco de 1x1 puesto.
-  // (globalThis.__mduCompilaPantalla: como antes)
   let lin = null;
   for (const k of ['compile', 'compileAsync']) {
     const f = renderer[k];
     if (!f) continue;
     renderer[k] = function (...a) {
-      if (globalThis.__mduCompilaPantalla === true || renderer.getRenderTarget() !== null) return f.apply(renderer, a);
+      if (renderer.getRenderTarget() !== null) return f.apply(renderer, a);
       lin ||= new THREE.WebGLRenderTarget(1, 1);
       renderer.setRenderTarget(lin);
       try {
@@ -420,7 +412,7 @@ export function drawCost(renderer) {
   const rbd = renderer.renderBufferDirect;
   let gated = false;
   const draw = (camera, scene, geometry, material, object, group) => {
-    if (object.isInstancedMesh === true && material.isMeshStandardMaterial === true && globalThis.__mduNoInstTwin !== true) material = twinOf(material);
+    if (object.isInstancedMesh === true && material.isMeshStandardMaterial === true) material = twinOf(material);
     rbd.call(renderer, camera, scene, geometry, material, object, group);
     if (!gated) {
       // (la clase de los uniforms de three, de un programa que ya se usó)
@@ -433,26 +425,15 @@ export function drawCost(renderer) {
     }
   };
   renderer.renderBufferDirect = function (camera, scene, geometry, material, object, group) {
-    if (object.isInstancedMesh === true && object.count === 0 && globalThis.__mduNoEmptyInst !== true) return;
+    if (object.isInstancedMesh === true && object.count === 0) return;
     if (material.transparent === true) {
       if (material.__mdu2p === true) {
         if (material.side === THREE.DoubleSide) {
-          if (globalThis.__mduNoTwoPassTwin === true) {
-            // (como three: cambiándole la cara y needsUpdate)
-            material.side = THREE.BackSide;
-            material.needsUpdate = true;
-            draw(camera, scene, geometry, material, object, group);
-            material.side = THREE.FrontSide;
-            material.needsUpdate = true;
-            draw(camera, scene, geometry, material, object, group);
-            material.side = THREE.DoubleSide;
-          } else {
-            draw(camera, scene, geometry, sideTwin(material, THREE.BackSide), object, group);
-            draw(camera, scene, geometry, sideTwin(material, THREE.FrontSide), object, group);
-          }
+          draw(camera, scene, geometry, sideTwin(material, THREE.BackSide), object, group);
+          draw(camera, scene, geometry, sideTwin(material, THREE.FrontSide), object, group);
           return;
         }
-      } else if (material.side === THREE.BackSide && material.forceSinglePass === false && !(material.transmission > 0) && material.isShaderMaterial !== true && globalThis.__mduNoTwoPassTwin !== true) {
+      } else if (material.side === THREE.BackSide && material.forceSinglePass === false && !(material.transmission > 0) && material.isShaderMaterial !== true) {
         // (la primera de las dos pasadas de three, o uno de una sola cara de
         // atrás: a ese forceSinglePass no le cambia nada)
         material.forceSinglePass = true;

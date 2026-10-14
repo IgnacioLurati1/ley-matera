@@ -367,7 +367,7 @@ export default class Mateendrache {
       if (o.isMesh) o.castShadow = false;
     });
     for (const W of this.wings) W.mem.frustumCulled = false;
-    // los clips de Blender encima de la pose de piezas (world/dragonBlend.js; __mduNoDragonBlend: como antes)
+    // los clips de Blender encima de la pose de piezas (world/dragonBlend.js)
     this.jawOpenK = JAW_OPEN;
     this.bl = dragonBlendOn() ? new DragonBlend(this) : null;
     if (this.bl) loadDragonClips();

@@ -24,12 +24,6 @@ import { ELEMENTS, ELEM_COLOR, ELEM_RGB, MATE_OF, myId, playerPos } from './comm
 export const FINALE = 6.5;
 const HOLD = 2;
 const RISE = 1.8;
-// (globalThis.__mduNoJuraCine = true: la ceremonia final como antes, desde los ojos
-// del jugador, con los cuatro saliendo juntos y el destello fuerte)
-const OLD = () => globalThis.__mduNoJuraCine === true;
-// (globalThis.__mduNoJuraCalm = true: la cámara sacude como antes en cada jura, en la
-// salida de cada caballero y en la ceremonia; el usuario: "la pantalla tiembla muchísimo")
-const CALM = () => globalThis.__mduNoJuraCalm !== true;
 // La ceremonia final con la cámara de la escena: desde los ojos, el dragón y las
 // patas tapaban a los caballeros de las primeras tumbas. Dos tomas: (A) del sur,
 // afuera del borde de la cumbre, a la altura justa (más alta o más cerca entra en
@@ -175,7 +169,7 @@ export default class Juramento {
         if (m.emissive) {
           m.emissive.set(c);
           // (más apagados: con 1.4 y el brillo eran manchas blancas, no caballeros)
-          m.emissiveIntensity = OLD() ? 1.4 : 0.8;
+          m.emissiveIntensity = 0.8;
         }
       }
       av.M.poncho.color.set(c);
@@ -224,22 +218,15 @@ export default class Juramento {
     const n = this.count++;
     const pos = (playerPos(g, id) || this.at).clone();
     const me = id === myId(g);
-    this.flare = OLD() ? 1 : 0.7;
+    this.flare = 0.7;
     this.waveT = 0;
     this.wave.visible = true;
-    if (OLD()) {
-      g.post?.flash(me ? 0.9 : 0.5);
-      g.fx.addShake?.(me ? 0.5 : 0.25);
-      g.fx.sparkle(tmpV.copy(pos).setY(pos.y + 1.1), [1, 0.88, 0.5], 70, 1.6);
-      g.fx.explosion?.(tmpV.copy(pos).setY(pos.y + 0.3), 1.6, [1, 0.8, 0.4]);
-    } else {
-      // (un destello corto: la explosión en los pies del que jura le llenaba la
-      // vista de chispas y humo, y quemaba la nieve del sello)
-      g.post?.flash(me ? 0.38 : 0.22);
-      // (un golpe leve y corto solo en la jura propia; la de un compañero, apenas)
-      g.fx.addShake?.(CALM() ? (me ? 0.2 : 0.06) : me ? 0.35 : 0.2);
-      g.fx.sparkle(tmpV.copy(pos).setY(pos.y + 0.2), [1, 0.88, 0.5], 36, 1.4);
-    }
+    // (un destello corto: la explosión en los pies del que jura le llenaba la
+    // vista de chispas y humo, y quemaba la nieve del sello)
+    g.post?.flash(me ? 0.38 : 0.22);
+    // (un golpe leve y corto solo en la jura propia; la de un compañero, apenas)
+    g.fx.addShake?.(me ? 0.2 : 0.06);
+    g.fx.sparkle(tmpV.copy(pos).setY(pos.y + 0.2), [1, 0.88, 0.5], 36, 1.4);
     // el caballero de ese juramento sale de su tumba y le levanta el mate
     const K = this.knights[n % 4];
     this.riseKnight(K, pos);
@@ -257,7 +244,7 @@ export default class Juramento {
       const sh = g.fx.shake;
       g.fx.explosion?.(tmpV.set(K.r.pos.x, K.y0 + 0.4, K.r.pos.z), 1.2, ELEM_RGB[K.el]);
       // (la explosión sacude sola: que salga un caballero no mueve la cámara)
-      if (CALM() && sh != null) g.fx.shake = sh;
+      if (sh != null) g.fx.shake = sh;
       g.fx.dust?.(tmpV.set(K.r.pos.x, K.y0 + 0.1, K.r.pos.z), UP, [0.9, 0.92, 0.95], 26);
     }
     K.raise = true;
@@ -270,21 +257,20 @@ export default class Juramento {
     const g = this.g;
     this.finaleT = 0;
     this.finale0 = performance.now();
-    const old = OLD();
-    this.flare = old ? 1.4 : 0.8;
+    this.flare = 0.8;
     const crown = this.crownAt();
     this.knights.forEach((K, i) => {
       // (los que ya salieron con su jura miran a la corona; los demás salen uno
       // por uno, cuando les cae su trueno)
-      if (old || K.rise >= 0) this.riseKnight(K, crown);
+      if (K.rise >= 0) this.riseKnight(K, crown);
       else K.riseAt = 0.3 + i * 0.35;
       K.beam = FINALE + 1;
     });
     this.dragonSalute(3);
-    g.post?.flash(old ? 1.1 : 0.32);
+    g.post?.flash(0.32);
     // (la ceremonia tiene su cámara: el sacudón quedaba para después)
-    g.fx.addShake?.(old ? 0.7 : CALM() ? 0 : 0.4);
-    if (!old) this.startCine();
+    g.fx.addShake?.(0);
+    this.startCine();
     // truenos de los cuatro colores sobre los caballeros
     this.knights.forEach((K, i) => {
       g.later(0.4 + i * 0.35, () => {
@@ -393,7 +379,7 @@ export default class Juramento {
     const cd = Math.hypot(cam.x - this.pillar.position.x, cam.z - this.pillar.position.z) / this.pillar.scale.x;
     const near = smooth(clamp01((cd - 1.3) / 2.2));
     // (en la ceremonia, con la cámara lejos, la columna entera estallando lavaba la imagen)
-    this.pillarMat.uniforms.uK.value = OLD() ? (0.12 + this.holdK * 0.42 + this.flare * 0.5 + fin * 0.35) * near : (0.12 + this.holdK * 0.42 + this.flare * 0.32) * (1 - fin * 0.75) * near;
+    this.pillarMat.uniforms.uK.value = (0.12 + this.holdK * 0.42 + this.flare * 0.32) * (1 - fin * 0.75) * near;
     this.pillarMat.uniforms.uCol.value.setRGB(1, 0.84 + fin * 0.14, 0.5 + fin * 0.45);
     this.pillar.scale.x = this.pillar.scale.z = 0.85 - this.holdK * 0.2 + this.flare * 0.3 + fin * 0.45;
     // el sello gira más rápido cuanto más cerca de jurar
@@ -461,7 +447,7 @@ export default class Juramento {
       K.k = k;
       // (sale de la nieve a media altura mientras aparece: de 2,2 m abajo la
       // cadera pasaba un segundo bajo el piso; el que todavía no salió, ni se dibuja)
-      K.r.pos.y = K.y0 - (OLD() ? 2.2 : 1.1) * (1 - k);
+      K.r.pos.y = K.y0 - 1.1 * (1 - k);
       // mira al que juró (o, al final, a la corona de luz)
       const to = K.beamTo || this.at;
       // (girando de a poco: al final, cuando miran a la corona, daban media vuelta en un cuadro)
@@ -471,7 +457,7 @@ export default class Juramento {
       K.r.yaw = k < 0.05 ? want : K.r.yaw + Math.max(-dt * 5, Math.min(dt * 5, d * Math.min(1, dt * 4)));
       K.lift += ((K.raise && k > 0.8 ? 1 : 0) - K.lift) * Math.min(1, dt * 3);
       for (const m of Object.values(K.av.M)) m.opacity = k * (0.72 + Math.sin(t * 3 + K.c) * 0.08);
-      K.aura.material.opacity = k * (OLD() ? 0.35 : 0.2) * (1 + Math.sin(t * 2.3 + K.c) * 0.23);
+      K.aura.material.opacity = k * 0.2 * (1 + Math.sin(t * 2.3 + K.c) * 0.23);
       K.aura.position.set(K.r.pos.x, K.r.pos.y + 1, K.r.pos.z);
       if (k > 0 && Math.random() < dt * 10) g.fx.sparkle(tmpV.set(K.r.pos.x, K.r.pos.y + 0.4 + Math.random() * 1.4, K.r.pos.z), ELEM_RGB[K.el], 1, 0.4);
     }
@@ -485,7 +471,7 @@ export default class Juramento {
     });
     C.update(dt);
     for (const K of this.knights) {
-      if (!OLD()) K.av.group.visible = K.rise >= 0;
+      K.av.group.visible = K.rise >= 0;
       uprightMate(K.av, smooth(K.lift), K.r.yaw);
       K.glow.position.setFromMatrixPosition(K.av.hand.matrixWorld);
       K.glow.material.opacity = K.k * (0.3 + K.lift * 0.7) * (0.85 + Math.sin(t * 7 + K.c) * 0.15);

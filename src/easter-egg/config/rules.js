@@ -4,6 +4,19 @@ export const START_POINTS = 500;
 export const MAX_ALIVE = 24;
 // Con más jugadores hay más zombies a la vez y más por ronda.
 export const maxAlive = (players = 1) => MAX_ALIVE + (players - 1) * 8;
+
+// La torre en grupo (el usuario, 2026-10-14: "de a muchos está muy fácil ... que cada jugador
+// que entre aumente la cantidad de zombies que salen o la velocidad ... y aumentar un poco el
+// tope"). En la torre cada muerto sale cerca de uno de los que están de pie (Zombies.spawnRef):
+// con el mismo ritmo para todos, de a dos a cada uno le tocaba la mitad que jugando solo, de a
+// tres un tercio. Ahora salen tantas veces más seguido como jugadores haya (a cada uno le toca lo
+// mismo que solo), cada jugador de más suma 75% de muertos a la ronda (antes 60%) y el tope de
+// vivos a la vez sube 10 por jugador de más (antes 8; el depósito de la torre es de 64,
+// entities/Zombies.js). Solo no cambia nada. globalThis.__mduTorreGrupoViejo = true: como antes.
+const towerOld = () => globalThis.__mduTorreGrupoViejo === true;
+export const towerCountPer = () => (towerOld() ? 0.6 : 0.75);
+export const towerRate = (players = 1) => (towerOld() ? 1 : Math.max(1, players));
+export const towerAlive = (players = 1) => (towerOld() ? maxAlive(players) : MAX_ALIVE + (players - 1) * 10);
 export const ROUND_BREAK = 10; // segundos entre rondas
 
 export const POINTS = {
@@ -25,7 +38,8 @@ export function zombieHealth(round) {
 }
 
 // Cantidad total de zombies de la ronda (fórmula de BO1 para 1 jugador).
-export function zombieCount(round, players = 1) {
+// (per: cuánto suma cada jugador de más; la torre, towerCountPer)
+export function zombieCount(round, players = 1, per = 0.6) {
   let multiplier = round / 5;
   if (multiplier < 1) multiplier = 1;
   if (round >= 10) multiplier *= round * 0.15;
@@ -35,7 +49,7 @@ export function zombieCount(round, players = 1) {
   else if (round < 4) max = Math.floor(max * 0.5);
   else if (round < 5) max = Math.floor(max * 0.7);
   else if (round < 6) max = Math.floor(max * 0.9);
-  return Math.floor(max * (1 + (players - 1) * 0.6));
+  return Math.floor(max * (1 + (players - 1) * per));
 }
 
 // Demora entre apariciones: 2 s en ronda 1, x0,95 por ronda, mínimo 0,08.

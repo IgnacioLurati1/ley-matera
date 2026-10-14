@@ -401,13 +401,13 @@ export const PROPS = [
   { type: 'tree', pos: [39, 56] },
   { type: 'tree', pos: [82, 55.5] },
   // (los muertos de las ventanas [19,37] y [41,14] los atravesaban al venir:
-  // corridos a un costado de su camino; __mduOldPenalTrees, donde estaban)
-  { type: 'tree', pos: globalThis.__mduOldPenalTrees ? [14, 37] : [14, 33.5] },
+  // corridos a un costado de su camino)
+  { type: 'tree', pos: [14, 33.5] },
   { type: 'tree', pos: [80, 67] },
   { type: 'tree', pos: [15, 57] },
   { type: 'tree', pos: [16, 27] },
   { type: 'tree', pos: [27, 19] },
-  { type: 'tree', pos: globalThis.__mduOldPenalTrees ? [41, 10] : [44.5, 10] },
+  { type: 'tree', pos: [44.5, 10] },
   { type: 'santuario', pos: [30.5, 69.5] },
   { type: 'torre', pos: [78, 43] },
   { type: 'reflector', pos: [69.9, 44.9], lift: 5.4 },

@@ -12,7 +12,7 @@ import * as THREE from 'three';
 // Levels el parallax salta en la junta de dos cuadros y marca la grilla). Se pintan una sola vez por sesión (caché) y
 // la original queda como estaba para los otros mapas: la nueva es otra
 // textura (con map.userData.tileAs = la original, para que fx/Tiling y
-// fx/Detail la traten igual). globalThis.__mduNoEclTex: las de siempre.
+// fx/Detail la traten igual).
 
 const S = 1024;
 const cache = new Map();
@@ -225,7 +225,7 @@ function paintHi(src, kind, seed) {
 
 // La versión en alta de la textura de color `orig` (key: su nombre en T), o null.
 export function hiTex(orig, key) {
-  if (!orig?.image || globalThis.__mduNoEclTex === true) return null;
+  if (!orig?.image) return null;
   const K = KIND[key];
   if (!K) return null;
   if (cache.has(orig)) return cache.get(orig);
@@ -252,7 +252,7 @@ export function hiTex(orig, key) {
 // mundo (solo los de esta lista; los otros mapas siguen con las suyas).
 export function upgradeFloors(w) {
   const q = w.g?.settings?.quality;
-  if (globalThis.__mduNoEclTex === true || !['high', 'ultra', 'epic'].includes(q)) return null;
+  if (!['high', 'ultra', 'epic'].includes(q)) return null;
   const T = w.T;
   const done = new Map();
   for (const [k, m] of Object.entries(w.M || {})) {

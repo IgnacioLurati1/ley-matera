@@ -79,10 +79,9 @@ const CLIMB_FROM = 8.5;
 // (la canción): arranca igual, llega arriba a los 5,5 s (antes a los ~4,4), en
 // CLIMB_HOLD se para derecho y queda ~1,2 s quieto antes de aullar. Se asoma
 // casi con el grito, cuando se le prenden los ojos.
-// globalThis.__mduNoLuCima = true: como antes.
 const CLIMB_T2 = 6.0;
 const CLIMB_HOLD = 0.5;
-const climbT = () => (globalThis.__mduNoLuCima === true ? CLIMB_T : CLIMB_T2);
+const climbT = () => CLIMB_T2;
 // los lobos del monte (audio.wolves): [cuándo, cuál, paneo]
 const WOLVES = [
   [22.2, 0, -0.55],
@@ -118,12 +117,10 @@ const GO = { gil: 0.45, benito: 0.22, cirilo: 0.5, anacleto: 0.68 };
 // Gil el Valiente (el facón), Anacleto el Viejo (la Lata), Cirilo el Canchero
 // (el Liquidificador; se sacude el polvo, sin anteojos: van solo en el penal y la torre) y Benito el
 // Miedoso (el Camionero). Cada cambio arranca de la pose que tiene (cineSnap).
-// globalThis.__mduBlend = false (o sin los clips): la de antes, con las piezas.
 const LU_CLIPS_URL = '/assets/sotano/modelos/gaucho/cine-luison.json';
 let LCLIPS = null;
 let lLoading = null;
 export function prefetchLuisonClips() {
-  if (globalThis.__mduBlend === false) return Promise.resolve(null);
   lLoading ||= fetch(assetUrl(LU_CLIPS_URL))
     .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
     .then((J) => {
@@ -223,7 +220,7 @@ const RAY_DIRS = [new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0), new TH
 const gP = new THREE.Vector3();
 const gF = new THREE.Vector3();
 const gN = new THREE.Vector3();
-// (2026-10-05, últimos del usuario. globalThis.__mduNoLuFixFinal: como antes)
+// (2026-10-05, últimos del usuario)
 // los mates parados (la Lata y el Camionero): la palma derecha para arriba (como
 // net/gauchoSkin palmMate) para que el mate se apoye arriba y no la atraviese
 const PALM_UP = new Set(['camionero', 'lata']);
@@ -580,7 +577,7 @@ export default class LuisonArrival extends CastleCine {
       this.npc.add(r);
       const a = this.npc.list.get(C.id);
       a.M.poncho.color.set(C.color).multiplyScalar(1.7);
-      if (C.key === 'gil' && globalThis.__mduNoBandanas !== true) gilVincha(a);
+      if (C.key === 'gil') gilVincha(a);
       // (el mate de siempre no: cada uno con su arma)
       a.hand.children[0].visible = false;
       if (C.weapon !== 'facon') this.npc.setGun(a, C.weapon, 0, null);
@@ -1069,7 +1066,7 @@ export default class LuisonArrival extends CastleCine {
     this.wait = 0;
     this.t = 0;
     // los cuerpos con los clips de Blender (si bajaron; si no, la de antes entera)
-    this.blend = !!LCLIPS && globalThis.__mduBlend !== false;
+    this.blend = !!LCLIPS;
     this.stagePeace();
     this.stageTension();
     this.stageFight();
@@ -2244,7 +2241,6 @@ export default class LuisonArrival extends CastleCine {
       a.mats[6].decompose(tmpV, tmpQ, tmpS);
       a.hand.matrix.compose(tmpV, tmpQ, ONE);
       a.hand.matrixWorldNeedsUpdate = true;
-      const fixF = globalThis.__mduNoLuFixFinal !== true;
       // (apuntando: el blanco, para el arma y para t_cineqa; caminando, lista para
       // adelante y abajo; en los que pasan a apuntar, desde que levantan el arma)
       const at = B_AIMT[S.name];
@@ -2267,11 +2263,10 @@ export default class LuisonArrival extends CastleCine {
         if ((fx * tx + fz * tz) / (Math.hypot(tx, tz) || 1) < 0.45) a.aimAt = null;
       }
       // (el usuario, 2026-10-04: los mates como mates, parados en la mano, no
-      // acostados apuntando; y al cambiar de blanco el arma se daba vuelta.
-      // globalThis.__mduLuAimMates: apuntando con la bombilla, como antes)
-      if (globalThis.__mduLuAimMates !== true) a.aimAt = null;
+      // acostados apuntando; y al cambiar de blanco el arma se daba vuelta)
+      a.aimAt = null;
       // (la palma arriba con los mates parados; apuntando, la del clip)
-      if (fixF && PALM_UP.has(c.weapon) && a.gun?.visible) this.palmUp(c, 1 - smooth(clamp01(c.aimW || 0)));
+      if (PALM_UP.has(c.weapon) && a.gun?.visible) this.palmUp(c, 1 - smooth(clamp01(c.aimW || 0)));
       this.seatGun(c, dt);
     }
     this.updateShades();
@@ -2283,7 +2278,6 @@ export default class LuisonArrival extends CastleCine {
   // del pie más bajo y el otro pie sube lo que le falta (dos huesos, la rodilla
   // en su plano); el pie no cambia de giro. Suavizado (sin saltos).
   footIK(c, dt) {
-    if (globalThis.__mduNoLuFootIK) return;
     const B = c.a.gs.bones;
     const r = c.r;
     const w = this.g.world;
@@ -2396,9 +2390,7 @@ export default class LuisonArrival extends CastleCine {
       c.gunMid0 = c.gunMid.clone();
       c.gunLiq = new THREE.Vector3(mo.x, mo.y + 0.033, mo.z);
     }
-    // (globalThis.__mduNoLuGrip: el agarre de antes, el puño en el medio del arma)
-    const old = globalThis.__mduNoLuGrip === true;
-    const liq = c.liq && !old;
+    const liq = c.liq;
     c.gunMid = liq ? c.gunLiq : c.gunMid0;
     if (!c.gunAx) return;
     // cuánto apunta (0: en la palma; 1: el caño al blanco), suave como la mezcla de clips
@@ -2426,7 +2418,7 @@ export default class LuisonArrival extends CastleCine {
       gQa.premultiply(gQ.setFromUnitVectors(gAx, gT));
       // (girada sobre el caño con el asa para abajo: si no, quedaba para el lado de la
       // otra mano y se la metía adentro)
-      if (c.asaDir && !old && !liq) {
+      if (c.asaDir && !liq) {
         gAx.copy(c.asaDir).applyQuaternion(gQa);
         gGrip.set(0, -1, 0).addScaledVector(gT, gT.y);
         if (gGrip.lengthSq() > 1e-6) {
@@ -2439,7 +2431,7 @@ export default class LuisonArrival extends CastleCine {
       gA.copy(c.gunMid).applyQuaternion(gQa);
       // (la palma contra la calabaza —el medio, a su radio y 1,5 cm para el lado de la palma—;
       // la pava, el asa en el puño)
-      if (!old) gGrip.addScaledVector(gN, liq ? 0.012 : c.gunR + 0.015);
+      gGrip.addScaledVector(gN, liq ? 0.012 : c.gunR + 0.015);
       gA.subVectors(gGrip, gA);
       const w = smooth(c.aimW);
       gQh.slerp(gQa, w);
@@ -2449,7 +2441,7 @@ export default class LuisonArrival extends CastleCine {
     // derecha): la calabaza es un cilindro (eje y del arma, radio gunR, del piso a la
     // boca); si una mano (muñeca, palma, puntas) queda adentro, la calabaza se corre
     // lo justo para afuera, de a una (la más metida) y hasta cuatro veces
-    if (!liq && !old && c.gunR) this.handsOut(c, B, gH, gQh);
+    if (!liq && c.gunR) this.handsOut(c, B, gH, gQh);
     a.gun.matrix.compose(gH, gQh, ONE);
     a.gun.matrixWorldNeedsUpdate = true;
   }
@@ -2628,7 +2620,7 @@ export default class LuisonArrival extends CastleCine {
     const M = g.music;
     const st = M?.is(SONG) ? M.time() : -1;
     this.wait += dt;
-    if (this.wallAt && !this.hold && globalThis.__mduNoCineSync !== true) {
+    if (this.wallAt && !this.hold) {
       // en línea el reloj es el de verdad desde que arrancó (la regla de las
       // escenas, ui/FarmCinematic) y la canción se acomoda a él: cada compu la
       // arrancaba cuando la bajaba y, si se atascaba, el reloj la seguía (con 2

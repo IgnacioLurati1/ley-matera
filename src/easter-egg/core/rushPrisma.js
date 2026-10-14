@@ -21,20 +21,16 @@
 //   todos quiénes vuelven ('resurgir') y cada uno se levanta en su compu. Lo
 //   ven todos: una columna de luz en cada uno y la onda en el que la usó.
 //
-// globalThis.__mduRushSinPoderes = true: estas dos no salen ni hacen nada.
 import * as THREE from 'three';
 import { RAROS } from './rushCards';
 import { keyLabel } from './controls';
 import { PLAYER } from '../config/rules';
 import { RUSH_ICONS } from '../ui/rushIcons';
 import { desgarradorModel } from '../weapons/desgarradorModels';
-
-export const poderesOff = () => globalThis.__mduRushSinPoderes === true;
-
 const ID = 'desgarrador';
 // la mejorada, con la Furia (el usuario, 2026-10-13 noche: "que de la guadaña
-// mejorada"); globalThis.__mduHerComun = true: la común de antes
-const herUp = () => (globalThis.__mduHerComun === true ? 0 : 1);
+// mejorada");
+const herUp = () => 1;
 // el último tramo de la guadaña: el medallón titila (s)
 const HER_LOW = 5;
 // (invitado) cuánto se espera la respuesta del anfitrión antes de dejar pedir otra vez (s)
@@ -76,7 +72,7 @@ export default class RushPrisma {
   // (RushBuild.set, al empezar cada jefe) Lo que hay en el mazo.
   set(D, raros) {
     this.reset();
-    if (poderesOff() || !D) return;
+    if (!D) return;
     this.D = D;
     this.her = raros.has('heredero');
     this.res = raros.has('resurgir');
@@ -106,7 +102,7 @@ export default class RushPrisma {
   warmMate(id) {
     const W = this.g.weapons;
     const C = W?.cosmic;
-    if (!C || poderesOff() || this.mates.has(id)) return;
+    if (!C || this.mates.has(id)) return;
     this.mates.add(id);
     try {
       C.wake();
@@ -253,7 +249,7 @@ export default class RushPrisma {
   hostRes(by) {
     const g = this.g;
     const N = g.net;
-    if (!N?.host || poderesOff()) return false;
+    if (!N?.host) return false;
     const ids = [];
     for (const [id, r] of N.remote) if (id !== by && (r.downed || r.dead)) ids.push(id);
     const P = g.player;

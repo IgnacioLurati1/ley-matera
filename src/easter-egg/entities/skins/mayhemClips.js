@@ -10,8 +10,6 @@ import { assetUrl } from '../../../lib/assets';
 //   trancos, salta alto y cae clavando las manos (y la horquilla) adelante. El
 //   clip va en el lugar; lo que avanza (travel, m del modelo por cuadro, sacado
 //   del pie que pisa: no patina) lo pone el juego moviendo al jefe.
-// globalThis.__mduMayhemSinClips = true: no se cargan; los combos, como antes.
-export const mhClipsOff = () => globalThis.__mduMayhemSinClips === true;
 
 // el grito, en s del clip: arranca encorvándose (t0), grita con los brazos
 // abiertos (grita: ahí el aro, el fogonazo y el bramido) y termina derecho (fin)
@@ -21,7 +19,6 @@ const LOADED = {};
 
 // (cada jefe, en su ready: se suman a S.clips cuando llegan)
 export function loadMayhemClips(S, kind, dir = kind) {
-  if (mhClipsOff()) return;
   fetch(assetUrl(`/assets/sotano/modelos/${dir}/clips-mayhem.json`))
     .then((r) => r.json())
     .then((J) => {
@@ -33,7 +30,7 @@ export function loadMayhemClips(S, kind, dir = kind) {
 
 // El clip (si ya llegó y no está apagado) y la escala del cuerpo de ese jefe
 // (la pone su pick: para pasar lo que avanza el clip a metros del juego).
-export const mhClip = (kind, key) => (!mhClipsOff() && LOADED[kind]?.clips?.[key]) || null;
+export const mhClip = (kind, key) => LOADED[kind]?.clips?.[key] || null;
 export function mhSetScale(kind, s) {
   (LOADED[kind] ||= {}).s = s;
 }

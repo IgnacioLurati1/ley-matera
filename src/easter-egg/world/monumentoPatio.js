@@ -14,8 +14,7 @@ import { windy } from '../fx/grassPush';
 // vallas amarillas de los canteros, dos árboles, la Virgen con el marco dorado
 // y los arcos de fútbol. Al fondo, los jardincitos con borde de cemento, la
 // bandera en su piso de cemento y el pasillo angosto: ahí no hay aulas, está
-// la entrada ancha del baño y alguna puerta sin nombre (así es el de verdad;
-// __mduNoPatioFix: el pasillo con aulas, el aro y los huecos de antes).
+// la entrada ancha del baño y alguna puerta sin nombre (así es el de verdad).
 
 export const PATIO = { x0: 128, x1: 158, z0: 16, z1: 42, y: 150, cx: 143, cz: 29 };
 // las estatuas: en ronda alrededor del portal (la séptima es la de Fortu)
@@ -296,9 +295,6 @@ function mats() {
 export function buildPatio(w) {
   const P = PATIO;
   const M = mats();
-  // (__mduNoPatioFix: el patio de antes, con las aulas en el pasillo, el aro,
-  // los huecos de las esquinas del fondo y las ramas y vidrios sueltos)
-  const FIX = globalThis.__mduNoPatioFix !== true;
   const root = new THREE.Group();
   root.name = 'patio2043';
   root.visible = false;
@@ -386,20 +382,18 @@ export function buildPatio(w) {
   // del fondo termina en la línea, así que quedaba una rendija de arriba abajo
   // (se veía la ciudad). El macizo de la esquina, con las molduras de los
   // costados siguiendo hasta la del fondo (cada una desde donde termina la otra).
-  if (FIX) {
-    for (const [line, inward] of [[P.x0, 1], [P.x1, -1]]) {
-      const xa = inward > 0 ? line - 1.2 : line;
-      box('plaster', xa, y, P.z0 - 1.2, xa + 1.2, y + TOP, P.z0 + 1.2, { b: 0.01 });
-      const band = (d, y0, y1, key, b) => {
-        const xb = line + d * inward;
-        box(key, Math.min(line, xb), y + y0, P.z0 + d, Math.max(line, xb), y + y1, P.z0 + 1.2, { b });
-      };
-      band(0.06, 0, 0.75, 'base', 0.015);
-      band(0.14, H1 - 0.05, H1 + 0.22, 'trim', 0.03);
-      band(0.32, H1 + H2 - 0.1, H1 + H2 + 0.25, 'trim', 0.05);
-      band(0.12, H1 + H2 + 0.25, TOP, 'plaster', 0.02);
-      band(0.16, TOP - 0.06, TOP + 0.06, 'trim', 0.02);
-    }
+  for (const [line, inward] of [[P.x0, 1], [P.x1, -1]]) {
+    const xa = inward > 0 ? line - 1.2 : line;
+    box('plaster', xa, y, P.z0 - 1.2, xa + 1.2, y + TOP, P.z0 + 1.2, { b: 0.01 });
+    const band = (d, y0, y1, key, b) => {
+      const xb = line + d * inward;
+      box(key, Math.min(line, xb), y + y0, P.z0 + d, Math.max(line, xb), y + y1, P.z0 + 1.2, { b });
+    };
+    band(0.06, 0, 0.75, 'base', 0.015);
+    band(0.14, H1 - 0.05, H1 + 0.22, 'trim', 0.03);
+    band(0.32, H1 + H2 - 0.1, H1 + H2 + 0.25, 'trim', 0.05);
+    band(0.12, H1 + H2 + 0.25, TOP, 'plaster', 0.02);
+    band(0.16, TOP - 0.06, TOP + 0.06, 'trim', 0.02);
   }
 
   // ---- la Virgen del marco dorado (al lado de la puerta del medio)
@@ -429,7 +423,7 @@ export function buildPatio(w) {
   bell.position.set(P.cx + 2.4, y + 3.25, P.z0 + 0.28);
   bell.add(place(new THREE.SphereGeometry(0.16, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.gold, 0, 0, 0));
   // (el soporte llega a la pared: antes quedaba suelto a 13 cm)
-  bell.add(FIX ? place(new THREE.BoxGeometry(0.3, 0.06, 0.32), M.iron, 0, 0.14, -0.13) : place(new THREE.BoxGeometry(0.3, 0.06, 0.18), M.iron, 0, 0.14, -0.06));
+  bell.add(place(new THREE.BoxGeometry(0.3, 0.06, 0.32), M.iron, 0, 0.14, -0.13));
   root.add(bell);
 
   // ---- los canteros con las vallas amarillas delante de la fachada del fondo
@@ -485,9 +479,7 @@ export function buildPatio(w) {
       // las ramas salen de la punta del tronco hacia afuera (antes el giro iba
       // al revés: dos quedaban sueltas en el aire, lejos del tronco)
       const L = 2.4 * k;
-      const br = FIX
-        ? place(new THREE.CylinderGeometry(0.06, 0.12, L, 6).translate(0, L / 2, 0).rotateZ(-0.65).rotateY(-a), M.bark, tx, y + h - 0.35, tz)
-        : place(new THREE.CylinderGeometry(0.06, 0.12, L, 6).rotateZ(0.65).rotateY(a), M.bark, tx + Math.cos(a) * 0.6 * k, y + h + 0.5, tz + Math.sin(a) * 0.6 * k);
+      const br = place(new THREE.CylinderGeometry(0.06, 0.12, L, 6).translate(0, L / 2, 0).rotateZ(-0.65).rotateY(-a), M.bark, tx, y + h - 0.35, tz);
       extra.push(br);
     }
     for (let i = 0; i < 9; i++) {
@@ -529,18 +521,6 @@ export function buildPatio(w) {
     root.add(g);
     goals.push({ x: gx, z: gz, s, half: 1.5, back });
   }
-  if (!FIX) {
-    // el aro de básquet en la fachada del costado oeste (en el de verdad no hay)
-    const hx = P.x0 + 0.15;
-    const hz = P.z1 - 6;
-    box('white', hx, y + 2.6, hz - 0.9, hx + 0.06, y + 3.65, hz + 0.9, { b: 0.01 });
-    box('iron', hx + 0.06, y + 2.9, hz - 0.04, hx + 0.45, y + 2.96, hz + 0.04, { b: 0.005 });
-    const ring = place(new THREE.TorusGeometry(0.23, 0.015, 6, 20).rotateX(Math.PI / 2), M.yellow, hx + 0.68, y + 3.05, hz);
-    extra.push(ring);
-    const netH = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.15, 0.4, 12, 1, true), M.net);
-    netH.position.set(hx + 0.68, y + 2.85, hz);
-    root.add(netH);
-  }
 
   // ---- el fondo (z1): los jardincitos con borde de cemento, la bandera en su
   // piso de cemento y el pasillo angosto con las aulas
@@ -577,8 +557,8 @@ export function buildPatio(w) {
     x.beginPath();
     x.arc(128, 80, 16, 0, Math.PI * 2);
     x.fill();
-    // (la del Monumento, con el Sol de Mayo de verdad: world/monumentoTextures.js; __mduNoSolPatio, el círculo de antes)
-    const t = globalThis.__mduNoSolPatio === true ? toTexture(c, { repeat: false }) : banderaTexture();
+    // (la del Monumento, con el Sol de Mayo de verdad: world/monumentoTextures.js)
+    const t = banderaTexture();
     const m = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.15, 10, 4).translate(0.9, -0.575, 0), new THREE.MeshStandardMaterial({ map: t, side: THREE.DoubleSide, roughness: 0.85 }));
     const p = m.geometry.attributes.position;
     for (let i = 0; i < p.count; i++) p.setZ(i, Math.sin(p.getX(i) * 3.2) * 0.08 * p.getX(i));
@@ -603,7 +583,7 @@ export function buildPatio(w) {
       box('trim', x0 - 0.08, y + y0 - 0.08, P.z1 - 0.05, x1 + 0.08, y + y1 + 0.08, P.z1, { b: 0.01 });
       box('glass', x0, y + y0, P.z1 - 0.07, x1, y + y1, P.z1 - 0.05, { b: 0.005 });
     };
-    if (FIX) {
+    {
       // el baño: entre la 3ª y la 4ª columna, 2.2 m de ancho y 2.5 de alto
       const bx = P.x0 + 9;
       const hw = 1.1;
@@ -654,28 +634,6 @@ export function buildPatio(w) {
       door(P.x0 + 3);
       door(P.x1 - 6);
       ventana(P.x1 - 12.6, P.x1 - 11.4, 1.0, 2.2);
-    } else {
-      box('plaster', P.x0, y, P.z1, P.x1, y + TOP, P.z1 + 1.2, { b: 0.01 });
-      let k = 1;
-      for (let x = P.x0 + 3; x < P.x1 - 1; x += 4.5) {
-        box('trim', x - 0.6, y, P.z1 - 0.08, x + 0.6, y + 2.45, P.z1, { b: 0.01 });
-        box('door', x - 0.48, y, P.z1 - 0.1, x + 0.48, y + 2.3, P.z1 - 0.07, { b: 0.005 });
-        box('glass', x + 0.9, y + 1.0, P.z1 - 0.07, x + 2.1, y + 2.2, P.z1 - 0.05, { b: 0.005 });
-        // el cartelito del aula
-        const [c, ctx] = canvas(128, 64);
-        ctx.fillStyle = '#f4f2ec';
-        ctx.fillRect(0, 0, 128, 64);
-        ctx.fillStyle = '#1f4f9e';
-        ctx.font = '700 38px Georgia, serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${k}° ${'ABC'[k % 3]}`, 64, 34);
-        const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.21), new THREE.MeshStandardMaterial({ map: toTexture(c, { repeat: false }) }));
-        sign.position.set(x, y + 2.55, P.z1 - 0.11);
-        sign.rotation.y = Math.PI;
-        root.add(sign);
-        k++;
-      }
     }
   }
 
@@ -695,8 +653,8 @@ export function buildPatio(w) {
     // los balcones y las ventanas (filas de vidrio); la última fila, abajo del
     // techo (antes en algunos el vidrio pasaba el techo hasta 1 m) y arriba el
     // remate (FIX)
-    if (FIX) box('trim', bx - bw / 2 - 0.2, y + bh - 0.3, bz - bd / 2 - 0.2, bx + bw / 2 + 0.2, y + bh + 0.2, bz + bd / 2 + 0.2, { b: 0.04 });
-    for (let f = 1; FIX ? f * 3 + 2.5 <= bh : f < bh / 3; f++) {
+    box('trim', bx - bw / 2 - 0.2, y + bh - 0.3, bz - bd / 2 - 0.2, bx + bw / 2 + 0.2, y + bh + 0.2, bz + bd / 2 + 0.2, { b: 0.04 });
+    for (let f = 1; f * 3 + 2.5 <= bh; f++) {
       const fy = y + f * 3;
       for (const s of [-1, 1]) {
         box('glass', bx - bw / 2 + 0.6, fy + 0.8, s > 0 ? bz + bd / 2 : bz - bd / 2 - 0.02, bx + bw / 2 - 0.6, fy + 2.1, s > 0 ? bz + bd / 2 + 0.02 : bz - bd / 2, { b: 0.005 });

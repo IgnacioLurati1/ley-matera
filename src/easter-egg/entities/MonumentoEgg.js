@@ -3,7 +3,6 @@ import { PERKS } from '../config/perks';
 import MonumentoEnding from '../ui/MonumentoEnding';
 import { markEgg } from '../core/eggs';
 import Surubi from './monumento/Surubi';
-import SurubiOld from './monumento/surubiOld';
 import SableQuest from './monumento/SableQuest';
 import Ascensor, { nivel } from './monumento/Ascensor';
 import Tirolesa from './monumento/Tirolesa';
@@ -32,8 +31,8 @@ export default class MonumentoEgg {
     // la escena en curso (la cinemática de Belgrano): Game la mira para pausar
     this.scene = null;
     // el minijefe: el Surubí del Paraná (entities/monumento/Surubi.js)
-    // (el de ahora: el modelo facetado y la pelea chistosa; __mduOldSurubi: el de piezas)
-    if (FEATURES.boss === 'surubi') game.surubi = globalThis.__mduOldSurubi ? new SurubiOld(game) : new Surubi(game);
+    // (el de ahora: el modelo facetado y la pelea chistosa)
+    if (FEATURES.boss === 'surubi') game.surubi = new Surubi(game);
     // la maravilla: el Sable Corvo, que se arma (entities/monumento/SableQuest.js)
     this.sable = new SableQuest(this);
     // el ascensor de la Torre, de la Cripta al Mirador (entities/monumento/Ascensor.js)
@@ -54,9 +53,9 @@ export default class MonumentoEgg {
 
   // El Monumento no tiene jefe de ronda (el usuario, 2026-10-05): el Surubí
   // sale solo en la pesca del Pack-a-Pava (world/papLlama.js). Lo llama
-  // Rounds.nextRound; con __mduMonuRoundBoss = true vuelve (cada 5 desde la 6).
+  // Rounds.nextRound.
   tuneRound(R) {
-    if (!globalThis.__mduMonuRoundBoss) R.bossPending = false;
+    R.bossPending = false;
   }
 
   // De dónde sale el jefe de la ronda (Zombies.spawnBoss): el Surubí, del agua.
@@ -68,9 +67,8 @@ export default class MonumentoEgg {
   // A quién no buscan los muertos (Game.nearestPlayer, net/Session nearest): al
   // que viaja en el ascensor y al que está en el otro nivel (al Mirador solo se
   // llega en ascensor: iban igual y se quedaban contra las paredes de abajo).
-  // y: la altura del muerto. (globalThis.__mduNoAscZ: como antes)
+  // y: la altura del muerto.
   noTarget(p, y) {
-    if (globalThis.__mduNoAscZ === true) return false;
     return this.asc.riding(p) || nivel(p.pos.y) !== nivel(y);
   }
 
@@ -82,7 +80,7 @@ export default class MonumentoEgg {
 
   // A quién no se lastima (Player.damage, en la compu de cada uno): al que viaja.
   safe(p) {
-    return globalThis.__mduNoAscZ !== true && this.asc.riding(p);
+    return this.asc.riding(p);
   }
 
   announce(text, secs = 3) {
@@ -148,9 +146,9 @@ export default class MonumentoEgg {
     if (this.scene) return;
     const cine = new MonumentoEnding(this.g);
     this.scene = { update: (dt) => cine.update(dt), kind: 'bandera', cine };
-    // Aurora mientras dura la escena (globalThis.__mduNoFinAurora: sin canción)
+    // Aurora mientras dura la escena
     const M = this.g.music;
-    if (globalThis.__mduNoFinAurora !== true && !M?.is?.('fin-monumento')) M?.play?.('fin-monumento', { while: () => this.scene?.cine === cine });
+    if (!M?.is?.('fin-monumento')) M?.play?.('fin-monumento', { while: () => this.scene?.cine === cine });
     cine.play(() => {
       if (M?.is?.('fin-monumento')) M.stop(2.5);
       this.scene = null;
@@ -160,7 +158,7 @@ export default class MonumentoEgg {
         markEgg('monumento');
         // como Game.win en los otros mapas: la experiencia, los pesos y el
         // logro del easter egg (ui/Levels.egg; lo anota entities/logrosTracker)
-        if (!globalThis.__mduNoEggLogro) this.g.levels?.egg?.({ challenge: false });
+        this.g.levels?.egg?.({ challenge: false });
       }
       this.reward();
     });

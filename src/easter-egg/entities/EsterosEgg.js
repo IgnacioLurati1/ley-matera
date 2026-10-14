@@ -18,9 +18,8 @@ import { devKeys } from '../core/devKeys';
 import { LUISON_PREP } from '../core/audio';
 import { gilVincha } from '../net/gilLook';
 
-// (el rush de jefes, de arena en arena: sin la llegada del Luisón; core/bossRush.js.
-// globalThis.__mduRushViajeViejo = true: con la llegada, como antes)
-const rushSinEscena = (g) => !!g.rush?.on && globalThis.__mduRushViajeViejo !== true;
+// (el rush de jefes, de arena en arena: sin la llegada del Luisón; core/bossRush.js)
+const rushSinEscena = (g) => !!g.rush?.on;
 
 // Lo que suena antes que llegue el Luisón, en segundos de canción desde que
 // arranca (LUISON_FROM) hasta el golpe en que aparece: [cuándo, cuál lobo
@@ -426,9 +425,7 @@ export default class EsterosEgg {
   // deberían salir zombies infinitos, sobre todo de la zona a la que tenés que
   // ir"). La creciente que pide la voz, hasta juntar las almas (con tope:
   // FLOOD_HOLD), y la luz desde que Gil la agarra hasta que la entrega.
-  // globalThis.__mduNoPactHold: como antes (la ronda de siempre).
   pactHold() {
-    if (globalThis.__mduNoPactHold === true) return false;
     if (this.step === 3) return this.cruces.done && this.floodNow && this.poder.souls < this.poder.need() && this.g.time - (this.floodAt ?? -Infinity) < FLOOD_HOLD;
     if (this.step === 4) return this.ofrenda.orb === 'carried' || this.ofrenda.orb === 'floor';
     return false;
@@ -640,7 +637,7 @@ export default class EsterosEgg {
     // (entra con un destello blanco: tapa el corte de la pelea a la escena)
     g.post?.flash(1.3);
     // (los compañeros de la escena: siempre tres, con el nombre de cada uno)
-    // (sin los clips de Blender, o con __mduBlend = false: la versión de antes)
+    // (sin los clips de Blender: la versión de antes)
     const Cine = esterosClipsReady() ? EsterosEnding : EsterosEndingClassic;
     const cine = new Cine(g, this, { hoja });
     this.scene = { update: (dt) => cine.update(dt), cine };
@@ -822,7 +819,7 @@ export default class EsterosEgg {
     if (g.net && g.net.avatars.list.size !== this.painted) this.paintRoles();
     // (2026-10-10: el Gil, con su vincha; sus compañeros, con la bandana de su
     // poncho: net/gilLook.js, net/Avatars.update)
-    if (g.net && this.gil != null && this.gil !== this.myId() && globalThis.__mduNoBandanas !== true) gilVincha(g.net.avatars.list.get(this.gil));
+    if (g.net && this.gil != null && this.gil !== this.myId()) gilVincha(g.net.avatars.list.get(this.gil));
     if (!isHost(g)) return;
     // (anfitrión) la voz llama a Gil desde la segunda ronda, cada tanto
     if (this.step === 0 && g.rounds.round >= 2) {
@@ -898,7 +895,7 @@ export default class EsterosEgg {
   // último cartel, "La ronda continúa", tapando la tabla del final).
   onWin() {
     const c = this.scene?.cine;
-    if (c && !c.done && globalThis.__mduNoWinCut !== true) c.finish();
+    if (c && !c.done) c.finish();
   }
 
   dispose() {

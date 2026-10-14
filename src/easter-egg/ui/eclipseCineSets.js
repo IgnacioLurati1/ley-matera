@@ -355,11 +355,9 @@ export function buildSets(g) {
   // pobremente detalladas en el horizonte". Cada decorado en su grupo y a la
   // vista de a uno: los pisos del estero y del santuario —al mismo alto, a
   // 45 m— se pisaban y parpadeaban en franjas, y lo de uno se veía desde el
-  // otro. Y lomas y monte lejos. __mduOldFinSets: todos juntos, sin lomas)
-  const split = globalThis.__mduOldFinSets !== true;
+  // otro. Y lomas y monte lejos)
   const groups = {};
   const setG = (k) => {
-    if (!split) return (cur = root);
     const G = new THREE.Group();
     G.name = 'eclipseFin-' + k;
     root.add(G);
@@ -379,17 +377,15 @@ export function buildSets(g) {
   // el estero de 1877: el algarrobo, el agua con juncos y el facón al pie
   {
     const o = SET.estero;
-    const fin2 = globalThis.__mduOldEclFin !== true;
     // (sesión 1f, el usuario: "los entornos de las cinemáticas, calidad de PS1":
     // FIN3, el piso grande con el pasto de verdad —sin borde a la vista: la
-    // niebla de la noche lo come— y monte alrededor. __mduOldEclFin2: como antes)
-    const fin3 = fin2 && globalThis.__mduOldEclFin2 !== true;
-    const gr = fin3 ? groundDisc(72, 0x56683a, 0x74844a, 2, W.T?.grass) : fin2 ? groundDisc(34, 0x4e6030, 0x6e7e40, 2) : groundDisc(26, 0x4a5a2e, 0x667a3a, 2);
-    if (fin3) slGroundLook(gr.material);
+    // niebla de la noche lo come— y monte alrededor)
+    const gr = groundDisc(72, 0x56683a, 0x74844a, 2, W.T?.grass);
+    slGroundLook(gr.material);
     setG('estero');
     gr.position.copy(o);
     cur.add(gr);
-    if (fin3 && split) {
+    {
       const hl = farHills(72, 0x2c3a24, 3, 6.5);
       hl.position.copy(o);
       cur.add(hl);
@@ -397,14 +393,12 @@ export function buildSets(g) {
       const far = [[50, 0.9, 'ombu', 1.5], [56, 1.7, 'algarrobo', 1.3], [52, 2.4, 'ombu', 1.2], [58, 3.0, 'algarrobo', 1.4], [49, 3.8, 'ombu', 1.3], [55, 4.5, 'algarrobo', 1.2], [51, 5.2, 'ombu', 1.5], [57, 5.9, 'algarrobo', 1.3], [54, 0.2, 'ombu', 1.2]];
       for (const [r, a, type, sc] of far) prop(type, o.x + Math.cos(a) * r, o.z + Math.sin(a) * r, { s: sc }, 41 + Math.round(a * 10));
     }
-    if (fin3) {
-      // el monte del estero, lejos: algarrobos y ombúes en ronda (no del lado del agua ni del camino)
-      const ring = [[24, -0.2, 'algarrobo', 1.0], [30, 0.5, 'ombu', 1.2], [27, 1.3, 'algarrobo', 0.9], [36, 2.0, 'ombu', 1.3], [31, 2.7, 'algarrobo', 1.1], [40, 3.3, 'ombu', 1.4], [26, 4.1, 'algarrobo', 0.95], [33, 4.8, 'ombu', 1.2], [44, 5.5, 'algarrobo', 1.2], [38, 6.0, 'ombu', 1.1]];
-      for (const [r, a, type, sc] of ring) prop(type, o.x + Math.cos(a) * r, o.z + Math.sin(a) * r, { s: sc }, 17 + Math.round(a * 10));
-    }
+    // el monte del estero, lejos: algarrobos y ombúes en ronda (no del lado del agua ni del camino)
+    const ring = [[24, -0.2, 'algarrobo', 1.0], [30, 0.5, 'ombu', 1.2], [27, 1.3, 'algarrobo', 0.9], [36, 2.0, 'ombu', 1.3], [31, 2.7, 'algarrobo', 1.1], [40, 3.3, 'ombu', 1.4], [26, 4.1, 'algarrobo', 0.95], [33, 4.8, 'ombu', 1.2], [44, 5.5, 'algarrobo', 1.2], [38, 6.0, 'ombu', 1.1]];
+    for (const [r, a, type, sc] of ring) prop(type, o.x + Math.cos(a) * r, o.z + Math.sin(a) * r, { s: sc }, 17 + Math.round(a * 10));
     // (sesión 1f: el agua, atrás a la izquierda: el Gil caminaba sobre ella)
-    const WX = fin2 ? -15 : -9;
-    const WZ = fin2 ? -11 : 7;
+    const WX = -15;
+    const WZ = -11;
     const water = new THREE.Mesh(new THREE.CircleGeometry(9, 32).rotateX(-Math.PI / 2), M.water);
     water.position.set(o.x + WX, 0.03, o.z + WZ);
     water.receiveShadow = true;
@@ -418,8 +412,8 @@ export function buildSets(g) {
     }
     // (sesión 1f: el pajonal del estero de verdad —las matas de Mate no Numa—
     // alrededor del algarrobo: era un disco de pasto liso. Libres el agua, el
-    // camino del Gil, el pie del árbol y el facón. __mduOldEclFin: sin matas)
-    if (globalThis.__mduOldEclFin !== true) {
+    // camino del Gil, el pie del árbol y el facón)
+    {
       let sd = 4111;
       const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
       const seg = (px, pz, ax, az, bx, bz) => {
@@ -429,10 +423,9 @@ export function buildSets(g) {
       };
       const spots = [];
       // (en manchones, como en el estero: densos, a la rodilla y más)
-      const fin3b = globalThis.__mduOldEclFin2 !== true;
-      for (let c = 0; c < (fin3b ? 110 : 60); c++) {
+      for (let c = 0; c < 110; c++) {
         const a = rnd() * Math.PI * 2;
-        const r = 3.6 + Math.sqrt(rnd()) * (fin3b ? 44 : 26);
+        const r = 3.6 + Math.sqrt(rnd()) * 44;
         const cx = Math.cos(a) * r, cz = Math.sin(a) * r;
         const n = 6 + Math.floor(rnd() * 12);
         for (let k = 0; k < n; k++) {
@@ -451,8 +444,7 @@ export function buildSets(g) {
     const facon = buildFacon();
     // (sesión 1f: donde se arrodilló el Gil, a dos metros del tronco: pegado al
     // árbol, el tronco tapaba toda toma del facón)
-    if (fin2) facon.position.set(o.x - 2.1, 0, o.z + 2.6);
-    else facon.position.set(o.x + 0.95, 0, o.z + 1.2);
+    facon.position.set(o.x - 2.1, 0, o.z + 2.6);
     facon.rotation.set(0.08, 0.6, -0.1);
     cur.add(facon);
     out.parts.facon = facon;
@@ -460,14 +452,13 @@ export function buildSets(g) {
   // el santuario del Gauchito: la capillita, la cruz con cintas, banderas, velas, botellas
   {
     const o = SET.santuario;
-    const fin3 = globalThis.__mduOldEclFin !== true && globalThis.__mduOldEclFin2 !== true;
-    const gr = fin3 ? groundDisc(64, 0x8a6a48, 0xa88660, 5, W.T?.dirt || W.T?.ground) : groundDisc(24, 0x9a7050, 0xb08a60, 5);
-    if (fin3 && gr.material.map) slGroundLook(gr.material);
+    const gr = groundDisc(64, 0x8a6a48, 0xa88660, 5, W.T?.dirt || W.T?.ground);
+    if (gr.material.map) slGroundLook(gr.material);
     setG('santuario');
-    if (fin3) for (const [r, a, sc] of [[14, 2.2, 1.3], [18, 2.9, 1.1], [16, 3.6, 1.4], [22, 1.6, 1.2], [20, 4.3, 1.0]]) prop('ombu', o.x + Math.cos(a) * r, o.z + Math.sin(a) * r, { s: sc }, 31);
+    for (const [r, a, sc] of [[14, 2.2, 1.3], [18, 2.9, 1.1], [16, 3.6, 1.4], [22, 1.6, 1.2], [20, 4.3, 1.0]]) prop('ombu', o.x + Math.cos(a) * r, o.z + Math.sin(a) * r, { s: sc }, 31);
     gr.position.copy(o);
     cur.add(gr);
-    if (fin3 && split) {
+    {
       const hl = farHills(64, 0x4a3a2a, 8, 7.5);
       hl.position.copy(o);
       cur.add(hl);

@@ -477,7 +477,13 @@ function attach(a, blocky) {
     if (G.on && visible(a)) {
       if (G.mesh.material !== G.mat) fallback(G);
       // (con vida de escena, un cuadro nuevo aunque la pose sea la misma)
-      else if (changed(G) || (liveOn(G) && G.frame !== a.g?.raf)) pose(G, false);
+      else if (changed(G)) pose(G, false);
+      else if (liveOn(G) && G.frame !== a.g?.raf) {
+        // (la última pose fue la de un clip y la escena no la volvió a poner:
+        // la misma, con la vida de este cuadro; clipSet)
+        if (G.clipOn && globalThis.__mduCrewVidaPiezas !== true) clipSet(G, G.cW, G.cH, true);
+        else pose(G, false);
+      }
     }
     updateMW.call(this, force);
     if (G.on) cullAt(G.cull, G.bones.Hips.getWorldPosition(vCull));
@@ -518,6 +524,8 @@ function pose(G, adjust, dt = 0, g = null) {
   if (!G.on) return;
   const a = G.a;
   const M = a.mats;
+  // (ya no es la pose de un clip de escena: clipSet)
+  G.clipOn = false;
   // (los compañeros en la partida, sin pose de escena: con los clips de Mixamo)
   if (dt > 0 && !window.__gauchoClipsOff && clipsReady()) {
     play(G, dt, g);
@@ -581,16 +589,14 @@ function pose(G, adjust, dt = 0, g = null) {
   snapshot(G);
 }
 
-// (el usuario, 2026-10-03; window.__mduNoPalm = true: como antes, para comparar)
-const palmOn = () => globalThis.__mduNoPalm !== true;
+// (el usuario, 2026-10-03)
 // el mate de piezas de la mano, si se ve (Avatars lo marca: handMate)
 function handMate(a) {
-  if (!palmOn()) return null;
   const m = a.hand?.children[0];
   return m?.userData.handMate && a.hand.visible && m.visible && !a.gun ? m : null;
 }
 // un mate de verdad (Avatars.setGun, con boca) en la mano
-const gunMate = (a) => palmOn() && !!a.gun && !!a.mouth && a.gun.visible !== false;
+const gunMate = (a) => !!a.gun && !!a.mouth && a.gun.visible !== false;
 
 // Los ojos pintados del modelo, para lo que brilla en ellos (los ojos de oro
 // del gaucho dorado del molino): dos puntos colgados de la cabeza justo delante
@@ -715,7 +721,6 @@ function clipsReady() {
 // anim-online (2026-10-04): los clips de los compañeros hechos en Blender
 // (clips-online.json: cebar, afilar y los de siempre revisados), encima de los
 // de clips.json; solo los compañeros (no los muñecos de escena con r.clips).
-// globalThis.__mduNoAvatarBlend = true: los de antes (y el cebado de antes).
 const BLEND_URL = '/assets/sotano/modelos/gaucho/clips-online.json';
 function loadBlend() {
   fetch(assetUrl(BLEND_URL))
@@ -727,7 +732,7 @@ function loadBlend() {
     })
     .catch((e) => console.warn('gaucho: sin clips-online', e));
 }
-const blendOn = (a) => !!CL?.blend && globalThis.__mduNoAvatarBlend !== true && !a.r?.clips;
+const blendOn = (a) => !!CL?.blend && !a.r?.clips;
 const BLADES = new Set(['hoz', 'facon', 'sable']);
 // (las que tienen su recarga en primera persona, la misma en tercera: la Lata de
 // a un cartucho, los Gemelos cambian la yerba, cada elemental su gesto; el
@@ -876,7 +881,7 @@ function play(G, dt, g) {
   G.air = !r.downed && !r.ghost && !(r.swim >= 1) && (G.air ? over > 0.12 : over > 0.35);
   const wk = (a.wkey || '').split('|')[0];
   // (anim-online: todo mate, también los de dos manos, va parado en la palma: Avatars.setGun)
-  G.two = TWO_HAND.has(wk) && !(globalThis.__mduNoAvatarBlend !== true && a.mouth);
+  G.two = TWO_HAND.has(wk) && !a.mouth;
   // lo que hace (Session 'act')
   const act = r.act;
   if (act && act.t !== G.actSeen) {
@@ -893,7 +898,7 @@ function play(G, dt, g) {
     // ceba con el termo (pourArm; el termo lo pone Avatars con G.pourK)
     else if (act.a === 'reload' && a.mouth) G.pour ={ t: 0, d: Math.max(0.8, act.d || ACTS.reload[1]) };
     // el Sable Corvo: el tajo que sigue del combo, o el saludo (sableArm)
-    else if (wk === 'sable' && (act.a === 'stab' || act.a === 'salute') && globalThis.__mduNoSableAvatar !== true) {
+    else if (wk === 'sable' && (act.a === 'stab' || act.a === 'salute')) {
       const chain = (G.sab && G.sab.kind === 'slash') || performance.now() - (G.sabEnd || -1e9) < 450;
       // (cuál del combo: el que manda el que tajea; si no viene, el que sigue)
       G.sabI = act.k != null ? act.k % 3 : chain ? ((G.sabI ?? -1) + 1) % 3 : 0;
@@ -1069,7 +1074,7 @@ function play(G, dt, g) {
 // y el saludo no se veía (el usuario, 2026-10-05). Todo el brazo derecho gira
 // alrededor del hombro (G.sabQ, en el espacio del muñeco: x a su izquierda, y
 // arriba, z adelante) y Avatars gira el sable igual (sabGun).
-// globalThis.__mduNoSableAvatar: como antes. (window.__gaucho.SAB: para probar)
+// (window.__gaucho.SAB: para probar)
 const SAB = {
   // cada tajo: [eje, ángulo armado, ángulo al terminar]. Medidos para que el
   // antebrazo, la mano y la hoja no atraviesen la cabeza, el ala del sombrero
@@ -1490,9 +1495,8 @@ export function poseCineClip(a, c, t, x, y, z, yaw, o = null) {
   // mano con el mate quedaban donde estaban la última vez que se lo vio: el
   // mate de Fierro flotando en planta baja con él en la cima (2026-10-11). El
   // que se mueve por un clip rehace lo suyo ese cuadro.
-  // (globalThis.__mduNoFrozenClipFix: como antes)
   // (mcDirty y no matrixWorldNeedsUpdate: core/matrixCache.js)
-  if (a.group?.mcFrozen && globalThis.__mduNoFrozenClipFix !== true) a.group.mcDirty = true;
+  if (a.group?.mcFrozen) a.group.mcDirty = true;
   G.cb ||= CL.names.map((n) => G.bones[n]);
   G.cW ||= CL.names.map(() => new THREE.Quaternion());
   const W = G.cW;
@@ -1540,11 +1544,57 @@ export function poseCineClip(a, c, t, x, y, z, yaw, o = null) {
   vb.x += x;
   vb.y += y;
   vb.z += z;
+  clipSet(G, W, vb);
+  return true;
+}
+
+// La pose de un clip (W: el giro de cada hueso; h: la cadera), puesta en los
+// huesos, y las piezas rearmadas desde ellos.
+// (2026-10-14, el usuario: en la entrada de la torre los gauchos "hacen
+// movimientos raros con las manos". Desde la vida de escena (ui/cineLife,
+// 10-05) el modelo volvía a armar los huesos desde las piezas en cada cuadro, al
+// dibujarlo (updateMatrixWorld → pose), encima de la pose del clip, y las piezas
+// que deja un clip tienen los brazos cruzados de lado (SWAP): brazos, manos y
+// dedos fuera de la pose. Antes se tapaba escena por escena (ui/eclipseIntro,
+// ui/introCrewB clipPose) y se perdía la vida. Ahora la vida va acá, encima del
+// clip: respiran (pecho y hombros), parpadean y mueven la boca; brazos, manos,
+// dedos y la mirada quedan los del clip. El cuadro queda marcado (no se rearma
+// desde las piezas) y, si la escena no vuelve a poner el clip, al dibujar se
+// repite este (again). globalThis.__mduCrewVidaPiezas = true: como antes)
+function clipSet(G, W, h, again = false) {
+  const a = G.a;
+  const raf = a.g?.raf;
+  // (para las pruebas: la escena puso un clip en este cuadro)
+  if (!again) G.clipRaf = raf;
+  let S = null;
+  let fresh = false;
+  let LW = W;
+  if (globalThis.__mduCrewVidaPiezas !== true) {
+    if (h !== G.cH) G.cH = (G.cH || new THREE.Vector3()).copy(h);
+    h = G.cH;
+    G.clipOn = true;
+    if (liveOn(G)) {
+      // (una vez por cuadro: si la pose de piezas ya la sacó en este cuadro, esa)
+      fresh = !(G.life && G.frame === raf);
+      S = fresh ? liveBegin(G, W[(G.iClipHead ??= CL.names.indexOf('Head'))]) : G.life;
+      G.cL ||= CL.names.map(() => new THREE.Quaternion());
+      G.cD ||= CL.names.map((name, i) => ({ name, W: G.cL[i] }));
+      for (let i = 0; i < CL.nb; i++) {
+        G.cL[i].copy(W[i]);
+        liveBone(S, G.cD[i], true);
+      }
+      LW = G.cL;
+    } else if (G.life) {
+      liveRest(G);
+      G.life = null;
+    }
+    G.frame = raf;
+  }
   for (let i = 0; i < CL.nb; i++) {
     const pi = CL.parent[i];
-    G.cb[i].quaternion.copy(qa.copy(pi >= 0 ? W[pi] : T.armQ).invert()).multiply(W[i]);
+    G.cb[i].quaternion.copy(qa.copy(pi >= 0 ? LW[pi] : T.armQ).invert()).multiply(LW[i]);
   }
-  G.bones.Hips.position.copy(vb).applyMatrix4(T.armInv);
+  G.bones.Hips.position.copy(h).applyMatrix4(T.armInv);
   updateMW.call(G.root, true);
   const M = a.mats;
   for (let i = 0; i < 13; i++) M[i].multiplyMatrices(G.bones[PART_BONE[SWAP[i]]].matrixWorld, CL.OFF[SWAP[i]]);
@@ -1557,8 +1607,8 @@ export function poseCineClip(a, c, t, x, y, z, yaw, o = null) {
     M[part].setPosition(va.sub(vc));
   }
   shieldOut(G);
+  if (S && fresh) liveAfter(G, S);
   snapshot(G);
-  return true;
 }
 
 // Algo puesto en la cabeza del gaucho (los anteojos del Canchero): obj se arma
@@ -1587,6 +1637,8 @@ export function cineBlendFrom(a, snap, w) {
   if (!G?.on || !snap || w >= 1 || !clipsReady()) return false;
   G.cb ||= CL.names.map((n) => G.bones[n]);
   G.cW ||= CL.names.map(() => new THREE.Quaternion());
+  // (G.cW deja de ser la pose del clip: al dibujar no se repite; clipSet)
+  G.clipOn = false;
   const W = G.cW;
   const k = Math.max(0, w);
   updateMW.call(G.root, true);

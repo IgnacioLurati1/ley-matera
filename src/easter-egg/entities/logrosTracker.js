@@ -73,7 +73,7 @@ export default class LogrosTracker {
   // cada mapa y el nivel (sin aviso).
   retro() {
     // (los bonus también, si su easter egg tiene logro: el Monumento)
-    for (const id of globalThis.__mduNoEggLogro ? eggsDone() : eggsAll()) if (L.def(`ee_${id}`)) L.unlock(`ee_${id}`);
+    for (const id of eggsAll()) if (L.def(`ee_${id}`)) L.unlock(`ee_${id}`);
     if (eggsDone().length === eggsTotal()) L.unlock('super');
     for (const m of L.MAPS) {
       let best = 0;

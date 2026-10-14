@@ -19,8 +19,8 @@ const HEAVY = ['plasterWhite', 'concreteWall', 'plasterOffice', 'plasterGreen', 
 // qué juegos de cada mapa usa cada uno (World.js: penalTextures, farmTextures,
 // castleTextures)
 const NEEDS = { penal: ['penal'], torre: ['penal', 'farm'], castillo: ['penal', 'castle'], esteros: ['penal'], monumento: ['penal', 'monu'], granja: ['farm'], eclipse: ['penal', 'farm', 'castle', 'monu'] };
-// (las del Monumento: world/monumentoTextures MONU_PAINT; __mduNoMonuWorker: no)
-const SETS = { ...MAP_SETS, castle: Object.keys(CASTLE_PAINT), ...(globalThis.__mduNoMonuWorker === true ? {} : { monu: Object.keys(MONU_PAINT) }) };
+// (las del Monumento: world/monumentoTextures MONU_PAINT)
+const SETS = { ...MAP_SETS, castle: Object.keys(CASTLE_PAINT), monu: Object.keys(MONU_PAINT) };
 
 // reparte en ronda, las pesadas primero
 function deal(names, lists) {

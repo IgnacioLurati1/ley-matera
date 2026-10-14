@@ -235,8 +235,8 @@ export function buildFarmOutside(world) {
   // (en cuadros: lo de atrás y lo perdido en la niebla no se dibuja)
   // (en cuadros de 40 m: de a 16 eran ~80 llamadas de dibujo por pasada; las
   // matas son tarjetas cruzadas, dibujar las de más de un cuadro grande no
-  // cuesta. globalThis.__mduSmallTiles: como antes)
-  world.root.add(cornMesh(world, pts, false, { tile: globalThis.__mduSmallTiles === true ? 16 : 40, far: 100 }));
+  // cuesta)
+  world.root.add(cornMesh(world, pts, false, { tile: 40, far: 100 }));
 
   // el camino de tierra hasta el horizonte
   const road = new THREE.Mesh(new THREE.PlaneGeometry(ROAD.x1 - ROAD.x0, ROAD.z1 + 80), M.dirt);

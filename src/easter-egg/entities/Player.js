@@ -5,7 +5,7 @@ import { PLAYER_START, FEATURES } from '../config/map';
 // (el penal en línea: cada uno arranca en su catre del pabellón, el lugar de su
 // carácter en la entrada —ui/introShots penal crewUp—; todos en el mismo punto,
 // los cuerpos dormidos del gaucho life quedaban uno arriba del otro: "el jugador
-// rojo aparece encima de otro", el usuario 2026-10-06. __mduNoPenalSpots: como antes)
+// rojo aparece encima de otro", el usuario 2026-10-06)
 export const PENAL_SPOTS = [[0, 0], [0.3, 2.3], [1.8, -1.5], [3.15, 0.6]];
 import { dragonBreath, DRAGON_CD, DRAGON_GAP } from '../weapons/dragonBreath';
 import { playerWater, swimMove, wadeSlow, SWIM, climbStep } from './swim';
@@ -32,7 +32,7 @@ export default class Player {
     const s = PLAYER_START;
     this.pos.set(s.x, 0, s.z);
     const nid = this.g?.net?.id || 0;
-    if (FEATURES.penal && nid > 0 && globalThis.__mduNoPenalSpots !== true) {
+    if (FEATURES.penal && nid > 0) {
       const [dx, dz] = PENAL_SPOTS[nid % PENAL_SPOTS.length];
       this.pos.x += dx;
       this.pos.z += dz;

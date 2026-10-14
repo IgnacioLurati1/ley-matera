@@ -1,8 +1,6 @@
 import Net, { MAX_PLAYERS } from '../net/Net';
 import { MAP_LIST, MAP_MODES } from '../config/map';
 import { mapChip } from './MapSelect';
-import { rushOff } from '../core/bossRush';
-import { mayhemOff } from '../core/rushMayhem';
 import { HORNS } from './PlayMenu';
 import { pzLobby } from '../entities/penal/Porteno';
 
@@ -111,16 +109,16 @@ export default class Lobby {
     // lo prende o lo apaga acá también; el invitado solo lo ve.
     const R = g.rush;
     const btn = this.el.querySelector('[data-act="rushpick"]');
-    if (!R || !btn || rushOff()) return;
+    if (!R || !btn) return;
     const on = g.net?.guest ? R.roomPick : R.pick;
     // (el Boss Rush Mayhem, core/rushMayhem.js: el mismo rush con mayhemPick; uno u otro)
-    const mh = !!on && !mayhemOff() && !!(g.net?.guest ? R.roomMayhem : R.mayhemPick);
+    const mh = !!on && !!(g.net?.guest ? R.roomMayhem : R.mayhemPick);
     btn.hidden = !(g.net?.host || (on && !mh));
     btn.disabled = !g.net?.host;
     btn.setAttribute('aria-pressed', String(!!on && !mh));
     const mbtn = this.el.querySelector('[data-act="mayhempick"]');
     if (mbtn) {
-      mbtn.hidden = mayhemOff() || !(g.net?.host || mh);
+      mbtn.hidden = !(g.net?.host || mh);
       mbtn.disabled = !g.net?.host;
       mbtn.setAttribute('aria-pressed', String(mh));
     }
@@ -181,12 +179,11 @@ export default class Lobby {
         // servidores de puente y se abre el canal—: un segundo clic en Entrar
         // armaba otra conexión con otra tarjeta, el anfitrión le abría lugar a
         // las dos y la primera también llegaba a conectar. Ahora un solo intento
-        // a la vez, y el anterior se cierra. globalThis.__mduNoJoinGuard: como antes)
-        const guard = globalThis.__mduNoJoinGuard !== true;
-        if (guard && this.joining) return;
+        // a la vez, y el anterior se cierra)
+        if (this.joining) return;
         this.joining = true;
         try {
-          if (guard && this.net && !this.net.host && this.net !== g.net) this.net.close();
+          if (this.net && !this.net.host && this.net !== g.net) this.net.close();
           this.status('Conectando...');
           this.net = new Net({ role: 'guest', signal: g.signal, name: this.name });
           this.net.onStatus = (t) => this.status(t);
@@ -243,7 +240,7 @@ export default class Lobby {
         return;
       }
       if (a === 'mayhempick') {
-        if (!this.net?.host || !g.rush || mayhemOff()) return;
+        if (!this.net?.host || !g.rush) return;
         const on = !(g.rush.pick && g.rush.mayhemPick);
         g.rush.pick = on;
         g.rush.mayhemPick = on;

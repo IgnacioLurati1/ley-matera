@@ -318,14 +318,11 @@ const BUILDERS = {
     // Un objeto propio (World.buildProps: dynamic.algarrobo) y no un pedazo de
     // la malla de todo el mapa: el final lo esconde y pone sus pedazos. Se ve
     // igual que fundido (una malla por material, sin el color por vértice);
-    // las piezas sueltas quedan en g.pieces. globalThis.__mduNoQuiebre: como
-    // antes (fundido con el mapa, y el final sin el algarrobo que se parte).
-    if (globalThis.__mduNoQuiebre !== true) {
-      g.name = 'algarrobo';
-      g.userData.dynamic = true;
-      g.pieces = [...g.children];
-      mergeByMaterial(g);
-    }
+    // las piezas sueltas quedan en g.pieces.
+    g.name = 'algarrobo';
+    g.userData.dynamic = true;
+    g.pieces = [...g.children];
+    mergeByMaterial(g);
     return { obj: g, boxes: [[-0.8 * s, 0, -0.8 * s, 0.8 * s, 3 * s, 0.8 * s]] };
   },
 

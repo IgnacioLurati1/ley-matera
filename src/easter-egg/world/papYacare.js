@@ -258,7 +258,7 @@ export default class PapYacare {
     this.exit = new THREE.CatmullRomCurve3(ex);
     this.E = this.exit.getLength();
     this.model = caimanModel(this.L);
-    // los clips de Blender (world/papYacBlend.js; __mduNoYacareBlend: como antes)
+    // los clips de Blender (world/papYacBlend.js)
     this.bl = yacareBlendOn() ? new YacareBlend(this) : null;
     if (this.bl) loadYacareClips();
     this.model.position.copy(c);

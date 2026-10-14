@@ -7,7 +7,6 @@ import { crewIds, personaOf, PERSONA_T } from './cineCrew';
 import { cineClip, poseCineClip, gauchoClip, cineSnap, headProp, FACE_EYES } from '../net/gauchoSkin';
 import { preloadBossSkin, skinBoneAt } from '../entities/bossSkin';
 import { assetUrl } from '../../lib/assets';
-import MolinoCinematicClassic from './MolinoCinematicClassic';
 import { makeFist } from './alcaideFist';
 
 // Final del molino, en la Salamanca con el Mandinga hecho cenizas, con los
@@ -27,8 +26,7 @@ import { makeFist } from './alcaideFist';
 // En línea: la misma escena para todos (con el reloj de verdad), cada uno ve
 // que el mate lo tenía el suyo (en la punta, del lado de donde viene el Alcaide).
 // Se puede saltear con Esc, Espacio o clic.
-// globalThis.__mduBlend = false: la de antes, en primera persona
-// (ui/MolinoCinematicClassic.js).
+// La de antes, en primera persona (ui/MolinoCinematicClassic.js), ya no se usa.
 
 const FIERRO_ID = 401;
 const CREW_ID = 460;
@@ -75,7 +73,6 @@ function turn(cur, want, dt, k, max = 3) {
 let CLIPS = null;
 let loading = null;
 export function prefetchMolinoClips() {
-  if (globalThis.__mduBlend === false) return Promise.resolve();
   loading ||= fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-molino-fin.json'))
     .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
     .then((J) => {
@@ -127,7 +124,6 @@ const REACT = {
 
 export default class MolinoCinematic {
   constructor(root, game) {
-    if (globalThis.__mduBlend === false) return new MolinoCinematicClassic(root, game);
     this.g = game;
     this.el = document.createElement('div');
     this.el.className = 'mdu-fcine mdu-fcine--molino';
@@ -300,17 +296,11 @@ export default class MolinoCinematic {
           const t0 = 0.9;
           // (los anteojos, solo en el penal y la torre: el usuario, 2026-10-04.
           // Acá el Canchero, de cerca, se ceba su mate como si nada mientras
-          // aparece el fantasma; globalThis.__mduShadesAll: los anteojos)
-          const shades = !!globalThis.__mduShadesAll;
+          // aparece el fantasma)
           this.later(t0, () => {
-            if (shades) {
-              this.act(cool, 'shades', { fade: 0.4 });
-              this.shadesT = this.t;
-              this.shadesR = cool;
-            } else this.act(cool, 'sipOwn', { loop: true, fade: 0.4, t: 0.4 });
+            this.act(cool, 'sipOwn', { loop: true, fade: 0.4, t: 0.4 });
           });
           this.later(t0 + 0.1, () => this.shotShades(cool, 2.4));
-          if (shades) this.later(t0 + 2.2, () => this.act(cool, 'cool', { loop: true, fade: 0.3 }));
           this.later(t0 + 2.5, () => this.shotOverCrew(2));
         }
         this.later(cool ? 3.7 : 2.4, () => this.walkFierro());
@@ -679,12 +669,12 @@ export default class MolinoCinematic {
     this.alcaide.state = 'grab';
     this.alcaide.z.state = 'cine';
     // (le cierra la mano alrededor del mate: su modelo no tiene dedos,
-    // ui/alcaideFist.js; globalThis.__mduNoFist: la mano abierta de antes)
+    // ui/alcaideFist.js)
     this.fist = null;
     this.fistK = 0;
     const S = window.__bossSkins?.alcaide;
-    if (S?.state === 2 && S.root?.visible && !globalThis.__mduNoFist) {
-      this.fist = makeFist(S, this.alcaideSide() + 'Hand', { flip: !!globalThis.__mduFistFlip });
+    if (S?.state === 2 && S.root?.visible) {
+      this.fist = makeFist(S, this.alcaideSide() + 'Hand', { flip: false });
       this.fist?.fitWorld(0.055 * this.mate.scale.x);
     }
     this.moveMate('alcaide', 0.3);

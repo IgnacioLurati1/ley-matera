@@ -24,11 +24,6 @@ import { eclSfx, ahhWarm, ahhPlay } from '../fx/eclipseSfx';
 //    barranca, el campo, y bajando detrás del muro del convento, donde San
 //    Martín espera. El cartel "San Lorenzo / 3 de febrero de 1813". Negro y a
 //    jugar. La arena se arma debajo del blanco (onWhite).
-// globalThis.__mduOldCruce: como antes (el mate muestra dónde cortar y el tajo
-// de la Furia abre la arena de una).
-
-export const cruceOn = () => globalThis.__mduOldCruce !== true;
-
 const CREW_COLOR = { gil: 0xb01c14, anacleto: 0x3a6a2a, cirilo: 0x2a3a7a, benito: 0x7a5a2a, nicasio: 0x5a2a6a };
 const MATES = ['anacleto', 'cirilo', 'benito', 'nicasio'];
 const NAME = { gil: 'Antonio Gil', fierro: 'Martín Fierro' };
@@ -120,26 +115,21 @@ class CruceBase extends CastleCine {
   // después de la primera, que dura ~4: el texto ya decía la segunda mientras
   // sonaba la primera, el atraso se juntaba y al terminar la escena se callaba
   // lo que quedaba en la cola. Ahora la línea espera su turno —texto y voz
-  // juntos— y el paso no termina antes de que termine la línea.
-  // globalThis.__mduOldCruceDlg: como antes)
+  // juntos— y el paso no termina antes de que termine la línea)
   say(who, text) {
     const g = this.g;
-    if (globalThis.__mduOldCruceDlg !== true) {
-      const A = g.audio;
-      const busy = Math.max((this.voiceTill || 0) - this.t, A?.ctx ? (A.voiceEnd || 0) - A.ctx.currentTime : 0);
-      if (busy > 0.08) {
-        this.later(busy + 0.12, () => this.say(who, text));
-        // (que el paso dure lo que falta más la línea)
-        this.hold(busy + 0.12 + text.length * 0.065 + 0.6);
-        return busy + 0.12 + text.length * 0.065 + 0.5;
-      }
+    const A = g.audio;
+    const busy = Math.max((this.voiceTill || 0) - this.t, A?.ctx ? (A.voiceEnd || 0) - A.ctx.currentTime : 0);
+    if (busy > 0.08) {
+      this.later(busy + 0.12, () => this.say(who, text));
+      // (que el paso dure lo que falta más la línea)
+      this.hold(busy + 0.12 + text.length * 0.065 + 0.6);
+      return busy + 0.12 + text.length * 0.065 + 0.5;
     }
     const d = super.say(who, text);
     if (NAME[who]) this.textEl.textContent = `${NAME[who]}: ${text}`;
-    if (globalThis.__mduOldCruceDlg !== true) {
-      this.voiceTill = this.t + (g.audio?.sayWait || 0) + d - 0.35;
-      this.hold(d);
-    }
+    this.voiceTill = this.t + (g.audio?.sayWait || 0) + d - 0.35;
+    this.hold(d);
     return d;
   }
 
@@ -151,7 +141,7 @@ class CruceBase extends CastleCine {
   // fn cuando termine de hablar el que habla (o ya, si nadie habla)
   afterVoice(fn, pad = 0.25) {
     const left = (this.voiceTill || 0) - this.t;
-    if (globalThis.__mduOldCruceDlg !== true && left > 0) {
+    if (left > 0) {
       this.hold(left + pad + 0.8);
       this.later(left + pad, fn);
     } else fn();
@@ -445,12 +435,10 @@ export class CruceCine extends CruceBase {
           this.later(0.55, () => this.white(true));
           // (el cruce: la onda de choque, un poco antes del blanco)
           // (y el cielo espera lo suyo antes de la próxima: world/eclipseSky SHOCK_GAP)
-          if (globalThis.__mduOldCruceMus2 !== true) {
-            this.later(0.35, () => {
-              eclSfx(g).play('onda-choque', { gain: 1.0, reverb: 0.5 });
-              if (g.world.eclipse) g.world.eclipse.shockAt = g.time || 0;
-            });
-          }
+          this.later(0.35, () => {
+            eclSfx(g).play('onda-choque', { gain: 1.0, reverb: 0.5 });
+            if (g.world.eclipse) g.world.eclipse.shockAt = g.time || 0;
+          });
           this.later(1.25, () => this.swap());
           return 1.3;
         },
@@ -460,23 +448,12 @@ export class CruceCine extends CruceBase {
         0.1,
         () => {
           this.flyT = this.t;
-          // (2026-10-08, el usuario: "llegando a la pelea final, en el paneo que
-          // muestra todo el mapa, no hay música". La de la pelea arrancaba recién
-          // en la fase 1; ahora entra con el vuelo y la fase 1 la encuentra
-          // sonando (SanLorenzo.setPhase: is('jefe-eclipse')). La misma
-          // condición que allá, con la fase 0. globalThis.__mduOldCruceMus: muda)
           // (2026-10-09, el usuario: "la música de la pelea final que propuse no
           // me gustó, volvé a la anterior, pero que suene cuando San Martín
           // empieza a liderar el asalto; cuando cruzás, algún sonido especial".
           // La de la pelea ('jefe-eclipse') vuelve a entrar en la fase 1, cuando
           // San Martín ya montó y desembarcan (SanLorenzo.setPhase); el cruce
-          // suena con la onda de choque cósmica del usuario, en el blanco.
-          // globalThis.__mduOldCruceMus2: la de la pelea desde el vuelo, como ayer)
-          if (globalThis.__mduOldCruceMus !== true && globalThis.__mduOldCruceMus2 === true) {
-            const A = this.ee.arena;
-            const keep = (G) => !!A?.active && [0, 1, 2].includes(A.st.phase) && (G.state === 'playing' || G.state === 'paused');
-            if (!g.music?.is('jefe-eclipse')) g.music?.play('jefe-eclipse', { loop: true, fadeIn: 2.5, while: keep });
-          }
+          // suena con la onda de choque cósmica del usuario, en el blanco)
           this.later(0.25, () => this.white(false));
           // (el "ahhhh" al aparecer San Lorenzo: el usuario, 2026-10-10)
           this.later(0.3, () => ahhPlay(g, { gain: 0.85 }));
@@ -535,12 +512,9 @@ export class CruceCine extends CruceBase {
     const e = 1 - Math.pow(1 - u, 1.7);
     // (por el largo del camino, no por tramos: los tramos miden de 14 a 70 m y
     // con getPoint la cámara cambiaba de velocidad de golpe en cada punto. El
-    // usuario, 2026-10-10: "la cámara pega unos saltos medio raros".
-    // __mduOldCruceFly: como antes)
-    const old = globalThis.__mduOldCruceFly === true;
-    if (old) this.curve.getPoint(Math.min(0.999, e), pos);
-    else this.curve.getPointAt(Math.min(0.999, e), pos);
-    const ahead = old ? this.curve.getPoint(Math.min(1, e + 0.05), tmpV) : this.curve.getPointAt(Math.min(1, e + 0.05), tmpV);
+    // usuario, 2026-10-10: "la cámara pega unos saltos medio raros")
+    this.curve.getPointAt(Math.min(0.999, e), pos);
+    const ahead = this.curve.getPointAt(Math.min(1, e + 0.05), tmpV);
     ahead.y -= 2;
     const want = ahead.clone();
     // al principio mira a El Eclipse; al final, a San Martín

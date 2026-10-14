@@ -16,7 +16,7 @@ import CineActors from '../../ui/cineActors';
 import Caballeria from './slCaballeria';
 import SlJinetes from './slJinetes';
 import { eclSfx } from '../../fx/eclipseSfx';
-// (el final nuevo, a medias: globalThis.__mduSlFinal = true lo prende; ver slFinal.js)
+// (el final nuevo, prendido por defecto: globalThis.__mduSlFinal = false vuelve al viejo; ver slFinal.js)
 import SlFinal, { finOn } from './slFinal';
 
 // La pelea final de Eclipse Matero: el Combate de San Lorenzo (3 de febrero de
@@ -50,35 +50,28 @@ import SlFinal, { finOn } from './slFinal';
 // (ask → onGuest); el que entra tarde recibe state() (applyFull).
 // Contrato con EclipseEgg: start, update, apply, state, applyFull, onGuest,
 // debugPhase, dispose, active.
-// globalThis.__mduNoSanLorenzo === true: sin arena (el mapa se da por hecho al cortar).
 
 const L = {};
 const tmpV = new THREE.Vector3();
 const tmpW = new THREE.Vector3();
 // lo que hay que aguantar en el desembarco (muertos, solo; más con más jugadores)
-// (sesión 1f: "salen muy pocos para un terreno enorme": muchos más y más rápido;
-// __mduNoSlHorde: los de antes)
-const MORE = globalThis.__mduNoSlHorde !== true;
+// (sesión 1f: "salen muy pocos para un terreno enorme": muchos más y más rápido)
 // (2026-10-08, el usuario: "la batalla final tarda nada en hacerse y es una
 // pelotudez". Medido en el código: el cuerpo de El Eclipse (del 100 al 55%) se
 // iba en ~25 tajos de guadaña a la mano (1,8% cada uno) o ~50 s de tiros; las
 // cadenas, 6 tajos; la corona, 2,4 s de rayo por pedazo. Ahora: 100 muertos en
 // el desembarco, 9 tajos por cadena, el cuerpo aguanta 2,5 veces más, la
-// corona 4 s de rayo por pedazo y El Eclipse ataca un 20% más seguido.
-// globalThis.__mduOldSlHard: como antes)
-const HARD = globalThis.__mduOldSlHard !== true;
-const KILLS_P1 = MORE ? (HARD ? 100 : 70) : 30;
+// corona 4 s de rayo por pedazo y El Eclipse ataca un 20% más seguido)
+const KILLS_P1 = 100;
 // (lo que entra al cuerpo, por esto)
 // (2026-10-08, ITERACION-8, el usuario: "bajarle un poco de vida en la 2da fase
-// al Eclipse": el cuerpo aguantaba 2,5 veces lo de antes; ahora 2 veces.
-// globalThis.__mduOldSlBody8: 0,4, como antes)
-const BODY_K = HARD ? (globalThis.__mduOldSlBody8 === true ? 0.4 : 0.5) : 1;
-// (y en la corona ataca: ver hostTick. globalThis.__mduOldCrownAtk: como antes)
-const CROWN_ATK = globalThis.__mduOldCrownAtk !== true;
+// al Eclipse": el cuerpo aguantaba 2,5 veces lo de antes; ahora 2 veces)
+const BODY_K = 0.5;
+// (y en la corona ataca: ver hostTick)
 // los muertos a la vez en cada fase (por jugador de más, la mitad)
-const CAP = MORE ? { 1: 34, 2: 40, 4: 46 } : { 1: 10, 2: 12, 4: 16 };
+const CAP = { 1: 34, 2: 40, 4: 46 };
 // los tajos para cortar una amarra (solo; +50% por jugador de más)
-const AM_CUTS = HARD ? 9 : 6;
+const AM_CUTS = 9;
 // a qué vida se termina la fase 2 (la carga de San Martín y Cabral)
 const HP_CABRAL = 0.55;
 // a qué vida cae de rodillas (aturdido: le duele más)
@@ -88,12 +81,10 @@ const KNEELS = [0.84, 0.69];
 // daño de la primera ya pasaba la segunda, se paraba y volvía a caer —o caía
 // dos veces en el mismo cuadro—. Ahora una por vez, de rodillas no baja de la
 // marca que sigue y entre una y otra pasa KNEEL_GAP s de pie; la carga de
-// San Martín (Cabral) espera a que se pare.
-// globalThis.__mduOldSlKneel: como antes)
-const KNEEL_FIX = globalThis.__mduOldSlKneel !== true;
+// San Martín (Cabral) espera a que se pare)
 const KNEEL_GAP = 10;
 // la corona: segundos de rayo por pedazo (solo)
-const CROWN_SECS = HARD ? 4 : 2.4;
+const CROWN_SECS = 4;
 // el respiro de la bandera: cada cuánto, a cuánto, cuánta vida
 const FLAG_EVERY = 20;
 const FLAG_R = 6.2;
@@ -121,7 +112,6 @@ export default class SanLorenzo {
     // (EclipseEgg no tiene sceneCam: Game la llama mientras hay una escena del
     // easter egg; la de Cabral la usa. Si main la agrega, queda la suya.)
     if (typeof ee.sceneCam !== 'function') ee.sceneCam = (dt) => (ee.scene ? ee.scene.update(dt) : false);
-    if (globalThis.__mduNoSanLorenzo === true) return;
     // (todo se arma con el mapa, fuera de la escena, y se compila ya: al
     // entrar no se arma ni se compila nada)
     try {
@@ -178,36 +168,32 @@ export default class SanLorenzo {
     warmObject(g, this.top);
     // (la escena de Cabral arma a los cuatro con sus materiales: se compilaban
     // en plena pelea —4 programas, un tirón—. Unos iguales, escondidos, se
-    // compilan antes en segundo plano. __mduNoSlCabralWarm: como antes)
-    if (globalThis.__mduNoSlCabralWarm !== true) {
-      try {
-        const W = new CineActors(g, { base: 690, parent: this.top });
-        this.cabralWarm = W;
-        // (las variantes del G-buffer de la Épica solo se compilan dibujando:
-        // con lo escondido que la carga muestra dos cuadros, ui/Arrival warmWorld)
-        (g.world.warmHidden ||= []).push(W.people.root);
-        let n = 0;
-        const tryWarm = () => {
-          if (this.disposed || !this.cabralWarm) return;
-          if (W.list.every((r) => r.a?.gs?.on) || ++n > 40) warmObject(g, W.people.root);
-          else setTimeout(tryWarm, 500);
-        };
-        tryWarm();
-      } catch {
-        /* sin los de prueba: se compilan al llegar la escena */
-      }
+    // compilan antes en segundo plano)
+    try {
+      const W = new CineActors(g, { base: 690, parent: this.top });
+      this.cabralWarm = W;
+      // (las variantes del G-buffer de la Épica solo se compilan dibujando:
+      // con lo escondido que la carga muestra dos cuadros, ui/Arrival warmWorld)
+      (g.world.warmHidden ||= []).push(W.people.root);
+      let n = 0;
+      const tryWarm = () => {
+        if (this.disposed || !this.cabralWarm) return;
+        if (W.list.every((r) => r.a?.gs?.on) || ++n > 40) warmObject(g, W.people.root);
+        else setTimeout(tryWarm, 500);
+      };
+      tryWarm();
+    } catch {
+      /* sin los de prueba: se compilan al llegar la escena */
     }
     // en la escena desde ya, escondido y dormido (core/matrixCache mcSleep: no
     // se recorre); la carga (ui/Arrival warmWorld) lo muestra dos cuadros con lo
     // escondido de adentro: así cada variante (G-buffer, sombras) se compila ahí
-    // y no al entrar. (__mduNoSlWarm: como antes, afuera hasta entrar)
-    if (globalThis.__mduNoSlWarm !== true) {
-      this.top.visible = false;
-      this.top.mcSleep = true;
-      g.scene.add(this.top);
-      const B = this.boss;
-      (g.world.warmHidden ||= []).push(this.top, B.R.root, B.gnome.R.root, ...B.amarras.flatMap((A) => [A.g, A.chain]), this.al.bel.cloth, ...this.cav.warmList());
-    }
+    // y no al entrar.
+    this.top.visible = false;
+    this.top.mcSleep = true;
+    g.scene.add(this.top);
+    const B = this.boss;
+    (g.world.warmHidden ||= []).push(this.top, B.R.root, B.gnome.R.root, ...B.amarras.flatMap((A) => [A.g, A.chain]), this.al.bel.cloth, ...this.cav.warmList());
     // entregarle el sable a San Martín (la F se arma con el mapa: el mismo número en todas las compus)
     this.sableIt = g.interact?.add({
       kind: 'ee',
@@ -358,7 +344,7 @@ export default class SanLorenzo {
 
   state() {
     const s = this.st;
-    return { on: s.on, ph: s.phase, sub: s.sub, done: s.done, sab: s.sable, kills: s.kills, need: s.need, hp: +s.hp.toFixed(3), am: s.am.map((x) => +x.toFixed(2)), unv: s.unv, cr: s.cr.map((x) => +x.toFixed(2)), lit: s.lit, bel: s.bel, kn: s.kn };
+    return { on: s.on, ph: s.phase, sub: s.sub, done: s.done, sab: s.sable, kills: s.kills, need: s.need, hp: +s.hp.toFixed(3), am: s.am.map((x) => +x.toFixed(2)), unv: s.unv, cr: s.cr.map((x) => +x.toFixed(2)), lit: s.lit, bel: s.bel, kn: s.kn, ft: this.fin?.on ? +this.fin.t.toFixed(2) : undefined };
   }
 
   applyFull(s) {
@@ -375,7 +361,8 @@ export default class SanLorenzo {
     S.lit = s.lit ?? -1;
     S.bel = s.bel || 0;
     S.kn = s.kn || 0;
-    if (s.ph != null && s.ph !== S.phase) this.setPhase(s.ph, { late: 1 });
+    // (ft: por dónde va el final nuevo —slFinal—: el que entra tarde arranca su reloj ahí)
+    if (s.ph != null && s.ph !== S.phase) this.setPhase(s.ph, { late: 1, ft: s.ft });
     if (s.sub) this.setSub(s.sub, true);
     // lo que ya pasó, de una
     if (S.sable && this.al.sm.mode === 'pie') {
@@ -400,7 +387,7 @@ export default class SanLorenzo {
   // que van al terminar el vuelo (arrived).
   start(opts = {}) {
     const g = this.g;
-    if (!this.built || globalThis.__mduNoSanLorenzo === true) return false;
+    if (!this.built) return false;
     if (this.active) return true;
     this.st.on = 1;
     this.t = 0;
@@ -460,9 +447,9 @@ export default class SanLorenzo {
     }
     // los muertos de la arena: todos realistas (el de 1812 de los seis mundos de
     // entities/zombieLooks eclipse; el primer número de su suerte elige el
-    // mundo). Igual en todas las compus (sale del id). __mduNoSlRealistas: los seis
+    // mundo). Igual en todas las compus (sale del id).
     const Z = g.zombies;
-    if (Z?.look?.dress && !this.lookBase && globalThis.__mduNoSlRealistas !== true) {
+    if (Z?.look?.dress && !this.lookBase) {
       const L0 = Z.look;
       this.lookBase = L0;
       Z.look = Object.assign(Object.create(L0), {
@@ -489,8 +476,8 @@ export default class SanLorenzo {
     this.atmos(true);
     // la luz y la niebla de la arena: las pone ella, antes de cada dibujo (el
     // clima y el ánimo de las islas las vuelven a poner en su update; la niebla
-    // de las islas, ×2,4, no dejaba ver a 60 m). __mduNoSlLook: como antes
-    if (globalThis.__mduNoSlLook !== true && !this.lookWrap) {
+    // de las islas, ×2,4, no dejaba ver a 60 m).
+    if (!this.lookWrap) {
       const sc = g.scene;
       const prev = sc.onBeforeRender;
       this.lookWrap = { prev };
@@ -501,9 +488,9 @@ export default class SanLorenzo {
     }
     // el cielo: un solo cielo alrededor (el del alba del Monumento, con la
     // noche del eclipse encima), sin las cuñas de las islas, que en la arena
-    // cortaban el horizonte en colores (__mduNoSlSky: como antes)
+    // cortaban el horizonte en colores
     const SU = w.sky?.material?.uniforms;
-    if (SU?.uWid && globalThis.__mduNoSlSky !== true && !this.widSaved) {
+    if (SU?.uWid && !this.widSaved) {
       this.widSaved = SU.uWid.value.slice();
       SU.uWid.value = SU.uWid.value.map(() => Math.max(0, ISLE_IDS.indexOf('monumento')));
     }
@@ -781,7 +768,7 @@ export default class SanLorenzo {
       g.hud?.setBossBar?.(null);
       this.vivo?.setBoats(false);
       this.fin ||= new SlFinal(this);
-      this.fin.start(0);
+      this.fin.start(late ? m.ft || 0 : 0);
     } else if (n === 5) {
       g.hud?.setBossBar?.(null);
       B.fall();
@@ -828,12 +815,9 @@ export default class SanLorenzo {
     const who = id === myId(g) ? g.player.pos : g.net?.remote?.get(id)?.pos || g.player.pos;
     const d = this.al.smTakeSable(who);
     // (ITERACION-8: el sable que sale de la vaina, la grabación del usuario,
-    // cuando lo alza —slAliados smPose 'recibe', a los 1,3 s—.
-    // globalThis.__mduOldSableSfx: sin)
-    if (globalThis.__mduOldSableSfx !== true) {
-      eclSfx(g).load(['sable-desenvaina']);
-      g.later(1.25, () => this.active && eclSfx(g).play('sable-desenvaina', { pos: this.al.sm.r.pos.clone(), gain: 0.9, reverb: 0.3 }));
-    }
+    // cuando lo alza —slAliados smPose 'recibe', a los 1,3 s—)
+    eclSfx(g).load(['sable-desenvaina']);
+    g.later(1.25, () => this.active && eclSfx(g).play('sable-desenvaina', { pos: this.al.sm.r.pos.clone(), gain: 0.9, reverb: 0.3 }));
     g.later(2.5, () => this.active && this.say('sanmartin', 'Seamos libres, que lo demás no importa nada.'));
     if (this.host) g.later(d + 1.8, () => this.active && this.st.phase === 0 && this.send({ ph: 1 }));
   }
@@ -924,7 +908,7 @@ export default class SanLorenzo {
     if (this.boss.staggered) d *= 1.6;
     // (de rodillas no pasa la marca de la rodilla que sigue: ver KNEEL_FIX)
     const kn = S.kn || 0;
-    const floor = KNEEL_FIX && this.boss.staggered && kn < KNEELS.length ? KNEELS[kn] + 0.004 : HP_CABRAL - 0.001;
+    const floor = this.boss.staggered && kn < KNEELS.length ? KNEELS[kn] + 0.004 : HP_CABRAL - 0.001;
     S.hp = Math.max(Math.min(floor, S.hp), S.hp - d / this.team(0.75));
     this.hpDirty = true;
     if (guest) this.boss.hurtFx(d > 0.01);
@@ -932,8 +916,7 @@ export default class SanLorenzo {
 
   hitCrown(i, d) {
     const S = this.st;
-    const any = globalThis.__mduOldCrownLit !== true;
-    if (this.st.phase !== 4 || this.st.sub !== 'corona' || !(i >= 0) || (!any && i !== S.lit) || !(S.cr[i] > 0)) return;
+    if (this.st.phase !== 4 || this.st.sub !== 'corona' || !(i >= 0) || !(S.cr[i] > 0)) return;
     if (!this.host) {
       // (de cada pedazo por separado: el invitado puede estar pegándole a otro)
       (this.pendCrown ||= {})[i] = (this.pendCrown[i] || 0) + d;
@@ -953,8 +936,8 @@ export default class SanLorenzo {
     // (sesión 1f, el usuario: "la corona está bugueada y no se puede romper; el
     // Chiquitijuein se queda quieto para siempre": sin la Furia —o fuera del
     // alcance del rayo— no había forma. Ahora los tiros también la rompen,
-    // más despacio que el rayo. __mduNoCrownShots: solo el rayo)
-    if (this.st.phase === 4 && this.st.sub === 'corona' && globalThis.__mduNoCrownShots !== true) {
+    // más despacio que el rayo)
+    if (this.st.phase === 4 && this.st.sub === 'corona') {
       if (g.weapons?.cosmic?.beam?.on) return;
       const b = tmpV.copy(o).addScaledVector(d, Math.min(maxT ?? 90, 90));
       let i = this.st.lit;
@@ -1004,7 +987,7 @@ export default class SanLorenzo {
     const ph = this.st.phase;
     // (la corona, 2026-10-07: la guadaña tirada también le pega; un tajo no
     // llega, está a 25 m de alto. Más despacio que el rayo, que es la forma)
-    if (ph === 4 && this.st.sub === 'corona' && ev.type === 'throw' && ev.o && ev.f && globalThis.__mduOldCrownLit !== true) {
+    if (ph === 4 && this.st.sub === 'corona' && ev.type === 'throw' && ev.o && ev.f) {
       const i = B.crownHit(ev.o, tmpW.copy(ev.o).addScaledVector(ev.f, 70), 3.4);
       if (i >= 0) {
         this.hitCrown(i, CROWN_SECS * 0.08);
@@ -1045,8 +1028,8 @@ export default class SanLorenzo {
     if (!B?.on || B.k < 0.4) return;
     const a = g.camera.position;
     // (la corona está alta y lejos —a 36 m del borde, el alcance del rayo
-    // común—: para ella, el rayo llega a 70 m. __mduNoCrownReach: como antes)
-    const far = this.st.sub === 'corona' && globalThis.__mduNoCrownReach !== true;
+    // común—: para ella, el rayo llega a 70 m)
+    const far = this.st.sub === 'corona';
     const b = far ? tmpW.copy(B.to).sub(a).normalize().multiplyScalar(70).add(a) : B.to;
     const h = this.boss.beamHit(a, b);
     if (!h) return;
@@ -1116,8 +1099,8 @@ export default class SanLorenzo {
     // (sesión 1f, el usuario: "la corona tiene un bug de iluminación en el
     // piso": la sombra del sol cubría 144 m alrededor del medio del campo y el
     // jefe en la barranca quedaba en el borde: un corte recto de sombra en el
-    // pasto. La sombra sigue al jugador. __mduNoSlLightFollow: como antes)
-    if (globalThis.__mduNoSlLightFollow !== true && this.lightAt) {
+    // pasto. La sombra sigue al jugador)
+    if (this.lightAt) {
       const P = g.player.pos;
       if (Math.hypot(P.x - this.lightAt.x, P.z - this.lightAt.z) > 18) this.aimLight(tmpW.set(P.x, SL0.y + 2, P.z).clone());
     }
@@ -1182,8 +1165,8 @@ export default class SanLorenzo {
       // (cerca de la vida de la carga de San Martín su escuadrón ya no sale: si
       // andaba de carga, había que esperar a que volviera y formara —con El
       // Eclipse clavado en esa vida— antes de la de Cabral. El usuario,
-      // 2026-10-10: "San Martín tardó mucho en caer". __mduOldSlLead: como antes)
-      const reserved = ph === 2 && side === 1 && S.unv && S.hp <= HP_CABRAL + 0.1 && globalThis.__mduOldSlLead !== true;
+      // 2026-10-10: "San Martín tardó mucho en caer")
+      const reserved = ph === 2 && side === 1 && S.unv && S.hp <= HP_CABRAL + 0.1;
       if (reserved) this.chargeT = 2;
       else if (!this.al.busy(side)) {
         this.send({ a: 'ch', s: side, l: this.laneFor(side) });
@@ -1229,12 +1212,12 @@ export default class SanLorenzo {
         this.send({ a: 'sub', s: 'corona' });
         this.send({ a: 'lit', i: S.cr.findIndex((x) => x > 0) });
         // (el primero, enseguida: venía con lo que quedaba de antes, ~20 s)
-        if (CROWN_ATK) this.atkT = 3.5;
+        this.atkT = 3.5;
       }
       if (S.sub === 'corona') {
         // de rodillas todavía tira astillas y larga botes, de a ratos
         this.atkT -= dt;
-        if (this.atkT <= 0 && CROWN_ATK) this.crownAttack();
+        if (this.atkT <= 0) this.crownAttack();
         else if (this.atkT <= 0) {
           this.atkT = 10 + Math.random() * 4;
           if (Math.random() < 0.6) this.shadowAttack(1);
@@ -1278,20 +1261,18 @@ export default class SanLorenzo {
     this.upT = kneeling ? 0 : (this.upT ?? KNEEL_GAP) + dt;
     for (let i = 0; i < KNEELS.length; i++) {
       if ((S.kn || 0) <= i && S.unv && S.hp <= KNEELS[i] && !B.slamJob && this.leadT < 0) {
-        if (KNEEL_FIX && (B.staggered || this.upT < KNEEL_GAP)) break;
+        if (B.staggered || this.upT < KNEEL_GAP) break;
         this.send({ a: 'stg', d: 5.5, kd: 'kneel' });
         this.atkT = Math.max(this.atkT, 6.5);
-        if (KNEEL_FIX) {
-          this.upT = 0;
-          break;
-        }
+        this.upT = 0;
+        break;
       }
     }
     // los golpes (no aturdido, no mientras carga San Martín)
     this.atkT -= dt;
     if (this.atkT <= 0 && !B.staggered && !B.slamJob && this.leadT < 0) this.attack();
     // a la vida de Cabral: la carga que encabeza San Martín
-    if (S.unv && S.hp <= HP_CABRAL && this.leadT < 0 && !B.slamJob && !(KNEEL_FIX && B.staggered)) {
+    if (S.unv && S.hp <= HP_CABRAL && this.leadT < 0 && !B.slamJob && !B.staggered) {
       if (!this.al.busy(1) && this.al.sm.mode === 'montado') {
         this.leadT = 0;
         this.send({ a: 'ch', s: 1, l: 4, ld: 1 });
@@ -1352,7 +1333,7 @@ export default class SanLorenzo {
       this.send({ a: 'su' });
       this.atkT = 5.5;
     }
-    this.atkT *= (0.9 + Math.random() * 0.3) * (HARD ? 0.8 : 1);
+    this.atkT *= (0.9 + Math.random() * 0.3) * 0.8;
   }
 
   // (anfitrión) El rayo de los ojos: una línea de costado (a lo ancho del
@@ -1398,7 +1379,7 @@ export default class SanLorenzo {
     if (pick === 'bm') this.eyeBeamNear();
     else if (pick === 'sh') this.shadowAttack(2);
     else this.send({ a: 'su' });
-    this.atkT = (5.5 + Math.random() * 2.5) * (0.7 + 0.1 * Math.max(0, left - 1)) * (HARD ? 0.95 : 1.1);
+    this.atkT = (5.5 + Math.random() * 2.5) * (0.7 + 0.1 * Math.max(0, left - 1)) * 0.95;
   }
 
   // Un punto del campo cerca de alguien (al azar, a hasta r m).
@@ -1488,7 +1469,7 @@ export default class SanLorenzo {
     this.spawnT -= dt;
     if (this.spawnT > 0) return;
     // (los botes traen la mayoría: lo de acá es el goteo)
-    this.spawnT = MORE ? (ph === 4 ? 0.3 : 0.4) : ph === 4 ? 0.7 : 1.1;
+    this.spawnT = ph === 4 ? 0.3 : 0.4;
     if (ph === 4 && this.st.sub === 'carga') return;
     const cap = Math.round(CAP[ph] * this.team(0.5));
     if (g.zombies.alive >= cap) return;
@@ -1594,7 +1575,7 @@ export default class SanLorenzo {
     // (2026-10-11, el usuario: "el cielo cambia de golpe entre la muerte del
     // jefe y la cinemática". Volvía acá mismo, con el blanco recién empezando
     // a subir —tarda 2,2 s—: se veía el salto. Ahora vuelve debajo del blanco,
-    // cuando ya tapó todo. __mduOldSlSkyBack: como antes)
+    // cuando ya tapó todo)
     const skyBack = () => {
       const SU = g.world.sky?.material?.uniforms;
       if (SU?.uWid && this.widSaved) {
@@ -1602,7 +1583,6 @@ export default class SanLorenzo {
         this.widSaved = null;
       }
     };
-    if (globalThis.__mduOldSlSkyBack === true) skyBack();
     const el = document.createElement('div');
     el.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:0;transition:opacity 2.2s;pointer-events:none;z-index:40';
     (g.root || document.body).appendChild(el);

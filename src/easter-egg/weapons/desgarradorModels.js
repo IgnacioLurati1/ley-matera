@@ -25,10 +25,9 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 export const SHAFT_L = 1.55;
 // de la punta de abajo a cada mano: la derecha atrás, cerca del regatón, y la
 // izquierda adelante, hacia la hoja (v3: las dos manos se ven en el asta; antes
-// la izquierda iba atrás, fuera de cuadro; globalThis.__mduDesgOldGrip: como antes)
-const OLD_GRIP = globalThis.__mduDesgOldGrip === true;
-const GRIP_R = OLD_GRIP ? 0.42 : 0.3;
-const GRIP_L = OLD_GRIP ? 0.14 : 0.8;
+// la izquierda iba atrás, fuera de cuadro)
+const GRIP_R = 0.3;
+const GRIP_L = 0.8;
 // (en el modelo: el origen es la mano derecha)
 export const GRIP_L_Y = GRIP_L - GRIP_R;
 export const MID_Y = SHAFT_L / 2 - GRIP_R;
@@ -36,9 +35,8 @@ export const TOP_Y = SHAFT_L - GRIP_R;
 export const BUTT_Y = -GRIP_R;
 const R_BOT = 0.0185;
 const R_TOP = 0.0165;
-export const SHAFT_R = 0.018;
 // el cuero de las empuñaduras: más grueso que el asta (el puño lo abraza)
-const GRIP_T = OLD_GRIP ? 0.0042 : 0.0075;
+const GRIP_T = 0.0075;
 const BLADE_T = 0.008;
 const BEVEL_T = 0.0025;
 // la cara de la hoja (donde van la nebulosa y el filo)
@@ -507,19 +505,17 @@ export function tintMats(M, mode, k = 1, beat = 0, breath = 0.5, under = null) {
   const G = mode === 'exec' ? PINKG : HOT;
   const g = 1 + beat * 0.4;
   // (guadana5: con la Furia la hoja entera se lavaba en una mancha blanca con
-  // el bloom: el cuerpo queda oscuro y profundo, el neón va en el filo.
-  // globalThis.__mduDesgOldFuriaTint: como antes)
-  const OLDF = globalThis.__mduDesgOldFuriaTint === true;
-  M.nebula.color.lerp(_c.copy(C).multiplyScalar((OLDF ? 1.45 : 0.75) * g), k);
-  M.stars.color.lerp(_c.copy(C).multiplyScalar((OLDF ? 1.8 : 1.5) * g), k);
+  // el bloom: el cuerpo queda oscuro y profundo, el neón va en el filo)
+  M.nebula.color.lerp(_c.copy(C).multiplyScalar(0.75 * g), k);
+  M.stars.color.lerp(_c.copy(C).multiplyScalar(1.5 * g), k);
   // (guadana5: el filo menos encendido: con el resplandor, la hoja era una
   // mancha de luz delante de la cara)
-  const eK = OLDF ? 1 : 0.62;
+  const eK = 0.62;
   M.edge.color.lerp(_c.copy(C).multiplyScalar(2.6 * g * eK), k);
   M.edgeGold.color.lerp(_c.copy(G).multiplyScalar(1.9 * g * eK), k);
   M.corona.color.lerp(_c.copy(C).multiplyScalar(2.4 * g * eK), k);
   M.coronaGold.color.lerp(_c.copy(G).multiplyScalar(2.1 * g * eK), k);
-  M.halo.color.lerp(_c.copy(NEON).multiplyScalar((OLDF ? 0.45 : 0.18) * g), k);
+  M.halo.color.lerp(_c.copy(NEON).multiplyScalar(0.18 * g), k);
   M.shards.color.lerp(_c.copy(WHITE).multiplyScalar(1.4 * g), k);
   M.shaft.emissiveIntensity += k * (1.8 + beat);
   M.shaftUp.emissiveIntensity += k * (2.2 + beat);
@@ -615,41 +611,6 @@ const _n = new THREE.Vector3();
 export function animScythe(time, dt, bolts = false) {
   const F = fxSets();
   // (guadana5: las esquirlas ya no se ven: no se mueven)
-  for (const S of globalThis.__mduDesgOldBubbles === true ? F.shards : []) {
-    const L = CURVES[S.up].main;
-    const P = S.g.attributes.position.array;
-    for (let i = 0; i < S.list.length; i++) {
-      const s = S.list[i];
-      const u = (((s.u0 + time * s.speed) % 1) + 1) % 1;
-      const fade = Math.sin(Math.PI * u) ** 0.7;
-      const p = at(L, 0.05 + u * 0.9);
-      const nx = Math.sin(p.th);
-      const ny = -Math.cos(p.th);
-      // del lado del filo (afuera del filo) o del lomo (afuera del lomo)
-      const d = s.side > 0 ? p.w + s.off : -s.off - 0.01;
-      const bob = Math.sin(time * 1.7 + s.ph) * 0.012;
-      const cx = p.x + nx * (d + bob);
-      const cy = p.y + ny * (d + bob);
-      const cz = s.zoff + Math.sin(time * 0.9 + s.ph) * 0.015;
-      const b = i * SHARD_V * 3;
-      P[b] = cx;
-      P[b + 1] = cy;
-      P[b + 2] = cz;
-      const a0 = time * s.spin + s.ph;
-      const ct = Math.cos(s.tilt + Math.sin(time * 0.6 + s.ph) * 0.6);
-      const st = Math.sin(s.tilt + Math.sin(time * 0.6 + s.ph) * 0.6);
-      for (let j = 1; j < SHARD_V; j++) {
-        const a = a0 + (j / (SHARD_V - 1)) * Math.PI * 2;
-        const r = s.size * fade * s.jag[j - 1];
-        const lx = Math.cos(a) * r;
-        const ly = Math.sin(a) * r;
-        P[b + j * 3] = cx + lx;
-        P[b + j * 3 + 1] = cy + ly * ct;
-        P[b + j * 3 + 2] = cz + ly * st;
-      }
-    }
-    S.g.attributes.position.needsUpdate = true;
-  }
   if (!bolts) return;
   for (const B of F.bolts) {
     B.t -= dt;
@@ -801,10 +762,10 @@ export function buildScythe(up = 0, M = cosmicMats('vm')) {
   if (G.halo) add(G.halo, M.halo, 4);
   const F = fxSets();
   // (guadana5: las esquirlas que flotaban alrededor de la hoja eran las
-  // "burbujitas totalmente de más": escondidas. globalThis.__mduDesgOldBubbles: vuelven)
+  // "burbujitas totalmente de más": escondidas)
   const shardM = add(F.shards[up].g, M.shards);
   shardM.frustumCulled = false;
-  shardM.visible = globalThis.__mduDesgOldBubbles === true;
+  shardM.visible = false;
   const bolts = add(F.bolts[up].g, M.bolts, 5);
   bolts.frustumCulled = false;
   bolts.visible = false;
@@ -834,8 +795,8 @@ export function desgarradorModel(up = 0, M = null) {
   s.group.name = up ? 'desgarradorEclipse' : 'desgarradorCosmico';
   // (v4) la del Eclipse de tamaño real (el muñeco de un compañero, la caja):
   // los aros de eclipse que giran en la cabeza, para que de lejos se lea otra
-  // cosa que la común (globalThis.__mduNoDesgOrb: sin ellos)
-  if (up && globalThis.__mduNoDesgOrb !== true) s.group.add(worldOrb());
+  // cosa que la común
+  if (up) s.group.add(worldOrb());
   return s.group;
 }
 let WORB = null;

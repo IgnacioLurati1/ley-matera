@@ -15,14 +15,12 @@ import { assetUrl } from '../../lib/assets';
 // - turnTo(r, target): se da vuelta a su ritmo (PERSONA_T: el Viejo, despacio).
 // - update(dt): después de people.update (la pose de piezas): cuerpo, piezas
 //   y el mate (en la palma si r.mate; si no, escondido: nunca flotando).
-// globalThis.__mduBlend = false: no carga los clips (la escena queda como antes).
 
 const URL = '/assets/sotano/modelos/gaucho/cine-medias.json';
 let CLIPS = null;
 let loading = null;
 export function loadCineMedias() {
   if (CLIPS) return Promise.resolve(CLIPS);
-  if (globalThis.__mduBlend === false) return Promise.resolve(null);
   loading ||= fetch(assetUrl(URL))
     .then((r) => r.json())
     .then((J) => {
@@ -105,14 +103,13 @@ export default class CineActors {
   // base: id de los muñecos (el resto de la escena usa otros); floor(x, z): el piso.
   // fill: luz de relleno solo para ellos (desde la cámara, gauchoSkin uFill),
   // para las escenas de noche: se leen sin tocar la luz del resto.
-  // (globalThis.__mduNoFill: sin el relleno, para comparar)
   // shades: false, el Canchero sin sus anteojos de sol en esta escena.
   // bandanas: false, sin las bandanas de los compañeros del Gil (net/gilLook
   // crewBandana; solo salen en Mate no Numa y Eclipse): los cuatro de siempre
   // del fogón, la gente del santuario.
   constructor(g, { base = 480, floor = null, parent = null, fill = null, shades = true, bandanas = true } = {}) {
     this.g = g;
-    this.fill = fill && !globalThis.__mduNoFill ? new THREE.Color(fill).multiplyScalar(globalThis.__mduFillK ?? 1) : null;
+    this.fill = fill ? new THREE.Color(fill).multiplyScalar(1) : null;
     this.people = new Avatars(g, null);
     this.people.bandanas = bandanas;
     if (parent) parent.add(this.people.root);
@@ -135,8 +132,8 @@ export default class CineActors {
     this.by = Object.fromEntries(this.list.map((r) => [r.persona, r]));
     // el Canchero, con sus anteojos de sol puestos (nada lo despeina). Solo en
     // el penal y la torre (el usuario, 2026-10-04: abusaba de los anteojos);
-    // en el Monumento, sin anteojos. globalThis.__mduShadesAll: en todos.
-    this.shadesOf = shades && (g.mapId === 'penal' || g.mapId === 'torre' || globalThis.__mduShadesAll) ? this.by.canchero || null : null;
+    // en el Monumento, sin anteojos.
+    this.shadesOf = shades && (g.mapId === 'penal' || g.mapId === 'torre') ? this.by.canchero || null : null;
   }
 
   // Cada cuadro, después de mover la escena: los tiempos, los caminos, la pose
@@ -171,7 +168,7 @@ export default class CineActors {
     // salía de abajo del piso)
     // (2026-10-07: y el que acaban de poner en otro lugar —r.tpAt, un corte u
     // otro decorado— tampoco se mezcla desde donde estaba: llegaba volando)
-    const fresh = !this.posed || (r.tpAt === this.t && globalThis.__mduOldCineGlide !== true);
+    const fresh = !this.posed || (r.tpAt === this.t);
     r.cc = { name, lt: o.t || 0, rate: o.rate ?? 1, loop: !!o.loop, look: o.look || 0, tilt: o.tilt || 0, yaw: o.yaw, fade: o.fade ?? 0.3, at: this.t, snap: fresh ? null : cineSnap(r.a), fresh };
   }
 
@@ -297,8 +294,8 @@ export default class CineActors {
       // (2026-10-07, el usuario: "cuando el Gil se iba a entregar a la partida
       // no cargaba por medio segundo y luego aparecía": la mezcla arrancaba de
       // la cadera de antes, en el decorado anterior a 785 m, y el muñeco cruzaba
-      // el mapa en 0,6 s. De lejos no se mezcla. __mduOldCineGlide: como antes)
-      if (S.snap?.h && globalThis.__mduOldCineGlide !== true && Math.hypot(S.snap.h.x - r.pos.x, S.snap.h.z - r.pos.z) > 12) {
+      // el mapa en 0,6 s. De lejos no se mezcla)
+      if (S.snap?.h && Math.hypot(S.snap.h.x - r.pos.x, S.snap.h.z - r.pos.z) > 12) {
         S.snap = null;
         S.fresh = true;
       }
@@ -335,7 +332,7 @@ export default class CineActors {
     // en el sorbo (la mano abajo de la boca, clip 'cebar') el mate se inclina
     // hasta que la punta de la bombilla llega a los labios: se toma con la
     // bombilla, no se come el mate (como ui/MolinoCinematic sipTilt)
-    if (globalThis.__mduNoSipTilt !== true) sipTilt(a, tmpV, tmpQ);
+    sipTilt(a, tmpV, tmpQ);
     tmpM.compose(tmpV, tmpQ, ONE).premultiply(tmpI.copy(a.group.matrixWorld).multiply(a.hand.matrix).invert());
     tmpM.decompose(mate.position, mate.quaternion, mate.scale);
   }

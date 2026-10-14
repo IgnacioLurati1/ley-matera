@@ -46,7 +46,7 @@ export const ATMOS = {
   // (v5: la Disformidad es otra dimensión, al rincón y bien arriba: con 0,03 a 40 m
   // queda el 24 % y a 60 m el 4 %: desde adentro no se ve ninguna otra isla)
   // (mundo, it. 4: ahora es El Nudo, la zona central, grande y ya no otra dimensión: niebla menos espesa, que se vea entero)
-  desgarro: { fog: [0.1, 0.02, 0.17], dens: globalThis.__mduNoHubFog === true ? 0.03 : 0.015, hemi: [0.62, 0.34, 0.9], ground: [0.36, 0.1, 0.42], hemiI: 1.55, amb: [0.52, 0.36, 0.62], ambI: 0.55, moon: [0.96, 0.76, 1.0], moonI: 1.95 },
+  desgarro: { fog: [0.1, 0.02, 0.17], dens: 0.015, hemi: [0.62, 0.34, 0.9], ground: [0.36, 0.1, 0.42], hemiI: 1.55, amb: [0.52, 0.36, 0.62], ambI: 0.55, moon: [0.96, 0.76, 1.0], moonI: 1.95 },
 };
 // cuánto tarda en llegar a la isla nueva (s): al cruzar un portal, un fundido corto
 const FADE = 0.7;
@@ -197,14 +197,14 @@ export class EclipseAtmos {
     // que no está en ISLE_IDS). Con la cámara allá, todo se va a su aire: niebla
     // negra violácea y espesa (no se ve nada a 30 m), luz casi nada, el cielo de la
     // dimensión (uDim) y el cenit del Desgarro. `this.abyss` (0-1) lo leen el ánimo
-    // de cada isla y los susurros. __mduNoAbyssAir: sin esto.
+    // de cada isla y los susurros.
     const AB = ISLANDS.abismo?.box;
     // (2026-10-10) los jirones de las grietas (isla 'grietas'): el mismo aire. `this.rift`
     // dice que es uno de ellos: ahí los susurros van más bajo (world/papDesgarro.js)
     const GR = ISLANDS.grietas?.box;
-    const inGr = !!GR && globalThis.__mduNoAbyssAir !== true && cam.y > 125 && cam.x > GR[0] - 20 && cam.x < GR[2] + 21 && cam.z > GR[1] - 20 && cam.z < GR[3] + 21;
+    const inGr = !!GR && cam.y > 125 && cam.x > GR[0] - 20 && cam.x < GR[2] + 21 && cam.z > GR[1] - 20 && cam.z < GR[3] + 21;
     this.rift = inGr ? 1 : 0;
-    const inAb = inGr || (!!AB && globalThis.__mduNoAbyssAir !== true && cam.y > 125 && cam.x > AB[0] - 20 && cam.x < AB[2] + 21 && cam.z > AB[1] - 20 && cam.z < AB[3] + 21);
+    const inAb = inGr || (!!AB && cam.y > 125 && cam.x > AB[0] - 20 && cam.x < AB[2] + 21 && cam.z > AB[1] - 20 && cam.z < AB[3] + 21);
     this.abyss = (this.abyss || 0) + ((inAb ? 1 : 0) - (this.abyss || 0)) * (this.first2 ? 1 : Math.min(1, dt * 3));
     this.first2 = false;
     const ab = this.abyss;
@@ -320,7 +320,7 @@ export default class EclipseWeather extends Weather {
 
   update(dt) {
     super.update(dt);
-    if (globalThis.__mduNoEclipseAtmos !== true) this.atmos.apply(dt);
+    this.atmos.apply(dt);
   }
 
   // el piso de la isla en (x, z), o null si ahí está el vacío

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RAMPS, WINDOWS } from '../config/map';
 import { bbox, quad, sweep, stairs, PROFILE, roomShell, place, lathe, cylUV } from './monumentoKit';
-import { carvedText, escudoMedallon, reliefCanvas } from './monumentoTextures';
+import { carvedText, escudoMedallon } from './monumentoTextures';
 import { toTexture } from '../core/textures';
 import { statue } from './monumentoStatues';
 
@@ -64,13 +64,12 @@ function buildBasamento(w, gb, extra) {
   // bugueada, está adentro de la pared": en la isla de Eclipse —la Torre va
   // sin su atrio— la pared del borde del Patio tapa el nicho y la estatua
   // quedaba atrás, con las manos asomando. Ahí no se arma acá: la pone
-  // world/eclipse/monumento.js delante de la pared, bajo el arco.
-  // globalThis.__mduOldEclMadre: en el nicho, como antes)
-  const madre = !(w.transplanted && globalThis.__mduOldEclMadre !== true);
+  // world/eclipse/monumento.js delante de la pared, bajo el arco)
+  const madre = !w.transplanted;
   if (madre) bbox(gb, 'travertino', B.x0 + 0.05, yA, 29.2, B.x0 + 0.85, yA + 0.6, 31.8, { b: 0.03, top: 'travStep' });
   // (las estatuas de afuera, con su material que se prende con los reflectores: world/monumentoLuces.js)
-  const LB = globalThis.__mduNoTorreLuz === true ? M.bronze : M.bronzeLit;
-  const LM = globalThis.__mduNoTorreLuz === true ? M.marble : M.marbleLit;
+  const LB = M.bronzeLit;
+  const LM = M.marbleLit;
   if (madre) extra.push(...statue('madre', LB, B.x0 + 0.45, yA + 0.6, 30.5, -Math.PI / 2, 1.3));
   // el reflector del piso del atrio que la alumbra (se prende con la luz:
   // config LIGHTS), una caja de bronce con el vidrio mirando al nicho
@@ -201,20 +200,17 @@ function buildFuste(w, gb, extra) {
   // (como en las fotos de la Torre: una roseta de bronce, el sol con sus
   // rayos sobre la piedra lisa, que se ve de lejos y se prende con los
   // reflectores: world/monumentoLuces.js statues; 5 cm afuera, delante del
-  // lavado de luz. globalThis.__mduNoRoseta: el disco tallado de antes)
-  const roseta = globalThis.__mduNoRoseta !== true;
-  const solTex = roseta ? toTexture(rosetaCanvas(512), { repeat: false }) : toTexture(solRelief(512));
-  const sol = roseta
-    ? new THREE.MeshStandardMaterial({ map: solTex, emissiveMap: solTex, emissive: 0xffd2a0, emissiveIntensity: 0, roughness: 0.45, metalness: 0.6, alphaTest: 0.5 })
-    : new THREE.MeshStandardMaterial({ map: solTex, roughness: 0.85 });
+  // lavado de luz)
+  const solTex = toTexture(rosetaCanvas(512), { repeat: false });
+  const sol = new THREE.MeshStandardMaterial({ map: solTex, emissiveMap: solTex, emissive: 0xffd2a0, emissiveIntensity: 0, roughness: 0.45, metalness: 0.6, alphaTest: 0.5 });
   // (sin sombra: la placa cuadrada recortada tiraba su sombra cuadrada en la pared)
-  if (roseta) (w.mon.litMats ||= []).push(sol), (sol.userData.noShadow = true);
-  const disc = roseta ? new THREE.PlaneGeometry(2, 2) : new THREE.CircleGeometry(1.0, 36);
+  (w.mon.litMats ||= []).push(sol), (sol.userData.noShadow = true);
+  const disc = new THREE.PlaneGeometry(2, 2);
   const ys = T.mir - 4.2;
-  const d = roseta ? 0.05 : 0.012;
+  const d = 0.05;
   // (la roseta, más grande: en las fotos ocupa un cuarto del ancho de la cara)
-  const big = roseta ? 1.6 : 1.2;
-  const small = roseta ? 1.1 : 0.8;
+  const big = 1.6;
+  const small = 1.1;
   extra.push(place(disc, sol, T.x0 - d, ys, T.cz, -Math.PI / 2, big));
   extra.push(place(disc, sol, T.x1 + d, ys, T.cz, Math.PI / 2, big));
   extra.push(place(disc, sol, T.cx, ys, T.z0 - d, Math.PI, small));
@@ -223,7 +219,6 @@ function buildFuste(w, gb, extra) {
   // la Torre sube plana hasta el techo, sin nada saliente; monumentoTorre buildMirador)
   const c = [[T.x0, T.z0], [T.x0, T.z1], [T.x1, T.z1], [T.x1, T.z0]];
   const outs = [[-1, 0], [0, 1], [1, 0], [0, -1]];
-  if (!miradorRas()) for (let i = 0; i < 4; i++) sweep(gb, 'travertino', c[i], c[(i + 1) % 4], outs[i], PROFILE.listel(1.8), { y: y1 - 0.1, caps: false });
 }
 
 // La roseta de bronce de la Torre: el sol con la cara lisa, un anillo y 24
@@ -287,43 +282,6 @@ function rosetaCanvas(S) {
   return c;
 }
 
-// El sol de la Torre: un disco con rayos alternados (rectos y flamígeros).
-function solRelief(size) {
-  return reliefCanvas(size, (ctx, S) => {
-    const c = S / 2;
-    const g = (v) => `rgb(${v},${v},${v})`;
-    ctx.fillStyle = g(50);
-    ctx.beginPath();
-    ctx.arc(c, c, S * 0.48, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = g(190);
-    for (let i = 0; i < 32; i++) {
-      const a = (i / 32) * Math.PI * 2;
-      ctx.save();
-      ctx.translate(c, c);
-      ctx.rotate(a);
-      ctx.beginPath();
-      const r0 = S * 0.17;
-      const L = i % 2 ? S * 0.22 : S * 0.29;
-      ctx.moveTo(r0, -S * 0.02);
-      if (i % 2) {
-        ctx.quadraticCurveTo(r0 + L * 0.5, S * 0.04, r0 + L, 0);
-        ctx.quadraticCurveTo(r0 + L * 0.5, -S * 0.04, r0, S * 0.02);
-      } else {
-        ctx.lineTo(r0 + L, 0);
-        ctx.lineTo(r0, S * 0.02);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    }
-    ctx.fillStyle = g(230);
-    ctx.beginPath();
-    ctx.arc(c, c, S * 0.15, 0, Math.PI * 2);
-    ctx.fill();
-  });
-}
-
 // ---------------- el Mirador y el remate ----------------
 function buildMirador(w, gb, extra) {
   const T = TORRE;
@@ -341,25 +299,14 @@ function buildMirador(w, gb, extra) {
   // el techo): el antepecho y los parantes de las esquinas siguen las ochavas
   // del fuste; antes eran de esquinas vivas y, con la faja de cornisa de abajo
   // y la moldura de arriba, la franja de las ventanas sobresalía.
-  // globalThis.__mduNoMiradorRas: como antes.
-  const ras = miradorRas();
-  if (ras) octoRing(gb, 'travertinoBig', T.x0, T.z0, T.x1, T.z1, T.chamfer, 1, y0 - 0.01, sill);
-  else ring(y0 - 0.01, sill, ['bottom']);
+  octoRing(gb, 'travertinoBig', T.x0, T.z0, T.x1, T.z1, T.chamfer, 1, y0 - 0.01, sill);
   // (el antepecho es de esquinas vivas y el fuste de abajo, ochavado: en cada
   // esquina, desde abajo se veía adentro por el triángulo sin piso)
-  if (!ras && globalThis.__mduNoZfix !== true) {
-    const c = T.chamfer;
-    for (const [X, Z, sx, sz] of [[T.x0, T.z0, 1, 1], [T.x1, T.z0, -1, 1], [T.x1, T.z1, -1, -1], [T.x0, T.z1, 1, -1]]) {
-      quad(gb, 'travertinoBig', [[X, y0 - 0.01, Z], [X + sx * c, y0 - 0.01, Z], [X, y0 - 0.01, Z + sz * c], [X, y0 - 0.01, Z + sz * c]], [0, -1, 0]);
-    }
-  }
   // El remate como el de verdad (las fotos de la Torre): el fuste sigue liso
   // arriba de las ventanas, con las esquinas ochavadas como abajo, y termina
   // plano, con una losa de coronamiento apenas saliente. Antes eran tres
-  // cajas escalonadas como una torta (globalThis.__mduNoRemate: las de antes).
-  const nuevo = globalThis.__mduNoRemate !== true;
+  // cajas escalonadas como una torta.
   // (el dintel con su cara de abajo: desde adentro se ve, si no queda hueco y se ve el cielo)
-  if (!nuevo) ring(lint, lint + 0.4, []);
   // los parantes entre las ventanas (las ventanas: 4 en las caras largas, 2 en las cortas)
   const pierW = 0.7;
   const along = (a0, a1, n) => {
@@ -370,31 +317,28 @@ function buildMirador(w, gb, extra) {
   };
   const isCorner = (a, a0, a1) => a <= a0 + 0.01 || a >= a1 - 0.01;
   for (const z of along(T.z0, T.z1, 4)) {
-    if (ras && isCorner(z, T.z0, T.z1)) continue;
+    if (isCorner(z, T.z0, T.z1)) continue;
     for (const x of [T.x0, T.x1 - 1]) bbox(gb, 'travertinoBig', x, sill, Math.max(T.z0, z - pierW / 2), x + 1, lint, Math.min(T.z1, z + pierW / 2), { b: 0.03 });
   }
   // (los de las esquinas, sin lo que ya tapa el parante del costado: las dos
   // caras de afuera quedaban en el mismo plano y titilaban)
-  const fix = globalThis.__mduNoZfix !== true;
   for (const x of along(T.x0, T.x1, 2)) {
-    const corner = fix && isCorner(x, T.x0, T.x1);
-    if (ras && corner) continue;
+    const corner = isCorner(x, T.x0, T.x1);
+    if (corner) continue;
     for (const z of [T.z0, T.z1 - 1]) bbox(gb, 'travertinoBig', Math.max(T.x0, x - pierW / 2), sill, z + (corner && z === T.z0 ? pierW / 2 : 0), Math.min(T.x1, x + pierW / 2), lint, z + 1 - (corner && z !== T.z0 ? pierW / 2 : 0), { b: 0.03 });
   }
   // con el Mirador a ras, cada esquina es un parante en L (un metro por cada
   // cara, lo mismo que juntaban los dos de antes) con la ochava afuera
-  if (ras) {
-    for (const [X, Z, sx, sz] of [[T.x0, T.z0, 1, 1], [T.x1, T.z0, -1, 1], [T.x1, T.z1, -1, -1], [T.x0, T.z1, 1, -1]]) {
-      const h = pierW / 2;
-      const c = T.chamfer;
-      prism(gb, 'travertinoBig', [[c, 0], [1, 0], [1, h], [h, h], [h, 1], [0, 1], [0, c]].map(([u, v]) => [X + sx * u, Z + sz * v]), sill, lint);
-    }
+  for (const [X, Z, sx, sz] of [[T.x0, T.z0, 1, 1], [T.x1, T.z0, -1, 1], [T.x1, T.z1, -1, -1], [T.x0, T.z1, 1, -1]]) {
+    const h = pierW / 2;
+    const c = T.chamfer;
+    prism(gb, 'travertinoBig', [[c, 0], [1, 0], [1, h], [h, h], [h, 1], [0, 1], [0, c]].map(([u, v]) => [X + sx * u, Z + sz * v]), sill, lint);
   }
   // las ventanas de los muertos del Mirador (config WINDOWS): las tablas de
   // Barriers miden 1,18 m y el vano 2,3; quedaban colgadas en el medio, sin
   // tocar nada. Dos parantes de madera, del antepecho al dintel, donde se clavan.
   for (const wi of WINDOWS) {
-    if (wi.zone !== 'I' || globalThis.__mduNoParantes === true) continue;
+    if (wi.zone !== 'I') continue;
     const [ox, oz] = wi.out;
     const px = wi.cell[0] + 0.5 - ox * (0.42 - 0.053);
     const pz = wi.cell[1] + 0.5 - oz * (0.42 - 0.053);
@@ -408,9 +352,8 @@ function buildMirador(w, gb, extra) {
   }
   // el cielorraso del Mirador: la cara de abajo del remate (un cielorraso
   // aparte, en el mismo plano, titilaba con ella)
-  if (!nuevo && globalThis.__mduNoZfix === true) quad(gb, 'travertino', [[T.x0 + 1, lint + 0.4, T.z0 + 1], [T.x1 - 1, lint + 0.4, T.z0 + 1], [T.x1 - 1, lint + 0.4, T.z1 - 1], [T.x0 + 1, lint + 0.4, T.z1 - 1]], [0, -1, 0]);
   let y = lint + 0.4;
-  if (nuevo) {
+  {
     // el cuerpo, del dintel arriba (su cara de abajo es el techo del Mirador)
     const c = T.chamfer;
     octo(gb, 'travertinoBig', T.x0, T.z0, T.x1, T.z1, c, lint, T.remate, { bottom: 'travertino', top: false });
@@ -418,15 +361,7 @@ function buildMirador(w, gb, extra) {
     octo(gb, 'travStep', T.x0 - 0.07, T.z0 - 0.07, T.x1 + 0.07, T.z1 + 0.07, c + 0.03, T.remate, T.roof, { bottom: 'travertino', top: 'travertinoDark' });
     // y una moldura fina donde arranca el remate, arriba de las ventanas (no
     // con el Mirador a ras: sobresalía)
-    if (!ras) octo(gb, 'travStep', T.x0 - 0.035, T.z0 - 0.035, T.x1 + 0.035, T.z1 + 0.035, c + 0.015, lint + 0.38, lint + 0.5, { bottom: 'travertino', top: 'travStep' });
     y = T.roof;
-  } else {
-    // el remate escalonado (tres cuerpos que se achican) con la cornisa
-    const steps = [[0.25, 0.9], [0.6, 1.1], [1.4, 0.8]];
-    steps.forEach(([ins, h], i) => {
-      bbox(gb, 'travertinoBig', T.x0 + ins - (i === 0 ? 0.45 : 0), y, T.z0 + ins - (i === 0 ? 0.45 : 0), T.x1 - ins + (i === 0 ? 0.45 : 0), y + h, T.z1 - ins + (i === 0 ? 0.45 : 0), { b: 0.06, corners: i > 0 });
-      y += h;
-    });
   }
   // la baliza roja de arriba (los aviones) y el asta chica
   const beacon = new THREE.MeshStandardMaterial({ color: 0x400000, emissive: 0xff2010, emissiveIntensity: 3 });
@@ -459,8 +394,7 @@ function buildMirador(w, gb, extra) {
   elevatorDoor(gb, extra, w, hx1 + 0.001, y0, T.cz, 1);
 }
 
-// El Mirador a ras de la Torre (globalThis.__mduNoMiradorRas: como antes).
-export const miradorRas = () => globalThis.__mduNoMiradorRas !== true && globalThis.__mduNoRemate !== true;
+// El Mirador a ras de la Torre.
 
 // Un prisma de cualquier planta (los costados, sin tapas): pts [[x, z], ...];
 // `inward`: las caras miran para adentro (el hueco de un anillo).
@@ -557,7 +491,7 @@ function buildProa(w, gb, extra) {
   for (const [x, z0, z1] of rows) {
     bbox(gb, 'travertino', x, -2.6, z0, x + 1, -2.0, z1, { b: 0.04, top: 'travStep' });
     // (el pasto 1 cm arriba de la piedra: a 1 mm, de lejos titilaba)
-    const gy = globalThis.__mduNoZfix === true ? -1.999 : -1.99;
+    const gy = -1.99;
     quad(gb, 'grass', [[x + 0.06, gy, z1 - 0.06], [x + 0.94, gy, z1 - 0.06], [x + 0.94, gy, z0 + 0.06], [x + 0.06, gy, z0 + 0.06]], [0, 1, 0]);
   }
   // la cuña: de la cara del basamento a la punta, con el lomo que baja
@@ -599,10 +533,10 @@ function buildProa(w, gb, extra) {
   extra.push(place(arc, legM, px, 3.2, zc));
   // una cornisa arriba del pedestal y la estatua
   const cap = lathe([[0, 0], [r + 0.08, 0], [r + 0.16, 0.1], [r + 0.16, 0.28], [r + 0.06, 0.34], [0, 0.34]], 40);
-  if (globalThis.__mduNoCylUV !== true) cylUV(cap);
+  cylUV(cap);
   extra.push(place(cap, M.travertino, px, pyTop, zc));
-  const LB = globalThis.__mduNoTorreLuz === true ? M.bronze : M.bronzeLit;
-  const LM = globalThis.__mduNoTorreLuz === true ? M.marble : M.marbleLit;
+  const LB = M.bronzeLit;
+  const LM = M.marbleLit;
   extra.push(...statue('patria', LB, px, pyTop + 0.34, zc, Math.PI / 2, 1.7));
   // los colosos del agua a los costados de la Proa: el Río Paraná y el Océano Atlántico
   for (const [z, kind, ry] of [[24.2, 'parana', 0.5], [36.8, 'atlantico', Math.PI - 0.5]]) {

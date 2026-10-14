@@ -209,7 +209,7 @@ export function buildCalles(w) {
   root.add(col);
   // los canteros con flores alrededor
   const flores = mat(0x6a2a4a, { r: 0.9, x: { flatShading: true } });
-  const cantero = kit((globalThis.__mduNoCylUV === true ? (g) => g : cylUV)(new THREE.CylinderGeometry(1.6, 1.6, 0.35, 16).translate(0, 0.17, 0)), M.travertino);
+  const cantero = kit(cylUV(new THREE.CylinderGeometry(1.6, 1.6, 0.35, 16).translate(0, 0.17, 0)), M.travertino);
   const flor = kit(new THREE.IcosahedronGeometry(0.4, 0), flores);
   for (const [x, z] of [[-14, 30], [-28, 30], [-21, 23], [-21, 37]]) {
     put(cantero, x, py, z);

@@ -14,13 +14,11 @@ import { assetUrl } from '../../lib/assets';
 //   release() vuelve a la pose de piezas, también mezclando. pose(dt) va
 //   después de people.update (que pone la de piezas).
 // - FierroNpc(g, npc, r): el del fogón. update(dt) en lugar de npc.update(dt).
-// globalThis.__mduBlend = false: no carga los clips (queda la pose de piezas de antes).
 
 const URL = '/assets/sotano/modelos/gaucho/cine-torre2.json';
 let CLIPS = null;
 let LOAD = null;
 export function loadFierroClips() {
-  if (globalThis.__mduBlend === false) return Promise.resolve(null);
   LOAD ||= fetch(assetUrl(URL))
     .then((r) => (r.ok ? r.json() : null))
     .then((J) => {
@@ -33,7 +31,7 @@ export function loadFierroClips() {
     .catch(() => null);
   return LOAD;
 }
-export const fierroClipsReady = () => !!CLIPS && globalThis.__mduBlend !== false;
+export const fierroClipsReady = () => !!CLIPS;
 
 const smooth = (u) => u * u * (3 - 2 * u);
 const tmpV = new THREE.Vector3();

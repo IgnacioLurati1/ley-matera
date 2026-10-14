@@ -11,7 +11,6 @@
 //  · las tejas: hileras de tejas musleras en la pendiente, con su sombra;
 //  · el zócalo y la piedra: sillares con sus juntas;
 //  · la madera: la veta.
-// globalThis.__mduOldSlLook: como antes.
 
 const NOISE = /* glsl */ `
 float slH(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
@@ -30,8 +29,6 @@ float slF(vec2 p) {
 }
 `;
 
-const on = () => globalThis.__mduOldSlLook !== true;
-
 // (2026-10-13, el usuario: "el piso [de la pelea final de eclipse y del lugar
 // de sus cinemáticas] es bastante básico, plano y sin ningún detalle, contrasta
 // mucho con el resto del juego"). El piso 2, todo en el sombreador (ni mallas
@@ -41,8 +38,7 @@ const on = () => globalThis.__mduOldSlLook !== true;
 // florcitas al ras, manchones de tierra pisada con granza, piedritas y grietas
 // de tierra seca, ceniza en lo quemado y vetas en la barranca. Lo usan el campo
 // de San Lorenzo y los pisos del estero y del santuario del final
-// (ui/eclipseCineSets). globalThis.__mduEclPisoViejo = true: como antes.
-const piso2On = () => globalThis.__mduEclPisoViejo !== true;
+// (ui/eclipseCineSets).
 const PISO2_FN = /* glsl */ `
 float slHi(vec2 c) {
   uvec2 q = uvec2(ivec2(c) + ivec2(65536));
@@ -218,7 +214,7 @@ const PISO2_NORMAL = /* glsl */ `
 
 // El suelo (con la textura de pasto ya puesta en map).
 export function slGroundLook(mat) {
-  if (!on() || mat.userData.slLook) return mat;
+  if (mat.userData.slLook) return mat;
   mat.userData.slLook = true;
   mat.flatShading = false;
   mat.onBeforeCompile = (sh) => {
@@ -249,17 +245,14 @@ export function slGroundLook(mat) {
         // el grano fino (de cerca no queda liso)
         diffuseColor.rgb *= 0.93 + 0.14 * slN(vSlW.xz * 3.1);`,
       );
-    if (piso2) {
-      sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', `#include <common>\n${PISO2_FN}`)
-        .replace('#include <color_fragment>', `#include <color_fragment>\n${PISO2_COLOR}`)
-        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(roughnessFactor + slRg, 0.3, 1.0);')
-        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${PISO2_NORMAL}`);
-    }
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>\n${PISO2_FN}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${PISO2_COLOR}`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(roughnessFactor + slRg, 0.3, 1.0);')
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${PISO2_NORMAL}`);
   };
-  // (el piso 2, ver arriba: __mduEclPisoViejo)
-  const piso2 = piso2On();
-  mat.customProgramCacheKey = () => (piso2 ? 'slGround2' : 'slGround1');
+  // (el piso 2, ver arriba)
+  mat.customProgramCacheKey = () => 'slGround2';
   mat.needsUpdate = true;
   return mat;
 }
@@ -267,7 +260,7 @@ export function slGroundLook(mat) {
 // Lo construido (el convento, los muros, las carretas...): por el color de
 // cada pieza (colores de sanlorenzoCampo COL, en lineal).
 export function slStaticLook(mat, y0) {
-  if (!on() || mat.userData.slLook) return mat;
+  if (mat.userData.slLook) return mat;
   mat.userData.slLook = true;
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uSlY0 = { value: y0 };

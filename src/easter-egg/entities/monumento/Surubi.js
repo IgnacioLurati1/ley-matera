@@ -14,9 +14,7 @@ import SurubiOld from './surubiOld';
 // con resorte, los bigotes de cuerda, la boca por dentro y la lengua.
 //
 // Sale solo en la pesca del Pack-a-Pava (emergeWithPava): el Monumento no
-// tiene jefe de ronda (el usuario, 2026-10-05: MonumentoEgg.tuneRound; con
-// globalThis.__mduMonuRoundBoss = true vuelve, cada 5 rondas desde la 6, con
-// esta misma pelea, la vida de jefe de su ronda y su premio al caer).
+// tiene jefe de ronda (el usuario, 2026-10-05: MonumentoEgg.tuneRound).
 // La pelea es la chistosa a la "How to Fish" (z.fish): la piensa este archivo
 // (think) con los estados de siempre, así viajan solos al invitado; lo que hace
 // falta además (adónde salta, el carril de la rodada, las bolas de agua, las
@@ -38,8 +36,6 @@ import SurubiOld from './surubiOld';
 //  · enrage: el berrinche de la segunda fase.
 //  · summon + burrow (al final, con un cuarto de vida): escupe la pava al
 //    muelle y se tira de vuelta al río dando una vuelta en el aire.
-// globalThis.__mduOldSurubi = true: el de antes (entities/monumento/surubiOld.js);
-// __mduSurubiRoundOld = true: el jefe de ronda (si lo hay) como antes, de piezas.
 
 const URL = '/assets/sotano/modelos/surubi/modelo.glb';
 const L = 8.5;
@@ -99,7 +95,7 @@ const HP_K = 2;
 // (y un 75 % más: el usuario, 2026-10-05. Con más jugadores, como todos los
 // jefes: Zombies.spawnBoss ya la multiplica por bossScale, uno más por
 // jugador. Los umbrales van en proporción: el berrinche al 60 %, la pava al
-// 25 %. __mduNoSurubiVida: la de antes)
+// 25 %)
 const VIDA_K = 1.75;
 const STUN_K = 1.5;
 // (la pesca termina con un cuarto de vida; la segunda fase, al 60 %)
@@ -500,15 +496,10 @@ export default class Surubi {
     if (!isHost(g)) return;
     const fishing = this.fishing;
     this.fishing = false;
-    // el jefe de ronda de antes (__mduSurubiRoundOld): sale y pelea como siempre
-    if (!fishing && globalThis.__mduSurubiRoundOld) {
-      this.send({ a: 'in', f: 0, E: r2(z.pos) });
-      return;
-    }
     z.fish = true;
     // la pesca: vida propia (no depende de la ronda); el jefe de ronda, la de su ronda
     if (fishing) {
-      z.maxHp *= HP_K * (globalThis.__mduNoSurubiVida ? 1 : VIDA_K);
+      z.maxHp *= HP_K * VIDA_K;
       z.hp = z.maxHp;
     } else z.roundBoss = true;
     // (panza arriba recibe más, pero no el doble de los otros jefes)
@@ -540,12 +531,11 @@ export default class Surubi {
     // Sale del lado de la caña (donde entra el hilo, al norte del muelle) y cae
     // en la Costanera al lado del pescador, al norte de la entrada del muelle
     // (no se la tapa: si caía en la punta del muelle el que pescaba quedaba
-    // encerrado). __mduNoSurubiSide: el de antes, más al sur, de cualquier agua.
+    // encerrado).
     const [cx, cz] = EE.cana;
-    const side = !globalThis.__mduNoSurubiSide;
-    const at = side ? new THREE.Vector3(cx - 3.9, 0, cz - 2.6) : new THREE.Vector3(110.3, 0, 36.5);
+    const at = new THREE.Vector3(cx - 3.9, 0, cz - 2.6);
     at.y = g.world.floorAt(at.x, at.z);
-    this.fishW = side ? new THREE.Vector3(cx + 0.8, g.water?.heightAt?.(cx + 0.8, cz - 5) ?? -5.2, cz - 5) : null;
+    this.fishW = new THREE.Vector3(cx + 0.8, g.water?.heightAt?.(cx + 0.8, cz - 5) ?? -5.2, cz - 5);
     // (emergeFx, adentro de spawnBoss, la arma como la pelea de la pesca)
     this.fishing = true;
     const z = g.zombies.spawnBoss(g.rounds.round, { at, kind: 'surubi' });
@@ -861,7 +851,7 @@ export default class Surubi {
     }
   }
 
-  // El jefe de ronda (con __mduMonuRoundBoss) pega más en las rondas altas
+  // El jefe de ronda pega más en las rondas altas
   // (fácil, pero no un trámite); la pesca, siempre igual.
   dmgK(z) {
     if (!z?.roundBoss) return 1;
@@ -1021,7 +1011,6 @@ export default class Surubi {
       return;
     }
     if (z !== this.cur) this.arrive(z);
-    // (__mduSurubiRoundOld: el jefe de ronda con el cuerpo de piezas de antes)
     if (this.mode === 'old') {
       this.root.visible = false;
       this.old ||= new SurubiOld(g);
@@ -1057,7 +1046,7 @@ export default class Surubi {
     for (const W of this.whisk || []) W.init = false;
     // cuál de las dos peleas (el anfitrión lo sabe; el invitado, por el aviso 'in')
     if (isHost(g)) this.mode = z.fish ? 'fish' : 'old';
-    else if (!(this.modeT > g.time - 4)) this.mode = globalThis.__mduSurubiRoundOld ? 'old' : 'fish';
+    else if (!(this.modeT > g.time - 4)) this.mode = 'fish';
     // la del intro que no llegó (el invitado sin el mensaje): de un costado
     if (this.mode !== 'fish' || !this.intro || g.time - this.intro.t > 4) this.intro = null;
     this.musicFor = null;
@@ -1069,7 +1058,7 @@ export default class Surubi {
   startMusic() {
     const g = this.g;
     const z = this.boss;
-    if (!z || this.musicFor === z || z.state !== 'intro' || z.dead || !g.music || globalThis.__mduNoSurubiMusic) return;
+    if (!z || this.musicFor === z || z.state !== 'intro' || z.dead || !g.music) return;
     this.musicFor = z;
     const left = LAND - (z.stateT || 0);
     if (left < 0.2) return;

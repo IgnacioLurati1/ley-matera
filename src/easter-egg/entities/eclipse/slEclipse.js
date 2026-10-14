@@ -58,20 +58,14 @@ export const SLAMS = [
   [36, 15],
 ];
 const VIOLET = new THREE.Color(0x9a50ff);
-// (la corona prendida, mucho menos brillante: ver update)
-const DIM_CROWN = globalThis.__mduOldCrownGlow !== true;
-// la aureola: cuánto más arriba y más atrás de la cabeza (ver onSkin)
-const HALO_UP = +(globalThis.__mduHaloUp ?? 0.3);
-const HALO_BACK = +(globalThis.__mduHaloBack ?? -0.46);
 // (2026-10-09, el usuario, con otra foto: "la aureola sigue mal". Colgada
 // atrás de la cabeza —un gigante de 78 m visto desde abajo—, el aro quedaba
 // flotando arriba del sombrero. Ahora mira siempre a la cámara y va justo
 // detrás de la cabeza en la línea de la vista: de donde se lo mire, la cabeza
 // y la corona quedan adentro del aro. HALO9_UP: el centro, sobre el hueso;
-// HALO9_BACK: cuánto detrás (medidas del modelo). __mduOldHalo9: fija, como antes)
-const HALO9 = globalThis.__mduOldHalo9 !== true && globalThis.__mduOldHalo !== true;
-const HALO9_UP = +(globalThis.__mduHalo9Up ?? 0.1);
-const HALO9_BACK = +(globalThis.__mduHalo9Back ?? 0.3);
+// HALO9_BACK: cuánto detrás (medidas del modelo))
+const HALO9_UP = 0.1;
+const HALO9_BACK = 0.3;
 const tmpV = new THREE.Vector3();
 const tmpW = new THREE.Vector3();
 const tmpU = new THREE.Vector3();
@@ -224,7 +218,7 @@ export default class EclipseBoss {
   // La aureola de cara a la cámara, detrás de la cabeza en la línea de la vista (HALO9).
   haloFace() {
     const H = this.halo;
-    if (!HALO9 || !H?.anchor) return;
+    if (!H?.anchor) return;
     const cam = this.g.camera;
     const A = H.anchor;
     A.updateWorldMatrix(true, false);
@@ -456,8 +450,8 @@ export default class EclipseBoss {
     // (2026-10-09, el usuario, con foto: "la aureola del Eclipse está mal". Iba
     // a la altura de la cara y apenas atrás: la parte de abajo cruzaba los
     // hombros y el ala del sombrero quedaba atrás del aro. Ahora detrás del
-    // sombrero y más arriba, enmarcando la cabeza. globalThis.__mduOldHalo: como antes)
-    const HO = globalThis.__mduOldHalo === true ? [0.1, -0.24] : HALO9 ? [HALO9_UP, 0] : [HALO_UP, HALO_BACK];
+    // sombrero y más arriba, enmarcando la cabeza)
+    const HO = [HALO9_UP, 0];
     const ha = chiquiAnchor(R, 'Head', [head.x, head.y + HO[0], head.z + HO[1]]);
     ha.add(this.halo.g);
     this.halo.anchor = ha;
@@ -488,7 +482,7 @@ export default class EclipseBoss {
   rimLook() {
     const S = this.R.skin;
     const m = S.body.material;
-    if (!m || globalThis.__mduNoSlRim === true) return;
+    if (!m) return;
     const U = { uRimK: { value: 1 }, uRimHit: { value: 0 }, uFogK: { value: 0.45 } };
     this.rimU = U;
     const prev = m.onBeforeCompile;
@@ -996,9 +990,7 @@ export default class EclipseBoss {
   // vida": le tiraba al pedazo que no estaba prendido, y ese no sentía nada)
   // Cualquier pedazo sano que toque la recta a-b (el más cerca), o -1. El
   // prendido es el que se marca, no el único que se rompe.
-  // globalThis.__mduOldCrownLit: solo el prendido, como antes.
   crownHit(a, b, r) {
-    if (globalThis.__mduOldCrownLit === true) return -1;
     let best = -1;
     let bd = r;
     for (let i = 0; i < this.crown.length; i++) {
@@ -1143,28 +1135,20 @@ export default class EclipseBoss {
       P.shake = Math.max(0, P.shake - dt * 4);
       const lit = this.litI >= 0 && this.crown[this.litI] === P && !P.broken;
       P.lit = lit ? Math.min(1, P.lit + dt * 2) : Math.max(0, P.lit - dt * 2);
-      if (DIM_CROWN) {
-        // (2026-10-08, el usuario: "reducirle MUCHO el brillo a la corona que
-        // brilla". El resplandor —un sprite aditivo a la escala del gigante,
-        // ~27 m— con el bloom hacía una nube blanca que tapaba medio cielo.
-        // Ahora el pedazo prendido es oro tibio que late, crece un poco y
-        // larga alguna chispa: se sabe cuál es sin encandilar.
-        // globalThis.__mduOldCrownGlow: como antes)
-        P.mat.emissive.setRGB(0.3 + 0.7 * P.lit, 0.18 + 0.42 * P.lit, 0.02 + 0.08 * P.lit);
-        P.mat.emissiveIntensity = (lit ? 0.3 : 0.15) + P.lit * (0.35 + 0.15 * Math.sin(this.t * 5)) + P.shake * 0.8;
-        P.glow.material.opacity = P.lit * (0.1 + 0.04 * Math.sin(this.t * 5)) * (0.5 + 0.5 * P.hp);
-        P.glow.scale.setScalar(0.2 + P.lit * 0.06);
-      } else {
-        P.mat.emissive.setRGB(0.3 + 1.6 * P.lit, 0.18 + 1.0 * P.lit, 0.02 + 0.3 * P.lit);
-        P.mat.emissiveIntensity = (lit ? 0.5 : 0.15) + P.lit * (1.8 + 0.8 * Math.sin(this.t * 8)) + P.shake * 2;
-        P.glow.material.opacity = P.lit * (0.8 + 0.2 * Math.sin(this.t * 6)) * (0.5 + 0.5 * P.hp);
-        P.glow.scale.setScalar(0.38 + P.lit * (0.3 + 0.08 * Math.sin(this.t * 6)));
-      }
+      // (2026-10-08, el usuario: "reducirle MUCHO el brillo a la corona que
+      // brilla". El resplandor —un sprite aditivo a la escala del gigante,
+      // ~27 m— con el bloom hacía una nube blanca que tapaba medio cielo.
+      // Ahora el pedazo prendido es oro tibio que late, crece un poco y
+      // larga alguna chispa: se sabe cuál es sin encandilar)
+      P.mat.emissive.setRGB(0.3 + 0.7 * P.lit, 0.18 + 0.42 * P.lit, 0.02 + 0.08 * P.lit);
+      P.mat.emissiveIntensity = (lit ? 0.3 : 0.15) + P.lit * (0.35 + 0.15 * Math.sin(this.t * 5)) + P.shake * 0.8;
+      P.glow.material.opacity = P.lit * (0.1 + 0.04 * Math.sin(this.t * 5)) * (0.5 + 0.5 * P.hp);
+      P.glow.scale.setScalar(0.2 + P.lit * 0.06);
       P.piece.scale.setScalar(1 + P.lit * (0.25 + 0.08 * Math.sin(this.t * 7)));
       P.piece.position.y = P.shake * 0.01 * Math.sin(this.t * 60);
-      if (lit && this.t - (P.spT || 0) > (DIM_CROWN ? 0.4 : 0.12)) {
+      if (lit && this.t - (P.spT || 0) > 0.4) {
         P.spT = this.t;
-        this.g.fx.sparkle(P.at, [1, 0.85, 0.4], DIM_CROWN ? 2 : 3, 3);
+        this.g.fx.sparkle(P.at, [1, 0.85, 0.4], 2, 3);
       }
     }
     this.updateAmarras(dt);
@@ -1178,9 +1162,9 @@ export default class EclipseBoss {
   }
 
   // La cabeza sigue al jugador (o al punto del rayo mientras tira): de a poco
-  // y sin torcerse más de lo que da el cuello. __mduNoSlTrack: quieta.
+  // y sin torcerse más de lo que da el cuello.
   track(dt) {
-    if (globalThis.__mduNoSlTrack === true || this.sl.ee.scene) return;
+    if (this.sl.ee.scene) return;
     const R = this.R;
     const head = R.head;
     if (!head) return;

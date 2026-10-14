@@ -37,9 +37,6 @@
 //    Medido en Eclipse con 12 muertos: Zombies.render 52,8 -> 23,2 KB por
 //    cuadro, World.update 67 -> 20,7.
 //
-// globalThis.__mduThreeUniforms: como antes (se mira al estrenar cada programa).
-// globalThis.__mduThreeV3: los vec3 con la función de three (y la caché nueva).
-// globalThis.__mduThreeToArray: Matrix4.toArray como antes.
 
 const FLOAT_VEC3 = 0x8b51;
 const FLOAT_MAT3 = 0x8b5b;
@@ -136,7 +133,7 @@ function own(list) {
       if (threeV3 === null) threeV3 = u.setValue;
       if (u.setValue !== threeV3) continue;
       u.cache = doubles(3);
-      if (globalThis.__mduThreeV3 !== true) u.setValue = setV3;
+      u.setValue = setV3;
     }
   }
 }
@@ -151,7 +148,7 @@ export function ownUniforms(U) {
   U.prototype.setValue = function (gl, name, value, textures) {
     if (this.__mduOwn !== true) {
       this.__mduOwn = true;
-      if (globalThis.__mduThreeUniforms !== true) own(this.seq);
+      own(this.seq);
     }
     return setValue.call(this, gl, name, value, textures);
   };
@@ -181,7 +178,7 @@ export function ownToArray(M4) {
   const three = M4.prototype.toArray;
   if (three.__mduOwn) return;
   const own = function (array, offset) {
-    if (array instanceof Float32Array && globalThis.__mduThreeToArray !== true) {
+    if (array instanceof Float32Array) {
       put16(this.elements, array, offset === undefined ? 0 : offset);
       return array;
     }

@@ -31,7 +31,6 @@ import * as THREE from 'three';
 // con lo guardado); si el padre se movió, queda marcado. Al volver a verse se
 // recorre en ese mismo cuadro. Una llamada directa a su updateMatrixWorld lo
 // recorre siempre (solo se saltea desde el padre).
-// globalThis.__mduNoHiddenSkip: todo en cada cuadro, como antes.
 const HIDDEN_N = 8;
 
 const P = THREE.Object3D.prototype;
@@ -120,10 +119,9 @@ function cached(force) {
     force = true;
   }
   const children = this.children;
-  const skip = globalThis.__mduNoHiddenSkip !== true;
   for (let i = 0, l = children.length; i < l; i++) {
     const ch = children[i];
-    if (skip && ch.visible === false && ch.mcSleep !== true) {
+    if (ch.visible === false && ch.mcSleep !== true) {
       const n = (ch._mcSkip ?? ch.id % HIDDEN_N) + 1;
       if (n < HIDDEN_N) {
         ch._mcSkip = n;

@@ -5,6 +5,7 @@ import { buildVoz, updateVoz } from './voz';
 import { warmScene } from './cineWarm';
 import { PENAL_PEACE, PENAL_FROM } from '../core/music';
 import { shownChars } from '../core/voice';
+import { revealSub } from './subReveal';
 import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
 import { SIX, flareTexture } from '../weapons/supremoFx';
 import { arm, leg } from '../entities/zombieGaits';
@@ -112,7 +113,7 @@ export default class PenalCinematic {
     // (en línea el reloj cuenta desde acá, como ui/FarmCinematic: la compu que
     // se traba armando la escena no arranca atrasada; antes se perdía lo que
     // tardaba el primer cuadro, 0,3 s entre dos compus)
-    this.wallAt = g.net && globalThis.__mduNoCineSync !== true ? performance.now() : 0;
+    this.wallAt = g.net ? performance.now() : 0;
     // la canción (core/music.js), desde PENAL_FROM: la calma (las almas, los
     // presos, el altar) se estira hasta que se termina, cuando el Gil quiere hablar
     this.scored = !!g.music?.play('cine-penal-final', { at: PENAL_FROM, fadeIn: PENAL_FROM ? 0.8 : 0.15, while: (G) => G.state === 'won' && !this.done });
@@ -181,18 +182,16 @@ export default class PenalCinematic {
     // los gauchos con movimientos animados a mano en Blender (el sobresalto del
     // rayo, taparse de la luz, salir despedidos, desplomarse en la playa:
     // C:/Users/ignac/Tools/mdu-blender penal_clips.py); el agua y el gateo, con
-    // los clips de siempre (net/gauchoSkin). globalThis.__mduBlend = false: como antes.
+    // los clips de siempre (net/gauchoSkin).
     this.PC = null;
-    if (globalThis.__mduBlend !== false) {
-      fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-penal.json'))
-        .then((r) => r.json())
-        .then((J) => {
-          const C = {};
-          for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
-          this.PC = C;
-        })
-        .catch(() => {});
-    }
+    fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-penal.json'))
+      .then((r) => r.json())
+      .then((J) => {
+        const C = {};
+        for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+        this.PC = C;
+      })
+      .catch(() => {});
     // todo lo que va a aparecer se compila ya, en segundo plano
     warmScene(g);
   }
@@ -273,10 +272,9 @@ export default class PenalCinematic {
     this.gilPose = 'down';
     this.gilK = { ...GIL_POSE.down };
     // (la muerte en la pelea ya lo dejó en gDown, en este mismo lugar y rumbo:
-    // entities/skins/gil.js S.downT. Sigue desde ese cuadro, sin salto al cortar.
-    // globalThis.__mduNoGilDeathCine = true: desde el principio, como antes)
+    // entities/skins/gil.js S.downT. Sigue desde ese cuadro, sin salto al cortar)
     const SK = window.__bossSkins?.gil;
-    this.downAt = globalThis.__mduNoGilDeathCine !== true && SK?.downT != null ? SK.downT : 0;
+    this.downAt = SK?.downT != null ? SK.downT : 0;
     // todavía colorado de la segunda fase: se le va apagando
     this.gilGlow = 0.8;
     // lo que queda: un montón de ceniza y el facón clavado
@@ -398,7 +396,7 @@ export default class PenalCinematic {
         // (por el reloj de la canción: con pocos cuadros el de la escena atrasa)
         // (en línea, por el reloj de la escena, que es el mismo en todas: la
         // canción de cada compu va distinta y el Gil hablaba 2 s antes en una)
-        const mt = this.scored && !(g.net && globalThis.__mduNoCineSync !== true) && g.music.is('cine-penal-final') ? g.music.time() : -1;
+        const mt = this.scored && !g.net && g.music.is('cine-penal-final') ? g.music.time() : -1;
         // (la mitad de antes: el usuario lo encontró largo; la canción se va
         // cuando el Gil levanta la cabeza, antes de que termine la calma)
         const d = (this.scored ? Math.max(5, PENAL_PEACE - (mt >= 0 ? mt : this.t + PENAL_FROM) - 1.2) : 4.6) / 2;
@@ -536,7 +534,7 @@ export default class PenalCinematic {
     this.textEl.classList.add('is-on');
     this.el.classList.toggle('is-gil', who === 'gil');
     this.el.classList.toggle('is-anima', who === 'anacleto' || who === 'benito');
-    this.sub = { text, t0: this.t, rev: Math.max(0.5, cut ? d * 0.95 : Math.min(d * 0.85, text.length * 0.045)), marks: globalThis.__mduSubViejo === true ? null : this.g.audio.sayMarks, k: -1 };
+    this.sub = { text, t0: this.t, rev: Math.max(0.5, cut ? d * 0.95 : Math.min(d * 0.85, text.length * 0.045)), marks: this.g.audio.sayMarks, k: -1 };
     // (cortada: lo que sigue entra un pelito antes de que termine, así le
     // muerde la última sílaba en vez de dejar un silencio)
     return cut ? Math.max(0.5, d - 0.05) : d;
@@ -1216,7 +1214,7 @@ export default class PenalCinematic {
 
   // ¿El Gil va con los clips de Blender? (entities/skins/gil.js los carga)
   gilClips() {
-    return globalThis.__mduBlend !== false && !!window.__bossSkins?.gil?.cineGil;
+    return !!window.__bossSkins?.gil?.cineGil;
   }
 
   // El rayo, de cerca: un poco de costado y desde abajo, entero en el cuadro (es
@@ -1429,7 +1427,7 @@ export default class PenalCinematic {
       const dur = fn() || 0;
       // (en línea, una trabada no corre el resto del guion: cada compu se traba
       // distinto y el anfitrión terminaba 5-7 s después; se pone al día)
-      this.next = (g.net && globalThis.__mduNoCineSync !== true ? start : Math.max(start, t)) + dur;
+      this.next = (g.net ? start : Math.max(start, t)) + dur;
     }
     if (!this.script) return;
     this.updateSouls(dt);
@@ -1474,7 +1472,7 @@ export default class PenalCinematic {
       const k = sub.marks ? shownChars(sub.text, sub.marks, t - sub.t0) : Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
       if (k !== sub.k) {
         sub.k = k;
-        this.span.textContent = sub.text.slice(0, k);
+        revealSub(this.span, sub.text, k);
       }
     }
     // el oído va con la cámara
@@ -1669,7 +1667,7 @@ export default class PenalCinematic {
   // el rayo y se desarma. Cada paso desde la pose que tenía (las capas de
   // entities/bossSkin.js se funden). null: las poses de piezas de antes.
   gilWant(S) {
-    if (globalThis.__mduBlend === false || this.gilGone) return null;
+    if (this.gilGone) return null;
     const C = S.clips;
     if (!C.gDown) return null;
     const t = this.t;
@@ -1765,7 +1763,7 @@ export default class PenalCinematic {
       const k = clamp01((hit - 1.4) / 2.2);
       P.rootY = -Math.pow(k, 1.5) * 2.4;
       // (con los clips de Blender el cuerpo de verdad va por la altura del jefe)
-      if (globalThis.__mduBlend !== false && window.__bossSkins?.gil?.cineGil) z.baseY = this.G.y + P.rootY;
+      if (window.__bossSkins?.gil?.cineGil) z.baseY = this.G.y + P.rootY;
       z.scale = 1.85 * (1 - 0.35 * k);
       const a = smooth(clamp01((hit - 1.2) / 2));
       this.ash.scale.set(0.9 * a + 0.001, 0.3 * a + 0.001, 0.75 * a + 0.001);

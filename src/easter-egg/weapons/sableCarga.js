@@ -346,7 +346,7 @@ export default class Carga {
     let alive = 0;
     // (con escalones, cada jinete va por su piso: a altura fija se
     // enterraban subiendo las gradas; Sable.cargaReach ya sigue el piso)
-    const ground = g.world.levels && !globalThis.__mduNoCargaSlope;
+    const ground = !!g.world.levels;
     for (const r of ch.riders) {
       r.along += r.speed * dt;
       r.ph += dt * (3 + r.speed * 1.45);
@@ -416,7 +416,7 @@ export default class Carga {
       const pitch = Math.sin(ph * 2) * 0.06;
       const y = Math.abs(Math.sin(ph)) * 0.12 + 0.15 * (1 - r.f);
       tmpV.copy(ch.o).addScaledVector(ch.fwd, r.along).addScaledVector(ch.right, r.lat);
-      tmpV.y = (globalThis.__mduNoCargaSlope ? ch.o.y : r.y) + y;
+      tmpV.y = r.y + y;
       tmpE.set(pitch, ch.yaw, Math.sin(ph) * 0.03, 'YXZ');
       tmpQ.setFromEuler(tmpE);
       tmpM.compose(tmpV, tmpQ, tmpS);
@@ -462,7 +462,7 @@ export default class Carga {
   // ---------------- lo que se escucha ----------------
   // El clarín del toque de carga (bronce: diente de sierra filtrado con
   // vibrato), el relincho de los fantasmas y el viento. (El "¡A la carga!"
-  // murmurado se sacó, el usuario 2026-10-05; __mduNoCargaSilence: vuelve.)
+  // murmurado se sacó, el usuario 2026-10-05)
   sndStart(pos, ch) {
     const g = this.g;
     const a = g.audio;
@@ -487,8 +487,6 @@ export default class Carga {
     a.noise(o, { t, dur: 3.2, type: 'bandpass', freq: 380, freqEnd: 1400, q: 0.8, gain: 0.35, attack: 0.9 });
     g.later(0.25, () => a.neigh(pos || g.player.pos.clone().addScaledVector(ch.fwd, -5), 1.12));
     g.later(0.75, () => a.neigh(pos || g.player.pos.clone().addScaledVector(ch.fwd, 3), 1.25));
-    // (las voces son solo murmullos; con las voces apagadas, solo el clarín)
-    if (globalThis.__mduNoCargaSilence && a.voiceMode !== 'off') g.later(1.35, () => a.murmur('¡A la carga!', 'sargento', a.now));
   }
 
   // Un golpe de cascos de muchos (k: cuántos quedan).

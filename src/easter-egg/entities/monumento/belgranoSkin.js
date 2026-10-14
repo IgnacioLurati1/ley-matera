@@ -48,7 +48,7 @@ const updateMW = THREE.Object3D.prototype.updateMatrixWorld;
 // Las astillas del modelo de Meshy: triángulos larguísimos y finitos que van de
 // la cara (pesados a la cabeza) al hombro (pesados al hombro); al mover la
 // cabeza quedaban como una línea de la cara al hombro (el usuario, 2026-10-05).
-// Se achatan a un punto (globalThis.__mduNoBelAstilla: como antes).
+// Se achatan a un punto.
 function dropSlivers(mesh) {
   const geo = mesh.geometry;
   const pos = geo.attributes.position;
@@ -92,16 +92,14 @@ function dropSlivers(mesh) {
     // blancos y colorados hasta la mejilla. Los finitos se achatan, como
     // siempre; los demás puentes del cuello para arriba no se pueden sacar
     // —quedaba el agujero al lado de la oreja—: su punta del hombro pasa al
-    // hueso del cuello (va a medias con la cabeza) y skinNeck los pinta de piel.
-    // globalThis.__mduOldBelCara: solo los finitos)
-    const CARA = globalThis.__mduOldBelCara !== true;
+    // hueso del cuello (va a medias con la cabeza) y skinNeck los pinta de piel)
     if (!bridge) continue;
     // (los finitos, antes achatados —dejaban una raja delante de la oreja al
     // girar la cabeza—, van por el mismo camino, salvo sin índice o con el
     // switch viejo)
-    const thin = !(L < 0.09 || area > L * 0.012) && !(CARA && !idx && neckB >= 0 && Math.max(a.y, b.y, c.y) >= 1.3);
+    const thin = !(L < 0.09 || area > L * 0.012) && !(!idx && neckB >= 0 && Math.max(a.y, b.y, c.y) >= 1.3);
     if (!thin) {
-      if (CARA && !idx && neckB >= 0 && Math.max(a.y, b.y, c.y) >= 1.3) {
+      if (!idx && neckB >= 0 && Math.max(a.y, b.y, c.y) >= 1.3) {
         for (const i of v) {
           if (wOf(i, SHOULDER) < 0.6) continue;
           for (let q = 0; q < 4; q++) {
@@ -128,14 +126,12 @@ function dropSlivers(mesh) {
         pos.setXYZ(v[k], a.x, a.y, a.z);
         // (sin índice cada triángulo tiene sus vértices: con otros pesos, al
         // posar se volvían a separar y el triángulo volvía, estirado)
-        if (CARA) {
-          for (let q = 0; q < 4; q++) {
-            si.setComponent(v[k], q, si.getComponent(v[0], q));
-            sw.setComponent(v[k], q, sw.getComponent(v[0], q));
-          }
+        for (let q = 0; q < 4; q++) {
+          si.setComponent(v[k], q, si.getComponent(v[0], q));
+          sw.setComponent(v[k], q, sw.getComponent(v[0], q));
         }
       }
-      if (CARA) dead.add(v[0]).add(v[1]).add(v[2]);
+      dead.add(v[0]).add(v[1]).add(v[2]);
     }
     dropped++;
   }
@@ -154,7 +150,7 @@ function dropSlivers(mesh) {
   if (head >= 0) {
     for (let i = 0; i < pos.count; i++) {
       // (la mejilla: desde el cuello, no desde 1,48)
-      if (dead.has(i) || pos.getY(i) < (globalThis.__mduOldBelCara !== true ? 1.3 : 1.48) || wOf(i, HEAD) < 0.5) continue;
+      if (dead.has(i) || pos.getY(i) < 1.3 || wOf(i, HEAD) < 0.5) continue;
       let w = 0;
       for (let k = 0; k < 4; k++) {
         if (!SHOULDER.test(names[si.getComponent(i, k)])) continue;
@@ -175,8 +171,7 @@ function dropSlivers(mesh) {
 // textura de Meshy pinta el cuello colorado de la casaca y la camisa blanca
 // sobre triángulos de la mandíbula que van con la cabeza: quieto queda tapado
 // por el cuello del uniforme, pero al girar la cabeza esa pintura sale pegada
-// a la mejilla. Esos triángulos toman el color de la piel del cuello.
-// globalThis.__mduOldBelCara: como antes)
+// a la mejilla. Esos triángulos toman el color de la piel del cuello)
 function skinNeck(mesh) {
   const geo = mesh.geometry;
   const pos = geo.attributes.position;
@@ -357,13 +352,11 @@ function prep(gltf) {
     if (o.isBone) bones[o.name] = o;
   });
   if (!mesh || !bones.Hips) throw new Error('belgrano: sin malla o sin huesos');
-  if (globalThis.__mduNoBelAstilla !== true) dropSlivers(mesh);
-  if (globalThis.__mduOldBelCara !== true) {
-    try {
-      globalThis.__belNeck = skinNeck(mesh);
-    } catch {
-      /* sin la textura a mano: como antes */
-    }
+  dropSlivers(mesh);
+  try {
+    globalThis.__belNeck = skinNeck(mesh);
+  } catch {
+    /* sin la textura a mano: como antes */
   }
   const restMats = Array.from({ length: 18 }, () => new THREE.Matrix4());
   solvePose(restMats, 0, 0, 0, 1, makePose());
@@ -440,12 +433,10 @@ export function belgranoSkin(a) {
     // las piezas, el sombrero, la cara y el poncho del muñeco se esconden (la mano con el mate queda)
     G.blocky = [...a.parts, ...(a.extras || []).map((e) => e.obj)];
     // (y el poncho del muñeco, que no está en las piezas: estirado por la pose
-    // quedaba como una línea de la cara al hombro; __mduNoBelPoncho: como antes)
-    if (globalThis.__mduNoBelPoncho !== true) {
-      a.group.traverse((o) => {
-        if (o.isMesh && (o.material === a.M.poncho || (a.M.coat && o.material === a.M.coat)) && !G.blocky.includes(o)) G.blocky.push(o);
-      });
-    }
+    // quedaba como una línea de la cara al hombro)
+    a.group.traverse((o) => {
+      if (o.isMesh && (o.material === a.M.poncho || (a.M.coat && o.material === a.M.coat)) && !G.blocky.includes(o)) G.blocky.push(o);
+    });
     for (const o of G.blocky) o.visible = false;
     a.group.add(root);
     a.gs = G;

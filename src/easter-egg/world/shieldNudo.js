@@ -20,7 +20,6 @@ import { sfxClang } from './shieldSfx';
 // caos: pegan JINETE_K (Player.damage, con cupulaDmg). Lo maneja
 // world/ShieldUpgrade (pedidos y avisos 'sup', decide el anfitrión); este
 // archivo arma la estación y la anima.
-// globalThis.__mduNoEclCupula: el mejorado no frena a los jinetes.
 
 export const JINETE_K = 0.6;
 const D = 4.5; // del altar a cada mate
@@ -31,7 +30,7 @@ const NOTE = { fuego: 64, viento: 67, rayo: 71, hielo: 76 };
 
 // Lo que pega una embestida de jinete a este jugador (con el Escudo de la Cúpula, menos).
 export function cupulaDmg(g, amount, src) {
-  if (globalThis.__mduNoEclCupula === true || !src?.jinete) return amount;
+  if (!src?.jinete) return amount;
   const s = g.player.shield;
   return s?.up && ACT.shield?.up?.prop === 'cupula' ? amount * JINETE_K : amount;
 }

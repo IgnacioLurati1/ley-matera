@@ -129,9 +129,9 @@ export function buildMonumentoOutside(w) {
   w.extraUpdate = (dt, t) => {
     prev?.(dt, t);
     // (detrás del menú de título los reflectores van prendidos: si no, la
-    // Torre era una sombra contra el cielo. __mduNoTituloLuz: apagados)
+    // Torre era una sombra contra el cielo)
     const L = w.mon.luces;
-    if (L && w.g.state === 'title' && globalThis.__mduNoTituloLuz !== true) {
+    if (L && w.g.state === 'title') {
       if (!L.titleLit) L.now(true);
       L.titleLit = true;
     } else if (L?.titleLit) {
@@ -159,7 +159,7 @@ function rescue(w, dt = 1 / 60) {
     // (cuanto más se pasa, más fuerte: antes empujaba 0,08 por cuadro y
     // nadando igual se seguía alejando, hasta afuera del agua dibujada)
     const over = Math.max(0, P.pos.x - 140) + Math.max(0, -6 - P.pos.z, P.pos.z - (MAP_H + 6));
-    if (over > 0 && globalThis.__mduNoCorrentada !== true) {
+    if (over > 0) {
       const dx = 124 - P.pos.x;
       const dz = 30.5 - P.pos.z;
       const d = Math.hypot(dx, dz) || 1;
@@ -248,7 +248,7 @@ function buildFloors(w, gb) {
   DOORS.forEach((d) => {
     for (const [x, z] of d.cells) {
       // (las vallas de la avenida al Parque pisan la vereda de baldosa, que ya está)
-      if (x === 97 && globalThis.__mduNoHuecos !== true) continue;
+      if (x === 97) continue;
       const y = w.fy[w.idx(x, z)];
       const k = d.zones[0];
       floor(gb, mat[k] || 'travPave', x, z, x, z, y + 0.002);
@@ -337,9 +337,9 @@ function buildPatio(w, gb, extra) {
   // Donde trepan los muertos (las ventanas de config WINDOWS) la baranda está
   // rota: un hueco con el antepecho bajo, donde van las tablas de Barriers
   // (antes la baranda seguía entera y las tablas quedaban metidas en la piedra,
-  // asomando arriba como tablones tirados). globalThis.__mduNoHuecos: entera.
+  // asomando arriba como tablones tirados).
   for (const [zi, s, zw] of [[17, 1, 16], [44, -1, 44]]) {
-    const holes = globalThis.__mduNoHuecos === true ? [] : WINDOWS.filter((wi) => wi.zone === 'A' && wi.cell[1] === zw).map((wi) => [wi.cell[0] + 0.05, wi.cell[0] + 0.95]);
+    const holes = WINDOWS.filter((wi) => wi.zone === 'A' && wi.cell[1] === zw).map((wi) => [wi.cell[0] + 0.05, wi.cell[0] + 0.95]);
     for (const run of cutRuns(xs, holes)) parapet(gb, run, zi, s, { base });
     const zo = zi - s * 0.62;
     const sill = (x) => patioEdgeY(x) + 0.2;
@@ -370,7 +370,7 @@ function buildPatio(w, gb, extra) {
     // hueco sin piso: un macizo de piedra a la altura de la baranda lo cierra
     // (1 cm adentro de la cara de afuera de la baranda y 1 cm abajo de su
     // remate: donde se cruzan, las caras en el mismo plano titilaban)
-    const zf = globalThis.__mduNoZfix === true ? 0 : 0.01;
+    const zf = 0.01;
     const zp = z0 < 30 ? [16.38 + zf, z0] : [z1, 44.62 - zf];
     bbox(gb, 'travertino', 33.95, streetY(36) - 0.6, zp[0], 38, 3.2 - zf, zp[1], { b: 0.04, top: 'travStep' });
     // el dado de la urna, arriba del cheek
@@ -396,7 +396,7 @@ function buildPasaje(w, gb, extra) {
   quad(gb, 'salaMarble', [[20.5, 3.1, 17], [20.5, 3.1, 20], [20.5, 3.42, 20], [20.5, 3.42, 17]], [1, 0, 0]);
   // (el agua del espejo del sur 3 cm abajo de 3,55: ahí está la tapa del zócalo
   // de la estatua de Gorriti, world/shieldGorriti.js, y titilaban)
-  w.mon.pools = [{ x0: 5, z0: 15, x1: 20.5, z1: 26.55, y: yW }, { x0: 5, z0: 33, x1: 20.5, z1: 40, y: globalThis.__mduNoZfix === true ? 3.55 : 3.52 }];
+  w.mon.pools = [{ x0: 5, z0: 15, x1: 20.5, z1: 26.55, y: yW }, { x0: 5, z0: 33, x1: 20.5, z1: 40, y: 3.52 }];
   // el borde del estanque del norte (al lado de la vereda): un banco de piedra
   bbox(gb, 'travertino', 1, 3.0, 26.5, 20.5, 4.05, 27.0, { b: 0.04, top: 'travStep' });
   // y los otros tres lados
@@ -410,7 +410,7 @@ function buildPasaje(w, gb, extra) {
   for (const [z0, z1] of [[21, 27], [33, 40]]) quad(gb, 'travPave', [[20.5, 4.202, z1], [21, 4.202, z1], [21, 4.202, z0], [20.5, 4.202, z0]], [0, 1, 0]);
   // y ahí, sobre el borde de los estanques, una baranda de hierro: la grilla
   // corta el paso en x 21 (era una pared invisible, con el piso que seguía)
-  if (globalThis.__mduNoHuecos !== true) for (const [z0, z1] of [[21.05, 26.95], [33.05, 39.95]]) railing(gb, 20.97, z0, 20.97, z1, 4.2, 5.1);
+  for (const [z0, z1] of [[21.05, 26.95], [33.05, 39.95]]) railing(gb, 20.97, z0, 20.97, z1, 4.2, 5.1);
   // el canto del piso de la valla (x 20 a 20,5) sobre los dos estanques
   quad(gb, 'travertino', [[20, 3.3, 33], [20.5, 3.3, 33], [20.5, 4.204, 33], [20, 4.204, 33]], [0, 0, 1]);
   quad(gb, 'travertino', [[20, 3.9, 27], [20.5, 3.9, 27], [20.5, 4.204, 27], [20, 4.204, 27]], [0, 0, -1]);
@@ -428,14 +428,13 @@ function buildPasaje(w, gb, extra) {
   railing(gb, 4.7, 33.15, 4.7, 40.3, 3.75, 4.68);
   // (la del borde del espejo se abre frente a la puerta de la Catedral, la
   // ventana de los muertos [12, 40]: si no, al trepar la atravesaban)
-  if (globalThis.__mduNoHuecos === true) railing(gb, 4.85, 40.3, 20.35, 40.3, 3.75, 4.68);
-  else for (const [a, b] of [[4.85, 11.35], [13.65, 20.35]]) railing(gb, a, 40.3, b, 40.3, 3.75, 4.68);
+  for (const [a, b] of [[4.85, 11.35], [13.65, 20.35]]) railing(gb, a, 40.3, b, 40.3, 3.75, 4.68);
   railing(gb, 0.7, 32.85, 4.4, 32.85, 3.62, 4.68);
   // el cordón entre la vereda y el espejo del sur (apenas un canto que se pisa)
   // (el perfil de abajo hacia arriba: si no, las caras miran para adentro y no
   // se ven; arriba sigue 4 cm por debajo de la vereda, que no quede ranura)
   // (lo que queda abajo de la vereda baja un cm: a 2 mm de ella titilaba)
-  sweep(gb, 'travStep', [5, 33.0], [20.5, 33.0], [0, 1], [[0.06, 0], [0.06, 0.2], [0.04, 0.24], [0, 0.25], [-0.04, globalThis.__mduNoZfix === true ? 0.25 : 0.24]], { y: 3.35, caps: false });
+  sweep(gb, 'travStep', [5, 33.0], [20.5, 33.0], [0, 1], [[0.06, 0], [0.06, 0.2], [0.04, 0.24], [0, 0.25], [-0.04, 0.24]], { y: 3.35, caps: false });
   // la vereda hasta la plaza: el cordón de granito de los costados
   bbox(gb, 'granito', 0, 3.0, 32.7, 5.0, 3.62, 33.0, { b: 0.02 });
   // donde termina el Pasaje (la plaza): el umbral y la reja de hierro con
@@ -510,8 +509,8 @@ function buildExplanada(w, gb) {
     // (el del lado del monumento se corta donde la terraza de la Proa llega a la
     // avenida, z 28-33: su cara quedaba en el mismo plano que la de la terraza
     // y titilaba al pie, abajo de la hoja del sable)
-    const cut = x < 93 && globalThis.__mduNoZfix !== true;
-    for (const [z0, z1] of cut ? [[4, 28], [33, 57]] : [[4, 57]]) bbox(gb, 'granito', x - 0.15, yA - 0.5, z0, x + 0.15, yA + (globalThis.__mduNoZfix === true ? 0.12 : 0.125), z1, { b: 0.03 });
+    const cut = x < 93;
+    for (const [z0, z1] of cut ? [[4, 28], [33, 57]] : [[4, 57]]) bbox(gb, 'granito', x - 0.15, yA - 0.5, z0, x + 0.15, yA + 0.125, z1, { b: 0.03 });
   }
   // la vereda del lado del río (ya del parque)
   floor(gb, 'baldosa', 96, 4, 97, 56, yA);
@@ -528,7 +527,7 @@ function buildExplanadaBordes(w, gb) {
   // donde terminan la vereda y la calzada del lado del monumento (x 73), la
   // explanada queda más abajo: un murete de granito que las contiene
   // (1 cm atrás de la punta de la baranda del Patio, que baja hasta acá)
-  for (const [z0, z1] of [[9.35, 16.4], [43.6, 51.65]]) bbox(gb, 'granito', 72.7, y - 0.3, z0, globalThis.__mduNoZfix === true ? 73.0 : 72.99, streetY(73) + 0.14, z1, { b: 0.03, top: 'travStep' });
+  for (const [z0, z1] of [[9.35, 16.4], [43.6, 51.65]]) bbox(gb, 'granito', 72.7, y - 0.3, z0, 72.99, streetY(73) + 0.14, z1, { b: 0.03, top: 'travStep' });
   for (const z of [9, 51]) {
     const z0 = z === 9 ? 9.35 : 51.0;
     const z1 = z0 + 0.65;
@@ -566,10 +565,9 @@ function buildParque(w, gb) {
   // el cordón del pasto contra la avenida y la baranda de la barranca: un murito de piedra
   // (cortado donde están las vallas y las escaleras de la barranca: antes era
   // entero, las vallas quedaban paradas arriba y abiertas se pasaba por
-  // adentro de la piedra. globalThis.__mduNoHuecos: entero)
-  const whole = globalThis.__mduNoHuecos === true;
-  for (const [a, b] of whole ? [[5, 56]] : [[5, 13], [16, 45], [48, 56]]) bbox(gb, 'travertino', 97.0, y - 0.6, a, 98.0, y + 0.35, b, { b: 0.04, top: 'travStep' });
-  for (const [a, b] of whole ? [[5, 56]] : [[5, 18], [21, 40], [43, 56]]) bbox(gb, 'travertino', 104.0, y - 2.4, a, 104.65, y + 0.45, b, { b: 0.04, top: 'travStep' });
+  // adentro de la piedra)
+  for (const [a, b] of [[5, 13], [16, 45], [48, 56]]) bbox(gb, 'travertino', 97.0, y - 0.6, a, 98.0, y + 0.35, b, { b: 0.04, top: 'travStep' });
+  for (const [a, b] of [[5, 18], [21, 40], [43, 56]]) bbox(gb, 'travertino', 104.0, y - 2.4, a, 104.65, y + 0.45, b, { b: 0.04, top: 'travStep' });
   // los extremos (norte y sur)
   bbox(gb, 'travertino', 97.0, y - 0.6, 5.0, 104.65, y + 0.35, 6.0, { b: 0.04, top: 'travStep' });
   bbox(gb, 'travertino', 97.0, y - 0.6, 55.0, 104.65, y + 0.35, 56.0, { b: 0.04, top: 'travStep' });
@@ -583,7 +581,7 @@ function buildParque(w, gb) {
     stairs(gb, R, { count: 10, base: -4.8 });
     const [, z0, , z1] = R.rect;
     // (1 cm antes de la cara del muro de la costanera, que sigue de largo: en el mismo plano titilaban)
-    for (const z of [z0 - 0.3, z1 + 1]) bbox(gb, 'travertino', 104.65, -4.8, z, globalThis.__mduNoZfix === true ? 108 : 107.99, -2.0, z + 0.3, { b: 0.04, top: 'travStep' });
+    for (const z of [z0 - 0.3, z1 + 1]) bbox(gb, 'travertino', 104.65, -4.8, z, 107.99, -2.0, z + 0.3, { b: 0.04, top: 'travStep' });
   }
 }
 
@@ -592,7 +590,7 @@ function buildCostanera(w, gb) {
   const y = -4.4;
   // el muro de contención de la barranca (de piedra, alto) del lado del parque
   // (las puntas 1 cm adentro de las piedras de los costados de las escaleras de la barranca)
-  const zc = globalThis.__mduNoZfix === true ? 0 : 0.01;
+  const zc = 0.01;
   bbox(gb, 'travertinoBig', 107.6, y - 0.4, 4, 108.0, y + 0.7, 18 - zc, { b: 0.03 });
   bbox(gb, 'travertinoBig', 107.6, y - 0.4, 21 + zc, 108.0, y + 0.7, 40 - zc, { b: 0.03 });
   bbox(gb, 'travertinoBig', 107.6, y - 0.4, 43 + zc, 108.0, y + 0.7, 57, { b: 0.03 });
@@ -683,7 +681,7 @@ function addSolids(w) {
   B(74, 11.4, 26, 80, 43.95, 36);
   // el remate de la Torre, arriba del Mirador
   // (el remate nuevo, liso, termina en la losa: monumentoTorre buildMirador)
-  B(73.8, 47.4, 25.8, 80.2, globalThis.__mduNoRemate === true ? 50.2 : 49.45, 36.2);
+  B(73.8, 47.4, 25.8, 80.2, 49.45, 36.2);
   // los cuatro pilares de las esquinas del Mirador
   for (const [x, z] of [[74, 26], [79, 26], [74, 35], [79, 35]]) B(x, 45.0, z, x + 1, 47.4, z + 1);
   // la Proa: las terrazas del pie (de la grilla, 0,6 m) y la cuña de piedra

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ZONES } from '../../config/map';
-import { ART, buildMark } from './stepArt';
+import { buildMark } from './stepArt';
 
 // Lo que comparten los pasos del easter egg de Eclipse Matero ("El Primer
 // Mate", entities/EclipseEgg.js): quién es quién en la red, marcas en el
@@ -37,27 +37,15 @@ export class Marker {
     this.want = 0;
     this.beat = 0;
     // (2026-10-08: el círculo de signos, la columna que se apaga para arriba y
-    // las motas: entities/eclipse/stepArt.js buildMark. __mduOldEclProps: el anillo y el cilindro)
-    if (ART) {
-      const A = buildMark(g, col, r);
-      this.ring = A.ring;
-      this.pillar = A.pillar;
-      this.motes = A.motes;
-      this.root.add(A.ring, A.pillar, A.motes);
-      this.root.visible = false;
-      g.scene.add(this.root);
-      return;
-    }
-    const ring = new THREE.Mesh(new THREE.RingGeometry(r * 0.72, r, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
-    ring.position.y = 0.03;
-    // (la columna: baja y fina, que no atraviese los techos ni tape lo de atrás)
-    const col3 = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.22, r * 0.5, 3.2, 14, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
-    col3.position.y = 1.6;
-    this.ring = ring;
-    this.pillar = col3;
-    this.root.add(ring, col3);
+    // las motas: entities/eclipse/stepArt.js buildMark)
+    const A = buildMark(g, col, r);
+    this.ring = A.ring;
+    this.pillar = A.pillar;
+    this.motes = A.motes;
+    this.root.add(A.ring, A.pillar, A.motes);
     this.root.visible = false;
     g.scene.add(this.root);
+    return;
   }
 
   set(on) {
@@ -121,9 +109,8 @@ export class Pickup {
     g.scene.add(this.light);
     // (y va con las de evento, World.adoptLight: apagada no cuenta. Si no, las
     // 13 del mapa entraban en cada material: sombreadores el doble de largos y
-    // cambiar la calidad en plena partida congelaba 10-56 s; agente rend.
-    // globalThis.__mduNoEclPickAdopt: como antes)
-    if (globalThis.__mduNoEclPickAdopt !== true) g.world?.adoptLight?.(this.light, 1);
+    // cambiar la calidad en plena partida congelaba 10-56 s; agente rend)
+    g.world?.adoptLight?.(this.light, 1);
     this.on = false;
     this.taken = false;
     this.onTake = null;
@@ -155,7 +142,7 @@ export class Pickup {
   update(dt, t) {
     if (!this.on) return;
     this.obj.position.y = this.base.y + 0.9 + Math.sin(t * 1.7) * 0.12;
-    this.obj.rotation.y = t * (ART ? 0.55 : 0.9);
+    this.obj.rotation.y = t * 0.55;
     // (lo que se mueve adentro del objeto: la llamita, el vapor, las motas)
     this.obj.userData.tick?.(dt, t);
   }

@@ -335,38 +335,33 @@ export const SPEAKERS = {
 // (2026-10-09, el usuario, por el final de Eclipse: "no se entiende quién dice
 // qué... todos tienen la misma voz". Fierro (102 Hz), San Martín (96) y el Gil
 // (70) eran tres graves parecidos. Fierro queda; San Martín, más agudo, firme y
-// cortado —de mando—; el Gil, más grave, lento y con más pecho.
-// globalThis.__mduOldVoces10: como antes)
-if (globalThis.__mduOldVoces10 !== true) {
-  Object.assign(SPEAKERS.sanmartin, { f0: 138, rate: 1.1, range: 0.75, tilt: 0.3, shift: 1.05, drive: 1.6, pauseK: 0.9 });
-  Object.assign(SPEAKERS.gil, { f0: 60, rate: 0.72, shift: 0.8, sub: 0.46, drawl: 1.25 });
-}
+// cortado —de mando—; el Gil, más grave, lento y con más pecho)
+Object.assign(SPEAKERS.sanmartin, { f0: 138, rate: 1.1, range: 0.75, tilt: 0.3, shift: 1.05, drive: 1.6, pauseK: 0.9 });
+Object.assign(SPEAKERS.gil, { f0: 60, rate: 0.72, shift: 0.8, sub: 0.46, drawl: 1.25 });
 
 // La perilla "Claridad de las voces" (opciones → sonido): 0 = el murmullo de
-// siempre, 0,5 = lo normal, 1 = lo más marcado. globalThis.__mduMurmulloViejo
-// la deja en 0. baseClarity: la de cuenta (las cinemáticas en línea duran lo
+// siempre, 0,5 = lo normal, 1 = lo más marcado.
+// baseClarity: la de cuenta (las cinemáticas en línea duran lo
 // mismo en todas las compus, tenga cada una la perilla donde la tenga).
 let clarity = 0.5;
 export const setClarity = (v) => {
   clarity = Math.max(0, Math.min(1, Number.isFinite(+v) ? +v : 0.5));
 };
-export const baseClarity = () => (globalThis.__mduMurmulloViejo === true ? 0 : 0.5);
-export const clarityNow = () => (globalThis.__mduMurmulloViejo === true ? 0 : clarity);
+export const baseClarity = () => 0.5;
+export const clarityNow = () => clarity;
 // Los lentos no se alargan con las consonantes nuevas: su frase dura lo de
 // siempre (2026-10-11, el usuario: "volvelo a la velocidad original").
 for (const k of ['anunciador', 'gil', 'caballeroHielo', 'abuelo', 'entidad']) SPEAKERS[k].pace = true;
 // Cirilo hablaba rapidísimo (el usuario, 2026-10-11): un poco más lento.
-// (globalThis.__mduCiriloViejo: como antes)
-if (globalThis.__mduCiriloViejo !== true) SPEAKERS.cirilo.rate = 1.12;
+SPEAKERS.cirilo.rate = 1.12;
 // Martín Fierro, a la velocidad del Abuelo (el usuario, 2026-10-11; es el
 // mismo, más firme): su mismo ritmo y, como él, sin alargarse.
-// (globalThis.__mduFierroViejo: como antes)
-if (globalThis.__mduFierroViejo !== true) Object.assign(SPEAKERS.fierro, { rate: SPEAKERS.abuelo.rate, pace: true });
+Object.assign(SPEAKERS.fierro, { rate: SPEAKERS.abuelo.rate, pace: true });
 // Belgrano tampoco se alarga: su juramento en el final del Monumento va a
 // reloj (la escena sigue 4,4 s después de que empieza a decirlo) y con la
 // frase más larga la cámara lo dejaba 1 s antes de que terminara; así, los
-// 0,4 s de siempre. (globalThis.__mduBelgranoLargo: se alarga como los demás)
-if (globalThis.__mduBelgranoLargo !== true) SPEAKERS.belgrano.pace = true;
+// 0,4 s de siempre.
+SPEAKERS.belgrano.pace = true;
 
 const VOWELS_RE = /[aeiouáéíóúü]/;
 const STRIP = { á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ü: 'u' };
@@ -503,7 +498,6 @@ function consonant(c, next, prev, last) {
 // Los números, en palabras (hasta 9999): el murmullo arma sílabas con letras y
 // los dígitos se los salteaba (2026-10-09, el usuario: Martín Fierro "quiere
 // decir un número —1813— y no puede"). "1813" → "mil ochocientos trece".
-// globalThis.__mduOldVoiceNum: como antes
 const UNI = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte', 'veintiuno', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
 const DEC = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
 const CEN = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
@@ -515,14 +509,14 @@ function numWords(n) {
   const m = Math.floor(n / 1000);
   return (m === 1 ? 'mil' : numWords(m) + ' mil') + (n % 1000 ? ' ' + numWords(n % 1000) : '');
 }
-const sayNumbers = (t) => (globalThis.__mduOldVoiceNum === true ? t : t.replace(/\d{1,4}/g, (d) => numWords(+d)));
+const sayNumbers = (t) => t.replace(/\d{1,4}/g, (d) => numWords(+d));
 
 export function speechSegments(text, S, r = Math.random, clear = clarityNow()) {
   const segs = [];
   // (2026-10-11, el usuario: "que se entienda más lo que dicen", en equilibrio
   // con que suene bien: consonantes más fuertes y más largas, la m y la n con
   // su murmullo, y entre palabra y palabra la voz afloja un instante —sin
-  // silencio: no es un corte—. globalThis.__mduMurmulloViejo: como antes)
+  // silencio: no es un corte—)
   // (cl: la perilla "Claridad de las voces". 0 es el sonido de antes. Hasta
   // la mitad se marcan las consonantes —m—; de la mitad para arriba solo se
   // frenan los que hablan rápido —cap— y las voces llevan menos eco

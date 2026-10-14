@@ -16,7 +16,7 @@ import { loadChiquiBlend } from './chiquiBlend';
 // están, cuándo tiran, cuándo les pegan, cuándo se lanzan uno sobre el otro)
 // la sigue llevando world/eclipseGfxFight.js: acá solo se ponen y se animan.
 // Se bajan con el mapa; hasta que están compilados se ven las figuras de
-// antes. globalThis.__mduNoSky3d: las figuras planas, como antes.
+// antes.
 
 const DIR = '/assets/sotano/modelos/';
 const FADE = 0.22;

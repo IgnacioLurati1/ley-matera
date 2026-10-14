@@ -9,6 +9,7 @@ import { buildChiqui, chiquiGiggle, chiquiGlitch, chiquiHat } from '../world/Chi
 import { ELEMENTS, ELEM_COLOR, ELEM_RGB, MATE_OF } from '../entities/castle/common';
 import { buildSupremoDisplay, animateSupremoDisplay } from '../weapons/Supremo';
 import { clipY } from '../world/dragonBlend';
+import { revealSub } from './subReveal';
 
 // El final de todo (Der Mateendrache, el último mapa). Arranca en la isla del
 // Éter, con el Chiquitijuein recién deshecho. Todo lo que pasa es actuado:
@@ -64,15 +65,6 @@ const clamp01 = (u) => Math.max(0, Math.min(1, u));
 const rnd = () => Math.random() - 0.5;
 // (Avatars: yaw 0 mira hacia -z) el yaw de un punto mirando a otro
 const yawTo = (from, to) => Math.atan2(-(to.x - from.x), -(to.z - from.z));
-// (globalThis.__mduNoLandFix = true: el aterrizaje del dragón como antes, con la
-// raíz llegando al piso volando: el cuerpo, la cola y las alas lo atravesaban)
-const LAND_FIX = () => globalThis.__mduNoLandFix !== true;
-// (globalThis.__mduNoRoarFix = true: vuelve el rugido al tocar el piso, pisado por
-// el de las alas abiertas un segundo y medio después)
-const ROAR_FIX = () => globalThis.__mduNoRoarFix !== true;
-// (globalThis.__mduNoHatFix = true: el sombrero del Chiquitijuein como antes, con un
-// cuarto del ala -la de atrás- hasta 11 cm abajo del piso de la plaza)
-const HAT_FIX = () => globalThis.__mduNoHatFix !== true;
 // las patas del dragón: la de abajo de cada una (el tobillo), en el clip de Blender
 const ANKLES = ['flL2', 'flR2', 'hlL2', 'hlR2'];
 const angLerp = (a, b, k) => {
@@ -467,11 +459,9 @@ export default class CastleEnding extends CastleCine {
     this.root.add(this.hat);
     // (apoyado: inclinado como está, lo más bajo del ala justo sobre el piso)
     this.hatY = this.hat.position.y;
-    if (HAT_FIX()) {
-      this.hat.updateMatrixWorld(true);
-      this.hatY += H.y + 0.004 - new THREE.Box3().setFromObject(this.hat, true).min.y;
-      this.hat.position.y = this.hatY;
-    }
+    this.hat.updateMatrixWorld(true);
+    this.hatY += H.y + 0.004 - new THREE.Box3().setFromObject(this.hat, true).min.y;
+    this.hat.position.y = this.hatY;
     const staff = gn.staff;
     staff.removeFromParent();
     staff.position.set(H.x + 0.75, H.y + 0.03, H.z - 0.25);
@@ -1170,7 +1160,7 @@ export default class CastleEnding extends CastleCine {
   // 'aterrizaje' (a los t s) llegue justo al piso (su tobillo a la altura que
   // tiene parado, 'posado'). null: sin los clips o con el switch (como antes).
   landH(t) {
-    if (!LAND_FIX() || !this.D?.bl?.ready?.()) return null;
+    if (!this.D?.bl?.ready?.()) return null;
     let h = 0;
     for (const b of ANKLES) {
       const s = clipY('posado', b, 0);
@@ -1202,10 +1192,7 @@ export default class CastleEnding extends CastleCine {
     for (const K of this.crew || []) this.react(K, ...(REACT[K.L] || REACT.V));
     // (ruge una vez, con las alas abiertas: dragonShot; este, un segundo y medio
     // antes, quedaba pisado por aquel)
-    if (ROAR_FIX()) return;
-    this.fire?.roar?.(DL);
-    this.D?.open?.(0.8);
-    this.later(1.4, () => this.D?.open?.(0));
+    return;
   }
 
   // Una reacción de un gaucho (un clip de ui/castleClips), con la demora de su carácter.
@@ -1439,7 +1426,7 @@ export default class CastleEnding extends CastleCine {
         // 2026-10-04, el usuario: el Viejo se quedaba todo el rato "sentado" y
         // no se daba vuelta: se para —el último, a su ritmo— y después gira)
         if (K.calm !== 'kneelOath') K.turnTo = K.r.yaw + Math.PI;
-        else if (globalThis.__mduNoViejoUp !== true) {
+        else {
           K.calm = `talk${K.L}`;
           this.later(0.9, () => (K.turnTo = K.r.yaw + Math.PI));
         }
@@ -1928,7 +1915,7 @@ export default class CastleEnding extends CastleCine {
     const n = from + Math.ceil(k * (S.text.length - from));
     if (n !== S.n) {
       S.n = n;
-      this.span.textContent = S.text.slice(0, n);
+      revealSub(this.span, S.text, n);
     }
   }
 
@@ -2549,8 +2536,8 @@ export default class CastleEnding extends CastleCine {
     }
     // (el vacío se saca con el negro ya cerrado: antes se sacaba cuando el último
     // fundido recién arrancaba, y por un momento se veía el cielo de atrás sin los
-    // caballeros. globalThis.__mduNoKnightsCut = true: como antes)
-    this.later(globalThis.__mduNoKnightsCut === true ? t - 1 : t - 0.05, () => {
+    // caballeros)
+    this.later(t - 0.05, () => {
       this.cardEl.style.color = '';
       this.cam = null;
       this.hideVoid();
@@ -2605,9 +2592,9 @@ export default class CastleEnding extends CastleCine {
       const id = 40 + i;
       // (cuánto brilla: los colores claros, viento y rayo, lavaban la pantalla
       // al doble que el fuego; un poco menos todos y parejos por el brillo del
-      // color. El usuario, 2026-10-05; globalThis.__mduNoKnightDim: como antes)
+      // color. El usuario, 2026-10-05)
       const cc = new THREE.Color(c);
-      const dim = globalThis.__mduNoKnightDim === true ? 1 : 0.85 * Math.min(1, 0.65 / (0.2126 * cc.r + 0.7152 * cc.g + 0.0722 * cc.b));
+      const dim = 0.85 * Math.min(1, 0.65 / (0.2126 * cc.r + 0.7152 * cc.g + 0.0722 * cc.b));
       const r = { id, name: '', noTag: true, pos: O.clone(), yaw: 0, pitch: 0.05, speed: 0, moving: false };
       people.add(r);
       shells.add(r);

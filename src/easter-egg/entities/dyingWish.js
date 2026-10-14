@@ -7,13 +7,15 @@ import '../ui/dyingWish.css';
 // siguen pegando, pero no hace nada), con la adrenalina a mil: la pantalla
 // roja con las venas que laten, el mundo se oye tapado, el corazón golpea y
 // uno corre un poco más. En esos segundos la vida vuelve de a poco. Después
-// el perk se enfría WISH_CD segundos (el medallón gris) antes de volver a salvarte.
+// el perk se enfría wishCd() segundos (el medallón gris) antes de volver a salvarte.
 // Lo llama Player: goDown (tryWish), damage (wishActive) y update (la velocidad).
 // El jugador guarda wishT (cuándo termina), wishReady (cuándo vuelve a servir),
 // wishFx y wishBeat (lo que lee fx/PostFX para el color y el latido).
 
 export const WISH_TIME = 5;
-export const WISH_CD = 180;
+// (la recarga: 6 minutos; antes 3. El usuario, 2026-10-14: "a dying wish que tarde bastante
+// más en recargarse". globalThis.__mduWishViejo = true: los 3 minutos de antes)
+export const wishCd = () => (globalThis.__mduWishViejo === true ? 180 : 360);
 // cuánto más rápido se anda con la adrenalina
 export const WISH_SPEED = 1.2;
 // la vida con la que termina (fracción del máximo), subiendo desde 1
@@ -39,7 +41,7 @@ export function tryWish(p) {
   if (!p.perks.has('wish') || g.time < (p.wishReady ?? 0) || !p.alive || p.downed) return false;
   p.health = 1;
   p.wishT = g.time + WISH_TIME;
-  p.wishReady = p.wishT + WISH_CD;
+  p.wishReady = p.wishT + wishCd();
   p.wishFrom = g.time;
   fxOf(g).start(p);
   return true;
@@ -101,7 +103,7 @@ class WishFx {
     this.ended = false;
     // cuando vuelve a servir: el medallón se prende y un tum-tum suave
     const ready = p.wishReady;
-    g.later(WISH_TIME + WISH_CD, () => {
+    g.later(ready - g.time, () => {
       if (Math.abs((p.wishReady ?? 0) - ready) > 0.01) return;
       g.hud.perkCool?.('wish', false);
       if (p.perks.has('wish')) this.sndReady();

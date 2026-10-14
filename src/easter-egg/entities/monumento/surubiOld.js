@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { EE } from '../../config/map';
 
-// (El Surubí de antes, de piezas: queda con globalThis.__mduOldSurubi = true.
+// (El Surubí de antes, de piezas.
 // El de ahora, el modelo facetado y la pelea chistosa: Surubi.js.)
 // El Surubí del Paraná: el minijefe del Monumento. Un bagre pintado de cinco
 // metros que sale del agua (el río, los espejos del Pasaje o una boca de

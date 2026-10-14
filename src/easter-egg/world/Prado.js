@@ -968,7 +968,7 @@ export default class Prado extends Arena {
   // hay que cortarlos con el tajo de la hoz (o con el cuchillo). Cortados los
   // tres, se le van los cuervos. No se va sola ni matando peones.
   // El anfitrión elige dónde salen ('espanta' p) y cuenta los cortados; el que
-  // corta uno avisa ('espanta' c). (__mduPradoViejo: como antes, con los peones)
+  // corta uno avisa ('espanta' c).
   buildDummies() {
     const g = this.g;
     const M = g.world.M;
@@ -1005,7 +1005,7 @@ export default class Prado extends Arena {
   setWard(on) {
     const was = this.ward;
     super.setWard(on);
-    if (globalThis.__mduPradoViejo === true || was === this.ward) return;
+    if (was === this.ward) return;
     if (on) {
       this.wardMax0 ??= this.wardMax;
       this.waveUntil = Infinity;

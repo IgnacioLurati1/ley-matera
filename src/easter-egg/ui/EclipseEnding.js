@@ -46,7 +46,7 @@ import { eclSfx, ahhPlay, ahhWarm } from '../fx/eclipseSfx';
 // Después: el logro y el fin de la partida (Game.win, sin otra cinemática).
 // Todo se arma al empezar (escondido) y se compila (ui/cineWarm); luces: las
 // del mundo con otros valores y dos fogonazos prestados de fx (el fuego y la
-// linterna). globalThis.__mduNoEclipseFin: sin escena (el mapa se da por hecho).
+// linterna).
 
 const FILES = ['cine-eclipse-fin.json', 'cine-eclipse.json', 'cine-introA.json', 'cine-torre2.json', 'cine-penal2.json'];
 let CLIPS = null;
@@ -85,25 +85,10 @@ const L = {
   rev3: 'Y que a Francisco, antes de Francisco, lo llamaban de otra manera.',
   placa: 'Mientras alguien le cebe un mate a otro, la luz no se apaga.',
 };
-// (sesión 1f, el usuario 2026-10-06: "en la escena donde Fierro dice todo tiene
-// una razón de ser me gustaría que revele algo tremendo en lugar de repetir la
-// frase del final de Der Mateendrache". La revelación junta lo que el libro
-// deja abierto: el narrador es el que cuenta —el que se acuerda de todo—, el
-// Chiquitijuein "se esconde en la memoria", los ojos del de la linterna son
-// "dos brasas", y "esta parte todavía no pasó" (el final del capítulo 10).)
-const L2 = {
-  llega: 'Les debo la última parte. La que nunca conté.',
-  rev1: 'El primer mate de todos lo cebé yo.',
-  rev2: 'A una cosa chiquita que bajó de las nubes. Tenía frío. No sabía lo que era.',
-  rev3: 'Se esconde en la memoria, dicen. Y el único que se acuerda de todo... soy yo.',
-  rev4: 'Por eso cargo a los dormidos. Por eso no me puedo morir.',
-  rev5: 'Si un día me olvido de ustedes... vuelve.',
-  placa: 'Esta parte ya pasó.',
-};
 // cómo se ve cada decorado: la luz del mundo (la del eclipse, la hemisférica,
 // la ambiente) y la niebla, con otros valores
 const LOOKS = {
-  estero: { sky: 'noche', dir: [0.38, 0.42, -0.82], sun: 0xa8c0f0, sunI: globalThis.__mduOldEclFin === true ? 1.1 : 1.7, hs: 0x34506e, hg: 0x141820, hI: globalThis.__mduOldEclFin === true ? 0.75 : 1.05, amb: 0x2a3448, ambI: globalThis.__mduOldEclFin === true ? 0.4 : 0.55, fog: 0x0b121c, fogD: globalThis.__mduOldEclFin === true ? 0.012 : 0.022 },
+  estero: { sky: 'noche', dir: [0.38, 0.42, -0.82], sun: 0xa8c0f0, sunI: 1.7, hs: 0x34506e, hg: 0x141820, hI: 1.05, amb: 0x2a3448, ambI: 0.55, fog: 0x0b121c, fogD: 0.022 },
   manana: { sky: 'manana', dir: [-0.31, 0.83, -0.45], sun: 0xffe8c8, sunI: 1.9, hs: 0x8aaad8, hg: 0x4a4030, hI: 0.95, amb: 0x606060, ambI: 0.35, fog: 0xc8d4e0, fogD: 0.004, fogSet: 0.011 },
   tarde: { sky: 'tarde', dir: [0.55, 0.22, -0.8], sun: 0xffb070, sunI: 1.6, hs: 0x8a7a9a, hg: 0x4a3020, hI: 0.7, amb: 0x504040, ambI: 0.3, fog: 0xc08060, fogD: 0.006, fogSet: 0.013 },
   fogon: { sky: 'noche', dir: [-0.3, 0.5, 0.8], sun: 0x8090c0, sunI: 0.55, hs: 0x24304a, hg: 0x100c0a, hI: 0.55, amb: 0x1a2028, ambI: 0.3, fog: 0x05070c, fogD: 0.012 },
@@ -122,8 +107,7 @@ const tmpC = new THREE.Color();
 // (sesión 1f, 2026-10-06: la despedida del Gil legible —las antorchas de los
 // que lo vienen a buscar, se arrodilla—, la mañana a contraluz sobre el agua,
 // el pajonal del estero, el universo que se cose con luz, Fierro de cuerpo
-// entero y los cuatro que lo miran llegar. globalThis.__mduOldEclFin: como antes)
-const FIN2 = () => globalThis.__mduOldEclFin !== true;
+// entero y los cuatro que lo miran llegar)
 // (sesión 1f, 2026-10-07, el usuario: "el final es una vergüenza ajena": los
 // personajes ignoran a Fierro, un paneo que dura años, palabras sin sentido,
 // casi sin música, decorados de PS1, los que ejecutan al Gil nunca aparecen,
@@ -131,21 +115,18 @@ const FIN2 = () => globalThis.__mduOldEclFin !== true;
 // el eclipse: el mismo lugar donde empezó todo), los cuatro se paran y lo
 // reciben, un mate de por medio, la revelación clara; San Martín le habla al
 // Gil y lo saluda con el sable que le trajo; jinetes de verdad con antorchas;
-// música todo el final. globalThis.__mduOldEclFin2: el FIN2, como antes)
-const FIN3 = () => FIN2() && globalThis.__mduOldEclFin2 !== true;
+// música todo el final)
 // (2026-10-07, el usuario) el paso a dorado de los pies a la cabeza, no un
-// corte (__mduOldFinGold); y el cierre: Fierro se deshace como un alma
+// corte; y el cierre: Fierro se deshace como un alma
 // señalando la luna, se cierra el telón con música épica y en el silencio
-// su frase (__mduOldFinCierre); el mate, a 1,1 m (__mduOldFinOffer)
-const NEW_GOLD = () => globalThis.__mduOldFinGold !== true;
+// su frase; el mate, a 1,1 m
 // (2026-10-08, ITERACION-7 E1-E2, el usuario: "el sacrificio del Gil casi ni se
 // entiende, es demasiado poco explícito"; "cuando los personajes se despiden
 // del Gil no hablan ni le dicen nada, es su mejor amigo"; "no da a entender
 // que tiene que sacrificarse en ningún momento". Ahora se dice: San Martín, que
 // el tiempo quedó roto y cada uno vuelve al suyo; el Gil, que en el suyo lo
 // esperan para matarlo; en la despedida cada uno le habla y él contesta por
-// qué no se queda. Con el nombre de quien habla. __mduOldFinAdios: como antes)
-const FIN4 = () => globalThis.__mduOldFinAdios !== true;
+// qué no se queda. Con el nombre de quien habla)
 const L4 = {
   roto: 'El Eclipse cayó, pero el tiempo quedó roto. Cada uno tiene que volver al suyo.',
   espera: 'En el mío me esperan para matarme. Ya lo sé.',
@@ -164,35 +145,24 @@ const L4 = {
 // (2026-10-08, ITERACION-7 E3, el usuario: "la transición entre su muerte y
 // nuestro campamento es súper abrupta: pasa en el futuro y se siente que es
 // contemporáneo". Carteles de cine en negro con el lugar y el tiempo: antes del
-// estero, antes del santuario y antes del fogón. __mduOldFinTiempo: sin ellos)
-const TIEMPO = () => globalThis.__mduOldFinTiempo !== true;
+// estero, antes del santuario y antes del fogón)
 const T4 = {
   estero: 'Mercedes, Corrientes. 8 de enero de 1878.',
   santuario: 'Casi ciento cincuenta años después.',
   fogon: 'Esa misma noche, en el claro.',
 };
-// Belgrano con el Primer Mate en la mano del modelo (ver placeMate 'grip').
-// globalThis.__mduOldBelMate: en la pieza del muñeco, como antes
-const BEL9 = () => globalThis.__mduOldBelMate !== true;
-// (cuánto hacia los dedos, cuánto más arriba de la muñeca y cuánto hacia el
-// cuerpo va el mate)
-const BEL_GRIP = [+(globalThis.__mduBelGripF ?? 0.09), +(globalThis.__mduBelGripY ?? -0.01), +(globalThis.__mduBelGripIn ?? 0.045)];
 const WHO = { gil: 'Antonio Gil', benito: 'Benito', cirilo: 'Cirilo', anacleto: 'Anacleto', sanmartin: 'San Martín', belgrano: 'Manuel Belgrano' };
 // (2026-10-09, el usuario: "no se entiende quién dice qué porque no pone quién
 // lo dice": Fierro, que narraba sin nombre, y los cuatro del fogón también
-// llevan el suyo. globalThis.__mduOldFinNombres: como antes)
+// llevan el suyo)
 const WHO10 = { fierro: 'Martín Fierro', caballeroFuego: 'El Valiente', caballeroViento: 'El Miedoso', caballeroRayo: 'El Canchero', caballeroHielo: 'El Viejo' };
-const whoOf = (who) => WHO[who] || (globalThis.__mduOldFinNombres !== true ? WHO10[who] : null);
-const NEW_END = () => globalThis.__mduOldFinCierre !== true;
+const whoOf = (who) => WHO[who] || WHO10[who];
 // (2026-10-09) Cuando Fierro se deshace: cuatro desgarros, la despedida de los
 // gauchos y cada uno se va por el suyo; recién después el negro (ver portales).
-// globalThis.__mduOldFinPortales: el negro enseguida, como antes
-const PORT9 = () => NEW_END() && globalThis.__mduOldFinPortales !== true;
 // (2026-10-09, el usuario, "el toque final" del final: el orden del diálogo
 // del campo, lo que el Gil le contesta a Cirilo, su despedida en el desgarro,
 // sin el blanco en las islas, los giros sin salto y el resto de la lista; ver
-// cada uno. globalThis.__mduOldFin10: como antes)
-const FIN10 = () => globalThis.__mduOldFin10 !== true;
+// cada uno)
 const L10 = {
   volvere: 'Algún día volveré, lo prometo.',
   noLloren: 'No lloren por mí, amigos míos, pues en el cielo yace nuestra patria, y ahí es donde yo iré...',
@@ -215,15 +185,13 @@ const L9 = {
 // una por parte y sin repetir —el sacrificio, el funeral, el fogón—; los
 // carteles con 5 s de negro y silencio y 5 s de texto; la despedida al paso de
 // lo que se dice, con la cámara en el que habla; el mate en las manos de
-// Fierro y el dorado en su misma pose. globalThis.__mduOldFin8: como antes)
-const FIN8 = () => globalThis.__mduOldFin8 !== true;
+// Fierro y el dorado en su misma pose)
 // (2026-10-10, el usuario, "ajustes cinemática final": la canción de la muerte
 // del Gauchito arranca cuando aparece el cartel de "Mercedes" —no al abrirse el
 // estero—; en los negros no suena el ruido de fondo de la isla (`hush`, lo mira
 // fx/eclipseAmbience); y en el silencio puro de los negros —no sobre los
 // textos—, el coro de "ahhh" del final de Der Mateendrache (core/audio choir),
-// sin abusar: uno por cartel. globalThis.__mduOldFin11: como antes)
-const FIN11 = () => globalThis.__mduOldFin11 !== true;
+// sin abusar: uno por cartel)
 // (FIN8) cuál de los jinetes del estero es el sargento: el de la punta de la
 // ronda (los del medio quedan detrás del tronco del algarrobo, visto desde el Gil)
 const SGT = 5;
@@ -264,7 +232,6 @@ const WIND_K = 0.25;
 // vuelca. La normal de la palma en el hueso de la derecha de los gauchos es -x
 // (medido cebando). Hasta PALM_LEVEL[0] grados no se toca; desde PALM_LEVEL[1],
 // nivelada del todo. Devuelve cuánto estaba volcada (grados).
-// (globalThis.__mduFinPalmaVieja: como antes)
 const PALM_AXIS = new THREE.Vector3(-1, 0, 0);
 const PALM_LEVEL = [8, 22];
 const _pq = new THREE.Quaternion();
@@ -277,13 +244,13 @@ const BEL_PALM = new THREE.Vector3(0, 0, 1);
 // dónde va la base del mate en su palma (m, en el hueso de la mano: x hacia el
 // pulgar, y hacia los dedos, z afuera de la palma). Medido con los vértices
 // que mueve el hueso: antes la base quedaba 4 cm adentro de la mano.
-const BEL_HOLD = [+(globalThis.__mduBelHoldX ?? 0.022), +(globalThis.__mduBelHoldY ?? 0.115), +(globalThis.__mduBelHoldZ ?? 0.017)];
+const BEL_HOLD = [0.022, 0.115, 0.017];
 function levelPalm(bone, axis = PALM_AXIS, lo = PALM_LEVEL[0], hi = PALM_LEVEL[1]) {
   bone.getWorldQuaternion(_pq);
   _pn.copy(axis).applyQuaternion(_pq);
   const ang = (Math.acos(Math.max(-1, Math.min(1, _pn.y))) * 180) / Math.PI;
   const w = hi <= lo ? 1 : smooth(Math.max(0, Math.min(1, (ang - lo) / (hi - lo))));
-  if (w <= 0 || !bone.parent || globalThis.__mduFinPalmaVieja === true) return ang;
+  if (w <= 0 || !bone.parent) return ang;
   // (el giro que la nivela, en el mundo; al hueso, en el marco de su padre)
   _pf.setFromUnitVectors(_pn, UP);
   if (w < 1) _pf.slerp(_pp.identity(), 1 - w);
@@ -301,7 +268,7 @@ export default class EclipseEnding extends CastleCine {
     ahhWarm(ee.g);
     // (el ruido de fondo de la isla, fx/eclipseAmbience, a un tercio durante
     // toda la escena: tapaba la música. El usuario, 2026-10-10)
-    this.ambK = globalThis.__mduFinViento === true ? 1 : 0.3;
+    this.ambK = 0.3;
   }
 
   // (en negro —entre escenas— tampoco suena el viento: windHush)
@@ -314,18 +281,16 @@ export default class EclipseEnding extends CastleCine {
   say(who, text) {
     // (FIN8: si todavía habla el de antes, la línea espera —el texto y la voz
     // juntos—; antes el texto ya decía la que seguía mientras sonaba la anterior)
-    if (FIN8()) {
-      const A = this.g.audio;
-      const busy = Math.max((this.voiceTill || 0) - this.t, A?.ctx ? (A.voiceEnd || 0) - A.ctx.currentTime : 0);
-      if (busy > 0.08) {
-        this.later(busy + 0.1, () => this.say(who, text));
-        return busy + 0.1 + est(text) + 0.5;
-      }
+    const A = this.g.audio;
+    const busy = Math.max((this.voiceTill || 0) - this.t, A?.ctx ? (A.voiceEnd || 0) - A.ctx.currentTime : 0);
+    if (busy > 0.08) {
+      this.later(busy + 0.1, () => this.say(who, text));
+      return busy + 0.1 + est(text) + 0.5;
     }
     const d = super.say(who, text);
-    if (FIN8()) this.voiceTill = this.t + (this.g.audio?.sayWait || 0) + d - 0.35;
+    this.voiceTill = this.t + (this.g.audio?.sayWait || 0) + d - 0.35;
     // (FIN4: quien habla, con su nombre; Fierro narra sin nombre)
-    if (FIN4() && whoOf(who)) this.textEl.textContent = `${whoOf(who)}: ${text}`;
+    if (whoOf(who)) this.textEl.textContent = `${whoOf(who)}: ${text}`;
     const shown = this.textEl.textContent;
     this.later(d + 1.6, () => {
       if (this.textEl.textContent === shown) this.quiet();
@@ -385,9 +350,9 @@ export default class EclipseEnding extends CastleCine {
     this.timers.push({ t: (this.stepAt ?? this.t) + secs, fn });
   }
   // (sesión 1f: la lente de cada toma la pisaba la de la partida —Game.js
-  // targetFov—: ahora la pide; __mduOldEclFin: como antes)
+  // targetFov—: ahora la pide)
   setFov(f) {
-    this.wantFov = FIN2() ? f : null;
+    this.wantFov = f;
     super.setFov(f);
   }
   cut(dur, p0, p1, l0, l1, fov = 50) {
@@ -415,7 +380,7 @@ export default class EclipseEnding extends CastleCine {
     if (ar?.actors) ar.actors.visible = false;
     // (FIN8: la Marcha se va de a poco sobre el campo al alba; después, el
     // viento solo hasta que el Gil suelta el mate)
-    g.music?.stop?.(FIN8() ? 9 : 3);
+    g.music?.stop?.(9);
     // el fin de la partida (Game.win) sin otra cinemática después: como el estero
     this.hookWin();
     // los decorados y el cielo
@@ -476,10 +441,8 @@ export default class EclipseEnding extends CastleCine {
       };
     }
     this.buildCast();
-    if (FIN3()) {
-      this.claroFogon();
-      this.buildRiders();
-    }
+    this.claroFogon();
+    this.buildRiders();
     this.mate = buildPrimerMate(g);
     this.root.add(this.mate);
     this.lamp = buildLantern(g);
@@ -599,14 +562,12 @@ export default class EclipseEnding extends CastleCine {
       B.list.push(r);
       return r;
     };
-    this.fierro = add(905, { ghost: !FIN2(), dead: true });
-    if (FIN2()) {
-      // (de cuerpo entero: el ánima azul transparente parecía un muñeco de prueba)
-      const FM = this.fierro.a.M;
-      FM.poncho.color.set(0x4a3a2c);
-      FM.hat?.color?.set(0x1c1612);
-      FM.band?.color?.set(0x6a4a2a);
-    } else this.fierro.a.M.poncho.color.set(0x5a7ab0).multiplyScalar(1.7);
+    this.fierro = add(905, { ghost: false, dead: true });
+    // (de cuerpo entero: el ánima azul transparente parecía un muñeco de prueba)
+    const FM = this.fierro.a.M;
+    FM.poncho.color.set(0x4a3a2c);
+    FM.hat?.color?.set(0x1c1612);
+    FM.band?.color?.set(0x6a4a2a);
     this.gold = add(906, { dead: true });
     const M = this.gold.a.M;
     M.poncho.color.set(0x9a6c1e);
@@ -683,10 +644,10 @@ export default class EclipseEnding extends CastleCine {
       sc.far = 260;
       sc.updateProjectionMatrix();
     }
-    if (FIN3()) this.claroMode(k === 'fogon' || k === 'vision3');
+    this.claroMode(k === 'fogon' || k === 'vision3');
     // (FIN8: el facón con la cinta y la cruz son la tumba: de noche, antes de
     // que lo maten, no están)
-    if (FIN8() && this.sets.parts?.facon) {
+    if (this.sets.parts?.facon) {
       this.sets.parts.facon.visible = k === 'manana';
       this.tumba ||= this.buildTumba();
       this.tumba.visible = k === 'manana';
@@ -752,11 +713,11 @@ export default class EclipseEnding extends CastleCine {
   // pasadas del posproceso que ui/cineWarm no compila, y 213 mallas que subían
   // a la placa—. Los decorados se dibujan una vez antes, enteros y por el
   // camino de siempre, tapados por el blanco de la visión (en la misma tarea:
-  // esos cuadros no llegan a la pantalla). __mduNoFinWarm: como antes)
+  // esos cuadros no llegan a la pantalla))
   warmSets() {
     const g = this.g;
     const SG = this.sets.groups;
-    if (this.warmed || !SG?.estero || globalThis.__mduNoFinWarm === true) return;
+    if (this.warmed || !SG?.estero) return;
     this.warmed = true;
     const cam = g.camera;
     const k0 = this.modeK;
@@ -935,7 +896,7 @@ export default class EclipseEnding extends CastleCine {
       const h = this.horses.add({ x: 0, y: 0, z: 0, yaw: 0, gait: null });
       h.visible = false;
       // (FIN8: el del medio es el sargento: lleva sable —envainado hasta que lo saca—)
-      const a = granadero(A.people, { id: 720 + i, pos: new THREE.Vector3(), yaw: 0, sable: FIN8() && i === SGT ? 'simple' : null });
+      const a = granadero(A.people, { id: 720 + i, pos: new THREE.Vector3(), yaw: 0, sable: i === SGT ? 'simple' : null });
       a.r.dead = true;
       const m = new Montura(a, h, { brazos: 'senala' });
       this.riders.push({ h, a, m });
@@ -957,7 +918,7 @@ export default class EclipseEnding extends CastleCine {
     if (!L0) {
       // (sesión 1f: el universo que se cose se aclara de a poco: de lejos las
       // islas eran manchas negras sobre violeta)
-      if (FIN2() && this.modeK === 'islas' && this.sew && this.base0) {
+      if (this.modeK === 'islas' && this.sew && this.base0) {
         const d = smooth(clamp01((this.t - this.sew.t - 4) / 12));
         const B0 = this.base0;
         if (w.hemi && B0.hemi) w.hemi.intensity = B0.hemi.i * (1.4 + 1.6 * d);
@@ -993,7 +954,7 @@ export default class EclipseEnding extends CastleCine {
     if (f) {
       f.color.set(L0.fog);
       // (F4: en los decorados de día, más bruma: el fondo se pierde en el aire)
-      const haze = (this.modeK === 'manana' || this.modeK === 'santuario') && L0.fogSet && globalThis.__mduOldFinSets !== true;
+      const haze = (this.modeK === 'manana' || this.modeK === 'santuario') && L0.fogSet;
       if (haze && L0.fogSetC) f.color.set(L0.fogSetC);
       if (f.density != null) f.density = haze ? L0.fogSet : L0.fogD;
     }
@@ -1090,7 +1051,7 @@ export default class EclipseEnding extends CastleCine {
     const m = this.mate;
     // (FIN8: a la vista si se ve el elenco del que lo tiene: en el fogón —el
     // elenco B— el Primer Mate nunca aparecía en las manos de Fierro)
-    const cast = FIN8() && o?.r ? [this.A, this.B, this.Sx].find((C) => C.list.includes(o.r)) || this.A : this.A;
+    const cast = o?.r ? [this.A, this.B, this.Sx].find((C) => C.list.includes(o.r)) || this.A : this.A;
     m.visible = !!o && cast.people.root.visible && !this.mateHide;
     if (!m.visible) return;
     if (o.kind === 'two') {
@@ -1127,32 +1088,16 @@ export default class EclipseEnding extends CastleCine {
       if (!B?.LeftHand) return (m.visible = false);
       // (2026-10-10, el usuario otra vez: "le atraviesa la mano". La lleva
       // abierta: ahora la palma nivelada y el mate parado encima, con la base
-      // en la palma. __mduBelGripViejo: como antes)
-      if (globalThis.__mduBelGripViejo !== true) {
-        levelPalm(B.LeftHand, BEL_PALM, 0, 0);
-        B.LeftHand.getWorldPosition(tmpV);
-        B.LeftHand.getWorldQuaternion(_pq);
-        tmpV.addScaledVector(tmpW.set(1, 0, 0).applyQuaternion(_pq), BEL_HOLD[0]);
-        tmpV.addScaledVector(tmpW.set(0, 1, 0).applyQuaternion(_pq), BEL_HOLD[1]);
-        tmpV.addScaledVector(tmpW.set(0, 0, 1).applyQuaternion(_pq), BEL_HOLD[2]);
-        m.position.copy(tmpV);
-        m.quaternion.setFromAxisAngle(UP, o.r.yaw);
-        return;
-      }
+      // en la palma)
+      levelPalm(B.LeftHand, BEL_PALM, 0, 0);
       B.LeftHand.getWorldPosition(tmpV);
-      B.LeftForeArm.getWorldPosition(tmpW);
-      tmpW.subVectors(tmpV, tmpW).normalize();
-      // (la palma mira al cuerpo: el porongo, un poco hacia adentro)
-      if (B.Spine) {
-        B.Spine.getWorldPosition(tmpU).sub(tmpV);
-        tmpU.addScaledVector(tmpW, -tmpU.dot(tmpW));
-        tmpU.y = 0;
-        if (tmpU.lengthSq() > 1e-6) tmpV.addScaledVector(tmpU.normalize(), BEL_GRIP[2]);
-      }
-      tmpV.addScaledVector(tmpW, BEL_GRIP[0]);
-      tmpV.y += BEL_GRIP[1];
+      B.LeftHand.getWorldQuaternion(_pq);
+      tmpV.addScaledVector(tmpW.set(1, 0, 0).applyQuaternion(_pq), BEL_HOLD[0]);
+      tmpV.addScaledVector(tmpW.set(0, 1, 0).applyQuaternion(_pq), BEL_HOLD[1]);
+      tmpV.addScaledVector(tmpW.set(0, 0, 1).applyQuaternion(_pq), BEL_HOLD[2]);
       m.position.copy(tmpV);
       m.quaternion.setFromAxisAngle(UP, o.r.yaw);
+      return;
     } else if (o.kind === 'part') {
       tmpV.set(0, -0.2, 0).applyMatrix4(o.a.mats[6]);
       m.position.copy(tmpV).add(tmpW.set(0, 0.02, 0));
@@ -1180,8 +1125,7 @@ export default class EclipseEnding extends CastleCine {
     const CIR0 = F(4.7, 0.3);
     const ANA0 = F(5.3, 1.9);
     // (donde Cirilo recibe el mate y se despide; ver el paso 3)
-    const OB = globalThis.__mduOldFinBel === true;
-    const CIR1 = OB ? F(5.4, 0.15) : F(5.75, -0.1);
+    const CIR1 = F(5.75, -0.1);
     const placeCampo = () => {
       this.put(A, gil, GIL0, F(12, 0.2), 'gilMateHold');
       this.put(A, ben, BEN0, GIL0, 'cower');
@@ -1201,7 +1145,7 @@ export default class EclipseEnding extends CastleCine {
     // (E3) un cartel de tiempo, en negro, entre dos pasos
     // (FIN8: con aire —negro, silencio, texto, canción nueva—; el del santuario
     // (`soft`) no corta: va escrito sobre la imagen, con la misma canción)
-    const card = (text, onBlack, hold, soft, onText, chord) => step(() => (!TIEMPO() ? 0 : FIN8() ? (soft ? 0 : this.timeCard8(text, hold, onText, chord)) : this.timeCard(text, onBlack, hold)));
+    const card = (text, onBlack, hold, soft, onText, chord) => step(() => (soft ? 0 : this.timeCard8(text, hold, onText, chord)));
 
     // 1. El campo de San Lorenzo al alba, con humo
     step(() => {
@@ -1217,30 +1161,27 @@ export default class EclipseEnding extends CastleCine {
       this.at(0.6, () => this.modeK === 'campo' && A.show(true));
       this.wind(14);
       // (el "ahhhh" del cielo, al arrancar la escena final y en ningún otro
-      // lado: el usuario, 2026-10-10. __mduFinSinAhh: sin él)
-      if (globalThis.__mduFinSinAhh !== true) this.at(0.5, () => ahhPlay(this.g, { gain: 0.8 }));
+      // lado: el usuario, 2026-10-10)
+      this.at(0.5, () => ahhPlay(this.g, { gain: 0.8 }));
       eclSfx(this.g).load?.(['portal-caos-abre', 'portal-cose']);
       this.at(0.4, () => this.fade(false));
       this.cut(10, F(1.2, -5.4, 1.85), F(2.6, -4.6, 1.75), F(9.6, 0.2, 1.25), F(9.8, 0.3, 1.3), 46);
       this.at(2.2, () => this.say('fierro', L.todo));
       // (FIN3: música todo el final; la de la despedida, desde acá)
-      if (FIN3() && !FIN8()) this.at(0.3, () => g.music?.play?.('fin-eclipse-a', { fadeIn: 5, while: (G) => G.ee?.scene?.cine === this }));
       return 10;
     });
     // 2. El mate brilla: lo que podría ser (el Gil viejo, en paz, con los suyos)
     step(() => {
-      if (FIN3()) {
-        // (FIN3: el cuadro sigue al mate, que es lo que brilla; antes, el poncho)
-        const fu = F(9, 0).sub(F(8, 0)).setY(0).normalize();
-        const fv = F(8, 1).sub(F(8, 0)).setY(0).normalize();
-        this.shot(1.8, (u, lt, pos, look) => {
-          this.mate.getWorldPosition(look);
-          pos.copy(look).addScaledVector(fu, 0.95 - 0.15 * u).addScaledVector(fv, 0.32);
-          pos.y += 0.3;
-          look.y += 0.04;
-        });
-        this.setFov(34);
-      } else this.cut(1.8, F(9.1, 0.35, 1.32), F(8.95, 0.3, 1.28), F(8.36, 0, 1.12), F(8.36, 0, 1.12), 34);
+      // (FIN3: el cuadro sigue al mate, que es lo que brilla; antes, el poncho)
+      const fu = F(9, 0).sub(F(8, 0)).setY(0).normalize();
+      const fv = F(8, 1).sub(F(8, 0)).setY(0).normalize();
+      this.shot(1.8, (u, lt, pos, look) => {
+        this.mate.getWorldPosition(look);
+        pos.copy(look).addScaledVector(fu, 0.95 - 0.15 * u).addScaledVector(fv, 0.32);
+        pos.y += 0.3;
+        look.y += 0.04;
+      });
+      this.setFov(34);
       this.glowTo = 1;
       this.at(1.6, () => {
         this.whiteEl.style.transition = 'opacity 0.5s';
@@ -1251,10 +1192,10 @@ export default class EclipseEnding extends CastleCine {
         // (2026-10-07, el usuario: "la primera vez que aparece el campamento
         // está con los gráficos viejos y algunos están sentados sobre el
         // aire": era el decorado viejo con los asientos ya en el claro. Ahora
-        // el claro de verdad, con sus troncos. __mduOldFinVision: como antes)
+        // el claro de verdad, con sus troncos)
         // (con el blanco puesto: los decorados que vienen, dibujados una vez)
         this.warmSets();
-        this.mode(FIN3() && globalThis.__mduOldFinVision !== true ? 'vision3' : 'vision');
+        this.mode('vision3');
         g.renderer.domElement.style.filter = 'sepia(0.85) brightness(1.05) contrast(0.95)';
         const fire = S('fogon', 0, 0);
         const sit = (r, i, clip) => this.put(A, r, this.seatW(i), fire, clip);
@@ -1279,48 +1220,25 @@ export default class EclipseEnding extends CastleCine {
         placeCampo();
         this.white(false);
         // la cara del Gil: cierra los ojos y apaga el mate
-        this.cut(FIN4() ? (FIN8() ? 14.5 : 11) : 7.5, F(9.45, 0.4, 1.6), F(9.3, 0.35, 1.58), F(8.0, 0.0, 1.45), F(8.0, 0.0, 1.38), 32);
+        this.cut(14.5, F(9.45, 0.4, 1.6), F(9.3, 0.35, 1.58), F(8.0, 0.0, 1.45), F(8.0, 0.0, 1.38), 32);
       });
-      if (FIN4() && FIN8()) {
-        // (cada línea cuando terminó la de antes: se pisaban y el texto iba adelantado)
-        const t1 = 8.0;
-        const t2 = t1 + est(L4.roto) + 0.5;
-        this.at(t1, () => this.say('sanmartin', L4.roto));
-        this.at(10.6, () => {
-          gil.a.faint = 1;
-          this.glowTo = 0;
-        });
-        if (FIN10()) {
-          // (el usuario: "se pierde el hilo": "Y lo sueltan" va antes de que
-          // el Gil diga que en el suyo lo esperan para matarlo. Lo dice Fierro,
-          // como siempre —ahora con su nombre—; __mduFinSueltanSM: San Martín)
-          const t3 = t2 + est(L.sueltan) + 0.6;
-          this.at(t2, () => this.say(globalThis.__mduFinSueltanSM === true ? 'sanmartin' : 'fierro', L.sueltan));
-          this.at(t3, () => this.say('gil', L4.espera));
-          return t3 + est(L4.espera) + 0.7;
-        }
-        const t3 = t2 + est(L4.espera) + 0.6;
-        this.at(t2, () => this.say('gil', L4.espera));
-        this.at(t3, () => this.say('fierro', L.sueltan));
-        return t3 + est(L.sueltan) + 0.7;
-      }
-      if (FIN4()) {
-        // (lo dicen: San Martín, de afuera de cuadro; el Gil, que sabe a qué vuelve)
-        this.at(8.0, () => this.say('sanmartin', L4.roto));
-        this.at(10.6, () => {
-          gil.a.faint = 1;
-          this.glowTo = 0;
-        });
-        this.at(13.7, () => this.say('gil', L4.espera));
-        this.at(16.6, () => this.say('fierro', L.sueltan));
-        return 18.5;
-      }
-      this.at(8.6, () => {
+      // (cada línea cuando terminó la de antes: se pisaban y el texto iba adelantado)
+      const t1 = 8.0;
+      const t2 = t1 + est(L4.roto) + 0.5;
+      this.at(t1, () => this.say('sanmartin', L4.roto));
+      this.at(10.6, () => {
         gil.a.faint = 1;
         this.glowTo = 0;
       });
-      this.at(11.6, () => this.say('fierro', L.sueltan));
-      return 15;
+      {
+        // (el usuario: "se pierde el hilo": "Y lo sueltan" va antes de que
+        // el Gil diga que en el suyo lo esperan para matarlo. Lo dice Fierro,
+        // como siempre —ahora con su nombre—)
+        const t3 = t2 + est(L.sueltan) + 0.6;
+        this.at(t2, () => this.say('fierro', L.sueltan));
+        this.at(t3, () => this.say('gil', L4.espera));
+        return t3 + est(L4.espera) + 0.7;
+      }
     });
     // 3. Se lo da a San Martín, que mira a Belgrano; Belgrano se lo da a los compañeros
     step(() => {
@@ -1328,7 +1246,7 @@ export default class EclipseEnding extends CastleCine {
       // (FIN8: "sacrificio gil" tiene 18 s de entrada suave y después sube: sube
       // justo cuando la cámara corta a Benito llorando, a los 4,2 s de la
       // despedida, y se termina sola cuando el Gil entra al desgarro)
-      if (FIN8()) this.at((globalThis.__mduOldFinBel !== true ? 17.5 : 15) + 4.2 - 18, () => this.song('fin8-sacrificio'));
+      this.at(17.5 + 4.2 - 18, () => this.song('fin8-sacrificio'));
       this.cut(6.5, F(10.2, -4.2, 1.5), F(10.6, -3.9, 1.55), F(11.6, 0.4, 1.45), F(12.4, 0.8, 1.7), 46);
       this.at(0.3, () => {
         this.mateAt = { kind: 'palm', r: gil };
@@ -1336,7 +1254,7 @@ export default class EclipseEnding extends CastleCine {
       });
       this.at(3.6, () => (this.smLook = 1));
       this.at(4.2, () => (this.smShake = this.t));
-      if (FIN3()) this.at(4.5, () => this.say('sanmartin', L3.noEsMio));
+      this.at(4.5, () => this.say('sanmartin', L3.noEsMio));
       this.at(5.6, () => (this.smLook = -1));
       this.at(6.5, () => {
         this.say('fierro', L.todos);
@@ -1347,77 +1265,27 @@ export default class EclipseEnding extends CastleCine {
       this.at(7.3, () => A.walkTo(gil, F(11.3, -1.9), 1.3, 'offer', { loop: false, fade: 0.3 }));
       this.at(9.0, () => (bel.arm = 2));
       this.at(9.6, () => {
-        this.mateAt = BEL9() ? { kind: 'grip', a: bel.a, r: bel.r } : { kind: 'part', a: bel.a };
-        if (BEL9()) this.later(0.5, () => (bel.arm = 3));
+        this.mateAt = { kind: 'grip', a: bel.a, r: bel.r };
+        this.later(0.5, () => (bel.arm = 3));
         A.act(gil, 'chestHand', { loop: true, fade: 0.5 });
       });
       // Belgrano camina hasta los compañeros y se lo da a Cirilo, que se adelanta
       // (2026-10-07, el usuario: "Belgrano se adelanta caminando como Speedy
       // González y atraviesa al Gil"; y después "sigue ahí en el medio" de las
-      // despedidas. Ahora rodea al Gil a paso, se lo da a un metro y se aparta.
-      // __mduOldFinBel: como antes)
-      if (globalThis.__mduOldFinBel !== true) {
-        this.at(10.2, () => this.belPath([F(10.3, -3.3), F(6.75, -0.75)], 1.25, CIR1));
-        this.at(13.6, () => A.walkTo(cir, CIR1, 1.0, 'receive', { loop: false, fade: 0.3 }));
-        // (lo estira recién para darlo)
-        if (BEL9()) this.at(14.5, () => (bel.arm = 2));
-        this.at(15.2, () => (this.mateAt = { kind: 'palm', r: cir }));
-        this.at(15.6, () => (bel.arm = 0));
-        this.at(16.2, () => this.belPath([F(8.2, -2.6), F(9.4, -3.7)], 1.1, F(6.0, -0.4)));
-        this.at(16.4, () => A.act(cir, 'cebar', { loop: true, fade: 0.5 }));
-        return 17.5;
-      }
-      this.at(10.2, () => {
-        bel.walk = { from: bel.r.pos.clone(), to: F(6.6, 0.0), t: 0, d: 2.4 };
-      });
-      this.at(11.3, () => A.walkTo(cir, F(5.4, 0.15), 0.9, 'receive', { loop: false, fade: 0.3 }));
-      this.at(13.2, () => (this.mateAt = { kind: 'palm', r: cir }));
-      this.at(13.6, () => (bel.arm = 0));
-      this.at(14.3, () => A.act(cir, 'cebar', { loop: true, fade: 0.5 }));
-      return 15;
+      // despedidas. Ahora rodea al Gil a paso, se lo da a un metro y se aparta)
+      this.at(10.2, () => this.belPath([F(10.3, -3.3), F(6.75, -0.75)], 1.25, CIR1));
+      this.at(13.6, () => A.walkTo(cir, CIR1, 1.0, 'receive', { loop: false, fade: 0.3 }));
+      // (lo estira recién para darlo)
+      this.at(14.5, () => (bel.arm = 2));
+      this.at(15.2, () => (this.mateAt = { kind: 'palm', r: cir }));
+      this.at(15.6, () => (bel.arm = 0));
+      this.at(16.2, () => this.belPath([F(8.2, -2.6), F(9.4, -3.7)], 1.1, F(6.0, -0.4)));
+      this.at(16.4, () => A.act(cir, 'cebar', { loop: true, fade: 0.5 }));
+      return 17.5;
     });
     // 4. Se despide de los tres
     step(() => {
-      if (FIN4() && FIN8() && !OB) return this.adios8(A, gil, ben, cir, ana, F, CIR1, ANA0);
-      if (FIN4()) return this.adios(A, gil, ben, cir, ana, F, OB, CIR1, ANA0);
-      this.cut(4.2, F(2.4, 0.9, 1.6), F(2.6, 0.7, 1.6), F(9, -0.8, 1.3), F(7, -1.0, 1.3), 46);
-      A.walkTo(gil, F(6.0, -1.5), 3.8, 'chestHand', { loop: true, fade: 0.5 });
-      // (FIN3: de costado, los dos enteros —de atrás, la espalda del Gil tapaba
-      // al otro— y a 0,8 m: a 0,6 se metían uno en el otro)
-      const f3 = FIN3();
-      this.at(4.2, () => {
-        if (f3) this.cut(3, F(5.65, -3.85, 1.55), F(5.75, -3.75, 1.55), F(5.6, -1.5, 1.4), F(5.6, -1.5, 1.38), 40);
-        else this.cut(3, F(7.25, -2.15, 1.7), F(7.15, -2.1, 1.68), F(5.2, -1.5, 1.45), F(5.2, -1.5, 1.42), 40);
-        A.act(ben, 'sob', { loop: true, fade: 0.5 });
-      });
-      // (2026-10-07: "no se despide con el de azul, o lo hace apuntando como el
-      // orto": llegaba mirando para donde caminaba. Ahora se paran de frente)
-      const GC = OB ? F(f3 ? 6.2 : 6.0, 0.25) : F(6.5, 0.3);
-      this.at(7.2, () => {
-        A.walkTo(gil, GC, 1.4, 'chestHand', { loop: true, fade: 0.5 });
-        if (!OB) this.cut(2.6, F(7.0, 2.6, 1.7), F(6.9, 2.5, 1.68), F(6.1, 0.1, 1.42), F(6.1, 0.1, 1.4), 40);
-        else if (f3) this.cut(2.6, F(7.0, 2.6, 1.7), F(6.9, 2.5, 1.68), F(5.5, 0.2, 1.42), F(5.5, 0.2, 1.4), 40);
-        else this.cut(2.6, F(7.25, -0.4, 1.7), F(7.15, -0.35, 1.68), F(5.4, 0.15, 1.45), F(5.4, 0.15, 1.42), 40);
-      });
-      if (!OB) {
-        this.at(8.4, () => {
-          A.turnTo(gil, CIR1, 0.35);
-          A.turnTo(cir, GC, 0.45);
-        });
-      }
-      this.at(8.9, () => A.act(cir, 'cool', { loop: true, fade: 0.5 }));
-      const ANA1 = F(f3 ? 6.15 : 5.92, 1.9);
-      this.at(9.8, () => {
-        A.walkTo(gil, ANA1, 1.4, 'idle', { loop: true, fade: 0.4 });
-        this.cut(4.4, F(5.6, 4.6, 1.6), F(5.7, 4.4, 1.6), F(5.6, 1.9, 1.2), F(5.6, 1.9, 1.2), 40);
-      });
-      this.at(11.3, () => {
-        A.turnTo(gil, ANA0, 0.4);
-        A.act(gil, 'shake', { fade: 0.3 });
-        A.turnTo(ana, ANA1, 0.4);
-        A.act(ana, 'shake', { fade: 0.3 });
-      });
-      return 14.2;
+      return this.adios8(A, gil, ben, cir, ana, F, CIR1, ANA0);
     });
     // 5. El desgarro al estero de 1877: el Gil entra solo
     step(() => {
@@ -1428,135 +1296,91 @@ export default class EclipseEnding extends CastleCine {
       rr.visible = true;
       this.riftOpen = { t: this.stepAt ?? this.t };
       this.sfx('tear', RP);
-      if (FIN3()) {
-        // (FIN3) el Gil se da vuelta; San Martín, de frente, alza el sable que el
-        // Gil le trajo del Monumento y le habla; el Gil entra al desgarro
-        this.cut(3.4, F(2.6, 1.3, 1.62), F(3.0, 1.25, 1.62), F(9.5, 1.2, 1.5), F(10.0, 1.2, 1.6), 46);
-        this.at(1.0, () => {
-          A.turnTo(gil, SMH, 0.8);
+      // (FIN3) el Gil se da vuelta; San Martín, de frente, alza el sable que el
+      // Gil le trajo del Monumento y le habla; el Gil entra al desgarro
+      this.cut(3.4, F(2.6, 1.3, 1.62), F(3.0, 1.25, 1.62), F(9.5, 1.2, 1.5), F(10.0, 1.2, 1.6), 46);
+      this.at(1.0, () => {
+        A.turnTo(gil, SMH, 0.8);
+      });
+      // (2026-10-07, el usuario: "San Martín habla medio rápido; algo tipo
+      // 'serás lo que debas ser... o no serás nada' en lugar de todo
+      // corrido": dos tiempos, con la pausa)
+      const D = 1.8;
+      this.at(1.6, () => {
+        // (FIN10, el usuario: "cuando San Martín levanta el sable para decir
+        // 'serás lo que debas ser', se tapa la cara": en alto y al costado)
+        this.mont.brazos = 'alza';
+        // (de abajo y de frente, siguiendo al jinete: la cabeza y el sable en alto)
+        const c0 = F(10.6, -1.3);
+        const c1 = F(10.9, -1.15);
+        this.shot(3.6 + D, (u, lt, pos, look) => {
+          const sp = this.sm.r.pos;
+          pos.lerpVectors(c0, c1, smooth(u));
+          pos.y = sp.y + 0.75;
+          look.copy(sp);
+          look.y += 1.3;
         });
-        // (2026-10-07, el usuario: "San Martín habla medio rápido; algo tipo
-        // 'serás lo que debas ser... o no serás nada' en lugar de todo
-        // corrido": dos tiempos, con la pausa. __mduOldFinSeras: de un tirón)
-        const OS = globalThis.__mduOldFinSeras === true;
-        const D = OS ? 0 : 1.8;
-        this.at(1.6, () => {
-          // (FIN10, el usuario: "cuando San Martín levanta el sable para decir
-          // 'serás lo que debas ser', se tapa la cara": en alto y al costado)
-          this.mont.brazos = FIN10() ? 'alza' : 'senala';
-          // (de abajo y de frente, siguiendo al jinete: la cabeza y el sable en alto)
-          const c0 = F(10.6, -1.3);
-          const c1 = F(10.9, -1.15);
-          this.shot(3.6 + D, (u, lt, pos, look) => {
-            const sp = this.sm.r.pos;
-            pos.lerpVectors(c0, c1, smooth(u));
-            pos.y = sp.y + 0.75;
-            look.copy(sp);
-            look.y += 1.3;
-          });
-          this.setFov(32);
-        });
-        if (OS) this.at(2.0, () => this.say('sanmartin', L3.seras));
-        else {
-          this.at(2.0, () => this.say('sanmartin', L3.seras1));
-          this.at(4.6, () => this.say('sanmartin', L3.seras2));
-        }
-        this.at(5.2 + D, () => {
-          A.turnTo(gil, RP, 0.8);
-          A.act(gil, 'walk', { loop: true, fade: 0.3, rate: 0.4 });
-          this.cut(5.6, F(2.6, 1.3, 1.62), F(3.0, 1.25, 1.62), F(9.5, 1.2, 1.5), F(10.0, 1.2, 1.6), 46);
-        });
-        if (FIN10()) return 5.9 + D + this.gilAdios(A, gil, ben, cir, ana, RP, F, 5.9 + D);
-        this.at(5.9 + D, () => A.walkPath(gil, [RP.clone(), F(11.6, 1.2)], 0.95, 'idle', { loop: true }));
-        this.at(6.4 + D, () => this.say('fierro', L.volvio));
-        this.at(6.2 + D, () => A.act(ben, 'chestHand', { loop: true, fade: 0.6 }));
-        this.at(6.8 + D, () => A.act(ana, 'brimBow', { fade: 0.5 }));
-        this.at(9.9 + D, () => {
-          gil.dead = true;
-          this.mateAt = { kind: 'palm', r: cir };
-        });
-        this.at(10.5 + D, () => {
-          this.riftClose = this.t;
-          this.mont.brazos = 'sable';
-        });
-        return 12 + D;
-      }
-      this.cut(8.5, F(2.6, 1.3, 1.62), F(3.0, 1.25, 1.62), F(9.5, 1.2, 1.5), F(10.0, 1.2, 1.6), 46);
-      this.at(1.4, () => {
+        this.setFov(32);
+      });
+      this.at(2.0, () => this.say('sanmartin', L3.seras1));
+      this.at(4.6, () => this.say('sanmartin', L3.seras2));
+      this.at(5.2 + D, () => {
         A.turnTo(gil, RP, 0.8);
         A.act(gil, 'walk', { loop: true, fade: 0.3, rate: 0.4 });
+        this.cut(5.6, F(2.6, 1.3, 1.62), F(3.0, 1.25, 1.62), F(9.5, 1.2, 1.5), F(10.0, 1.2, 1.6), 46);
       });
-      this.at(2.2, () => A.walkPath(gil, [RP.clone(), F(11.6, 1.2)], 0.95, 'idle', { loop: true }));
-      this.at(1.8, () => this.say('fierro', L.volvio));
-      this.at(2.6, () => A.act(ben, 'chestHand', { loop: true, fade: 0.6 }));
-      this.at(3.4, () => A.act(ana, 'brimBow', { fade: 0.5 }));
-      this.at(6.2, () => {
-        gil.dead = true;
-        this.mateAt = { kind: 'palm', r: cir };
-      });
-      this.at(6.9, () => (this.riftClose = this.t));
-      return 8.5;
+      return 5.9 + D + this.gilAdios(A, gil, ben, cir, ana, RP, F, 5.9 + D);
     });
     // (FIN11: la canción de la muerte del Gauchito entra con el cartel de Mercedes)
     card(T4.estero, null, false, false, () => {
-      if (!FIN11()) return;
       this.funeralOn = true;
       this.song('fin8-funeral', { fadeIn: 2.5 });
     }, [45, 52, 57]);
     // 6. El estero de noche: hasta el algarrobo
     step(() => {
       this.mode('estero');
-      if (FIN8() && !this.funeralOn) this.at(0.2, () => this.song('fin8-funeral', { fadeIn: 2.5 }));
+      if (!this.funeralOn) this.at(0.2, () => this.song('fin8-funeral', { fadeIn: 2.5 }));
       this.rift.root.visible = false;
       this.mateAt = null;
       for (const r of [ben, cir, ana]) r.dead = true;
-      if (FIN2()) {
-        // (el Gil vuelve al algarrobo; allá lejos se prenden las antorchas de
-        // los que lo vienen a buscar; se da vuelta, se saca el sombrero y se
-        // arrodilla. La muerte no se ve: negro con el galope que llega)
-        const T0 = S('estero', -1.4, 1.7);
-        this.put(A, gil, S('estero', -7.5, 4.8), S('estero', 0, 0), 'walk', { rate: 0 });
-        A.walkPath(gil, [T0], 1.0, 'idle', { loop: true });
-        this.wind(22, 0.1);
-        this.torchesOn = { t: this.stepAt ?? this.t, to: T0 };
-        this.nextHoof = 0;
-        // A: atrás del Gil, que camina al árbol; adelante, lejos, se prenden las antorchas
-        const fw = new THREE.Vector3().subVectors(T0, S('estero', -7.5, 4.8)).setY(0).normalize();
-        const sd = V3(-fw.z, 0, fw.x);
-        this.shot(6.4, (u, lt, pos, look) => {
-          pos.copy(gil.pos).addScaledVector(fw, -2.9).addScaledVector(sd, 0.7);
-          pos.y += 1.75;
-          look.copy(gil.pos).addScaledVector(fw, 6);
-          look.y += 1.25;
-        });
-        this.setFov(48);
-        // B: se da vuelta hacia los que vienen y se saca el sombrero (de atrás: las antorchas enfrente)
-        const tw = V3(0.75, 0, -0.66).normalize();
-        this.at(6.4, () => {
-          A.turnTo(gil, T0.clone().addScaledVector(tw, 10), 0.9);
-          A.act(gil, 'brimBow', { fade: 0.4 });
-          const c = T0.clone().addScaledVector(tw, -3.3).addScaledVector(V3(-tw.z, 0, tw.x), 0.9);
-          c.y += 1.55;
-          this.cut(4.4, c, c.clone().addScaledVector(tw, 0.3), T0.clone().addScaledVector(tw, 6).setY(T0.y + 1.6), T0.clone().addScaledVector(tw, 6).setY(T0.y + 1.5), 46);
-        });
-        // C: de frente, se arrodilla (la luz de las antorchas ya le pega)
-        this.at(10.8, () => {
-          A.act(gil, 'svKneel', { fade: 0.4 });
-          const c = T0.clone().addScaledVector(tw, 2.6).addScaledVector(V3(-tw.z, 0, tw.x), -0.6);
-          c.y += 1.05;
-          this.cut(2.8, c, c.clone().addScaledVector(tw, -0.25), T0.clone().setY(T0.y + 1.05), T0.clone().setY(T0.y + 0.8), 40);
-        });
-        // D: lejos y bajo: las antorchas cierran el círculo alrededor del árbol
-        this.at(13.6, () => this.cut(3.4, T0.clone().addScaledVector(tw, -9).add(V3(0, 2.4, 0)), T0.clone().addScaledVector(tw, -8).add(V3(0, 2.2, 0)), T0.clone().setY(T0.y + 1.2), T0.clone().setY(T0.y + 1.1), 40));
-        if (FIN8()) return this.muerte8(A, gil, T0, tw);
-        this.at(15.4, () => this.fade(true));
-        return 17;
-      }
+      // (el Gil vuelve al algarrobo; allá lejos se prenden las antorchas de
+      // los que lo vienen a buscar; se da vuelta, se saca el sombrero y se
+      // arrodilla. La muerte no se ve: negro con el galope que llega)
+      const T0 = S('estero', -1.4, 1.7);
       this.put(A, gil, S('estero', -7.5, 4.8), S('estero', 0, 0), 'walk', { rate: 0 });
-      A.walkPath(gil, [S('estero', -1.6, 1.4)], 1.05, 'idle', { loop: true });
-      this.wind(18, 0.1);
-      this.cut(6.4, S('estero', -11, 7.2, 1.7), S('estero', -9.4, 6.0, 1.75), S('estero', -3, 2, 1.6), S('estero', 0, 0, 2.6), 46);
-      return 6.4;
+      A.walkPath(gil, [T0], 1.0, 'idle', { loop: true });
+      this.wind(22, 0.1);
+      this.torchesOn = { t: this.stepAt ?? this.t, to: T0 };
+      this.nextHoof = 0;
+      // A: atrás del Gil, que camina al árbol; adelante, lejos, se prenden las antorchas
+      const fw = new THREE.Vector3().subVectors(T0, S('estero', -7.5, 4.8)).setY(0).normalize();
+      const sd = V3(-fw.z, 0, fw.x);
+      this.shot(6.4, (u, lt, pos, look) => {
+        pos.copy(gil.pos).addScaledVector(fw, -2.9).addScaledVector(sd, 0.7);
+        pos.y += 1.75;
+        look.copy(gil.pos).addScaledVector(fw, 6);
+        look.y += 1.25;
+      });
+      this.setFov(48);
+      // B: se da vuelta hacia los que vienen y se saca el sombrero (de atrás: las antorchas enfrente)
+      const tw = V3(0.75, 0, -0.66).normalize();
+      this.at(6.4, () => {
+        A.turnTo(gil, T0.clone().addScaledVector(tw, 10), 0.9);
+        A.act(gil, 'brimBow', { fade: 0.4 });
+        const c = T0.clone().addScaledVector(tw, -3.3).addScaledVector(V3(-tw.z, 0, tw.x), 0.9);
+        c.y += 1.55;
+        this.cut(4.4, c, c.clone().addScaledVector(tw, 0.3), T0.clone().addScaledVector(tw, 6).setY(T0.y + 1.6), T0.clone().addScaledVector(tw, 6).setY(T0.y + 1.5), 46);
+      });
+      // C: de frente, se arrodilla (la luz de las antorchas ya le pega)
+      this.at(10.8, () => {
+        A.act(gil, 'svKneel', { fade: 0.4 });
+        const c = T0.clone().addScaledVector(tw, 2.6).addScaledVector(V3(-tw.z, 0, tw.x), -0.6);
+        c.y += 1.05;
+        this.cut(2.8, c, c.clone().addScaledVector(tw, -0.25), T0.clone().setY(T0.y + 1.05), T0.clone().setY(T0.y + 0.8), 40);
+      });
+      // D: lejos y bajo: las antorchas cierran el círculo alrededor del árbol
+      this.at(13.6, () => this.cut(3.4, T0.clone().addScaledVector(tw, -9).add(V3(0, 2.4, 0)), T0.clone().addScaledVector(tw, -8).add(V3(0, 2.2, 0)), T0.clone().setY(T0.y + 1.2), T0.clone().setY(T0.y + 1.1), 40));
+      return this.muerte8(A, gil, T0, tw);
     });
     // 7. La cinta colorada en el facón; el sol entre las ramas
     step(() => {
@@ -1564,13 +1388,13 @@ export default class EclipseEnding extends CastleCine {
       this.torchesOn = null;
       if (this.torchG) this.torchG.visible = false;
       this.mode('manana');
-      if (FIN2()) {
+      {
         // (la mañana: el sol bajo, del lado del agua; el facón con la cinta de
         // costado, con el tronco atrás de la cámara; después la grúa: el
         // algarrobo a contraluz con el sol sobre el agua)
         // (FIN3: el sol del lado de la cámara: a contraluz el facón y el piso quedaban negros)
-        const sun = FIN3() ? [0.7, 0.34, 0.45] : [-0.75, 0.3, 0.62];
-        this.lookCfg = { ...LOOKS.manana, dir: sun, sunI: 2.1, ...(FIN3() ? { hI: 1.5, hg: 0x6a5838, ambI: 0.6 } : {}) };
+        const sun = [0.7, 0.34, 0.45];
+        this.lookCfg = { ...LOOKS.manana, dir: sun, sunI: 2.1, hI: 1.5, hg: 0x6a5838, ambI: 0.6 };
         setSky(this.dome, 'manana', V3(...sun).normalize(), V3(0.38, 0.42, -0.82).normalize());
         this.applyLook();
         const fp = this.sets.parts.facon.getWorldPosition(new THREE.Vector3());
@@ -1594,34 +1418,13 @@ export default class EclipseEnding extends CastleCine {
           });
           this.setFov(52);
         });
-        if (FIN8() && TIEMPO()) {
-          // (el sol entre las ramas se come el cuadro: del blanco sale el santuario)
-          this.at(11.2, () => {
-            this.whiteEl.style.transition = 'opacity 1.5s';
-            this.white(true);
-          });
-          return 12.8;
-        }
-        this.at(11.6, () => this.fade(true));
+        // (el sol entre las ramas se come el cuadro: del blanco sale el santuario)
+        this.at(11.2, () => {
+          this.whiteEl.style.transition = 'opacity 1.5s';
+          this.white(true);
+        });
         return 12.8;
       }
-      // (la luz de la mañana por detrás de la cámara: con el sol de la toma de
-      // las ramas, el facón quedaba a contraluz, negro)
-      this.lookCfg = { ...LOOKS.manana, dir: [0.6, 0.5, 0.55] };
-      const fc = this.sets.parts.facon;
-      const fp = fc.getWorldPosition(new THREE.Vector3());
-      this.cut(5, fp.clone().add(V3(0.42, 0.26, 0.34)), fp.clone().add(V3(0.36, 0.24, 0.29)), fp.clone().add(V3(0, 0.19, 0)), fp.clone().add(V3(0, 0.2, 0)), 34);
-      this.at(5, () => {
-        this.lookCfg = LOOKS.manana;
-        const tp = S('estero', 0, 0);
-        this.shot(5.2, (u, lt, pos, look) => {
-          pos.copy(tp).add(tmpV.set(1.6 + u * 0.2, 0.6, 1.8 - u * 0.2));
-          look.copy(tp).add(tmpV.set(-0.6, 6.5, -1.4));
-        });
-        this.setFov(58);
-      });
-      this.at(9.4, () => this.fade(true));
-      return 10.4;
     });
     card(T4.santuario, null, false, true);
     // 8. El santuario del Gauchito
@@ -1632,23 +1435,16 @@ export default class EclipseEnding extends CastleCine {
       const spots = [[-2.3, 3.3], [-1.35, 3.65], [1.4, 3.6], [2.35, 3.25], [-2.0, 4.65], [-0.85, 4.95], [0.95, 4.85], [2.05, 4.45]];
       const clips = ['pray', 'chestHand', 'idle', 'pray', 'idle', 'chestHand', 'pray', 'idle'];
       SX.list.forEach((r, i) => this.put(SX, r, S('santuario', spots[i][0], spots[i][1]), S('santuario', spots[i][0] * 0.4, 0), clips[i], { t: i * 0.7 }));
-      if (FIN8() && TIEMPO()) {
-        // (sale del blanco; el tiempo, escrito sobre la imagen; sigue la canción del funeral)
-        this.fade(false);
-        this.at(0.3, () => {
-          this.whiteEl.style.transition = 'opacity 2.4s';
-          this.white(false);
-        });
-        this.at(1.3, () => this.timeTitle(T4.santuario, 5));
-        this.cut(15, S('santuario', 0.4, 9.6, 2.35), S('santuario', 0.1, 7.6, 2.05), S('santuario', 0, 0, 0.75), S('santuario', 0, 0, 0.85), 44);
-        this.at(7.6, () => this.say('fierro', L.gente));
-        return 15;
-      }
-      this.at(0.3, () => this.fade(false));
-      this.cut(14, S('santuario', 0.4, 9.6, 2.35), S('santuario', 0.1, 7.6, 2.05), S('santuario', 0, 0, 0.75), S('santuario', 0, 0, 0.85), 44);
-      this.at(1.8, () => this.say('fierro', L.gente));
-      if (!FIN8()) this.at(0.2, () => g.music?.play?.('cine-eclipse-final', { fadeIn: 4, while: (G) => G.ee?.scene?.cine === this }));
-      return 14;
+      // (sale del blanco; el tiempo, escrito sobre la imagen; sigue la canción del funeral)
+      this.fade(false);
+      this.at(0.3, () => {
+        this.whiteEl.style.transition = 'opacity 2.4s';
+        this.white(false);
+      });
+      this.at(1.3, () => this.timeTitle(T4.santuario, 5));
+      this.cut(15, S('santuario', 0.4, 9.6, 2.35), S('santuario', 0.1, 7.6, 2.05), S('santuario', 0, 0, 0.75), S('santuario', 0, 0, 0.85), 44);
+      this.at(7.6, () => this.say('fierro', L.gente));
+      return 15;
     });
     // 9. El universo se cose
     step(() => {
@@ -1663,8 +1459,8 @@ export default class EclipseEnding extends CastleCine {
         this.shot(27, (u, lt, pos, look) => {
           const a = 0.8 + u * 0.6;
           // (sesión 1f: más cerca: de lejos las islas eran manchas oscuras)
-          const r = FIN2() ? lerp(72, 48, smooth(u)) : lerp(95, 70, smooth(u));
-          pos.copy(C).add(tmpV.set(Math.cos(a) * r, FIN2() ? lerp(50, 28, smooth(u)) : lerp(70, 44, smooth(u)), Math.sin(a) * r));
+          const r = lerp(72, 48, smooth(u));
+          pos.copy(C).add(tmpV.set(Math.cos(a) * r, lerp(50, 28, smooth(u)), Math.sin(a) * r));
           look.copy(C).add(tmpV.set(0, lerp(6, 18, smooth(u)), 0));
         });
         this.setFov(55);
@@ -1672,217 +1468,23 @@ export default class EclipseEnding extends CastleCine {
         this.sew = { t: this.t };
       });
       // (FIN8: el funeral sube un poco mientras se cose; se apaga en el cartel del fogón)
-      this.at(2.0, () => g.music?.cur?.song?.level?.(FIN8() ? 0.64 : 1.0, 4));
+      this.at(2.0, () => g.music?.cur?.song?.level?.(0.64, 4));
       this.at(5.2, () => this.say('fierro', L.cose));
       // (FIN10, el usuario: "un pantallazo en blanco en medio de la escena
       // donde las islas se vuelven doradas, sacalo": el destello queda, sin
       // el blanco encima de todo)
       this.at(18.5, () => {
         g.fx?.flash?.(tmpV.copy(ECLIPSE_DIR).multiplyScalar(200).add(g.camera.position), 0xffe0a0, 60, 1.2, 400);
-        if (FIN10()) return;
-        this.whiteEl.style.transition = 'opacity 1.2s';
-        this.white(true);
+        return;
       });
-      if (!FIN10()) this.at(19.8, () => this.white(false));
-      if (!FIN3()) this.at(23, () => g.music?.stop?.(5));
       this.at(26.4, () => this.fade(true));
       return 27.6;
     });
     // 10. El fogón del camino, de noche: los cuatro de siempre
-    if (FIN3()) {
-      // (sin abrir el negro: lo abre el fogón, 0,4 s después; en ese negro se
-      // compila a Fierro, ver warmFierro)
-      card(T4.fogon, null, true, false, null, [50, 57, 62]);
-      steps.push(...this.fogon3());
-      return steps;
-    }
-    step(() => {
-      this.mode('fogon');
-      this.crackK = null;
-      const B = this.B;
-      const by = B.by;
-      const fire = S('fogon', 0, 0);
-      const seat = (i) => this.seatW(i);
-      // (el Valiente mira al santuario: está del lado del camino)
-      this.put(B, by.valiente, seat(0), fire, 'sitMate');
-      this.put(B, by.viejo, seat(1), fire, 'sitMate', { t: 1.1 });
-      this.put(B, by.canchero, seat(2), fire, 'sitTalk');
-      this.put(B, by.miedoso, seat(3), fire, 'sitLaugh');
-      by.viejo.mate = true;
-      this.fireOn = true;
-      this.at(0.4, () => this.fade(false));
-      this.cut(6, S('fogon', -4.2, 3.4, 1.9), S('fogon', -3.7, 2.9, 1.75), S('fogon', 0, 0, 0.7), S('fogon', 0.5, 0, 0.75), 48);
-      this.at(6, () => {
-        const c = seat(2).add(seat(3)).multiplyScalar(0.5);
-        this.cut(6.5, fire.clone().add(V3(0.2, 1.1, -0.1)).lerp(c, -0.45), fire.clone().add(V3(0.1, 1.05, 0)).lerp(c, -0.5), c.clone().setY(fire.y + 0.95), c.clone().setY(fire.y + 1.0), 42);
-      });
-      this.at(7.2, () => this.say('fierro', L.caballeros));
-      // el Viejo le pasa el mate al Valiente
-      this.at(12.5, () => {
-        const v = seat(0);
-        this.cut(7.5, v.clone().add(V3(-1.2, 1.25, 1.4)), v.clone().add(V3(-1.0, 1.2, 1.2)), v.clone().add(V3(0.6, 0.85, -0.6)), S('fogon', 6.4, -2.4, 0.8), 40);
-      });
-      this.at(13.4, () => {
-        by.viejo.mate = false;
-        by.valiente.mate = true;
-      });
-      this.at(15.0, () => {
-        B.turnTo(by.valiente, S('fogon', 6.6, -2.4), 1.2);
-        B.act(by.valiente, 'sitRaise', { fade: 0.4 });
-      });
-      // se acuerdan: un destello de cada uno con su luz de caballero
-      const flashes = ['valiente', 'miedoso', 'canchero', 'viejo'];
-      flashes.forEach((p, i) => {
-        const t0 = 20 + i * 2.1;
-        this.at(t0, () => {
-          this.whiteEl.style.transition = 'opacity 0.12s';
-          this.white(true);
-        });
-        this.at(t0 + 0.14, () => {
-          this.white(false);
-          this.memory = { p, t: this.t };
-          const r = by[p];
-          const h = r.pos.clone().setY(r.pos.y + 1.05);
-          const fw = tmpV.subVectors(fire, r.pos).setY(0).normalize();
-          const cam = h.clone().addScaledVector(fw, 1.25).add(V3(0, 0.25, 0));
-          this.cut(1.9, cam, cam.clone().addScaledVector(fw, -0.25), h.clone().setY(h.y + 0.25), h.clone().setY(h.y + 0.3), 38);
-        });
-      });
-      this.at(28.6, () => {
-        this.memory = null;
-        this.whiteEl.style.transition = 'opacity 0.3s';
-        this.white(true);
-      });
-      this.at(28.9, () => {
-        this.white(false);
-        this.cut(6, S('fogon', -5.0, 4.2, 2.3), S('fogon', -4.6, 3.8, 2.2), S('fogon', -1.5, -0.8, 0.8), S('fogon', -2.5, -1.2, 0.9), 46);
-        B.act(by.valiente, 'sitMate', { loop: true, fade: 0.5 });
-      });
-      return 35;
-    });
-    // 11. Fierro llega desde lo oscuro y se vuelve el hombre de la linterna
-    step(() => {
-      const B = this.B;
-      const fz = this.fierro;
-      const gd = this.gold;
-      const from = S('fogon', -8.2, -2.6);
-      const to = S('fogon', -3.3, -1.25);
-      const cam = S('fogon', -1.3, -0.5, 1.2);
-      this.put(B, fz, from, to, 'walk', { rate: 0 });
-      B.walkPath(fz, [to], 0.52, 'fStand', { loop: true });
-      this.g.fx?.sparkle?.(from.clone().setY(from.y + 1.1), [0.6, 0.75, 1], 24, 0.8);
-      this.shot(24, (u, lt, pos, look) => {
-        pos.lerpVectors(cam, S('fogon', -1.7, -0.62, 1.32), smooth(u));
-        const hp = (fz.dead ? gd : fz).pos;
-        look.set(hp.x, hp.y + 1.35, hp.z);
-      });
-      this.setFov(40);
-      this.at(1.6, () => this.say('fierro', FIN2() ? L2.llega : L.razon));
-      if (FIN2()) {
-        // los cuatro lo ven llegar (contraplano desde atrás de Fierro)
-        this.at(4.6, () => {
-          for (const k of ['valiente', 'miedoso', 'canchero', 'viejo']) B.turnTo(B.by[k], fz.pos, 0.8);
-          const fc = S('fogon', 0, 0);
-          // (al costado de Fierro y más bajo: de atrás, su espalda tapaba a los cuatro)
-          const away = tmpV.subVectors(fz.pos, fc).setY(0).normalize();
-          const back = fz.pos.clone().addScaledVector(away, 1.0).addScaledVector(V3(-away.z, 0, away.x), 1.3);
-          back.y += 1.25;
-          this.cut(3.4, back, back.clone().lerp(fc, 0.06), fc.clone().setY(fc.y + 0.8), fc.clone().setY(fc.y + 0.85), 44);
-        });
-        this.at(8.0, () => {
-          for (const k of ['valiente', 'miedoso', 'canchero', 'viejo']) B.turnTo(B.by[k], S('fogon', 0, 0), 0.9);
-          this.shot(16, (u, lt, pos, look) => {
-            pos.lerpVectors(cam, S('fogon', -1.7, -0.62, 1.32), smooth(u));
-            const hp = (fz.dead ? gd : fz).pos;
-            look.set(hp.x, hp.y + 1.35, hp.z);
-          });
-          this.setFov(40);
-        });
-      }
-      // se vuelve el hombre de la linterna (en el mismo paso)
-      this.at(8.2, () => {
-        const p = fz.pos.clone();
-        g.fx?.flash?.(p.clone().setY(p.y + 1.3), 0xffc060, 40, 0.8, 10);
-        g.fx?.sparkle?.(p.clone().setY(p.y + 1.2), [1, 0.8, 0.35], 40, 1.0);
-        this.whiteEl.style.transition = 'opacity 0.25s';
-        if (FIN2()) {
-          this.whiteEl.style.background = '#ffc86a';
-          this.whiteEl.style.opacity = '0.55';
-          this.at(9.2, () => (this.whiteEl.style.background = ''));
-        } else this.white(true);
-        const left = Math.hypot(to.x - p.x, to.z - p.z);
-        fz.dead = true;
-        fz.mv = null;
-        this.put(B, gd, p, to, 'walk', { rate: 0 });
-        if (left > 0.05) B.walkPath(gd, [to], 0.5, 'lanternStand', { loop: true });
-        else B.act(gd, 'lanternStand', { loop: true, fade: 0.4 });
-        this.lampOn = 1;
-      });
-      this.at(8.5, () => this.white(false));
-      return 24;
-    });
-    // 12. La revelación (de cerca) y apaga la linterna
-    step(() => {
-      const B = this.B;
-      const gd = this.gold;
-      if (!gd.mv) B.act(gd, 'lanternStand', { loop: true, fade: 0.5 });
-      const h = gd.pos.clone().setY(gd.pos.y + 1.6);
-      const fw = V3(-Math.sin(gd.yaw), 0, -Math.cos(gd.yaw));
-      this.cut(21, h.clone().addScaledVector(fw, 1.45).add(V3(0, -0.04, 0)), h.clone().addScaledVector(fw, 1.15).add(V3(0, -0.03, 0)), h, h.clone().add(V3(0, 0.01, 0)), 30);
-      if (FIN2()) {
-        const fc = S('fogon', 0, 0);
-        this.at(1.0, () => this.say('fierro', L2.rev1));
-        this.at(4.6, () => this.say('fierro', L2.rev2));
-        // los cuatro, desde atrás del de la linterna: se quedan quietos
-        this.at(9.6, () => {
-          const back = gd.pos.clone().addScaledVector(tmpV.subVectors(gd.pos, fc).setY(0).normalize(), 1.2);
-          back.y += 1.65;
-          this.cut(3.6, back, back.clone().lerp(fc, 0.05), fc.clone().setY(fc.y + 0.75), fc.clone().setY(fc.y + 0.8), 46);
-        });
-        this.at(10.4, () => this.say('fierro', L2.rev3));
-        this.at(13.2, () => this.cut(9, h.clone().addScaledVector(fw, 1.25).add(V3(0, -0.03, 0)), h.clone().addScaledVector(fw, 0.95).add(V3(0, -0.02, 0)), h, h.clone().add(V3(0, 0.01, 0)), 28));
-        this.at(16.4, () => this.say('fierro', L2.rev4));
-        this.at(22.2, () => {
-          B.act(gd, 'lanternOut', { fade: 0.3 });
-          this.cut(7.5, h.clone().addScaledVector(fw, 1.9).add(V3(0, -0.35, 0)), h.clone().addScaledVector(fw, 1.7).add(V3(0, -0.3, 0)), h.clone().add(V3(0, -0.35, 0)), h.clone().add(V3(0, -0.05, 0)), 36);
-          this.quiet();
-        });
-        this.at(24.0, () => {
-          this.lampOn = 0;
-          this.fireDim = 1;
-          this.sfx('out', gd.pos);
-        });
-        // en lo oscuro, los ojos: ya no de oro, de brasa; una risita de chico
-        this.at(25.4, () => {
-          this.say('fierro', L2.rev5);
-          this.ember = { t: this.t };
-        });
-        this.at(27.6, () => this.sfx('giggle', gd.pos));
-        this.at(29.4, () => this.fade(true));
-        return 31;
-      }
-      this.at(1.2, () => this.say('fierro', L.rev1));
-      this.at(6.6, () => this.say('fierro', L.rev2));
-      this.at(14.4, () => this.say('fierro', L.rev3));
-      this.at(21, () => {
-        B.act(gd, 'lanternOut', { fade: 0.3 });
-        this.cut(4.5, h.clone().addScaledVector(fw, 1.9).add(V3(0, -0.35, 0)), h.clone().addScaledVector(fw, 1.8).add(V3(0, -0.35, 0)), h.clone().add(V3(0, -0.35, 0)), h.clone().add(V3(0, -0.35, 0)), 36);
-        this.quiet();
-      });
-      this.at(22.8, () => {
-        this.lampOn = 0;
-        this.fireDim = 1;
-        this.sfx('out', gd.pos);
-      });
-      this.at(23.6, () => this.fade(true));
-      return 25.5;
-    });
-    // 13. La placa
-    step(() => {
-      this.cardEl.style.zIndex = '6';
-      this.card(FIN2() ? L2.placa : L.placa, 6.5);
-      return 8;
-    });
+    // (sin abrir el negro: lo abre el fogón, 0,4 s después; en ese negro se
+    // compila a Fierro, ver warmFierro)
+    card(T4.fogon, null, true, false, null, [50, 57, 62]);
+    steps.push(...this.fogon3());
     return steps;
   }
 
@@ -1940,11 +1542,11 @@ export default class EclipseEnding extends CastleCine {
       this.crackK = null;
       // (B3: Fierro y el de la linterna, dibujados una vez con las luces del
       // fogón y todavía en negro: el negro se abre a los 0,4 s)
-      this.at(0.03, () => globalThis.__mduOldFinWarmF !== true && this.warmFierro());
+      this.at(0.03, () => this.warmFierro());
       for (const k of KEYS) this.put(B, by[k], seats[seatOf[k]], C, k === 'miedoso' ? 'sitLaugh' : k === 'canchero' ? 'sitTalk' : 'sitMate', { t: k === 'viejo' ? 1.1 : 0 });
       by.viejo.mate = true;
       this.fireOn = true;
-      this.at(0.3, () => (FIN8() ? this.song('fin8-fogon', { fadeIn: 3 }) : g.music?.play?.('fin-eclipse-b', { fadeIn: 4, while: (G) => G.ee?.scene?.cine === this })));
+      this.at(0.3, () => this.song('fin8-fogon', { fadeIn: 3 }));
       this.at(0.4, () => this.fade(false));
       // desde arriba, del lado de donde va a venir Fierro, bajando hasta el fuego
       this.shot(7, (u, lt, pos, look) => {
@@ -2055,7 +1657,7 @@ export default class EclipseEnding extends CastleCine {
       this.at(10.4, () => {
         const v = by.valiente;
         const d = v.pos.clone().sub(TO).setY(0).normalize();
-        OFFER = onFloor(TO.clone().addScaledVector(d, globalThis.__mduOldFinOffer === true ? 0.78 : 1.1));
+        OFFER = onFloor(TO.clone().addScaledVector(d, 1.1));
         vs = sdF.dot(OFFER.clone().sub(TO)) >= 0 ? 1 : -1;
         B.walkTo(v, OFFER, 1.3, 'offer', { fade: 0.3 });
         v.mate = true;
@@ -2083,8 +1685,8 @@ export default class EclipseEnding extends CastleCine {
       this.at(15.3, () => B.turnTo(by.valiente, TO, 0.5));
       // (apenas le llega el mate lo sostiene: antes seguía 1,3 s con el clip de
       // recibir, que termina bajando los brazos, y los volvía a subir. El
-      // usuario, 2026-10-10. __mduFinFierroViejo: como antes)
-      this.at(globalThis.__mduFinFierroViejo === true ? 14.7 : 13.45, () => {
+      // usuario, 2026-10-10)
+      this.at(13.45, () => {
         B.act(fz, 'gilMateHold', { loop: true, fade: 0.5 });
       });
       this.at(15.0, () => {
@@ -2099,70 +1701,55 @@ export default class EclipseEnding extends CastleCine {
       });
       this.at(19.9, () => this.say('fierro', L3.molino));
       // se vuelve el hombre de la linterna; los cuatro lo reconocen
-      if (NEW_GOLD()) {
-        // (de cara al fuego: el de la linterna queda igual, sin girar de golpe)
-        this.at(23.4, () => B.turnTo(fz, C, 0.6));
-        // de frente, de cerca: se ve subir el corte
-        this.at(23.9, () => {
-          // (al costado del fuego: de frente quedaba la lente adentro de las llamas)
-          const p0 = TO.clone().addScaledVector(fwF, 1.7).addScaledVector(sdF, -vs * 2.3).add(V3(0, 1.1, 0));
-          this.cut(4.4, p0, p0.clone().addScaledVector(sdF, vs * 0.25), TO.clone().add(V3(0, 0.95, 0)), TO.clone().add(V3(0, 1.2, 0)), 42);
-        });
-        this.at(24.2, () => {
-          const p = fz.pos.clone();
-          g.fx?.flash?.(p.clone().setY(p.y + 0.4), 0xffc060, 12, 0.5, 6);
-          // (FIN8: en la pose de Fierro —el mismo clip, en el mismo instante—: con
-          // otra pose el corte que sube juntaba dos siluetas distintas; la de la
-          // linterna, cuando el corte ya pasó)
-          const same = FIN8() && fz.cc?.name;
-          if (same) {
-            this.put(B, gd, p, null, fz.cc.name, { fade: 0.01, t: fz.cc.lt || 0, rate: fz.cc.rate ?? 1, loop: fz.cc.loop });
-            gd.yaw = fz.yaw;
-          } else this.put(B, gd, p, C, 'lanternStand', { fade: 0.2 });
-          this.clipApply();
-          if (!this.clipF) {
-            // (sin los cuerpos todavía: como antes, de una)
+      // (de cara al fuego: el de la linterna queda igual, sin girar de golpe)
+      this.at(23.4, () => B.turnTo(fz, C, 0.6));
+      // de frente, de cerca: se ve subir el corte
+      this.at(23.9, () => {
+        // (al costado del fuego: de frente quedaba la lente adentro de las llamas)
+        const p0 = TO.clone().addScaledVector(fwF, 1.7).addScaledVector(sdF, -vs * 2.3).add(V3(0, 1.1, 0));
+        this.cut(4.4, p0, p0.clone().addScaledVector(sdF, vs * 0.25), TO.clone().add(V3(0, 0.95, 0)), TO.clone().add(V3(0, 1.2, 0)), 42);
+      });
+      this.at(24.2, () => {
+        const p = fz.pos.clone();
+        g.fx?.flash?.(p.clone().setY(p.y + 0.4), 0xffc060, 12, 0.5, 6);
+        // (FIN8: en la pose de Fierro —el mismo clip, en el mismo instante—: con
+        // otra pose el corte que sube juntaba dos siluetas distintas; la de la
+        // linterna, cuando el corte ya pasó)
+        const same = fz.cc?.name;
+        if (same) {
+          this.put(B, gd, p, null, fz.cc.name, { fade: 0.01, t: fz.cc.lt || 0, rate: fz.cc.rate ?? 1, loop: fz.cc.loop });
+          gd.yaw = fz.yaw;
+        } else this.put(B, gd, p, C, 'lanternStand', { fade: 0.2 });
+        this.clipApply();
+        if (!this.clipF) {
+          // (sin los cuerpos todavía: como antes, de una)
+          this.mateAt = null;
+          fz.dead = true;
+          fz.mv = null;
+          this.lampOn = 1;
+          return;
+        }
+        // (desde ya: si no, un cuadro se veía el dorado entero)
+        this.clipF.constant = -(p.y - 0.05);
+        this.clipG.constant = p.y - 0.05;
+        this.xform = {
+          kind: 'gold',
+          t: 0,
+          dur: 2.7,
+          y0: p.y - 0.05,
+          y1: p.y + 2.05,
+          pos: p,
+          // (a la altura de las manos: el mate se vuelve la linterna)
+          marks: [[p.y + 0.95, () => {
             this.mateAt = null;
+            this.lampOn = 1;
+          }]],
+          done: () => {
             fz.dead = true;
             fz.mv = null;
-            this.lampOn = 1;
-            return;
-          }
-          // (desde ya: si no, un cuadro se veía el dorado entero)
-          this.clipF.constant = -(p.y - 0.05);
-          this.clipG.constant = p.y - 0.05;
-          this.xform = {
-            kind: 'gold',
-            t: 0,
-            dur: 2.7,
-            y0: p.y - 0.05,
-            y1: p.y + 2.05,
-            pos: p,
-            // (a la altura de las manos: el mate se vuelve la linterna)
-            marks: [[p.y + 0.95, () => {
-              this.mateAt = null;
-              this.lampOn = 1;
-            }]],
-            done: () => {
-              fz.dead = true;
-              fz.mv = null;
-              if (same) B.act(gd, 'lanternStand', { loop: true, fade: 0.9 });
-            },
-          };
-        });
-      }
-      if (!NEW_GOLD()) this.at(24.2, () => {
-        const p = fz.pos.clone();
-        g.fx?.flash?.(p.clone().setY(p.y + 1.3), 0xffc060, 40, 0.8, 10);
-        g.fx?.sparkle?.(p.clone().setY(p.y + 1.2), [1, 0.8, 0.35], 40, 1.0);
-        this.whiteEl.style.transition = 'opacity 0.25s';
-        this.whiteEl.style.background = '#ffc86a';
-        this.whiteEl.style.opacity = '0.55';
-        this.mateAt = null;
-        fz.dead = true;
-        fz.mv = null;
-        this.put(B, gd, p, C, 'lanternStand', { fade: 0.2 });
-        this.lampOn = 1;
+            if (same) B.act(gd, 'lanternStand', { loop: true, fade: 0.9 });
+          },
+        };
       });
       this.at(24.5, () => {
         this.white(false);
@@ -2174,7 +1761,7 @@ export default class EclipseEnding extends CastleCine {
       this.at(25.9, () => B.act(by.viejo, 'kneelHold', { loop: true, fade: 0.35 }));
       this.at(25.6, () => B.act(by.canchero, 'chestHand', { loop: true, fade: 0.5 }));
       this.at(25.0, () => B.act(by.valiente, 'chestHand', { loop: true, fade: 0.5 }));
-      return NEW_GOLD() ? 28.4 : 27;
+      return 28.4;
     });
 
     // 12. La revelación y apaga la linterna
@@ -2203,26 +1790,8 @@ export default class EclipseEnding extends CastleCine {
         this.cut(4.0, p0, p0.clone().addScaledVector(sd, -0.3), C.clone().lerp(gd.pos, 0.5).setY(C.y + 1.2), C.clone().lerp(gd.pos, 0.5).setY(C.y + 1.25), 46);
       });
       this.at(13.9, () => this.say('fierro', L3.gil));
-      if (NEW_END()) {
-        steps.cierre = true;
-        return this.cierre(gd, C, h, fw, sd);
-      }
-      // apaga la linterna
-      this.at(17.6, () => {
-        B.act(gd, 'lanternOut', { fade: 0.3 });
-        this.cut(5.5, h.clone().addScaledVector(fw, 1.9).add(V3(0, -0.35, 0)), h.clone().addScaledVector(fw, 1.7).add(V3(0, -0.3, 0)), h.clone().add(V3(0, -0.35, 0)), h.clone().add(V3(0, -0.05, 0)), 36);
-        this.quiet();
-      });
-      this.at(19.2, () => {
-        this.lampOn = 0;
-        this.fireDim = 1;
-        this.sfx('out', gd.pos);
-        g.music?.stop?.(3.5);
-      });
-      // en lo oscuro, los ojos: de brasa; una risita de chico
-      this.at(20.4, () => (this.ember = { t: this.t }));
-      this.at(22.0, () => this.sfx('giggle', gd.pos));
-      return 24;
+      steps.cierre = true;
+      return this.cierre(gd, C, h, fw, sd);
     });
     // 13. La placa: abajo, sobre los ojos de brasa en lo oscuro; después, fundido
     // (el usuario: "un texto en el medio y un corte seco al menú")
@@ -2284,54 +1853,6 @@ export default class EclipseEnding extends CastleCine {
       this.mont.brazos = 'sable';
     });
     return tg + 2.2 + est(L.volvio) + 0.8;
-  }
-
-  // (FIN4) La despedida, hablada: los mismos lugares y tomas que antes, con
-  // tiempo para que cada uno le diga algo y el Gil conteste. 24,6 s.
-  adios(A, gil, ben, cir, ana, F, OB, CIR1, ANA0) {
-    const f3 = FIN3();
-    this.cut(4.2, F(2.4, 0.9, 1.6), F(2.6, 0.7, 1.6), F(9, -0.8, 1.3), F(7, -1.0, 1.3), 46);
-    A.walkTo(gil, F(6.0, -1.5), 3.8, 'chestHand', { loop: true, fade: 0.5 });
-    // Benito llora y le pide que se quede
-    this.at(4.2, () => {
-      if (f3) this.cut(7.0, F(5.65, -3.85, 1.55), F(5.75, -3.75, 1.55), F(5.6, -1.5, 1.4), F(5.6, -1.5, 1.38), 40);
-      else this.cut(7.0, F(7.25, -2.15, 1.7), F(7.15, -2.1, 1.68), F(5.2, -1.5, 1.45), F(5.2, -1.5, 1.42), 40);
-      A.act(ben, 'sob', { loop: true, fade: 0.5 });
-    });
-    this.at(4.5, () => this.say('benito', L4.quedate));
-    this.at(7.4, () => this.say('gil', L4.noQueda));
-    // Cirilo, con el mate: cebar por él
-    const GC = OB ? F(f3 ? 6.2 : 6.0, 0.25) : F(6.5, 0.3);
-    this.at(11.2, () => {
-      A.walkTo(gil, GC, 1.4, 'chestHand', { loop: true, fade: 0.5 });
-      if (!OB) this.cut(5.6, F(7.0, 2.6, 1.7), F(6.9, 2.5, 1.68), F(6.1, 0.1, 1.42), F(6.1, 0.1, 1.4), 40);
-      else if (f3) this.cut(5.6, F(7.0, 2.6, 1.7), F(6.9, 2.5, 1.68), F(5.5, 0.2, 1.42), F(5.5, 0.2, 1.4), 40);
-      else this.cut(5.6, F(7.25, -0.4, 1.7), F(7.15, -0.35, 1.68), F(5.4, 0.15, 1.45), F(5.4, 0.15, 1.42), 40);
-    });
-    if (!OB) {
-      this.at(12.4, () => {
-        A.turnTo(gil, CIR1, 0.35);
-        A.turnTo(cir, GC, 0.45);
-      });
-    }
-    this.at(12.6, () => this.say('cirilo', L4.cebamos));
-    this.at(12.9, () => A.act(cir, 'cool', { loop: true, fade: 0.5 }));
-    this.at(15.2, () => this.say('gil', L4.nunca));
-    // Anacleto, la mano (0,8 s después: que el Gil termine de contestarle a Cirilo)
-    const ANA1 = F(f3 ? 6.15 : 5.92, 1.9);
-    this.at(17.6, () => {
-      A.walkTo(gil, ANA1, 1.4, 'idle', { loop: true, fade: 0.4 });
-      this.cut(7.0, F(5.6, 4.6, 1.6), F(5.7, 4.4, 1.6), F(5.6, 1.9, 1.2), F(5.6, 1.9, 1.2), 40);
-    });
-    this.at(19.1, () => {
-      A.turnTo(gil, ANA0, 0.4);
-      A.act(gil, 'shake', { fade: 0.3 });
-      A.turnTo(ana, ANA1, 0.4);
-      A.act(ana, 'shake', { fade: 0.3 });
-    });
-    this.at(19.4, () => this.say('anacleto', L4.anda));
-    this.at(22.0, () => this.say('gil', L4.primero));
-    return 24.6;
   }
 
   // (FIN8, 2026-10-08, el usuario: "la muerte del Gil sigue siendo bastante poco
@@ -2441,7 +1962,7 @@ export default class EclipseEnding extends CastleCine {
     // (FIN10, el usuario: "cuando el Gil va a hablarle al azul, atraviesa su
     // mano mientras camina porque el otro está extendiendo el mate": pasaba a
     // 30 cm de la mano. Lo rodea por afuera y frena a un metro)
-    const GC = FIN10() ? F(6.75, 0.3) : F(6.5, 0.3);
+    const GC = F(6.75, 0.3);
     const ANA1 = F(6.15, 1.9);
     this.cut(4.2, F(2.4, 0.9, 1.6), F(2.6, 0.7, 1.6), F(9, -0.8, 1.3), F(7, -1.0, 1.3), 46);
     A.walkTo(gil, G1, 3.8, 'chestHand', { loop: true, fade: 0.5 });
@@ -2461,16 +1982,15 @@ export default class EclipseEnding extends CastleCine {
         // pero el porongo le tapa la mano y al lado asoma una mano abierta: se lee suelto. La captura es del
         // principio de la toma de Cirilo, con el texto de "Si me quedo..." todavía abajo. Eligió que ahí no se
         // vea: no está desde esta toma y durante la de Cirilo, y vuelve en el corte siguiente (cuando contesta
-        // el Gil), en la mano de Cirilo. globalThis.__mduMateVisibleSiMeQuedo = true: como antes)
-        if (globalThis.__mduMateVisibleSiMeQuedo !== true) this.mateHide = true;
+        // el Gil), en la mano de Cirilo)
+        this.mateHide = true;
         return 0.25;
       },
       line('gil', L4.noQueda, 0.35),
       // --- Cirilo, con el mate: cebar por él
       () => {
         this.quiet();
-        if (FIN10()) A.walkPath(gil, [F(6.95, -0.55), GC], 1.5, 'chestHand', { loop: true, fade: 0.5 });
-        else A.walkTo(gil, GC, 1.4, 'chestHand', { loop: true, fade: 0.5 });
+        A.walkPath(gil, [F(6.95, -0.55), GC], 1.5, 'chestHand', { loop: true, fade: 0.5 });
         pair(F(7.0, 2.6, 1.7), F(6.92, 2.3, 1.68), F(6.1, 0.1, 1.42), F(6.1, 0.1, 1.42), 40);
         return 1.3;
       },
@@ -2491,7 +2011,7 @@ export default class EclipseEnding extends CastleCine {
         return 0.2;
       },
       // (FIN10, el usuario: "cambiá la contestación del Gil a ese personaje")
-      line('gil', FIN10() ? L10.volvere : L4.nunca, 0.45),
+      line('gil', L10.volvere, 0.45),
       // --- Anacleto: la mano
       () => {
         this.quiet();
@@ -2521,7 +2041,7 @@ export default class EclipseEnding extends CastleCine {
   // los dos con los mismos números de siempre (no compila nada al moverlo).
   // Se arma apenas están los cuerpos y se compila de una (compileAsync).
   clipApply() {
-    if (this.clipDone || (!NEW_GOLD() && !NEW_END())) return;
+    if (this.clipDone) return;
     const fz = this.fierro;
     const gd = this.gold;
     if (!fz?.a?.gs || !gd?.a?.gs) return;
@@ -2601,11 +2121,9 @@ export default class EclipseEnding extends CastleCine {
     // brillo de los ojos son sprites, sin plano de corte: quedaban dos puntos
     // flotando donde estuvo la cabeza hasta el final —y en el paso a dorado
     // estaban desde antes sobre la cara de Fierro—. Van con el corte.)
-    if (FIN8()) {
-      for (const sp of this.goldEyes || []) {
-        sp.getWorldPosition(tmpV);
-        sp.visible = X.kind === 'gold' ? tmpV.y <= y : tmpV.y > y + 0.03;
-      }
+    for (const sp of this.goldEyes || []) {
+      sp.getWorldPosition(tmpV);
+      sp.visible = X.kind === 'gold' ? tmpV.y <= y : tmpV.y > y + 0.03;
     }
     for (const M of X.marks || []) {
       if (!M.done && y >= M[0]) {
@@ -2676,7 +2194,6 @@ export default class EclipseEnding extends CastleCine {
     });
     this.at(18.1, () => B.act(gd, 'fRaise', { fade: 0.5 }));
     // (FIN8: sin otra canción encima: la del fogón sube sola acá y se apaga en el negro)
-    if (!FIN8()) this.at(18.2, () => g.music?.play?.('fin-eclipse-telon', { fadeIn: 1.5, while: (G) => G.ee?.scene?.cine === this }));
     // se deshace como un alma, de los pies para arriba, y se va hacia la luna
     this.at(19.2, () => {
       this.clipApply();
@@ -2698,18 +2215,17 @@ export default class EclipseEnding extends CastleCine {
     });
     // el telón (2026-10-08, ITERACION-7 E4, el usuario: "el telón final es rojo
     // y viene de los costados: eso es un telón de teatro, esto es cine". Un
-    // fundido lento a negro; la frase, en el negro. __mduOldFinTelon: el telón)
+    // fundido lento a negro; la frase, en el negro)
     // (PORT9: antes del negro, los portales y la despedida; lo que sigue se corre D9)
-    const D9 = PORT9() ? this.portales(C, 25.4) - 24.8 : 0;
-    this.at(24.8 + D9, () => (globalThis.__mduOldFinTelon === true ? this.curtain(true, 3.4) : this.blackOut(3.6)));
+    const D9 = this.portales(C, 25.4) - 24.8;
+    this.at(24.8 + D9, () => this.blackOut(3.6));
     // (FIN11: en el negro del final, sin el ruido de fondo de la isla)
-    this.at(25.6 + D9, () => (this.hush = FIN11()));
-    if (FIN8()) this.at(25.6 + D9, () => g.music?.stop?.(3.6));
-    else this.at(28.4 + D9, () => g.music?.stop?.(1.4));
+    this.at(25.6 + D9, () => (this.hush = true));
+    this.at(25.6 + D9, () => g.music?.stop?.(3.6));
     // en el silencio, su frase
     // (en dos partes, con aire en el medio, para más drama: el usuario,
-    // 2026-10-10. __mduFraseEntera: de una, como antes)
-    const cut = globalThis.__mduFraseEntera === true ? -1 : L3.placa.indexOf(', ');
+    // 2026-10-10)
+    const cut = L3.placa.indexOf(', ');
     const p1 = cut > 0 ? `${L3.placa.slice(0, cut)}…` : L3.placa;
     const D2 = cut > 0 ? 2.8 : 0;
     this.at(29.8 + D9, () => {
@@ -2848,10 +2364,8 @@ export default class EclipseEnding extends CastleCine {
     // (FIN10, el usuario: "atraviesan los objetos que tienen en el camino:
     // que desaparezcan desvaneciéndose junto al resto de la isla (salvo el
     // fogón); que quede el fogón solo en el blanco". Ver voidStart)
-    if (FIN10()) {
-      this.at(t + 0.2, () => this.voidStart(C, 1.8));
-      t += 2.6;
-    }
+    this.at(t + 0.2, () => this.voidStart(C, 1.8));
+    t += 2.6;
     let end = t;
     list.forEach((P, i) => {
       const go = t + i * 0.7;
@@ -2955,7 +2469,7 @@ export default class EclipseEnding extends CastleCine {
       if (V.fogon) V.fogon.visible = true;
       const sc = g.scene;
       V.bg = sc.background;
-      sc.background = new THREE.Color(globalThis.__mduVoidBg ?? 0xb0b0b0);
+      sc.background = new THREE.Color(0xb0b0b0);
       const f = sc.fog;
       if (f) V.fog = f.isFogExp2 ? { d: f.density } : { n: f.near, f: f.far };
       if (f?.isFogExp2) f.density = 0;
@@ -3029,8 +2543,7 @@ export default class EclipseEnding extends CastleCine {
   // primer instante del fogón —todavía en negro y ya con sus luces—: el corte
   // puesto desde ya (los planos en 1e4 no cortan nada) y los dos cuerpos y la
   // linterna dibujados de verdad unos cuadros delante de la cámara.
-  // (renderer.compile no sirve: compila la variante sin plano de corte.)
-  // __mduOldFinWarmF: como antes)
+  // (renderer.compile no sirve: compila la variante sin plano de corte.))
   warmFierro() {
     if (this.fierroWarm) return;
     this.fierroWarm = true;
@@ -3076,39 +2589,6 @@ export default class EclipseEnding extends CastleCine {
     });
   }
 
-  // (E3) Un cartel de tiempo: negro, el texto que aparece y se va, y se abre.
-  // Devuelve cuánto dura (el paso del guion).
-  timeCard(text, onBlack, hold = false) {
-    const D = 4.6;
-    if (onBlack) this.at(1.2, onBlack);
-    const fadeEl = this.el.querySelector('.mdu-fcine__fade');
-    fadeEl.style.transition = 'opacity 0.8s';
-    this.fade(true);
-    this.quiet();
-    let el = this.timeEl;
-    if (!el) {
-      el = this.timeEl = document.createElement('p');
-      el.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(900px,86vw);margin:0;text-align:center;z-index:9;pointer-events:none;font:400 clamp(20px,2.3vw,32px)/1.4 Georgia,serif;letter-spacing:.09em;color:#ece6da;opacity:0;transition:opacity 1s';
-      this.el.appendChild(el);
-    }
-    this.at(0.9, () => {
-      el.textContent = text;
-      el.style.opacity = '1';
-    });
-    this.at(D - 1.2, () => (el.style.opacity = '0'));
-    // (se abre recién con el paso que sigue ya armado: antes asomaba un
-    // instante el decorado de antes)
-    if (!hold) {
-      this.at(D + 0.05, () => {
-        fadeEl.style.transition = 'opacity 1.6s';
-        this.fade(false);
-      });
-    }
-    // (los fundidos de los pasos que siguen, con el suyo de siempre)
-    this.at(D + 1.4, () => (fadeEl.style.transition = ''));
-    return D;
-  }
-
   // (FIN8) El cartel de tiempo, con aire: se va a negro en 2 s mientras la
   // canción se apaga; 5 s de negro y silencio; el texto, 5 s enteros; y recién
   // ahí se abre el paso que sigue, que trae su canción.
@@ -3126,12 +2606,9 @@ export default class EclipseEnding extends CastleCine {
     el.style.top = '50%';
     el.style.textShadow = '';
     const T0 = 2 + 5;
-    if (FIN11()) {
-      this.hush = true;
-      // (el coro de "ahhh" en el negro quedaba fuera de lugar: el usuario,
-      // 2026-10-10. Ahora suena uno solo, el grabado, al empezar. __mduFinCoro: como antes)
-      if (chord && globalThis.__mduFinCoro === true) this.at(2.4, () => this.choir(0, chord, { dur: 2.3, gain: 0.045, attack: 1.5, release: 1.9 }));
-    }
+    this.hush = true;
+    // (el coro de "ahhh" en el negro quedaba fuera de lugar: el usuario,
+    // 2026-10-10. Ahora suena uno solo, el grabado, al empezar)
     this.at(T0, () => {
       el.textContent = text;
       el.style.opacity = '1';
@@ -3246,13 +2723,12 @@ export default class EclipseEnding extends CastleCine {
       // (FIN10, el usuario: "Belgrano cuando se da la vuelta para verlos a
       // todos lo hace con un teleport": en las esquinas del camino y al llegar
       // se daba vuelta de un cuadro al otro. Ahora gira a su paso)
-      if (v > 0.05) b.r.yaw = FIN10() ? angTo(b.r.yaw, yawTo(prev, b.r.pos), Math.min(1, dt * 7)) : yawTo(prev, b.r.pos);
+      if (v > 0.05) b.r.yaw = angTo(b.r.yaw, yawTo(prev, b.r.pos), Math.min(1, dt * 7));
       if (W.t * W.v >= W.L) {
         b.walk = null;
         b.r.moving = false;
         b.r.speed = 0;
-        if (FIN10()) b.yawGoal = yawTo(b.r.pos, W.face || this.cirilo.pos);
-        else b.r.yaw = yawTo(b.r.pos, W.face || this.cirilo.pos);
+        b.yawGoal = yawTo(b.r.pos, W.face || this.cirilo.pos);
       }
     } else if (b.walk) {
       const W = b.walk;
@@ -3264,13 +2740,12 @@ export default class EclipseEnding extends CastleCine {
       const v = dt > 0 ? prev.distanceTo(b.r.pos) / dt : 0;
       b.r.moving = v > 0.05;
       b.r.speed = v;
-      if (v > 0.05) b.r.yaw = FIN10() ? angTo(b.r.yaw, yawTo(prev, b.r.pos), Math.min(1, dt * 7)) : yawTo(prev, b.r.pos);
+      if (v > 0.05) b.r.yaw = angTo(b.r.yaw, yawTo(prev, b.r.pos), Math.min(1, dt * 7));
       if (k >= 1) {
         b.walk = null;
         b.r.moving = false;
         b.r.speed = 0;
-        if (FIN10()) b.yawGoal = yawTo(b.r.pos, this.cirilo.pos);
-        else b.r.yaw = yawTo(b.r.pos, this.cirilo.pos);
+        b.yawGoal = yawTo(b.r.pos, this.cirilo.pos);
       }
     }
     if (b.walk) b.yawGoal = null;
@@ -3345,7 +2820,7 @@ export default class EclipseEnding extends CastleCine {
       this.dome.userData.U.uOpacity.value = smooth(clamp01((k - 9) / 9));
       this.dome.userData.U.uSunK.value = 1.4 * smooth(clamp01((k - 15) / 6));
     } else if (this.dome.visible) this.dome.userData.U.uOpacity.value = 1;
-    if (FIN2()) this.fin2Tick(t);
+    this.fin2Tick(t);
     // el fuego y la linterna: dos fogonazos prestados, prendidos mientras se ven
     this.fireTick(t, dt);
     // los recuerdos: el que se acuerda brilla con la luz de su elemento
@@ -3354,7 +2829,7 @@ export default class EclipseEnding extends CastleCine {
       if (!u) continue;
       if (this.memory?.p === r.persona) u.value.set(ELEM[r.persona]).multiplyScalar(0.75);
       else if (this.fireOn && r.persona !== 'fierro') u.value.setRGB(0.06, 0.03, 0.01);
-      else if (FIN2() && r === this.fierro) u.value.setRGB(0.1, 0.11, 0.15);
+      else if (r === this.fierro) u.value.setRGB(0.1, 0.11, 0.15);
       else u.value.setRGB(0, 0, 0);
     }
   }
@@ -3437,8 +2912,8 @@ export default class EclipseEnding extends CastleCine {
         const to = this.torchesOn.to;
         let sum = 0;
         this.torches.forEach((T, i) => {
-          const R = FIN3() ? this.riders?.[i] : null;
-          if (FIN3() && !R) {
+          const R = this.riders?.[i];
+          if (!R) {
             T.o.visible = false;
             return;
           }
@@ -3471,7 +2946,7 @@ export default class EclipseEnding extends CastleCine {
             // (FIN10, el usuario: "lo mismo le pasa a los caballos de partida":
             // al frenar se daban vuelta de golpe hacia el Gil. Ahora giran)
             const yw = u < 0.995 && v > 0.2 ? Math.atan2(x - px, z - pz) : Math.atan2(to.x - x, to.z - z);
-            h.yaw = FIN10() && !first ? angTo(h.yaw, yw, Math.min(1, dt2 * (v > 0.2 ? 6 : 2.2))) : yw;
+            h.yaw = !first ? angTo(h.yaw, yw, Math.min(1, dt2 * (v > 0.2 ? 6 : 2.2))) : yw;
             if (G8) R.m.brazos = G8.arm || 'riendas';
             // (el sable del sargento: a la vista desde que lo saca)
             if (i === SGT && R.a.gs?.sable) R.a.gs.sable.visible = !!G8?.sable;
@@ -3491,22 +2966,20 @@ export default class EclipseEnding extends CastleCine {
         // el Gil, el sargento y el caballo quedaban en negro. Los dos fogonazos
         // prestados (los del fuego y la linterna del fogón, libres acá): uno del
         // lado del sargento y otro del lado del árbol; crecen a medida que llegan
-        if (FIN8()) {
-          const near8 = Math.min(1, sum / 6);
-          const flick = 0.86 + 0.09 * Math.sin(this.t * 17) + 0.07 * Math.sin(this.t * 7.3);
-          const put = (FL, a, r, peak, dist) => {
-            if (!FL) return;
-            FL.life = 1;
-            FL.max = 1;
-            FL.peak = peak * flick * near8 * near8;
-            FL.light.color.setHex(0xff9a4a);
-            FL.light.distance = dist;
-            FL.light.position.set(to.x + Math.cos(a) * r, to.y + 2.7, to.z + Math.sin(a) * r);
-          };
-          put(this.fireL, SGT_A + 0.35, 3.3, 9, 17);
-          put(this.lampL, -1.25, 4.0, 8.5, 16);
-          this.torchLit = true;
-        }
+        const near8 = Math.min(1, sum / 6);
+        const flick = 0.86 + 0.09 * Math.sin(this.t * 17) + 0.07 * Math.sin(this.t * 7.3);
+        const put = (FL, a, r, peak, dist) => {
+          if (!FL) return;
+          FL.life = 1;
+          FL.max = 1;
+          FL.peak = peak * flick * near8 * near8;
+          FL.light.color.setHex(0xff9a4a);
+          FL.light.distance = dist;
+          FL.light.position.set(to.x + Math.cos(a) * r, to.y + 2.7, to.z + Math.sin(a) * r);
+        };
+        put(this.fireL, SGT_A + 0.35, 3.3, 9, 17);
+        put(this.lampL, -1.25, 4.0, 8.5, 16);
+        this.torchLit = true;
         // el galope, cada vez más cerca; cuando llegan, silencio
         const A = g.audio;
         const near = sum / this.torches.length;
@@ -3536,7 +3009,7 @@ export default class EclipseEnding extends CastleCine {
     a.M.poncho.color.set(0x9a6c1e).multiplyScalar(1.7 / 0.32);
     // (FIN10, el usuario: "Martín Fierro cuando pasa a su forma dorada, la
     // cinta de su sombrero sigue roja": la cinta, dorada como el poncho)
-    if (FIN10() && G.mat.userData.life?.uBandGold) G.mat.userData.life.uBandGold.value = 1;
+    if (G.mat.userData.life?.uBandGold) G.mat.userData.life.uBandGold.value = 1;
     const eye = new THREE.Color(0xffa818).multiplyScalar(1.3);
     a.M.eye.color.copy(eye);
     for (const o of eyeSpots(G, a.M.eye.color)) {
@@ -3555,18 +3028,18 @@ export default class EclipseEnding extends CastleCine {
   // ---------------- el sonido ----------------
   // (2026-10-10, el usuario: el ruido de ambiente tapaba la música y seguía en
   // las pantallas negras. Va a la cuarta parte (WIND_K) y en los negros —`hush`—
-  // se calla: windHush, cada cuadro. __mduFinViento: como antes)
+  // se calla: windHush, cada cuadro)
   wind(dur, gain = 0.16) {
     const A = this.g.audio;
     if (!A?.ctx) return;
     const o = (this.windBus ||= A.out({ gain: 1, reverb: 0.5, bus: A.music }));
-    const k = globalThis.__mduFinViento === true ? 1 : WIND_K;
+    const k = WIND_K;
     A.noise(o, { t: A.now, dur, type: 'bandpass', freq: 300, freqEnd: 220, q: 0.6, gain: gain * k, attack: 2.5, brown: true });
   }
   windHush() {
     const A = this.g.audio;
     const b = this.windBus;
-    if (!b || !A?.ctx || globalThis.__mduFinViento === true) return;
+    if (!b || !A?.ctx) return;
     const want = this.hush || this.blackOn ? 0 : 1;
     if (want === this.windWas) return;
     this.windWas = want;
@@ -3589,8 +3062,8 @@ export default class EclipseEnding extends CastleCine {
       return;
     }
     // (el desgarro y los portales que se abren: el grabado del usuario, no el
-    // armado de antes. 2026-10-10. __mduFinPortalViejo: como antes)
-    if (kind === 'tear' && globalThis.__mduFinPortalViejo !== true && eclSfx(this.g).has?.('portal-caos-abre')) {
+    // armado de antes. 2026-10-10)
+    if (kind === 'tear' && eclSfx(this.g).has?.('portal-caos-abre')) {
       eclSfx(this.g).play('portal-caos-abre', { pos: tmpV.copy(p).setY(p.y + 1.4).clone(), gain: 0.9, reverb: 0.5, ref: 8 });
       return;
     }

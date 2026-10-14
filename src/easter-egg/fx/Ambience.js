@@ -102,7 +102,7 @@ export default class Ambience {
       }
       // (Eclipse: la luz sin farol -`noHalo`, los candiles que solo alumbran- no
       // dibuja el halo: quedaba un brillo volando en medio del cuarto. mundo, it. 4)
-      const bare = !!(FEATURES.eclipse && e.def.noHalo && globalThis.__mduNoEclBareHalo !== true);
+      const bare = !!(FEATURES.eclipse && e.def.noHalo);
       this.lamps.push({ e, halo, cone, candle, bare, col: new THREE.Color(e.def.color) });
     }
     if (!lamps.length) this.halos.setColorAt(0, zero);
@@ -135,7 +135,7 @@ export default class Ambience {
         // (el Monumento: casi todas dan a lugares abiertos —el Patio, el
         // Mirador—, sin un cuarto oscuro donde se vea el haz: el del Mirador
         // quedaba flotando afuera de la Torre)
-        if (FEATURES.monumento && ZONES[bw.zone]?.outdoor && globalThis.__mduOldMonShafts !== true) continue;
+        if (FEATURES.monumento && ZONES[bw.zone]?.outdoor) continue;
         const n = bw.out.clone().negate();
         if (-n.x * moon.x - n.z * moon.z <= 0.1) continue;
         // el rayo de la luna, un poco más hacia adentro (rasante a la pared se pierde)

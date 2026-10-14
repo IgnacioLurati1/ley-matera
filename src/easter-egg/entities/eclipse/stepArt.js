@@ -14,8 +14,7 @@ import { buildProp } from '../../world/props';
 // arte del mapa: "hacé tu propuesta y mejorá lo que consideres. Que sea digno
 // de ser el mejor mapa". Antes eran esferas, conos y el mismo "huevo" blanco
 // para todo.) Todo armado acá, sin archivos; las piezas fijas de cada objeto
-// juntas por material (bake). globalThis.__mduOldEclProps: como antes.
-export const ART = globalThis.__mduOldEclProps !== true;
+// juntas por material (bake).
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const TAU = Math.PI * 2;

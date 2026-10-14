@@ -375,10 +375,9 @@ export default class Sable {
   // ---------------- la munición del tiro ----------------
   // El derecho (tirarlo) gasta: pocas en la mano y bastante reserva; cuando
   // vuelve a la mano con el cargador vacío, se llena solo de la reserva (no se
-  // recarga con la R). La Carga no gasta. (El usuario, 2026-10-05;
-  // globalThis.__mduNoSableAmmo: como antes, sin munición.)
+  // recarga con la R). La Carga no gasta. (El usuario, 2026-10-05.)
   usesAmmo(st) {
-    return !globalThis.__mduNoSableAmmo && (st?.mag || 0) > 0;
+    return (st?.mag || 0) > 0;
   }
 
   ammoSlot() {
@@ -428,8 +427,8 @@ export default class Sable {
     this.combo = chain ? (this.combo + 1) % COMBO.length : 0;
     this.move = COMBO[this.combo];
     const mv = MOVES[this.move];
-    // (el Double Tap 2.0 no toca el cuerpo a cuerpo: __mduDoubleTapViejo, +20 % como antes)
-    const rate = g.player.perks.has('doubletap') && globalThis.__mduDoubleTapViejo === true ? 1.2 : 1;
+    // (el Double Tap 2.0 no toca el cuerpo a cuerpo)
+    const rate = 1;
     this.dur = (60 / st.rpm / rate) * mv.len;
     this.mode = 'slash';
     this.t = 0;
@@ -438,7 +437,7 @@ export default class Sable {
     w.state = 'sable';
     w.stateT = 0;
     // (k: cuál del combo, para el muñeco de los compañeros: net/gauchoSkin sableArm)
-    g.net?.act?.('stab', this.dur, globalThis.__mduNoSableAvatar ? null : this.combo);
+    g.net?.act?.('stab', this.dur, this.combo);
   }
 
   // El tajo arranca a cortar: silbido, el arco en el mundo y (el de San
@@ -462,7 +461,7 @@ export default class Sable {
       dir.y = Math.max(-0.3, Math.min(0.3, dir.y));
       // (en las gradas y escalinatas sigue la pendiente: derecha se metía en
       // el primer escalón y no llegaba a los de arriba)
-      if (g.world.levels && !globalThis.__mduNoWaveSlope) {
+      if (g.world.levels) {
         const fl = Math.hypot(fwd.x, fwd.z) || 1;
         const ax = P.x + (fwd.x / fl) * 8;
         const az = P.z + (fwd.z / fl) * 8;
@@ -535,7 +534,7 @@ export default class Sable {
     const hp = Math.max(zombieHealth(r), z.maxHp || 0);
     // (de un tajo: lo que tiene, con margen; ya no infinito, el usuario
     // 2026-10-05. Infinita queda solo la Carga, a los comunes)
-    if (r <= one) return globalThis.__mduNoSableDmg ? 1e9 : hp * 1.1;
+    if (r <= one) return hp * 1.1;
     return hp / (1.9 + Math.floor((r - one - 1) / 10));
   }
 
@@ -563,7 +562,7 @@ export default class Sable {
     if (this.kills >= C.kills) {
       this.sndReady();
       // (la primera vez, qué hacer: el sol del aro solo no alcanzaba)
-      if (!this.cargaTold && !globalThis.__mduNoCargaHint) {
+      if (!this.cargaTold) {
         this.cargaTold = true;
         this.g.hud.subtitle?.('¡Carga lista! Mantené el clic derecho.', 3.5);
       }
@@ -747,7 +746,7 @@ export default class Sable {
     const right = tmpV3.set(-fwd.z, 0, fwd.x);
     // (con escalones: de a tramos siguiendo el piso; el rayo derecho chocaba
     // con el primer escalón de las gradas y la carga moría a los 10 m)
-    if (g.world.levels && !globalThis.__mduNoCargaSlope) {
+    if (g.world.levels) {
       const d = [0, -2.4, 2.4].map((l) => {
         let x = o.x + right.x * l;
         let z = o.z + right.z * l;
@@ -797,7 +796,7 @@ export default class Sable {
       const lat = dx * ch.right.x + dz * ch.right.z;
       if (Math.abs(lat) > C.half + 0.5) continue;
       // (sube y baja con el piso: en las gradas el de arriba queda más alto)
-      const tol = globalThis.__mduNoCargaSlope ? 3 : 3 + Math.abs(along) * 0.18;
+      const tol = 3 + Math.abs(along) * 0.18;
       if (Math.abs(z.pos.y - ch.o.y) > tol && !z.crow) continue;
       ch.hits.add(z);
       const point = new THREE.Vector3(z.pos.x, aimY(z), z.pos.z);

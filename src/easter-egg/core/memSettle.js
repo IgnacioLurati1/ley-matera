@@ -13,13 +13,12 @@
 // solo hace algo cuando existe globalThis.gc: la versión de escritorio,
 // abierta con --js-flags=--expose-gc (desktop/main.cjs). En el navegador no
 // hace nada.
-// globalThis.__mduNoMemSettle: como antes. globalThis.__mduMemSettle: cuánto
-// tardó la última (ms), para las pruebas.
+// globalThis.__mduMemSettle: cuánto tardó la última (ms), para las pruebas.
 
 // Se llama al terminar la cinemática de entrada (o al entrar, si no hay): la
 // pantalla todavía viene de negro.
 export function settleMemory() {
-  if (globalThis.__mduNoMemSettle === true || typeof globalThis.gc !== 'function') return;
+  if (typeof globalThis.gc !== 'function') return;
   setTimeout(() => {
     const t0 = performance.now();
     try {
@@ -36,9 +35,9 @@ export function settleMemory() {
 // Épica, 9 en 90 s, la peor de 43 ms). Con la ronda terminada y sin muertos
 // vivos se pasa ahí, a 1,5 s del final (el cartel de la ronda ya está arriba).
 // En la torre el descanso es corto y quedan muertos: no se hace.
-// globalThis.__mduNoBreakGc: como antes. globalThis.__mduBreakGc: cuánto tardó.
+// globalThis.__mduBreakGc: cuánto tardó.
 export function settleBreak(g) {
-  if (globalThis.__mduNoBreakGc === true || typeof globalThis.gc !== 'function') return;
+  if (typeof globalThis.gc !== 'function') return;
   setTimeout(() => {
     if (g.rounds?.state !== 'break' || g.zombies?.pool?.some((z) => z.active && !z.dead)) return;
     const t0 = performance.now();

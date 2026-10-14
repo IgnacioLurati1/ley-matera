@@ -18,8 +18,7 @@ import { compactGroup } from '../../world/props';
 // Además (el usuario, 2026-10-05): la escuadra sube sí o sí mientras se lleva
 // la Bandera al mástil (forFlag, desde Bandera.js) y desaparece al izarla,
 // antes de la escena de Belgrano (vanish); y los cascos chocan: no se los
-// atraviesa nadando, ni los muertos (collide). __mduNoArmadaFlag /
-// __mduNoShipCollide: como antes.
+// atraviesa nadando, ni los muertos (collide).
 
 const EVERY = 10;
 const SHIPS = 3;
@@ -186,19 +185,18 @@ export default class Armada {
   // ¿Se está llevando la Bandera al mástil (o izándola)?
   flagWalk() {
     const B = this.ee.bnd?.st;
-    return !globalThis.__mduNoArmadaFlag && !!B && !B.done && (B.flag === 'held' || B.flag === 'floor' || B.flag === 'mast');
+    return !!B && !B.done && (B.flag === 'held' || B.flag === 'floor' || B.flag === 'mast');
   }
 
   // La Bandera salió de la costurera: la escuadra sube por el río (sí o sí).
   forFlag() {
-    if (globalThis.__mduNoArmadaFlag || !isHost(this.g) || this.st.on === 1) return;
+    if (!isHost(this.g) || this.st.on === 1) return;
     this.send({ a: 'start', flag: 1 });
   }
 
   // Izada la Bandera: la escuadra desaparece (antes de la escena de Belgrano).
   // En todas las compus (Bandera.apply 'up' → MonumentoEgg.onBanderaIzada).
   vanish() {
-    if (globalThis.__mduNoArmadaFlag) return;
     this.st.on = 0;
     for (const s of this.ships) s.obj.removeFromParent();
     this.ships = [];
@@ -517,7 +515,7 @@ export default class Armada {
   // (el anfitrión) no los atraviesan. El casco: 22 m de eslora (proa a -z, en
   // punta los últimos 6,6 m) y 6,2 de manga, de 1,6 abajo del agua a 2,6 arriba.
   collide() {
-    if (globalThis.__mduNoShipCollide || !this.ships.length) return;
+    if (!this.ships.length) return;
     const g = this.g;
     const push = (p, r, vel) => {
       for (const s of this.ships) {

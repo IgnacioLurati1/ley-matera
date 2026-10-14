@@ -29,9 +29,6 @@
 //   (saltoAnillo): tres trancos, salta hacia uno y cae clavando las manos donde
 //   avisa un círculo morado, y alrededor de donde cae, la lluvia en anillo.
 //
-// globalThis.__mduSinMayhem = true: sin el modo (ni el botón).
-// globalThis.__mduMayhemSinCombos = true: el Mayhem con sus números y su pozo, sin combos.
-// globalThis.__mduMayhemSinClips = true: los combos como antes de los clips nuevos (sin grito ni salto).
 import * as THREE from 'three';
 import { POZO } from './rushCards';
 import { tierOf, maxTier } from '../config/weapons';
@@ -59,9 +56,6 @@ export const MAYHEM = {
   // en cada set, la chance de un gris de los necesarios (si todavía te falta)
   grisNec: 0.3,
 };
-
-export const mayhemOff = () => globalThis.__mduSinMayhem === true;
-const combosOff = () => globalThis.__mduMayhemSinCombos === true;
 
 // ---- las cartas ----
 // (D.pozo: core/rushCards.js options lo usa en vez de POZO)
@@ -143,7 +137,6 @@ export class Mayhem {
     if (this.roar) this.roarTick(A);
     // (un grito o un salto que quedó sin combo —se soltó, se reinició—: a perseguir)
     else if (!this.armed && b && !b.dead && (b.state === 'mhRoar' || b.state === 'mhSalto')) g.zombies.setState(b, 'chase');
-    if (combosOff()) return;
     if (this.armed) {
       this.watch(A, b);
       return;

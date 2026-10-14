@@ -21,8 +21,7 @@ import { isHost, myId } from './common';
 //  - lore: algo para leer (la carta de Belgrano...), corto; la primera vez,
 //    unos puntos. Local.
 // Todo se arma en la carga (sin luces nuevas), contra una pared libre de la
-// zona que se elige igual en todas las compus. globalThis.__mduNoRincones ===
-// true: no se arma nada.
+// zona que se elige igual en todas las compus.
 
 // (zona, qué, cerca de dónde: [x, z] opcional; si no, el medio de la zona)
 const SPOTS = [
@@ -96,7 +95,6 @@ export default class Rincones {
     this.list = [];
     this.buffT = 0;
     this.time = 0;
-    if (globalThis.__mduNoRincones === true) return;
     const g = this.g;
     this.root = new THREE.Group();
     this.root.name = 'eclipse:rincones';
@@ -212,8 +210,8 @@ export default class Rincones {
       const px = x + 0.5;
       const pz = z + 0.5;
       // (el más cercano gana: el que ya queda más lejos ni se prueba; las cajas
-      // eran ~0,4 s de la carga. agente rend; __mduNoRinconFast: como antes)
-      if (globalThis.__mduNoRinconFast !== true && Math.hypot(px - tx, pz - tz) >= bd) continue;
+      // eran ~0,4 s de la carga. agente rend)
+      if (Math.hypot(px - tx, pz - tz) >= bd) continue;
       if (avoid.some(([ax, az, r]) => Math.hypot(px - ax, pz - az) < (relaxed ? Math.min(r, 1.6) : r))) continue;
       // sin cajas encima (la utilería del mapa) en la celda y la de enfrente
       const busy = (qx, qz) => w.boxes.some((b) => b.active !== false && qx + 0.45 > b.x0 && qx - 0.45 < b.x1 && qz + 0.45 > b.z0 && qz - 0.45 < b.z1 && b.y1 > fy + 0.15 && b.y0 < fy + 1.9);

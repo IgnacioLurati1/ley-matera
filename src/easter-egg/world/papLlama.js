@@ -143,13 +143,11 @@ export default class PapLlama {
     pap.slotPos = new THREE.Vector3(lx, LLAMA_Y + 2.4, lz + 0.9);
     pap.face = new THREE.Vector3(0, 0, 1);
     // la mejora: el mate entra al fuego y sale del medio de la llama, que se
-    // aviva (el usuario, 2026-10-05; __mduNoLlamaPap: como en la máquina)
+    // aviva (el usuario, 2026-10-05)
     this.boost = 0;
     this.boostTo = 0;
-    if (!globalThis.__mduNoLlamaPap) {
-      pap.slotPos.set(lx, LLAMA_Y + BOWL_Y + 1.95, lz + PA_Z);
-      pap.anim = (p, dt) => this.papAnim(p, dt);
-    }
+    pap.slotPos.set(lx, LLAMA_Y + BOWL_Y + 1.95, lz + PA_Z);
+    pap.anim = (p, dt) => this.papAnim(p, dt);
     for (const it of [this.q.papIt, ...g.interact.list.filter((x) => x.kind === 'papq')]) {
       it.pos.set(lx, LLAMA_Y + 1.2, lz);
       it.front?.set(lx, LLAMA_Y, lz + 1.6);
@@ -314,7 +312,7 @@ export default class PapLlama {
     const el = document.createElement('div');
     el.style.cssText = 'position:absolute;left:50%;bottom:31%;width:260px;margin-left:-130px;display:none;z-index:30;text-align:center';
     el.innerHTML = '<div style="font-size:15px;margin-bottom:6px">Clic: recoger · en lo rojo, soltá</div><div style="position:relative;height:14px;border:2px solid rgba(255,255,255,0.7);border-radius:8px;background:rgba(0,0,0,0.45);overflow:hidden"><div style="position:absolute;inset:0;background:linear-gradient(90deg,#3a8a4a 0%,#3a8a4a 62%,#c8a020 62%,#c8a020 82%,#c82020 82%)"></div><div class="mon-t" style="position:absolute;top:-3px;bottom:-3px;width:4px;background:#fff;left:0"></div><div class="mon-k" style="position:absolute;left:0;bottom:0;height:3px;background:#9ad0ff;width:0"></div></div>';
-    (globalThis.__mduNoFishHud ? document.body : g.hud?.root || document.body).appendChild(el);
+    (g.hud?.root || document.body).appendChild(el);
     this.bar = el;
   }
 
@@ -345,7 +343,7 @@ export default class PapLlama {
       kind: 'pavaRio',
       pos: new THREE.Vector3(),
       radius: 1.8,
-      prompt: () => (this.pava.at === 'floor' && !this.carry.kind ? { text: globalThis.__mduNoPavaRun ? 'levantar la pava (pesa)' : 'levantar la pava', noCost: true } : null),
+      prompt: () => (this.pava.at === 'floor' && !this.carry.kind ? { text: 'levantar la pava', noCost: true } : null),
       cost: () => 0,
       use: () => {
         if (this.pava.at !== 'floor') return false;
@@ -432,8 +430,8 @@ export default class PapLlama {
     const pull = 0.35 + Math.max(0, Math.sin(g.time * 2.3) * Math.sin(g.time * 0.7)) * (0.9 + F.k);
     F.tension = Math.max(0, Math.min(1.2, F.tension + (reel ? 0.75 : -0.9) * dt + pull * dt * (reel ? 0.6 : 0.2)));
     // (más rápido: ~8 s recogiendo y soltando en vez de ~20; el usuario,
-    // 2026-10-05; __mduNoFishFast: como antes)
-    if (reel && F.tension < 0.82) F.k += dt * (globalThis.__mduNoFishFast ? 0.12 : 0.27);
+    // 2026-10-05)
+    if (reel && F.tension < 0.82) F.k += dt * 0.27;
     if (F.tension >= 1) {
       g.audio.deny();
       g.hud.subtitle('¡Se cortó el hilo! Volvé a tirar.', 2.5);
@@ -493,13 +491,12 @@ export default class PapLlama {
   prompt() {
     const info = (text) => ({ text, noCost: true, info: true });
     // (qué y dónde: el usuario no sabía dónde quedaba la Batería ni de dónde sale la pava)
-    const old = globalThis.__mduNoLlamaText;
-    if (this.st === 0) return info(old ? 'La Llama Votiva está apagada. El fuego sale de la Batería Libertad' : 'La Llama Votiva está apagada. El fuego sale del cañón del Parque');
+    if (this.st === 0) return info('La Llama Votiva está apagada. El fuego sale del cañón del Parque');
     if (this.st === 1) {
       if (this.carry.mine && this.carry.kind === 'antorcha') return { text: 'prender la Llama Votiva', noCost: true, hold: true };
-      return info(old ? 'Hay que traer la antorcha prendida' : 'Falta la antorcha del cañón del Parque');
+      return info('Falta la antorcha del cañón del Parque');
     }
-    if (this.st === 2 || this.st === 3) return info(old ? 'La Llama arde, pero no tiene pava. Está en el fondo del río' : this.st === 3 ? 'La pava la tiene el Surubí, en la Costanera' : 'Falta la pava. Se pesca con la caña del muelle');
+    if (this.st === 2 || this.st === 3) return info(this.st === 3 ? 'La pava la tiene el Surubí, en la Costanera' : 'Falta la pava. Se pesca con la caña del muelle');
     if (this.st === 4) {
       if (this.carry.mine && this.carry.kind === 'pava') return { text: 'poner la pava en la Llama', noCost: true, hold: true };
       return info('Falta la pava. Está en el muelle');
@@ -667,8 +664,8 @@ export default class PapLlama {
     if (on && !this.fireOn) {
       this.fireOn = true;
       // (el rumor suave del fuego, sin el tic-tic del crepitar: el usuario,
-      // 2026-10-05; __mduNoLlamaQuiet: con el crepitar, como antes)
-      g.audio.startFire(this.q.pap.group.position.clone().setY(LLAMA_Y + 1.6), { crackle: !!globalThis.__mduNoLlamaQuiet });
+      // 2026-10-05)
+      g.audio.startFire(this.q.pap.group.position.clone().setY(LLAMA_Y + 1.6), { crackle: false });
     }
     // los pebeteros prendidos
     this.pebs.forEach((p, i) => {

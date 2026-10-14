@@ -25,7 +25,6 @@ const WALL = 2;
 // vacío se colaba por ahí y se veía "a través del mapa" (el usuario, 2026-10-06).
 // Hasta este tamaño se rellenan con un bloque sólido (más grandes: el ojo de la
 // galería de la torre, la zanja de la loma, quedan como pozos a propósito).
-// globalThis.__mduNoEclHoles: como antes (vacío).
 const HOLE_MAX = 40;
 // cuánto baja el terreno pegado a las islas mientras Levels arma las caras de
 // las paredes y los cordones (las dibuja hasta el terreno de al lado: con el
@@ -46,12 +45,12 @@ export function installEclipseHooks(w) {
   w.terrain = () => {
     // (acá World ya marcó como pared toda celda de afuera pegada a un piso: lo
     // que queda OUT adentro de una isla es un pozo de verdad)
-    if (globalThis.__mduNoEclHoles !== true) fillHoles(w);
+    fillHoles(w);
     for (let i = 0; i < MAP_W * MAP_H; i++) if (w.grid[i] === OUT) w.ty[i] -= SKIRT;
   };
   // la barranca de la laguna no lleva baranda: uno se tira al agua (ni la caja
   // ni el dibujo de la de hierro; tampoco al costado de la playa, que baja al
-  // agua). globalThis.__mduNoLagoonRail: la baranda dibujada, como antes
+  // agua).
   const lagoon = w.zoneKeys.indexOf('B');
   const wet = (k) => w.zone[k] === lagoon || (w.rampAt[k] >= 0 && RAMPS[w.rampAt[k]]?.own === 'playa');
   w.dropOk = (i, j) => wet(i) || wet(j);
@@ -59,7 +58,7 @@ export function installEclipseHooks(w) {
   // coloso de la Proa, el borde del espejo del Pasaje) ocupa el borde: ahí la
   // baranda de Levels sobraba y la atravesaba; arte-v5, 2026-10-07)
   const NO_RAIL = new Set([324 + 234 * MAP_W, 254 + 238 * MAP_W]);
-  w.dropEdge = (w2, gb, i, ax, az, ya, bx, bz, yb, dx, dz) => (globalThis.__mduNoLagoonRail !== true && wet(i + dx + dz * MAP_W)) || NO_RAIL.has(i);
+  w.dropEdge = (w2, gb, i, ax, az, ya, bx, bz, yb, dx, dz) => wet(i + dx + dz * MAP_W) || NO_RAIL.has(i);
 }
 
 // Marca como bloque (WALL) las regiones de celdas OUT que no llegan al borde de
@@ -138,7 +137,6 @@ function fillHoles(w) {
         }
       }
       ring = next;
-      if (zk >= 0 && globalThis.__mduOldHoles === true) break;
     }
     for (const i of cells) w.grid[i] = WALL;
     holes.push({ cells, zone: zk, around: [...around] });
@@ -159,14 +157,12 @@ function buildHoleBlocks(w) {
     const mat = w.M[Z.ext] || w.M[Z.cliff] || w.M[Z.wall] || w.M.rock || w.M.ground;
     let y0 = Z.y - 1.2;
     let y1 = Z.roof ?? Z.y;
-    if (globalThis.__mduOldHoles !== true) {
-      for (const zi of h.around || []) {
-        const Z2 = ZONES[w.zoneKeys[zi]];
-        if (!Z2) continue;
-        y0 = Math.min(y0, Z2.y - 1.2);
-        // (hasta el pie del muro de la otra, que baja 0,9 m: el muro se sigue viendo)
-        y1 = Math.max(y1, Z2.roof ?? Z2.y - 0.8);
-      }
+    for (const zi of h.around || []) {
+      const Z2 = ZONES[w.zoneKeys[zi]];
+      if (!Z2) continue;
+      y0 = Math.min(y0, Z2.y - 1.2);
+      // (hasta el pie del muro de la otra, que baja 0,9 m: el muro se sigue viendo)
+      y1 = Math.max(y1, Z2.roof ?? Z2.y - 0.8);
     }
     if (!(y1 > y0)) continue;
     let list = byMat.get(mat);
@@ -198,16 +194,16 @@ export function buildEclipseOutside(w) {
   // el vacío de verdad: lo que no es isla ni borde no tiene suelo
   for (let i = 0; i < MAP_W * MAP_H; i++) if (w.grid[i] === OUT) w.ty[i] = VOID_Y;
   // los huecos cerrados, tapados con bloque
-  if (globalThis.__mduNoEclHoles !== true) buildHoleBlocks(w);
+  buildHoleBlocks(w);
   // la roca de cada isla: la repisa irregular de alrededor y la masa que
-  // cuelga abajo (world/eclipseRock.js; globalThis.__mduNoEclipseRock: sin roca)
-  if (globalThis.__mduNoEclipseRock !== true) buildEclipseRock(w);
+  // cuelga abajo (world/eclipseRock.js)
+  buildEclipseRock(w);
   // (lo que quemaba en blanco, antes de fundir el arte: world/eclipseMood.js)
   if (globalThis.__mduNoEclMood !== true) moodPrep(w);
   // el arte de cada isla (world/eclipseIslands.js, un modulo por isla)
   const live = buildEclipseIslands(w);
-  // la pasada gráfica: luz, faroles, roca (world/eclipseGfx.js; __mduNoEclGfx: sin ella)
-  if (globalThis.__mduNoEclGfx !== true) live.push(buildEclipseGfx(w));
+  // la pasada gráfica: luz, faroles, roca (world/eclipseGfx.js)
+  live.push(buildEclipseGfx(w));
   // las caras repetidas en el mismo plano (titilaban): world/eclipseDedupe.js
   try {
     dedupeEclipse(w);

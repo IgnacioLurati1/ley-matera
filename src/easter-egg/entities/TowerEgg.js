@@ -51,7 +51,15 @@ import BlendScene, { loadBlendScene } from '../ui/blendScene';
 // al sello y a los candados que hace un invitado le llegan como aviso.
 
 const FIERRO = {
+  // (el usuario, 2026-10-14: la charla era muy larga y no se le prestaba
+  // atención; dónde está cada pieza ya lo dice el cartel del objetivo.
+  // __mduFierroLargo = true: la de antes, introLargo)
   intro: [
+    'Tranquilo, paisano. Soy el alma de Martín Fierro, el abuelo del molino.',
+    'La Voz se quedó con el mate supremo. Para bajarla hace falta el cañón de la cima.',
+    'Le faltan tres piezas: el caño, la rueda y la mecha. Están desparramadas por la torre.',
+  ],
+  introLargo: [
     'Tranquilo, paisano, que no muerdo. Soy el alma de Martín Fierro... el mismo que en el molino se hacía pasar por abuelo.',
     'La Voz que los guió no es un ángel. Se quedó con el mate supremo y vive arriba de todo, en el ojo del remolino.',
     'Para bajarla hace falta el cañón de la Vuelta de Obligado, en la cima. Le faltan tres piezas.',
@@ -229,9 +237,9 @@ export default class TowerEgg {
     this.root.add(this.fierroGlow);
     this.fierroSpot = 'base';
     // el cañonazo, armado en Blender (ui/blendScene.js): se pide ya, para tenerlo
-    // cuando haga falta. (globalThis.__mduCanonViejo: la escena de antes)
+    // cuando haga falta.
     this.canonD = null;
-    if (globalThis.__mduCanonViejo !== true) loadBlendScene('canon-torre').then((D) => (this.canonD = D)).catch(() => {});
+    loadBlendScene('canon-torre').then((D) => (this.canonD = D)).catch(() => {});
   }
 
   // Dónde está Fierro: abajo, al lado del fogón, o arriba, junto al cañón.
@@ -557,6 +565,8 @@ export default class TowerEgg {
     this.objEl.innerHTML =
       `<header><span>${this.fight ? 'El Infierno Matero' : 'Las Revelaciones'}</span><em class="mdu-obj__pips">${pips}</em></header>` +
       `<p>${o.main}</p>${o.sub ? `<small>${o.sub}</small>` : ''}${o.count ? `<b class="mdu-obj__count">${o.count}</b>` : ''}${list}`;
+    // (otro alto: la lista de compañeros de abajo se acomoda ya; ver updateHud)
+    if (globalThis.__mduObjBajoLista !== true) this.g.hud.layoutT = 0;
   }
 
   // ---------------- interacciones ----------------
@@ -753,7 +763,7 @@ export default class TowerEgg {
   talk() {
     if (this.step === 0) {
       this.step = 1;
-      this.lines('fierro', FIERRO.intro);
+      this.lines('fierro', globalThis.__mduFierroLargo === true ? FIERRO.introLargo : FIERRO.intro);
       this.netSync();
     } else this.say('fierro', this.remind());
     this.voiceT = 100;
@@ -1133,6 +1143,13 @@ export default class TowerEgg {
       if (g.zombies.boss) g.zombies.removeBoss();
       if (kind === 'cannon' && n && g.rounds.state === 'active') g.rounds.toSpawn += n;
     }
+    // (2026-10-14, el usuario: "la cinemática del cañón no limpia de zombies ni
+    // de proyectiles, quedan trabados en la misma". Lo que iba volando quedaba
+    // congelado en el aire toda la escena: Weapons.update no corre mientras hay
+    // escena. En cada compu, cada uno lo suyo y lo de los otros que ve.
+    // globalThis.__mduCanonSucio = true: como antes)
+    if (kind === 'cannon' && globalThis.__mduCanonSucio !== true) this.clearFlying();
+    if (kind === 'cannon' && globalThis.__mduCanonConCuervo !== true) this.crowAway(this.scene, true);
     if (kind === 'cannon') {
       // el cielo arranca cerrado: se abre recién cuando pega la bala
       this.T.skyOpenK = 0;
@@ -1158,10 +1175,9 @@ export default class TowerEgg {
 
   // Los cuatro gauchos (ui/cineActors: clips de Blender, cada uno con su
   // carácter). En el cañonazo, en ronda atrás del cañón; en la caída, caen con
-  // la cámara. globalThis.__mduBlend = false: las escenas de antes, sin ellos.
+  // la cámara.
   sceneCrew(S) {
     const g = this.g;
-    if (globalThis.__mduBlend === false) return;
     const base = EE.canon.y;
     // (de noche: con una luz de relleno solo para ellos, si no se leían oscuros)
     const C = new CineActors(g, { floor: () => base, fill: 0x9ca0b4 });
@@ -1172,7 +1188,7 @@ export default class TowerEgg {
       // la escena armada en Blender (C:/Users/ignac/Tools/mdu-blender/canon_torre.py,
       // aprobada en gris el 2026-10-11): los cuerpos, la cámara y las líneas
       // salen de ahí; los efectos, de cannonFx. Si el archivo no llegó, la de antes.
-      if (this.canonD && globalThis.__mduCanonViejo !== true) {
+      if (this.canonD) {
         S.blend = new BlendScene(g, this.canonD, { actors: C, on: { di: (e) => this.sceneSay(S, e.who, e.text) } });
         // (el lente de la escena: Game.update no se lo pisa, cineFov)
         S.cine = { wantFov: this.canonD.cam.fov[0] };
@@ -1273,6 +1289,16 @@ export default class TowerEgg {
     const t = S.t;
     const cam = g.camera;
     const lines = S.kind === 'cannon' ? CANNON_LINES : FALL_LINES;
+    if (S.kind === 'cannon') {
+      // (2026-10-14, el usuario: "no limpia de zombies ni de proyectiles, quedan
+      // trabados en la misma". Los que salen DURANTE la escena —los peones que el
+      // Capataz llamó con un silbido justo antes del disparo: Zombies.callPeones,
+      // con g.later— quedaban a medio salir de la tierra, quietos, toda la escena:
+      // mientras hay escena el anfitrión no corre Zombies.update. Se sacan apenas
+      // salen (el invitado los pierde por la red). globalThis.__mduCanonSucio = true: como antes)
+      if (!g.net?.guest && globalThis.__mduCanonSucio !== true) for (const z of g.zombies.pool) if (z.active) g.zombies.free(z);
+      if (S.crowAway) this.crowHide();
+    }
     // (en la escena de Blender las líneas vienen de su línea de tiempo)
     while (!S.blend && S.said < lines.length && t >= lines[S.said][0]) {
       const [, who, text] = lines[S.said];
@@ -1287,6 +1313,54 @@ export default class TowerEgg {
     else this.fallCam(t, dt, cam);
     if (S.crew && this.scene === S) S.crew.tick(sdt);
     return true;
+  }
+
+  // Lo que va volando o quedó clavado (granadas, pavas, los remolinos del Mark
+  // III, los tiros que vuelan, las bombillas clavadas y los charcos de fuego),
+  // como en los finales (Game.win), pero sin Weapons.clearProjectiles: ese
+  // también vacía lo que cada mate especial tiene cargado (las almas del Farol,
+  // la carga de los elementales) y la partida sigue.
+  clearFlying() {
+    const g = this.g;
+    const W = g.weapons;
+    if (!W) return;
+    const gone = new Set(W.projectiles || []);
+    for (const p of gone) {
+      p.mesh?.removeFromParent();
+      p.bubbles?.stop(0.1);
+    }
+    W.projectiles = [];
+    // (los señuelos de esos tiros; los de las estaciones del escudo se vuelven a anotar solos)
+    if (g.lures) for (let i = g.lures.length - 1; i >= 0; i--) if (gone.has(g.lures[i].src)) g.lures.splice(i, 1);
+    W.clearStuck?.();
+  }
+
+  // El Cuervo, afuera del cañonazo (2026-10-14, pedido con el arreglo de los
+  // muertos trabados: no es del pool de muertos y seguía volando y tirando
+  // plumas a los jugadores durante la escena). Se queda quieto y escondido
+  // (Crow.away: no se mueve, no ataca ni tira plumas) y vuelve donde estaba al
+  // terminar, con la misma vida. En cada compu. globalThis.__mduCanonConCuervo = true: como antes
+  crowAway(S, on) {
+    const C = this.g.crow;
+    if (!C) return;
+    C.away = on;
+    S.crowAway = on;
+    if (on) this.crowHide();
+    else if (C.z.active) {
+      C.rig.visible = true;
+      C.rig.mcDirty = true;
+    }
+  }
+
+  // (cada cuadro de la escena: al invitado le pueden llegar el Cuervo o sus plumas por la red)
+  crowHide() {
+    const C = this.g.crow;
+    if (!C) return;
+    C.rig.visible = false;
+    if (C.feathers.length) {
+      for (const f of C.feathers) f.mesh.removeFromParent();
+      C.feathers = [];
+    }
   }
 
   // Una línea de la escena: el texto abajo y la voz.
@@ -1499,6 +1573,7 @@ export default class TowerEgg {
     const S = this.scene;
     if (!S) return;
     this.scene = null;
+    if (S.crowAway) this.crowAway(S, false);
     S.el.remove();
     g.hud.show(true);
     S.blend?.dispose();
@@ -1910,13 +1985,23 @@ export default class TowerEgg {
     this.objEl.style.opacity = g.hud.root.style.display === 'none' ? '0' : '1';
     // en línea, abajo del panel de los compañeros; y abajo de la tarjeta de las
     // piezas del escudo mientras está
+    // (2026-10-14, el usuario: "el cartel que antes tenía los pasos para hacer en
+    // la torre no apareció o apareció y se fue para abajo de formas raras". En
+    // línea esto lo ponía abajo de la lista de compañeros y Hud.layout pone la
+    // lista abajo del cartel: cada medio segundo bajaban los dos un escalón hasta
+    // salir de la pantalla (medido: ~140 px cada vez, desde el 2026-09-27). Ahora
+    // manda Hud.layout, como con el cartel del castillo y el del estero: el cartel
+    // arriba y la lista debajo. globalThis.__mduObjBajoLista = true: como antes)
+    const viejo = globalThis.__mduObjBajoLista === true;
     const tb = g.hud.team;
     const pl = g.hud.parts;
-    let top = tb?.childElementCount ? tb.offsetTop + tb.offsetHeight + 14 : 154;
+    let top = viejo && tb?.childElementCount ? tb.offsetTop + tb.offsetHeight + 14 : 154;
     if (pl?.classList.contains('is-on')) top = Math.max(top, pl.offsetTop + pl.offsetHeight + 16);
     if (top !== this.objTop) {
       this.objTop = top;
       this.objEl.style.top = `${top}px`;
+      // (la lista de compañeros se acomoda ya, no al medio segundo: Hud.layout)
+      if (!viejo) g.hud.layoutT = 0;
     }
     const inv = { cano: p.cano === 'held', rueda: p.rueda === 'held', mecha: p.mecha === 'held', brasa: !!this.brasa, ...this.mk3q.inv() };
     const key = Object.values(inv).map((x) => (x ? 1 : 0)).join('') + (this.fight ? 'f' : '');

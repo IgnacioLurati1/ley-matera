@@ -21,9 +21,6 @@ import { KNIFE, BOWIE } from '../config/weapons';
 // avisa ('operb'). Los compañeros oyen y ven los tiros dobles, la estela y el
 // rebote (Session sendShot: n, tc, rp, rb) y el vapor del Camionero caliente.
 //
-// __mduSinEspecialistas = true (o __mduSinAccesorios): nada de esto.
-
-const off = () => globalThis.__mduSinAccesorios === true || Armas.sinNuevos();
 const N = (id) => Armas.ESP[id];
 const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
 const ease = (t) => t * t * (3 - 2 * t);
@@ -137,7 +134,6 @@ export class Especialistas {
   // ---------------- lo que cambia según cómo se tira ----------------
   // Weapons.stats: lo que depende del momento (apuntando o no, tirando seguido).
   vivo(st) {
-    if (off()) return;
     const W = this.W;
     if (st.esp === 'bombeo' && W.adsT < 0.5) {
       // de cadera bombea solo: automático, más rápido y más abierto
@@ -154,7 +150,7 @@ export class Especialistas {
     this.cornCd = Math.max(0, this.cornCd - dt);
     this.derecho = !!input?.mouse?.right;
     const st = W.slot ? W.stats : null;
-    const esp = !off() && st?.esp;
+    const esp = st?.esp;
     // el rebato se corta al soltar
     if (this.rb.on && (!input?.mouse?.left || g.time - this.rb.last > 0.3 || esp !== 'rebato')) this.rb.on = false;
     // la salva se suelta (o se corta si cambió algo)
@@ -196,7 +192,7 @@ export class Especialistas {
   // ---------------- la entrada ----------------
   // Weapons.handleInput, después de la R. true: la usó él.
   input(input, st, p, s) {
-    if (off() || s.temp) return false;
+    if (s.temp) return false;
     const W = this.W;
     const g = this.g;
     const id = st.esp;
@@ -284,7 +280,7 @@ export class Especialistas {
     r.gap = 0.03;
     r.st = null;
     r.cu = false;
-    if (!st.esp || off() || s.temp) return r;
+    if (!st.esp || s.temp) return r;
     const g = this.g;
     const W = this.W;
     switch (st.esp) {
@@ -379,7 +375,7 @@ export class Especialistas {
 
   // Lo que los compañeros tienen que saber del tiro (Session sendShot).
   red(st, r) {
-    if (off() || !st.esp) return undefined;
+    if (!st.esp) return undefined;
     const x = {};
     if (r.n > 1 && st.kind === 'hitscan') x.n = r.n;
     if (st.tracer) x.tc = st.tracer;
@@ -630,7 +626,7 @@ export class Especialistas {
   // entities/Zombies.damage, con el muerto todavía vivo (info.esp: el especialista del tiro).
   golpe(z, info) {
     const g = this.g;
-    if (off() || g.net?.guest) return;
+    if (g.net?.guest) return;
     const id = info.esp;
     if (id === 'tilo') this.adormecer(z);
     else if (id === 'cornada') this.voltear(z, info.dir);
@@ -655,7 +651,7 @@ export class Especialistas {
   // entities/Zombies.damage, cuando el golpe lo mató. dmg: lo que pegó.
   mata(z, info, dmg) {
     const g = this.g;
-    if (off() || g.net?.guest) return;
+    if (g.net?.guest) return;
     const id = info.esp;
     if (id === 'desgarro') this.desgarro(z, info, dmg);
     else if (id === 'bendicion' || id === 'cerrojo') {
@@ -675,7 +671,7 @@ export class Especialistas {
     const g = this.g;
     const W = this.W;
     const s = W.slot;
-    if (!s || off()) return;
+    if (!s) return;
     if (id === 'bendicion') {
       if (s.id !== 'caballero') return;
       const st = W.stats;
@@ -743,7 +739,7 @@ export class Especialistas {
   cornada(st) {
     const W = this.W;
     const g = this.g;
-    if (off() || st?.esp !== 'cornada' || this.cornCd > 0 || W.slot?.temp) return false;
+    if (st?.esp !== 'cornada' || this.cornCd > 0 || W.slot?.temp) return false;
     if (['knife', 'throw', 'drink', 'cornada', 'raise'].includes(W.state)) return false;
     W.pourSnd?.stop();
     W.state = 'cornada';
@@ -1158,7 +1154,6 @@ export class Especialistas {
   // el tipo del mensaje de la red; los segundos van en `sg`)
   evento(m) {
     const g = this.g;
-    if (off()) return;
     if (m.k === 'fuego') {
       const z = g.net?.findZombie?.(m.zi);
       if (!z) return;
@@ -1317,7 +1312,6 @@ export class Especialistas {
 
   // Lo que se compila al cargar el mapa (Weapons.warmFx): el vacío y las zetas.
   warm(grp) {
-    if (off()) return;
     const M = vacioMats();
     grp.add(new THREE.Mesh(this.vacioGeo(), M.hueco), new THREE.Mesh(this.vacioGeo(), M.borde));
     const s = this.zzzSprite();

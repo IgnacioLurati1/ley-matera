@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { shownChars } from '../core/voice';
+import { revealSub } from '../ui/subReveal';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EE } from '../config/map';
 import { zombieHealth, maxAlive, SPEEDS } from '../config/rules';
@@ -361,8 +362,7 @@ export default class PenalEgg {
       // muerte los deja salir): azules y transparentes, como en el final
       // (con los clips de Blender, sentado de verdad en la punta del catre,
       // mirando la reja: los pies 22 cm adelante del borde; ver npcActs)
-      const blend = globalThis.__mduBlend !== false;
-      const gp = blend ? toWorld(-w / 2 + 0.55, -d / 2 + 2.27) : toWorld(-w / 2 + 0.9, -d / 2 + 1.4);
+      const gp = toWorld(-w / 2 + 0.55, -d / 2 + 2.27);
       const npc = { id: 300 + i, name: def.name, pos: new THREE.Vector3(gp.x, y, gp.z), yaw: def.rot + Math.PI, pitch: 0, speed: 0, crouch: true, moving: false, anima: true };
       this.npc.add(npc);
       const a = this.npc.list.get(npc.id);
@@ -374,10 +374,9 @@ export default class PenalEgg {
     // lo que hacen en la celda, con clips hechos a mano en Blender
     // (C:/Users/ignac/Tools/mdu-blender penal2_clips.py → cine-penal2.json):
     // sentados en el catre, llaman con la mano, hablan, se paran cuando los
-    // sueltan. globalThis.__mduBlend = false: agachados como antes.
+    // sueltan.
     this.P2 = null;
-    if (globalThis.__mduBlend !== false)
-      fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-penal2.json'))
+    fetch(assetUrl('/assets/sotano/modelos/gaucho/cine-penal2.json'))
         .then((r) => r.json())
         .then((J) => {
           const C = {};
@@ -1515,10 +1514,8 @@ export default class PenalEgg {
 
   // Los cuatro gauchos en el patio (siempre cuatro, cada uno con su carácter:
   // ui/cineCrew), en ronda del otro lado de las cámaras, mirando al cielo.
-  // globalThis.__mduBlend = false: la escena de antes, sin ellos.
   sceneCrew(S) {
     const g = this.g;
-    if (globalThis.__mduBlend === false) return;
     const Y = this.yerbaPos;
     // (el Canchero, sin los anteojos de sol en esta: pedido del usuario 2026-10-07)
     const C = new CineActors(g, { floor: (x, z) => this.floor(x, z), shades: false });
@@ -1582,7 +1579,7 @@ export default class PenalEgg {
   sceneSay(text) {
     const S = this.scene;
     const d = this.g.audio.say(text, 'entidad', { cine: true });
-    S.sub = { text, t0: S.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.045)), marks: globalThis.__mduSubViejo === true ? null : this.g.audio.sayMarks, k: -1 };
+    S.sub = { text, t0: S.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.045)), marks: this.g.audio.sayMarks, k: -1 };
     S.span.textContent = '';
     S.text.classList.add('is-on');
     return d;
@@ -1733,7 +1730,7 @@ export default class PenalEgg {
       const k = sub.marks ? shownChars(sub.text, sub.marks, t - sub.t0) : Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
       if (k !== sub.k) {
         sub.k = k;
-        S.span.textContent = sub.text.slice(0, k);
+        revealSub(S.span, sub.text, k);
       }
     }
     return true;

@@ -16,13 +16,12 @@ import * as penalCaos from './eclipse/penalCaos';
 
 // El arte de cada isla de Eclipse Matero, un módulo por isla (world/eclipse/).
 // Cada uno arma lo suyo encima del armado en bloques y de la roca, y si tiene
-// algo que mover lo hace en update. __mduNoEclipseArt: solo los bloques.
+// algo que mover lo hace en update.
 // (abismo: La Disformidad, la dimensión de afuera; mundo, it. 4)
 // (grietas: los cuatro jirones del paso I del Pack-a-Pava; 2026-10-10)
 const MODS = { centro, molino, tapera, penal, monumento, torre, castillo, desgarro, abismo, grietas };
 
 export function buildEclipseIslands(w) {
-  if (globalThis.__mduNoEclipseArt === true) return [];
   const live = [];
   for (const [id, m] of Object.entries(MODS)) {
     const isl = ISLANDS[id];

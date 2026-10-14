@@ -459,8 +459,8 @@ class Maizal {
     }
     // (arte6: sin nadie adentro ni antes, no toca el empuje: el del pajonal y el
     // maizal de Eclipse —fx/grassPush makeGrassPush— lo escribía antes en el mismo
-    // cuadro y acá se pisaba con 0. globalThis.__mduNoMaizPushFix: como antes)
-    if (!n && !this.pushUsed && globalThis.__mduNoMaizPushFix !== true) return;
+    // cuadro y acá se pisaba con 0)
+    if (!n && !this.pushUsed) return;
     for (let i = n; i < this.pushUsed; i++) {
       PUSH[i * 2].w = 0;
       PUSH[i * 2 + 1].w = 0;

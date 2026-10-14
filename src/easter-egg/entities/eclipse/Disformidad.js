@@ -14,7 +14,6 @@ import { hasCatal } from './catalizador';
 //  - El anfitrión: los deformes (Zombies.deformIf) aguantan más y no caminan:
 //    corren; mientras haya alguien adentro, la ronda aprieta (salen más seguido).
 // Nada se arma en plena partida: el velo es un div armado al cargar.
-// globalThis.__mduNoDisfHostil === true: la Disformidad como antes.
 
 const GRACE = 6;          // segundos antes de que empiece a chupar
 const DRAIN = 3.2;        // vida por segundo
@@ -45,7 +44,7 @@ export default class Disformidad {
   }
 
   off() {
-    return globalThis.__mduNoDisfHostil === true;
+    return false;
   }
 
   isDim(p) {

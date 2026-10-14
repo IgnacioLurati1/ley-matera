@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { MAP_ID } from '../config/map';
 
 // Haces de luz por las ventanas: un volumen de verdad, no planos cruzados (de
 // costado se veían los rectángulos encimados). Cada haz es la caja que barre la
@@ -172,7 +171,6 @@ void main() {
 // con la cámara adentro (cara de atrás, sin profundidad) va en otra
 // InstancedMesh igual, que se dibuja solo mientras alguien está adentro
 // (Arrival.warmWorld da vuelta la de afuera en la carga: compila esa variante).
-// globalThis.__mduNoShaftInst (todos) o __mduNoShaftInst_<mapa>, al cargar: como antes.
 // (prueba en la misma página: __mduShaftAB = true arma también los sueltos y
 // deja globalThis.__mduShaftToggle(on))
 const DATA = 17;
@@ -254,7 +252,7 @@ export function windowBeams(items, { color = 0x9ab4e8, dens = 0.45, pool = 0.35 
   const beams = [];
   // (instanciado: los sueltos no van a la escena, salvo en la prueba)
   // (con 1-2 haces no se gana: son 3 objetos igual; La Tapera tiene 2)
-  const inst = globalThis.__mduNoShaftInst !== true && globalThis[`__mduNoShaftInst_${MAP_ID}`] !== true && items.length > 2;
+  const inst = items.length > 2;
   const loose = !inst || globalThis.__mduShaftAB === true;
   const put = (o) => {
     if (loose) root.add(o);

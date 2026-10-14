@@ -34,7 +34,7 @@ const DIVE_DMG = 55;
 // rozan, medidas con el cuerpo de verdad, son entrando el medio del arco a
 // GATE_H del piso, bajando GATE_SLOPE por metro, y saliendo a GATE_OUT_H,
 // subiendo GATE_OUT_SLOPE por metro; en la cima, GATE_TOP (por arriba de la
-// baranda). __mduCuervoViejo: como antes.
+// baranda).
 const RING_GAP = 5.5;
 const RING_V = 9;
 const GATE_OUT = 4.5;
@@ -303,9 +303,9 @@ export default class Crow {
     let bestC = Infinity;
     // (si los cercanos le quedan del otro lado, en vez de esperar dando vueltas entra por
     // uno más lejos del jugador que le quede de este lado: el usuario, 2026-10-12, "prefiero
-    // que se tire antes". globalThis.__mduCuervoEspera: espera como antes)
+    // que se tire antes")
     for (const any of [false, true]) {
-      if (any && (best || globalThis.__mduCuervoEspera === true)) break;
+      if (any && best) break;
       for (const a of list) {
         const O = a.pts[0];
         if ((!any && a.cost > near) || cutsTower(T, z.pos, O, 2)) continue;
@@ -357,6 +357,8 @@ export default class Crow {
 
   // ---------------- cerebro (anfitrión) ----------------
   update(dt) {
+    // (quieto y escondido mientras dura el cañonazo de la torre: entities/TowerEgg crowAway)
+    if (this.away) return;
     const g = this.g;
     this.updateFeathers(dt);
     if (!this.z.active) return;
@@ -377,7 +379,7 @@ export default class Crow {
     const oc = T ? { x: T.T.cx, z: T.T.cz } : tgt ? tgt.pos : g.player.pos;
     const OR = T ? 18 : CIRCLE_R;
     // (la torre del Challenge: la vuelta en cuadrado y la entrada por los arcos; RING_GAP)
-    const RG = T && T.T.challenge && globalThis.__mduCuervoViejo !== true;
+    const RG = T && T.T.challenge;
     const face = (x, zz, rate) => {
       let d = Math.atan2(x - z.pos.x, zz - z.pos.z) - z.yaw;
       while (d > Math.PI) d -= Math.PI * 2;

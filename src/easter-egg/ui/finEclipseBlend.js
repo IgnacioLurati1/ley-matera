@@ -96,6 +96,7 @@ export default class FinEclipseBlend {
     this.D = D;
     this.done = done;
     this.t = 0;
+    this.lastT = 0;
     this.over = false;
     this.wantFov = D.cam.fov[0];
     // las barras y el texto de abajo (como las escenas de la torre)
@@ -195,6 +196,25 @@ export default class FinEclipseBlend {
     else if (n.startsWith('sigue ')) this.end();
   }
 
+  // (el que entra tarde en línea, entities/eclipse/slFinal startBlend) La escena desde el segundo t: el blanco
+  // de pantalla y el mundo blanco como van en las otras compus (los eventos que quedaron atrás no se disparan).
+  seek(t) {
+    // (con el reloj del final, la hora ya es esa: no cuenta como un salto de afuera)
+    this.t = t;
+    this.lastT = t;
+    const E = this.D.events || [];
+    const at = (re) => E.find((e) => re.test(String(e.name || '')))?.t;
+    const fade = at(/^blanco funde/);
+    const on = at(/^blanco on$/);
+    const off = at(/^blanco off$/);
+    if (fade != null && t >= fade) this.g.music?.stop(0.3);
+    if (on != null && t >= on) {
+      if (!this.inWhite) this.whiteWorld(true);
+      this.wk = this.wTo = off != null && t >= off ? 0 : 1;
+    } else if (fade != null && t >= fade) this.wk = this.wTo = 1;
+    this.white.style.opacity = String(this.wk);
+  }
+
   fadeWhite(to, secs) {
     this.wTo = to;
     this.wRate = 1 / Math.max(0.01, secs);
@@ -278,7 +298,15 @@ export default class FinEclipseBlend {
 
   update(dt) {
     if (this.over) return true;
-    this.t += dt;
+    // (fase 4, en línea: con clock —el reloj del final, entities/eclipse/slFinal startBlend— la escena va por la
+    // hora y no por los cuadros: una compu que se traba un momento salta adelante en vez de quedarse atrás de
+    // las otras. Si alguien cambia t de afuera —seek, una prueba—, el reloj se corre con él.
+    // globalThis.__mduFinBlendDt: por cuadros, como antes)
+    if (this.clock && globalThis.__mduFinBlendDt !== true) {
+      if (this.t !== this.lastT) this.tOff = (this.tOff || 0) + (this.t - this.lastT);
+      this.t = this.clock() + (this.tOff || 0);
+    } else this.t += dt;
+    this.lastT = this.t;
     const t = this.t;
     this.C.tick(dt);
     this.B.update(t);

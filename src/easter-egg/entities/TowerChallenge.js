@@ -327,11 +327,10 @@ export default class TowerChallenge {
     // 26,5 m del medio metía la punta de las alas en las esquinas y los arcos
     // de la torre (llega 10,7 m para adentro y las esquinas están a 18,4 m).
     // Ahora de 30,5 a 35,5 m (con 29,5 todavía rozaba una esquina), a la misma
-    // velocidad (da la vuelta más despacio). __mduDragonViejo: como antes)
-    const old = globalThis.__mduDragonViejo === true;
-    const w = old ? 0.16 : 0.116;
+    // velocidad (da la vuelta más despacio))
+    const w = 0.116;
     const a = t * w;
-    const r = (old ? 24 : 33) + Math.sin(t * 0.13) * 2.5;
+    const r = 33 + Math.sin(t * 0.13) * 2.5;
     const y = 38 + Math.sin(t * 0.21) * 15;
     const vy = Math.cos(t * 0.21) * 15 * 0.21;
     d.root.position.set(TOWER.cx + Math.cos(a) * r, y, TOWER.cz + Math.sin(a) * r);
@@ -901,8 +900,8 @@ export default class TowerChallenge {
     R.specials = n >= 5 ? Math.floor((1 + n / 3) * (1 + (players - 1) * 0.5)) : 0;
     // (2026-10-10, el usuario: minijefes recién desde la 7 y más espaciados:
     // cada 3 rondas, de a uno y por turno, Rounds.mixedBoss. Antes: 5, 7, 9 y
-    // desde la 11 en todas, con el Cuervo. __mduMixedAzar: como antes)
-    R.bossPending = globalThis.__mduMixedAzar === true ? n >= 5 && (n % 2 === 1 || n >= 11) : n >= 7 && (n - 7) % 3 === 0;
+    // desde la 11 en todas, con el Cuervo)
+    R.bossPending = n >= 7 && (n - 7) % 3 === 0;
     R.bothFrom = 11;
     this.ev.tuneRound(R);
     // con los guardianes del cielo en pie, ni el jefe de la ronda ni la noche de minijefes

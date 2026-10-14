@@ -22,7 +22,7 @@ import { eclSfx } from './eclipseSfx';
 // sfx/eclipse/amb-monumento.mp3, de "city-night-quiet" de ragamuffin
 // (Freesound 197211) y "Ambience City Quiet Night Air Tone" de leonelmail
 // (427841), los dos CC0; y la dimensión oscura "aturde bastante": más baja.)
-// Lo llama entities/EclipseEgg.js update. globalThis.__mduOldEclAmb: sin esto.
+// Lo llama entities/EclipseEgg.js update.
 
 const MENU = '/assets/sotano/sfx/menu/';
 const LOOP_OF = { centro: 'esteros', molino: 'molino', tapera: 'granja', penal: 'penal', monumento: 'amb-monumento', torre: 'torre', castillo: 'castillo', desgarro: 'eclipse', abismo: 'dim' };
@@ -60,7 +60,7 @@ class EclAmbience {
     const a = this.a;
     if (!a?.ctx) return;
     const playing = g.state === 'playing' || g.state === 'paused';
-    const on = playing && !g.intro?.active && !g.ee?.arena?.active && globalThis.__mduOldEclAmb !== true;
+    const on = playing && !g.intro?.active && !g.ee?.arena?.active;
     // la isla donde está (si no hay zona, la de antes)
     const P = g.player;
     const dim = (g.weather?.atmos?.dim || 0) > 0.5;

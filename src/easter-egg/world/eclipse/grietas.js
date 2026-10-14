@@ -18,7 +18,7 @@ import { PIECES } from './abismoVida';
 //  - dos manojos grandes de cristal donde están las luces violetas (LIGHTS);
 //  - alrededor, flotando: lajas negras y dos pedazos de su mapa que giran.
 // El aire negro es de world/eclipseAtmos (la caja de la isla) y la lógica, de
-// world/papGrietas.js. globalThis.__mduNoGrietasArt: solo los bloques y la roca.
+// world/papGrietas.js.
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 // a qué altura queda el plato de los pilares del Nudo (world/papGrietas.js PIL_TOP)
@@ -41,7 +41,7 @@ let LIVE = null;
 // obsidiana sobre un zócalo de piedra, con el plato arriba y cristales al pie.
 // Van aunque el arte esté apagado (tienen choque y se usan).
 function buildPilares(w) {
-  if (!EE.grietas?.length || globalThis.__mduOldPapGrietas === true) return;
+  if (!EE.grietas?.length) return;
   const M = riftMats(w);
   const rocks = [];
   const caps = [];
@@ -76,7 +76,6 @@ export function build(w, g, isl) {
   } catch (e) {
     console.error('Los pilares del Nudo: no se armaron', e);
   }
-  if (globalThis.__mduNoGrietasArt === true) return;
   const R = riftMats(w);
   // (los materiales de cada mapa, los de siempre: w.M)
   const M = { ...R };

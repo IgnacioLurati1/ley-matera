@@ -3,6 +3,7 @@ import { perkIconURL } from './perkIcons';
 import { ACT } from '../config/map';
 import { keyLabel } from '../core/controls';
 import { shownChars } from '../core/voice';
+import { revealSub } from './subReveal';
 import { SHIELD_ICONS, SHIELD_CRACKS, PART_SHORT, partIcon, SOUL_ICON, CANDLE_ICON } from './hudIcons';
 
 // HUD en DOM: ronda con palitos de tiza, puntos con "+10" volando, munición,
@@ -110,7 +111,7 @@ export default class Hud {
     this.room = el('div', 'mdu-room', r);
     this.hint = el('div', 'mdu-hint', r);
     // (con salto de renglón y el ancho que deja libre layout: --hint-w)
-    if (globalThis.__mduNoHintWrap !== true) this.hint.classList.add('is-wrap');
+    this.hint.classList.add('is-wrap');
     this.pups = el('div', 'mdu-pups', r);
     const bl = el('div', 'mdu-bl', r);
     this.shield = el('div', 'mdu-shield', bl);
@@ -162,10 +163,9 @@ export default class Hud {
   // su proceso de la placa (~50 ms) y el juego esperaba atrás: era el tirón al
   // terminar la entrada, cuando el cartel se asoma (2026-10-03). Tapado por la
   // pantalla de carga no sirve (lo tapado no se dibuja).
-  // (globalThis.__mduNoHudWarm: como antes)
   prewarm() {
     const r = this.root;
-    if (globalThis.__mduNoHudWarm === true || this.warmed === this.theme || r.style.display !== 'none') return Promise.resolve();
+    if (this.warmed === this.theme || r.style.display !== 'none') return Promise.resolve();
     this.warmed = this.theme;
     // (el cartel se ve solo asomado o con Tab; en el título está vacío: unas
     // piezas de muestra del mapa, una juntada)
@@ -285,26 +285,21 @@ export default class Hud {
 
   // (tanda de optimización, 2026-10-12: un span nuevo por golpe, agregado y sacado de
   // la página, rehacía el acomodo del HUD cada vez; ahora 6 fijos que se reusan y la
-  // animación se reinicia con pulse. globalThis.__mduHudViejo: como antes)
+  // animación se reinicia con pulse)
   popPoints(n) {
     const txt = `${n > 0 ? '+' : ''}${n}`;
     let p;
-    if (globalThis.__mduHudViejo === true) {
-      p = el('span', n < 0 ? 'is-neg' : '', this.popups, txt);
-      setTimeout(() => p.remove(), 900);
-    } else {
-      if (!this.popPool) {
-        this.popPool = Array.from({ length: 6 }, () => el('span', 'mdu-pp', this.popups));
-        this.popI = 0;
-      }
-      p = this.popPool[this.popI++ % this.popPool.length];
-      p.textContent = txt;
-      p.classList.toggle('is-neg', n < 0);
-      this.pulse(p, 'is-on');
-      // (al terminar se apaga: si el HUD estaba escondido, no vuelve a salir al mostrarse)
-      const tok = (p.popTok = (p.popTok || 0) + 1);
-      setTimeout(() => p.popTok === tok && p.classList.remove('is-on'), 950);
+    if (!this.popPool) {
+      this.popPool = Array.from({ length: 6 }, () => el('span', 'mdu-pp', this.popups));
+      this.popI = 0;
     }
+    p = this.popPool[this.popI++ % this.popPool.length];
+    p.textContent = txt;
+    p.classList.toggle('is-neg', n < 0);
+    this.pulse(p, 'is-on');
+    // (al terminar se apaga: si el HUD estaba escondido, no vuelve a salir al mostrarse)
+    const tok = (p.popTok = (p.popTok || 0) + 1);
+    setTimeout(() => p.popTok === tok && p.classList.remove('is-on'), 950);
     p.style.setProperty('--dx', `${-40 - Math.random() * 60}px`);
     p.style.setProperty('--dy', `${-10 - Math.random() * 40}px`);
   }
@@ -354,20 +349,14 @@ export default class Hud {
     this.set('cross', `${px}|${visible}`, () => {
       // (tanda de optimización, 2026-10-12: abrir la mira cambiando --gap movía los
       // cuatro brazos con top/left: acomodo y pintado en cada tiro. Ahora con
-      // transform. globalThis.__mduHudViejo: como antes)
+      // transform)
       const arms = this.cross.children;
-      if (globalThis.__mduHudViejo === true) {
-        if (this.crossT) for (const a of arms) a.style.transform = '';
-        this.crossT = false;
-        this.cross.style.setProperty('--gap', `${px}px`);
-      } else {
-        if (!this.crossT) this.cross.style.setProperty('--gap', '0px');
-        this.crossT = true;
-        arms[0].style.transform = `translateY(${-px}px)`;
-        arms[1].style.transform = `translateY(${px}px)`;
-        arms[2].style.transform = `translateX(${-px}px)`;
-        arms[3].style.transform = `translateX(${px}px)`;
-      }
+      if (!this.crossT) this.cross.style.setProperty('--gap', '0px');
+      this.crossT = true;
+      arms[0].style.transform = `translateY(${-px}px)`;
+      arms[1].style.transform = `translateY(${px}px)`;
+      arms[2].style.transform = `translateX(${-px}px)`;
+      arms[3].style.transform = `translateX(${px}px)`;
       this.cross.style.opacity = visible ? '1' : '0';
     });
     this.set('scope', scope, (s) => this.scope.classList.toggle('is-on', s));
@@ -715,9 +704,8 @@ export default class Hud {
 
   // marks: cuándo arranca cada palabra del murmullo (core/voice wordTimes); con
   // eso el texto avanza palabra por palabra, a la par de lo que se oye.
-  // (globalThis.__mduSubViejo: las letras parejas en el tiempo, como antes)
   speak(speaker, text, secs, kind = '', marks = null) {
-    this.addLine({ text, secs, kind, speaker, reveal: Math.min(secs * 0.85, text.length * 0.045), marks: globalThis.__mduSubViejo === true ? null : marks });
+    this.addLine({ text, secs, kind, speaker, reveal: Math.min(secs * 0.85, text.length * 0.045), marks });
   }
 
   addLine({ text, secs, kind, speaker, reveal = 0, marks = null }) {
@@ -729,7 +717,9 @@ export default class Hud {
     const p = el('p', `mdu-line ${speaker ? 'is-talk' : 'is-info'} ${kind ? `is-${kind}` : ''}`, this.subs);
     if (speaker) el('b', '', p, speaker);
     const span = el('span', '', p);
-    span.textContent = reveal > 0 ? '' : text;
+    // (lo que se va diciendo: la frase entera ya ubicada, invisible: ui/subReveal)
+    if (reveal > 0) revealSub(span, text, 0);
+    else span.textContent = text;
     const line = { el: p, span, text, t: secs, reveal, marks, shown: reveal > 0 ? 0 : text.length, age: 0, out: false };
     this.lines.push(line);
     this.layoutT = 0;
@@ -899,7 +889,7 @@ export default class Hud {
         const n = l.marks ? shownChars(l.text, l.marks, l.age) : Math.min(l.text.length, Math.ceil((l.age / l.reveal) * l.text.length));
         if (n !== l.shown) {
           l.shown = n;
-          l.span.textContent = l.text.slice(0, n);
+          revealSub(l.span, l.text, n);
         }
       }
       l.t -= dt;
@@ -957,7 +947,7 @@ export default class Hud {
     // el cartel de la F, centrado y con salto de renglón: no más ancho que lo
     // que dejan libre los perks (abajo a la izquierda) y la tarjeta del arma o
     // los puntos (abajo a la derecha). El largo del Pack-a-Pava se pisaba con
-    // los dos a 1280x720 (2026-10-05; globalThis.__mduNoHintWrap: como antes)
+    // los dos a 1280x720 (2026-10-05)
     if (this.hint.classList.contains('is-wrap') && this.hint.classList.contains('is-on')) {
       const R = this.root.getBoundingClientRect();
       const cx = R.left + R.width / 2;

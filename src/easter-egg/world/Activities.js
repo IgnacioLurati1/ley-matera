@@ -194,8 +194,8 @@ export default class Activities {
     g.audio.powerupGrab();
     g.hud.toast(gift.name);
     if (gift.id === 'perk') {
-      // (el Deadshot ya hace algo: también se regala; __mduNoDeadshotGift: afuera, como antes)
-      const missing = PERK_ORDER.filter((id) => !g.player.perks.has(id) && (id !== 'deadshot' || !globalThis.__mduNoDeadshotGift));
+      // (el Deadshot ya hace algo: también se regala)
+      const missing = PERK_ORDER.filter((id) => !g.player.perks.has(id));
       const id = missing[Math.floor(Math.random() * missing.length)];
       if (id) g.weapons.drink(PERKS[id].color, () => g.player.givePerk(id));
       else g.addPoints(2500, null, true);
@@ -348,7 +348,7 @@ export default class Activities {
     g.audio.powerupGrab();
     g.hud.toast(gift ? gift.name : 'Ánima');
     if (id === 'perk') {
-      const missing = PERK_ORDER.filter((p) => !g.player.perks.has(p) && (p !== 'deadshot' || !globalThis.__mduNoDeadshotGift));
+      const missing = PERK_ORDER.filter((p) => !g.player.perks.has(p));
       const pick = missing[Math.floor(Math.random() * missing.length)];
       if (pick) g.weapons.drink(PERKS[pick].color, () => g.player.givePerk(pick));
       else g.addPoints(2500, null, true);

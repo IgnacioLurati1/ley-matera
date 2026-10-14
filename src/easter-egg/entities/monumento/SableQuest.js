@@ -22,9 +22,9 @@ import { tierOf } from '../../config/weapons';
 //    clavado en la piedra de la hoja, al pie de la Proa, como estaba (mejorado
 //    o no): mantener F lo saca. Cada uno el suyo; el de uno que se fue, el
 //    primero que no tenga. Mientras tanto la forja no le da otro (el usuario,
-//    2026-10-05; __mduNoSableTumba: como antes, la forja da otro sin mejorar).
+//    2026-10-05).
 //    Y el sable de la forja se ve solo si se lo puede agarrar (antes quedaba
-//    flotando siempre, también después del Pack-a-Pava; __mduNoForgeHide).
+//    flotando siempre, también después del Pack-a-Pava).
 // Lo decide el anfitrión; viaja por 'pee' (k: 'sbl') como el resto del
 // easter egg (entities/MonumentoEgg.js).
 
@@ -473,7 +473,7 @@ export default class SableQuest {
         if (st.forge === 2) {
           if (who === myId(g) && !this.forgeOffer()) return false;
           // (el que tiene el suyo clavado en la piedra no saca otro)
-          if (!globalThis.__mduNoSableTumba && this.buriedOf(who) >= 0) return false;
+          if (this.buriedOf(who) >= 0) return false;
           if (who === myId(g)) this.giveSable();
           else g.net?.event('pee', { k: 'sbl', a: 'give', id: who });
           return true;
@@ -487,7 +487,6 @@ export default class SableQuest {
 
   // ¿Hay un sable adentro del Pack-a-Pava (mejorándose o esperando)?
   inPap() {
-    if (globalThis.__mduNoForgePapFix) return false;
     return this.g.interact.pap?.entry?.id === 'sable';
   }
 
@@ -496,7 +495,6 @@ export default class SableQuest {
   forgeOffer() {
     const g = this.g;
     if (g.weapons.has('sable') || this.inPap()) return false;
-    if (globalThis.__mduNoSableTumba) return true;
     return this.buriedOf(myId(g)) < 0 && this.tumbaPull?.by !== myId(g);
   }
 
@@ -541,7 +539,6 @@ export default class SableQuest {
 
   // el que puede sacar `id`: el suyo o, si no tiene, uno de nadie
   tumbaFor(id) {
-    if (globalThis.__mduNoSableTumba) return -1;
     const i = this.buriedOf(id);
     return i >= 0 ? i : this.st.buried.findIndex((b) => b.o < 0);
   }
@@ -587,7 +584,7 @@ export default class SableQuest {
   // invitado), lo perdió: va a la piedra como estaba.
   trackMine(dt) {
     const g = this.g;
-    if (globalThis.__mduNoSableTumba || g.state !== 'playing') return;
+    if (g.state !== 'playing') return;
     const W = g.weapons;
     const P = g.player;
     const I = g.interact;
@@ -624,7 +621,7 @@ export default class SableQuest {
   // (anfitrión) el que se fue de la partida con su sable: queda en la piedra, de nadie
   trackGone() {
     const g = this.g;
-    if (globalThis.__mduNoSableTumba || !g.net?.host) return;
+    if (!g.net?.host) return;
     for (const [id, up] of this.owners) {
       if (g.net.remote.has(id)) continue;
       this.owners.delete(id);
@@ -706,11 +703,9 @@ export default class SableQuest {
       const up = Math.max(0, Math.min(1, (t - 2.2) / 2.6));
       const ue = 1 - (1 - up) * (1 - up);
       S.obj.visible = t > 2.2;
-      if (globalThis.__mduNoForgeFront) S.obj.position.set(L.x, L.y + 2.3 + ue * 1.7, L.z + 0.15);
-      else S.obj.position.set(L.x + ue * 0.5, L.y + 1.5 + ue * 0.4, L.z + 0.15 + ue * 1.0);
+      S.obj.position.set(L.x + ue * 0.5, L.y + 1.5 + ue * 0.4, L.z + 0.15 + ue * 1.0);
       // (al salir se acuesta: de canto o parado se perdía en el resplandor de la llama)
-      if (globalThis.__mduNoForgeFront) S.obj.rotation.set(0, t * 1.4, 0);
-      else S.obj.rotation.set(0, t * 1.4 * (1 - ue), (Math.PI / 2) * ue);
+      S.obj.rotation.set(0, t * 1.4 * (1 - ue), (Math.PI / 2) * ue);
       const heat = t < 6 ? 1 : Math.max(0, 1 - (t - 6) / 2.5);
       for (const m of S.mats) {
         m.emissive.setRGB(1, 0.2, 0.03);
@@ -727,12 +722,10 @@ export default class SableQuest {
     // listo: flota delante de la Llama, girando despacio (solo para el que
     // lo puede agarrar: con el suyo en la mano o en el Pack-a-Pava quedaba
     // flotando de más)
-    S.obj.visible = globalThis.__mduNoForgeHide ? true : this.forgeOffer();
+    S.obj.visible = this.forgeOffer();
     if (!S.obj.visible) return;
-    if (globalThis.__mduNoForgeFront) S.obj.position.set(L.x, L.y + 4.0 + Math.sin(g.time * 1.3) * 0.06, L.z + 0.15);
-    else S.obj.position.set(L.x + 0.5, L.y + 1.9 + Math.sin(g.time * 1.3) * 0.06, L.z + 1.15);
-    if (globalThis.__mduNoForgeFront) S.obj.rotation.set(0, g.time * 0.7, 0);
-    else S.obj.rotation.set(0, Math.sin(g.time * 0.8) * 0.35, Math.PI / 2);
+    S.obj.position.set(L.x + 0.5, L.y + 1.9 + Math.sin(g.time * 1.3) * 0.06, L.z + 1.15);
+    S.obj.rotation.set(0, Math.sin(g.time * 0.8) * 0.35, Math.PI / 2);
     for (const m of S.mats) m.emissiveIntensity = 0;
     if (Math.random() < dt * 3) g.fx.sparkle(tmpV.copy(S.obj.position).setY(S.obj.position.y + 0.6), [0.7, 0.85, 1], 1, 0.6);
   }

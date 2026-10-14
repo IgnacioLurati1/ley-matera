@@ -1314,9 +1314,9 @@ export function buildPerkMachine(id, perk, label) {
   // (2026-10-05, "juntá las máquinas": lo que solo cambia de brillo, el cartel,
   // lo que late y los foquitos, va adentro de la malla junta con el brillo por
   // vértice, liveEmissive; eran 2 o 3 dibujos más por máquina en cada pasada.
-  // globalThis.__mduNoPerkMerge, al cargar: como antes, los foquitos en un
+  // globalThis.__mduNoMerge, al cargar: como antes, los foquitos en un
   // InstancedMesh y el cartel aparte)
-  const merge = globalThis.__mduNoPerkMerge !== true && globalThis.__mduNoMerge !== true;
+  const merge = globalThis.__mduNoMerge !== true;
   const live = new Set();
   const flatOk = (m) => {
     if (!m || m.type !== 'MeshStandardMaterial') return false;

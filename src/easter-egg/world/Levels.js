@@ -96,10 +96,10 @@ function stairSide(w, i, dx, dz) {
 // piso de al lado quedaba abierto hasta el vacío; los escalones, además, van
 // 3 cm adentro y por esa ranura también se veía el vacío. Ahora la cara del
 // piso vecino baja hasta el pie de la escalera y la escalera lleva una tapa
-// abajo. globalThis.__mduOldEclStairGap = true: como antes)
+// abajo)
 // El pie de la escalera de la celda vecina (nx, nz) si es una escalera ajena a i.
 function stairFoot(w, i, nx, nz) {
-  if (!FEATURES.eclipse || globalThis.__mduOldEclStairGap === true) return null;
+  if (!FEATURES.eclipse) return null;
   if (!w.inside(nx, nz)) return null;
   const r = w.rampAt[w.idx(nx, nz)];
   if (r < 0 || !RAMPS[r].steps || w.rampAt[i] === r) return null;
@@ -109,7 +109,7 @@ function stairFoot(w, i, nx, nz) {
 // ¿La celda i toca de costado una escalera ajena? (sus caras van con las de la escalera: la punta del
 // cordón del costado de la escalera pisaba la cara de la esquina y la corría. Ver stairFoot)
 function stairNear(w, i, x, z) {
-  if (!FEATURES.eclipse || globalThis.__mduOldEclStairGap === true) return false;
+  if (!FEATURES.eclipse) return false;
   return DIRS.some(([dx, dz]) => stairFoot(w, i, x + dx, z + dz) !== null);
 }
 
@@ -579,10 +579,9 @@ export function addLevelBoxes(w, DOORS) {
           if (w.dropOk?.(i, w.idx(nx, nz))) return;
           // (Eclipse Matero, 2026-10-07, el usuario: "escaleras sin barandillas
           // que si querés saltar no te deja porque hay una pared invisible". Al
-          // costado de las escaleras la baranda no se dibuja (ver más abajo,
-          // __mduNoEclStairRail) pero su choque había quedado: sin baranda, uno
-          // se tira para abajo. globalThis.__mduOldEclStairWall: como antes)
-          if (FEATURES.eclipse && globalThis.__mduNoEclStairRail !== true && globalThis.__mduOldEclStairWall !== true && stairSide(w, i, dx, dz)) return;
+          // costado de las escaleras la baranda no se dibuja (ver más abajo)
+          // pero su choque había quedado: sin baranda, uno se tira para abajo)
+          if (FEATURES.eclipse && stairSide(w, i, dx, dz)) return;
           const ex = x + 0.5 + dx * 0.5;
           const ez = z + 0.5 + dz * 0.5;
           const th = 0.06;
@@ -603,7 +602,7 @@ export function buildLevelArchitecture(w, DOORS) {
   // 'eclipse:escaleras': world/eclipseDedupe la cuenta como arte de la isla y no
   // la corre para atrás por lo que la pise; corrida, por las juntas se veía el
   // vacío. Ver stairFoot)
-  const gbE = FEATURES.eclipse && globalThis.__mduOldEclStairGap !== true ? new GeoBuilder() : gb;
+  const gbE = FEATURES.eclipse ? new GeoBuilder() : gb;
   const M = w.M;
   const isWallish = (t) => t === WALL || t === DOOR || t === WINDOW;
   const open = (x, z) => w.inside(x, z) && w.grid[w.idx(x, z)] !== FLOOR && w.edge[w.idx(x, z)] !== 0;
@@ -834,8 +833,8 @@ export function buildLevelArchitecture(w, DOORS) {
           // 'shaft' sube más que el techo del cuarto y por los costados quedaba
           // abierto: desde la escalera se veía el cielo por arriba del techo. Se
           // cierra con sus paredes, de los dos lados, y una tapa arriba. El
-          // usuario, 2026-10-10. __mduNoShaftSkirt: como antes)
-          if (!FEATURES.castle && RAMPS[r].ceil === 'shaft' && globalThis.__mduNoShaftSkirt !== true) {
+          // usuario, 2026-10-10)
+          if (!FEATURES.castle && RAMPS[r].ceil === 'shaft') {
             if (!Z.lid) quadUV(gb, Z.ext || Z.ceil, P.map((p) => [p[0], p[1] + 0.02, p[2]]), U, [0, 1, 0]);
             DIRS.forEach(([dx, dz]) => {
               const nx = x + dx;
@@ -947,8 +946,8 @@ export function buildLevelArchitecture(w, DOORS) {
     const low = Math.min(R.y0, R.y1) - 0.05;
     // (Eclipse Matero: los costados de los escalones quedaban en el mismo plano
     // que las paredes copiadas de cada mapa y titilaban según el ángulo: 3 cm
-    // adentro. globalThis.__mduNoEclStairInset: como antes)
-    const ins = FEATURES.eclipse && globalThis.__mduNoEclStairInset !== true ? 0.03 : 0;
+    // adentro)
+    const ins = FEATURES.eclipse ? 0.03 : 0;
     for (let k = 0; k < count; k++) {
       // el escalón k (desde la punta baja)
       const hTop = Math.min(R.y0, R.y1) + (Math.abs(rise) * (k + 1)) / count;
@@ -959,7 +958,7 @@ export function buildLevelArchitecture(w, DOORS) {
       else gb.box(key, x0 + ins, low, z0 + s0, x1 + 1 - ins, hTop, z0 + s1);
     }
     // (la tapa de abajo, de borde a borde: cierra el fondo de la ranura de 3 cm; ver stairFoot)
-    if (ins && globalThis.__mduOldEclStairGap !== true) {
+    if (ins) {
       // (3 cm más ancha que la escalera: queda debajo del piso de al lado y tapa también la junta con su cara)
       const X0 = x0 - 0.03, X1 = x1 + 1.03, Z0 = z0 - 0.03, Z1 = z1 + 1.03;
       quadUV(gbE, key, [[X0, low, Z0], [X1, low, Z0], [X1, low, Z1], [X0, low, Z1]], [[X0 / 2, Z0 / 2], [X1 / 2, Z0 / 2], [X1 / 2, Z1 / 2], [X0 / 2, Z1 / 2]], [0, 1, 0]);
@@ -978,7 +977,7 @@ export function buildLevelArchitecture(w, DOORS) {
       // (Eclipse, mundo it. 4: la viga que pasa sobre una escalera con techo propio
       // -inclinado o hueco- o sin lugar para la cabeza quedaba cruzada a la altura del
       // pecho: la de la cripta del estero. Esa viga no va.)
-      const overStair = (cells) => FEATURES.eclipse && globalThis.__mduNoBeamStairs !== true && cells.some(([cx, cz]) => {
+      const overStair = (cells) => FEATURES.eclipse && cells.some(([cx, cz]) => {
         if (!w.inside(cx, cz)) return false;
         const r = w.rampAt[w.idx(cx, cz)];
         if (r < 0) return false;
@@ -1059,8 +1058,8 @@ export function buildLevelArchitecture(w, DOORS) {
         if (nearS && !stairSide(w, i, dx, dz) && skip !== 'face') stairTabs(gbE, key, ax, az, ya, bx, bz, yb, lo - 0.02, dx, dz);
         // (Eclipse Matero: al costado de una escalera no va la baranda suelta
         // celda por celda —quedaban caños escalonados cruzando los escalones en
-        // las secciones copiadas—. globalThis.__mduNoEclStairRail: como antes)
-        if (FEATURES.eclipse && globalThis.__mduNoEclStairRail !== true && stairSide(w, i, dx, dz)) return;
+        // las secciones copiadas—)
+        if (FEATURES.eclipse && stairSide(w, i, dx, dz)) return;
         // el castillo pone su parapeto de piedra (world/Castle.js)
         if (w.dropEdge?.(w, gb, i, ax, az, ya, bx, bz, yb, dx, dz)) return;
         // del otro lado de la pared del ático no va baranda
@@ -1085,7 +1084,7 @@ export function buildLevelArchitecture(w, DOORS) {
         // para atrás y hundía 1,2 cm la baldosa de al lado, y por las juntas se
         // veía el vacío —la raya violeta junto a las escaleras del Nudo—. A 2,5 cm
         // ya no se juntan; a la vista sobresale lo mismo que antes. Ver stairFoot)
-        const e25 = FEATURES.eclipse && globalThis.__mduOldEclStairGap !== true;
+        const e25 = FEATURES.eclipse;
         const out = e25 ? 0.025 : 0.012;
         const tt = e25 ? 0.025 : 0.01;
         if (dx) gb.box('trim', ax - (dx > 0 ? 0.08 : out), my - 0.06, Math.min(az, bz), ax + (dx < 0 ? 0.08 : out), my + tt, Math.max(az, bz), 1);
@@ -1108,7 +1107,7 @@ export function buildLevelArchitecture(w, DOORS) {
     // rejas de la ventana (es una cárcel; la granja no). En el penal no van:
     // son ventanas de los muertos, que entran por el hueco y las atravesaban
     // (el usuario, 2026-10-05)
-    const noReja = FEATURES.penal && !globalThis.__mduNoRejaVentana;
+    const noReja = FEATURES.penal;
     for (let k = -2; k <= 2 && !FEATURES.farm && !w.noBars && !noReja; k++) {
       const off = k * 0.18;
       const bx = ix + (oz !== 0 ? off : 0) + ox * 0.35;
@@ -1425,8 +1424,8 @@ export function rayTerrain(w, o, d, cx, cz, tEnter, tExit, axis, stepX, stepZ, o
   // (el piso a ras de 0 lo frena el plano de World.raycast. El Monumento no
   // tiene ese plano y tiene pisos abajo de 0 —la Proa, la Cripta, el Parque,
   // la Costanera—: ahí se mira acá, que si no las bombas de yerba, la pava, el
-  // sable tirado y las balas atravesaban el piso; globalThis.__mduNoPisoBajo: como antes)
-  if (h <= 0.01 && t !== OUT && !(FEATURES.monumento && globalThis.__mduNoPisoBajo !== true)) return Infinity;
+  // sable tirado y las balas atravesaban el piso)
+  if (h <= 0.01 && t !== OUT && !FEATURES.monumento) return Infinity;
   const yIn = o.y + d.y * tEnter;
   if (tEnter > 1e-6 && yIn < h - 1e-3) {
     // entra por el costado del desnivel

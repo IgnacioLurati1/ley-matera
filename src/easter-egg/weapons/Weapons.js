@@ -574,7 +574,7 @@ export default class Weapons {
   }
 
   // Las estadísticas de un mate con sus accesorios y su especialista
-  // (core/armas.js; __mduSinAccesorios: las de siempre).
+  // (core/armas.js).
   statsOf(id, up, slot = null) {
     return Armas.aplicar(weaponStats(id, up), slot || { id, mag: 0 });
   }
@@ -697,7 +697,7 @@ export default class Weapons {
     for (const s of this.slots) {
       s.reserve = this.statsOf(s.id, s.up).reserve;
       // la hoz (que no se recarga) queda con el cargador lleno (y el Sable Corvo, sus tiros)
-      if (WEAPONS[s.id].kind === 'melee' || (WEAPONS[s.id].kind === 'sable' && !globalThis.__mduNoSableAmmo)) s.mag = weaponStats(s.id, s.up).mag;
+      if (WEAPONS[s.id].kind === 'melee' || (WEAPONS[s.id].kind === 'sable')) s.mag = weaponStats(s.id, s.up).mag;
     }
     // (más la Bolsa de yerba, carta del rush de jefes: core/rushBuild.js)
     this.grenades = GRENADE.max + (this.g.rush?.build?.granadas ?? 0);
@@ -726,20 +726,18 @@ export default class Weapons {
     // (el sable mejorado, la Zonda y el Pillán mejorados y las bombillas
     // clavadas de la Gut: se compilaban al primer tiro, 20-270 ms. Las
     // bombillas, una copia instanciada de verdad: la carga la dibuja delante de
-    // la cámara, también en el G-buffer. globalThis.__mduNoWarmArmas: como antes)
-    if (globalThis.__mduNoWarmArmas !== true) {
-      this.sable?.fx?.warm?.(grp);
-      // (las grietas, la guadaña espectral y el rayo del Desgarrador)
-      this.cosmic?.fx?.warm?.(grp);
-      // (el vacío del Caótico y las zetas del tilo: weapons/especialistas.js)
-      this.oper?.warm?.(grp);
-      this.elem?.warm?.(grp);
-      const sm = this.ensureStuck();
-      const one = new THREE.InstancedMesh(sm.geometry, sm.material, 1);
-      one.setMatrixAt(0, new THREE.Matrix4());
-      one.frustumCulled = false;
-      grp.add(one);
-    }
+    // la cámara, también en el G-buffer)
+    this.sable?.fx?.warm?.(grp);
+    // (las grietas, la guadaña espectral y el rayo del Desgarrador)
+    this.cosmic?.fx?.warm?.(grp);
+    // (el vacío del Caótico y las zetas del tilo: weapons/especialistas.js)
+    this.oper?.warm?.(grp);
+    this.elem?.warm?.(grp);
+    const sm = this.ensureStuck();
+    const one = new THREE.InstancedMesh(sm.geometry, sm.material, 1);
+    one.setMatrixAt(0, new THREE.Matrix4());
+    one.frustumCulled = false;
+    grp.add(one);
     // (el espíritu que se chupa el Farol de las Ánimas)
     grp.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), this.pot?.spiritWarmMat?.() || new THREE.MeshBasicMaterial()));
     // (y el modelo de los mates de los potenciadores del mapa: se arma ahora y
@@ -1027,7 +1025,7 @@ export default class Weapons {
     this.supremo.update(dt);
     this.hozBeam.update(dt);
     this.sable.update(dt);
-    if (globalThis.__mduNoDesgarrador !== true) this.cosmic.update(dt);
+    this.cosmic.update(dt);
     this.shieldHand.update(dt);
     this.updateStuck(dt);
     this.updatePools(dt);
@@ -1049,7 +1047,7 @@ export default class Weapons {
       this.state = 'inspect';
       this.stateT = 0;
       // (el saludo militar con el Sable Corvo: los compañeros lo ven, net/gauchoSkin sableArm)
-      if (this.slot?.id === 'sable' && globalThis.__mduNoSableAvatar !== true) this.g.net?.act?.('salute', 3.4);
+      if (this.slot?.id === 'sable') this.g.net?.act?.('salute', 3.4);
       return;
     }
     // con la Máquina de Muerte no se recarga: se tira. Cambiar de arma la
@@ -1196,8 +1194,8 @@ export default class Weapons {
     this.stateT = 0;
     this.reloadTime = st.reload * g.player.reloadMult;
     // (la de a uno, la Lata: lo que dura toda la carga, para que los compañeros
-    // la vean cebar ese rato y no medio segundo; anim-online, __mduNoAvatarBlend: como antes)
-    const shells = st.shellReload && globalThis.__mduNoAvatarBlend !== true ? Math.max(1, Math.min(st.mag - (this.slot?.mag || 0), this.slot?.reserve || 0)) : 1;
+    // la vean cebar ese rato y no medio segundo; anim-online)
+    const shells = st.shellReload ? Math.max(1, Math.min(st.mag - (this.slot?.mag || 0), this.slot?.reserve || 0)) : 1;
     g.net?.act?.('reload', this.reloadTime * shells);
     this.tintTermo(st);
     // Electric Cherry (Chisporé): la descarga al empezar a recargar, más fuerte
@@ -1470,8 +1468,8 @@ export default class Weapons {
     const p = g.player;
     const s = this.slot;
     // (y el Dedo nervioso, carta del rush de jefes: core/rushBuild.js)
-    // (el Double Tap 2.0 ya no apura la cadencia: dobleTap; __mduDoubleTapViejo: +33 % como antes)
-    const rateMult = (p.perks.has('doubletap') && globalThis.__mduDoubleTapViejo === true ? 1.33 : 1) * (g.rush?.build?.rate ?? 1);
+    // (el Double Tap 2.0 ya no apura la cadencia: dobleTap)
+    const rateMult = g.rush?.build?.rate ?? 1;
     // (las de 30 tiros por segundo guardan lo que sobró del cuadro: si no, a
     // 30 cuadros salía un tiro sí y otro no y tiraba de a 20 por segundo)
     const gap = 60 / st.rpm / rateMult;
@@ -1509,7 +1507,11 @@ export default class Weapons {
 
     // (el Pulso firme, carta del rush de jefes: core/rushBuild.js)
     const kick = st.recoil * (this.ads ? 0.6 : 1) * (p.crouching ? 0.8 : 1) * (g.rush?.build?.recoil ?? 1) * x.kick;
-    p.addRecoil(kick * 0.35, (Math.random() - 0.5) * kick * 0.25);
+    // (climb: lo que sube la mira en las que se tiran sin soltar el clic, como
+    // la Admin Mate y las Máquinas de Muerte; el usuario, 2026-10-14: "un
+    // retroceso brutal", a los 12 s miraba al cielo. __mduRetrocesoViejo = true: como antes)
+    const climb = globalThis.__mduRetrocesoViejo ? 1 : st.climb ?? 1;
+    p.addRecoil(kick * 0.35 * climb, (Math.random() - 0.5) * kick * 0.25 * climb);
     if (this.model2 && this.side) this.kickL = Math.min(1.5, this.kickL + kick * 6 + 0.3);
     else this.recoilKick = Math.min(1.5, this.recoilKick + kick * 6 + 0.3);
     // (los Gemelos tirando los dos: patean las dos manos)
@@ -1677,7 +1679,10 @@ export default class Weapons {
     if (p.hole) return;
     p.hole = true;
     const V = p.V;
-    p.V = { ...V, radius: V.radius * 1.6, dps: V.dps * 1.8, life: V.life + 2.5 };
+    // (el radio: el del remolino x1,07; antes x1,6, 8 m y 10,4 m mejorado. El usuario,
+    // 2026-10-14: "nerf al mark 3, menos alcance en el agujero negro": un tercio menos,
+    // 5,35 m y 6,96 m. globalThis.__mduMk3HoyoViejo = true: como antes)
+    p.V = { ...V, radius: V.radius * (globalThis.__mduMk3HoyoViejo === true ? 1.6 : 1.07), dps: V.dps * 1.8, life: V.life + 2.5 };
     // se abre ahí mismo; arranca chiquito y crece (se nota que se transformó)
     p.open = true;
     p.openT = 0;
@@ -1810,8 +1815,8 @@ export default class Weapons {
     const chain = g.time - (this.swingEnd ?? -9) < 0.3;
     this.swingN = chain ? ((this.swingN || 0) + 1) % HOZ_COMBO.length : 0;
     this.swingMove = HOZ_COMBO[this.swingN];
-    // (el Double Tap 2.0 no toca la hoz: __mduDoubleTapViejo, +20 % como antes)
-    const rateMult = g.player.perks.has('doubletap') && globalThis.__mduDoubleTapViejo === true ? 1.2 : 1;
+    // (el Double Tap 2.0 no toca la hoz)
+    const rateMult = 1;
     this.swingTime = 60 / st.rpm / rateMult;
     this.fireCd = this.swingTime;
   }
@@ -1932,21 +1937,20 @@ export default class Weapons {
   // que revienta), en las maravillas (la Gut, la Máquina de Muerte, los de los
   // potenciadores), cuerpo a cuerpo ni chorros: esos no son 'hitscan' o
   // llevan temp/rapid/gutFrac/explosive/special. Devuelve lo que pega la
-  // segunda (0: no sale). __mduDoubleTapViejo = true: como antes.
+  // segunda (0: no sale).
   dobleTap(st) {
-    if (globalThis.__mduDoubleTapViejo === true || !this.g.player?.perks?.has('doubletap') || !st) return 0;
+    if (!this.g.player?.perks?.has('doubletap') || !st) return 0;
     if (st.kind !== 'hitscan' || st.temp || st.rapid || st.gutFrac || st.explosive || st.special) return 0;
     const t = PERKS.doubletap.segunda;
     return t[Armas.categoria(st.id)] ?? t.otro;
   }
 
   // Deadshot Daiquiri (el Nadarias): los tiros que pegan por zona, +25% a la
-  // cabeza (y al cuello) y +15% al cuerpo; no se suman (el usuario, 2026-10-05;
-  // __mduNoDeadshot: no hace nada, como antes)
+  // cabeza (y al cuello) y +15% al cuerpo; no se suman (el usuario, 2026-10-05)
   zoneMult(zone, z = null) {
-    if (globalThis.__mduNoDeadshot || !this.g.player?.perks?.has('deadshot')) return 1;
-    // (a los jefes, como mucho +15%: el usuario, 2026-10-05; __mduNoDeadshotJefe: como antes)
-    if (z && (z.boss || z.pombero || z.crow) && globalThis.__mduNoDeadshotJefe !== true) return 1.15;
+    if (!this.g.player?.perks?.has('deadshot')) return 1;
+    // (a los jefes, como mucho +15%: el usuario, 2026-10-05)
+    if (z && (z.boss || z.pombero || z.crow)) return 1.15;
     return zone === 'head' || zone === 'neck' ? 1.25 : 1.15;
   }
 

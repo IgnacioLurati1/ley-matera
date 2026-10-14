@@ -32,8 +32,7 @@ import { gilVincha } from '../net/gilLook';
 // cansa, le duele la espalda, ruega de rodillas), Cirilo el Canchero (el mate
 // en la mano, no se entera de nada) y Benito el Miedoso (mira para todos lados,
 // se agacha, se santigua). Cada cambio arranca de la pose que tiene (cineSnap):
-// nada salta. Sin los clips (o con globalThis.__mduBlend = false), la versión
-// de antes: ui/EsterosEndingClassic.js.
+// nada salta. Sin los clips, la versión de antes: ui/EsterosEndingClassic.js.
 
 const CHOOSE_SECS = 30;
 // dónde arranca a sonar la canción de la traición (antes, 0,38 s de nada)
@@ -107,7 +106,7 @@ export function prefetchEsterosClips() {
     .catch(() => {});
   return loading;
 }
-export const esterosClipsReady = () => !!CLIPS && globalThis.__mduBlend !== false;
+export const esterosClipsReady = () => !!CLIPS;
 
 export default class EsterosEnding extends CastleCine {
   constructor(game, egg, { hoja = false } = {}) {
@@ -156,7 +155,7 @@ export default class EsterosEnding extends CastleCine {
       this.npc.add(r);
       const a = this.npc.list.get(P.id);
       a.M.poncho.color.set(P.color).multiplyScalar(1.7);
-      if (P.key === 'gil' && globalThis.__mduNoBandanas !== true) gilVincha(a);
+      if (P.key === 'gil') gilVincha(a);
       this.people[P.key] = { key: P.key, r, a, persona: P.persona, cc: null, mv: null };
     }
     this.face('gil', this.H);
@@ -540,13 +539,7 @@ export default class EsterosEnding extends CastleCine {
         // (la punta sale al llegar y la sangre en el cuadro del golpe: antes el
         // 'gilBloody' del final de la corrida tapaba la estocada y la sangre
         // salía 0,4 s después de que llegaba, con el facón ya lejos. El clip
-        // arranca a 0,22 s: el golpe, a los 0,5 del clip.
-        // globalThis.__mduNoBenitoFix: como antes)
-        if (globalThis.__mduNoBenitoFix) {
-          this.walkTo('gil', x, z, 0.85, { run: true, then: 'gilBloody' });
-          this.later(0.82, () => this.strike('benito', 'stabThrust'));
-          return 2;
-        }
+        // arranca a 0,22 s: el golpe, a los 0,5 del clip)
         this.walkTo('gil', x, z, 0.85, { run: true, then: 'stabThrust', thenO: { loop: false, fade: 0.1, t: 0.22 } });
         // (medido en el juego: la punta llega al pecho 0,36 s después de llegar)
         this.later(0.85 + 0.36, () => this.hit('benito'));
@@ -735,21 +728,14 @@ export default class EsterosEnding extends CastleCine {
         // (cada uno por su carril, sin cruzarse: el que va adelante sigue
         // adelante y a los costados; antes Gil pasaba por adentro de Cirilo y
         // de Benito, a 11 cm. Simulado y medido en el juego: nunca a menos de
-        // ~0,9 m. globalThis.__mduNoFogonLanes: como antes)
-        if (globalThis.__mduNoFogonLanes) {
-          this.walkTo('gil', 10.2, 6.3, 5.5);
-          this.later(0.3, () => this.walkTo('cirilo', 11, 6.6, 5.4, { then: 'cool' }));
-          this.later(0.9, () => this.walkTo('anacleto', 9.4, 6.9, 5.6, { then: 'stretch' }));
-          this.later(1.4, () => this.walkTo('benito', 10.4, 7.4, 3.6, { then: 'nervous' }));
-        } else {
-          this.walkTo('gil', 11.0, 7.4, 4.6);
-          this.later(0.3, () => this.walkTo('cirilo', 10.3, 6.5, 4.2, { then: 'cool' }));
-          // (el Viejo, despacio, atrás; el Miedoso, que iba adelante, casi corriendo)
-          this.later(0.9, () => this.walkTo('anacleto', 9.4, 7.6, 5.4, { then: 'stretch' }));
-          this.later(0.6, () => this.walkTo('benito', 9.3, 6.0, 3.2, { then: 'nervous' }));
-        }
+        // ~0,9 m)
+        this.walkTo('gil', 11.0, 7.4, 4.6);
+        this.later(0.3, () => this.walkTo('cirilo', 10.3, 6.5, 4.2, { then: 'cool' }));
+        // (el Viejo, despacio, atrás; el Miedoso, que iba adelante, casi corriendo)
+        this.later(0.9, () => this.walkTo('anacleto', 9.4, 7.6, 5.4, { then: 'stretch' }));
+        this.later(0.6, () => this.walkTo('benito', 9.3, 6.0, 3.2, { then: 'nervous' }));
         this.follow(8, this.pt(10.6, 13.4, 2.4), this.pt(11.0, 14.5, 2.6), four);
-        // (sin el árbol suelto, __mduNoQuiebre: como antes, la toma sigue hasta
+        // (sin el árbol suelto, la toma sigue hasta
         // que se quedan quietos y funde a negro)
         if (!Q) return 5;
         // atrás de ellos, el hueco se prende violeta

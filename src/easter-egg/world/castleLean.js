@@ -7,8 +7,8 @@ import { flattenable, flatMaterial, reflBucket } from './perkMachines';
 // usuario: bajar los objetos en escena). three recorre en cada cuadro todo
 // lo que cuelga de la escena, aunque esté escondido o no se mueva.
 // globalThis.__mduNoMerge (lo pone la prueba A/B al cargar) deja todo como
-// antes, para comparar en el mismo árbol (__mduNoCastle: solo lo de acá).
-export const lean = () => !globalThis.__mduNoMerge && !globalThis.__mduNoCastle;
+// antes, para comparar en el mismo árbol.
+export const lean = () => !globalThis.__mduNoMerge;
 
 // Lo que está escondido hasta que pasa algo y se anima por dentro cuando se
 // ve: mientras está escondido, core/matrixCache no lo recorre (mcSleep) y al
@@ -87,15 +87,12 @@ export function flattenProps(w, opts = {}) {
     // lo que el juego le cambia a un material después: a sus vértices.
     // (sesión 1f, el usuario: "FPS malos en todos lados": en Eclipse un material
     // que late cada pocos cuadros hacía subir los 4 atributos enteros —8 MB, ~1,4
-    // MB por cuadro, el 31% del tiempo de la CPU—. Ahora solo su tramo.
-    // __mduNoFlatRange: entero, como antes)
-    const ranged = globalThis.__mduNoFlatRange !== true;
+    // MB por cuadro, el 31% del tiempo de la CPU—. Ahora solo su tramo)
     // (sesión 1f: en Eclipse un material de acá adentro cambiaba en CADA cuadro
     // —un brillo que late—: subir sus vértices a la placa en cada pasada la
     // frenaba entera: 72 → 152 fps sin eso. Lo que cambia seguido —4 veces en
     // 3 s— sale a su propia malla con su material de verdad (cambia por
-    // uniforms, sin subir nada). __mduNoFlatLive: como antes)
-    const live = globalThis.__mduNoFlatLive !== true;
+    // uniforms, sin subir nada))
     mesh.onBeforeRender = (renderer, scene, camera) => {
       let dirty = false;
       const now = performance.now();
@@ -107,7 +104,7 @@ export function flattenProps(w, opts = {}) {
           continue;
         }
         if (!changed(p)) continue;
-        if (live && !p.pending) {
+        if (!p.pending) {
           if (p.t0 == null || now - p.t0 > 3000) {
             p.t0 = now;
             p.hits = 0;
@@ -116,7 +113,7 @@ export function flattenProps(w, opts = {}) {
         }
         write(p, col, pbr, emi, refl);
         dirty = true;
-        if (ranged) for (const a of [col, pbr, emi, refl]) a.addUpdateRange(p.start * a.itemSize, p.count * a.itemSize);
+        for (const a of [col, pbr, emi, refl]) a.addUpdateRange(p.start * a.itemSize, p.count * a.itemSize);
       }
       if (dirty) for (const a of [col, pbr, emi, refl]) a.needsUpdate = true;
     };

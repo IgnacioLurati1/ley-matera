@@ -74,8 +74,8 @@ export default class Barriers {
         const [y, roll] = (low ? LAYOUT_LOW : LAYOUT)[b];
         const jitter = (Math.random() - 0.5) * 0.1;
         // (la diagonal, 1 cm más adentro: en el mismo plano que las horizontales,
-        // donde se cruzaban titilaba. __mduNoTablaZ: como antes)
-        const inset = (low ? 0.05 : 0.42) + (b === 5 && globalThis.__mduNoTablaZ !== true ? 0.01 : 0);
+        // donde se cruzaban titilaba)
+        const inset = (low ? 0.05 : 0.42) + (b === 5 ? 0.01 : 0);
         v.set(cx + 0.5 - ox * inset, fy + y + jitter * 0.3, cz + 0.5 - oz * inset);
         q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
         qa.setFromAxisAngle(new THREE.Vector3(0, 0, 1), roll + jitter);

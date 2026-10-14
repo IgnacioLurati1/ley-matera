@@ -8,7 +8,6 @@
 //  · La Furia Cósmica del Desgarrador: se prende con un 35% menos de bajas.
 //  · Los jinetes del caos (entities/eclipse/jinetes.js): pegan la mitad.
 //  · La embestida del Desgarrador: vuelve un 40% antes.
-// globalThis.__mduNoCatal === true: el perk se compra igual pero no hace nada.
 
 export const CATAL = 'catal';
 export const FURIA_K = 0.65;
@@ -17,7 +16,7 @@ export const DASH_K = 0.6;
 
 // ¿el jugador de esta compu lo tiene?
 export function hasCatal(g) {
-  return globalThis.__mduNoCatal !== true && !!g?.player?.perks?.has?.(CATAL);
+  return !!g?.player?.perks?.has?.(CATAL);
 }
 
 // las bajas que pide la Furia (el arco de abajo de la mira usa lo mismo)

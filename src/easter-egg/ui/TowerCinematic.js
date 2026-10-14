@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { shownChars } from '../core/voice';
+import { revealSub } from './subReveal';
 import { EE, TOWER } from '../config/map';
 import Avatars from '../net/Avatars';
 import { buildChiqui, chiquiGiggle, chiquiGlitch, chiquiTap } from '../world/Chiqui';
@@ -135,7 +136,7 @@ export default class TowerCinematic {
     this.onDone = onDone;
     // (en línea el reloj cuenta desde acá, como ui/FarmCinematic: la compu que
     // se traba armando la escena no arranca atrasada; update)
-    this.wallAt = g.net && globalThis.__mduNoCineSync !== true ? performance.now() : 0;
+    this.wallAt = g.net ? performance.now() : 0;
     this.onKey = (e) => {
       if (e.code === 'Escape' || e.code === 'Space' || e.code === 'Enter') this.finish();
     };
@@ -200,18 +201,15 @@ export default class TowerCinematic {
     // los gauchos con movimientos animados a mano en Blender, cada uno con su
     // carácter (ui/cineCrew PERSONA): los del final del penal y los de acá
     // (C:/Users/ignac/Tools/mdu-blender penal_clips.py y torre_clips.py).
-    // globalThis.__mduBlend = false: como antes (la pose de piezas).
     this.PC = null;
-    if (globalThis.__mduBlend !== false) {
-      const get = (f) => fetch(assetUrl(`/assets/sotano/modelos/gaucho/${f}`)).then((r) => r.json());
-      Promise.all([get('cine-penal.json'), get('cine-torre.json')])
-        .then((Js) => {
-          const C = {};
-          for (const J of Js) for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
-          this.PC = C;
-        })
-        .catch(() => {});
-    }
+    const get = (f) => fetch(assetUrl(`/assets/sotano/modelos/gaucho/${f}`)).then((r) => r.json());
+    Promise.all([get('cine-penal.json'), get('cine-torre.json')])
+      .then((Js) => {
+        const C = {};
+        for (const J of Js) for (const [k, c] of Object.entries(J.clips)) C[k] = cineClip(c);
+        this.PC = C;
+      })
+      .catch(() => {});
     // (los anteojos del Canchero se arman ya, escondidos: se compilan con el resto)
     this.shades = this.buildShades();
     this.shadesHand = new THREE.Group();
@@ -364,8 +362,8 @@ export default class TowerCinematic {
     // con los clips de Blender (ui/fierroNpc: cine-torre2.json): parado, habla
     // con la mano, levanta el brazo al remolino, "miren", camina con el paso de
     // siempre y, en el secreto, la mano en el pecho. Sin mate (las manos
-    // gesticulan). globalThis.__mduBlend = false: la pose de piezas de antes.
-    this.fBody = globalThis.__mduBlend === false ? null : new ClipBody(f, this.people.list.get(FIERRO));
+    // gesticulan).
+    this.fBody = new ClipBody(f, this.people.list.get(FIERRO));
     if (this.fBody) this.fBody.mate = 'hide';
     this.fOne = null;
     this.fTalkUntil = 0;
@@ -629,7 +627,7 @@ export default class TowerCinematic {
     this.el.classList.toggle('is-fierro', who === 'fierro' && !secret);
     this.el.classList.toggle('is-fran', who === 'francisco');
     this.el.classList.toggle('is-secreto', secret);
-    this.sub = { text, t0: this.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.05)), marks: globalThis.__mduSubViejo === true ? null : this.g.audio.sayMarks, k: -1 };
+    this.sub = { text, t0: this.t, rev: Math.max(0.5, Math.min(d * 0.85, text.length * 0.05)), marks: this.g.audio.sayMarks, k: -1 };
     // (Fierro gesticula mientras habla: fierroClips)
     if (who === 'fierro') this.fTalkUntil = this.t + d;
     return d;
@@ -1474,17 +1472,9 @@ export default class TowerCinematic {
 
   // Detrás de ellos, contra el sol: van hasta las almenas y levantan el mate.
   // (más abierta y corrida a la izquierda: Fierro, que va por ese lado hasta su
-  // almena, quedaba afuera del cuadro; con los clips, __mduBlend, la nueva)
+  // almena, quedaba afuera del cuadro; con los clips, la nueva)
   shotDawn() {
     const S = this.S;
-    if (globalThis.__mduBlend === false) {
-      this.shot(7.4, (u) => {
-        const e = smooth(u);
-        tmpV.set(S.x - 3.3 + e * 1.6, S.y + 1.15 + e * 0.2, S.z - 0.9 + e * 0.35);
-        tmpW.set(S.x + 12, S.y + 2.4 + e * 0.6, S.z + 0.8);
-      }, 50);
-      return;
-    }
     this.shot(7.4, (u) => {
       const e = smooth(u);
       tmpV.set(S.x - 3.3 + e * 1.6, S.y + 1.25 + e * 0.2, S.z - 1.6 + e * 0.35);
@@ -1624,7 +1614,7 @@ export default class TowerCinematic {
       const k = sub.marks ? shownChars(sub.text, sub.marks, t - sub.t0) : Math.min(sub.text.length, Math.floor(((t - sub.t0) / sub.rev) * sub.text.length));
       if (k !== sub.k) {
         sub.k = k;
-        this.span.textContent = sub.text.slice(0, k);
+        revealSub(this.span, sub.text, k);
       }
     }
     // el oído va con la cámara (si no, todo se oye desde donde terminó la pelea)

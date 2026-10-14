@@ -45,8 +45,7 @@ export default class DeathTour {
     // escenas, ui/FarmCinematic): las tomas con la suerte de la partida (el
     // mapa y la ronda, que llega con el fin) y el reloj de verdad desde acá.
     // Antes cada uno veía otras tomas y la compu lenta iba atrasada.
-    // (globalThis.__mduNoCineSync: como antes)
-    const sync = !!g.net && globalThis.__mduNoCineSync !== true;
+    const sync = !!g.net;
     this.rand = sync ? rng(seedOf(`${g.mapId}|${g.stats?.round ?? 0}`)) : Math.random;
     this.wallAt = sync ? performance.now() : 0;
     this.shots = this.plan();
@@ -83,7 +82,7 @@ export default class DeathTour {
       // arena cerrada (Game.encerrada) la grúa va por adentro: alrededor del
       // centro, a 6/10 del radio y más baja que las estalactitas, arrancando
       // del lado opuesto a donde cayó (queda a la vista). Las arenas al aire
-      // libre, como antes. globalThis.__mduCamMuerteVieja = true: como antes.
+      // libre, como antes.
       const A = g.endCam ? g.endCam.arena : g.encerrada?.();
       if (A) {
         const c = new THREE.Vector3(A.x, A.y || 0, A.z);

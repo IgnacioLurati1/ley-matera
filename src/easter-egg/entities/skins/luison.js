@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { HOWL_AT, POUNCE, LUISON_END, SUMMON_POUND } from '../luison';
 import { clampT } from '../bossSkin';
-import BL, { FILES as BL_FILES } from './luisonBlend';
+import BL from './luisonBlend';
 
 // El Luisón con cuerpo de verdad (entities/bossSkin.js): qué clip va en cada
 // estado. De Mixamo: quieto, respira, caminar, correr, ruge (el aullido; las
@@ -44,34 +44,10 @@ function stoopMove(S, dt, s) {
   return w;
 }
 
-// Arriba de la loma (la llegada): se planta donde terminó el paso y aúlla así.
-// Los últimos pasos de la subida se acomodan (el ritmo del clip) para llegar
-// arriba en un cuadro con los pies juntos (s del clip de caminar) y ahí queda
-// quieto. Pasar al de parado arrastraba los pies de la zancada: parecía otra
-// animación metida en el medio.
-const PLANT = [0.1, 0.8];
-const PLANT_IN = 1.2;
 // (la escena cambia de estado con la música: puede cortar un poco antes; el
 // apoyo se alcanza PLANT_EARLY s antes de lo que dura la subida y ahí espera)
-const PLANT_EARLY = 0.35;
-function climbTo(S, dt, left) {
-  const d = S.clips.caminar.dur;
-  const now = S.walkT || 0;
-  const eff = left - PLANT_EARLY;
-  if (S.climbC == null) {
-    const k0 = Math.floor(now / d) * d;
-    let c = Infinity;
-    for (const base of [k0, k0 + d, k0 + 2 * d]) for (const p of PLANT) if (base + p >= now + Math.max(0, eff) * 0.45) c = Math.min(c, base + p);
-    S.climbC = c;
-  }
-  const c = S.climbC;
-  S.walkT = eff > dt ? now + ((c - now) * dt) / eff : c;
-  return { key: 'caminar', t: S.walkT % d, feet: true };
-}
 function plant(S) {
-  if (firmOn()) return stand(S, S.fadeK, S.dtNow);
-  S.plantT ??= S.walkT || 0;
-  return { key: 'caminar', t: S.plantT % S.clips.caminar.dur, feet: true };
+  return stand(S, S.fadeK, S.dtNow);
 }
 
 // (2026-10-05, el usuario: "cuando se va a parar en la piedra queda torcido":
@@ -81,8 +57,6 @@ function plant(S) {
 // pasa al lado del otro; ahí se para derecho con el de parado (el quieto), de
 // frente a ellos. El quieto abre mucho los pies (1,36 m; al pasar van a
 // 0,6-0,77): parado en la cresta los junta, si no se arrastraban de costado.
-// globalThis.__mduNoLuFirme = true: como antes (el cuadro de la caminata).
-const firmOn = () => globalThis.__mduNoLuFirme !== true;
 // (s del clip de caminar en que un pie pasa al lado del otro: medido, el
 // izquierdo a los 0 y el derecho a los 0,72)
 const PASS = [0, 0.72];
@@ -435,7 +409,7 @@ function howlAt(h, end) {
 // la cabeza gacha y las rodillas más dobladas (el muslo adelante, la canilla
 // atrás, el pie igual: el tobillo sube derecho y los pies en el piso bajan el
 // cuerpo, sin patinar). Entra y sale en ~0,3 s (rate). La cabeza, de ~2,4 m a
-// ~1,8. globalThis.__mduNoLuEncorva = true: parado, como recién.
+// ~1,8.
 // (tail: la cola, levantada desde la raíz: con la cadera más baja se clavaba en el piso)
 const STOOP = { arch: 0.42, head: 0.12, fwd: 0.1, knee: 0.45, tail: 0.35, rate: 7 };
 const STOOP_STATES = new Set(['lurk', 'lurkIn', 'chase', 'toLock']);
@@ -619,7 +593,7 @@ function pose(S, ctx, z, qYaw) {
     if (wq * S.firmK > 1e-3) narrow(S, Math.min(1, wq) * S.firmK);
   }
   // escondiéndose en la paja (la pelea, z.lowK): encorvado sobre el clip
-  const sk = S.fightNow && z && STOOP_STATES.has(z.state) && globalThis.__mduNoLuEncorva !== true ? Math.min(1, z.lowK || 0) : 0;
+  const sk = S.fightNow && z && STOOP_STATES.has(z.state) ? Math.min(1, z.lowK || 0) : 0;
   S.stoopK = (S.stoopK || 0) + (sk - (S.stoopK || 0)) * Math.min(1, dt * STOOP.rate);
   if (S.stoopK > 1e-3) {
     const k = S.stoopK;
@@ -724,23 +698,21 @@ function neck(S) {
   H.updateMatrixWorld(true);
 }
 
-// (el de Blender, skins/luisonBlend.js, APAGADO: el usuario lo pidió como antes
-// el 2026-10-05; globalThis.__mduLuisonBlend = true, antes de que baje el jefe,
-// lo vuelve a prender: modelo, clips y todo esto)
-const blendOn = () => globalThis.__mduLuisonBlend === true && !globalThis.__mduNoLuisonBlend;
+// (el modelo y los clips de Blender del Luisón, apagados: el usuario lo pidió
+// como antes el 2026-10-05)
 
 export default {
   kind: 'luison',
   dir: 'luison',
   loops: ['quieto', 'respira', 'caminar', 'correr', 'idle', 'walk', 'run', 'stalk', 'bound', 'crouchIdle', 'daze'],
-  files: () => (blendOn() ? BL_FILES : null),
+  files: () => null,
   // (2026-10-05) Los tiros le pegan al modelo que se ve (bossSkin skinHit: las
   // cajas de las piezas puestas sobre sus huesos): caminando por la paja
   // (pick lurk/lurkIn) iba parado y las piezas agachadas, y aun persiguiendo la
   // cabeza de las piezas quedaba 0,8 m adelante de la que se ve (el pecho
-  // contaba como cabeza). globalThis.__mduNoLuHit = true: las piezas, como antes.
+  // contaba como cabeza).
   get hitSkin() {
-    return globalThis.__mduNoLuHit !== true;
+    return true;
   },
   ready(S) {
     S.blend = !!S.clips.stalk;
@@ -853,14 +825,13 @@ export default {
       // la animación vieja ... queda muy chistosa, cambiala por la de caminar
       // normal".) Yendo a la paja (lurkIn), por adentro (lurk) y persiguiendo
       // agazapado en el pajonal: camina o corre con sus clips, a lo que va de
-      // verdad; quieto esperando, respira. globalThis.__mduNoLuLurk = true: el
-      // de piezas agazapado, como antes.
+      // verdad; quieto esperando, respira.
       case 'lurk':
       case 'lurkIn':
-        if (globalThis.__mduNoLuLurk !== true) return stoopMove(S, dt, s);
-        return { key: 'rig' };
+        return stoopMove(S, dt, s);
+        
     }
-    if (globalThis.__mduNoLuLurk !== true && (st === 'chase' || st === 'toLock')) return stoopMove(S, dt, s);
+    if (st === 'chase' || st === 'toLock') return stoopMove(S, dt, s);
     // agazapado en el pajonal (y volando por un golpe, etc.): el de piezas
     if ((z.lowK || 0) > 0.3) return { key: 'rig' };
     if (st !== 'chase' && st !== 'toLock') return { key: 'rig' };
@@ -886,7 +857,7 @@ export default {
     const st = L.stateT || 0;
     S.fightNow = false;
     // (subiendo y parado en la cresta: firmOn)
-    S.firmArr = firmOn() && (L.state === 'climb' || L.state === 'pose' || L.state === 'howl');
+    S.firmArr = L.state === 'climb' || L.state === 'pose' || L.state === 'howl';
     if (L.state !== 'climb') S.lockD0 = null;
     // (lo que dura el cuadro de verdad: el de la escena; ctx.dt es 1/60 fijo)
     S.rdt = A?.dtNow > 0 ? A.dtNow : dt;
@@ -902,11 +873,7 @@ export default {
       // lo lleva parejo de abajo a la cima; los pies en la loma)
       case 'climb': {
         S.plantT = null;
-        if (firmOn()) return climbLock(S, L, A, s);
-        const left = (L.climbDur ?? 0) - st;
-        if (left < PLANT_IN) return climbTo(S, dt, left);
-        S.climbC = null;
-        return { ...move(S, dt, s, true), feet: true };
+        return climbLock(S, L, A, s);
       }
       // parado firme en la cima, contra la luna, respirando (plantado en el paso)
       case 'pose':
@@ -920,9 +887,8 @@ export default {
           const t = CROUCH_FROM + Math.min(1, crouch / CROUCH_T) * (CROUCH_LOW - CROUCH_FROM);
           S.leanNow = leanAt(t);
           // (firmOn: los pies siguen donde estaban parado, S.pinAt; y apoyados
-          // en la piedra: el clip los hundía 30 cm y al despegar subían de golpe.
-          // globalThis.__mduNoLuAgacha = true: hundidos, como antes)
-          return { key: 'salto', t, pin: !S.pinAt, feet: globalThis.__mduNoLuAgacha !== true };
+          // en la piedra: el clip los hundía 30 cm y al despegar subían de golpe)
+          return { key: 'salto', t, pin: !S.pinAt, feet: true };
         }
         S.howlNow = { h: st - HOWL_AT, end: null };
         S.breathNow = true;

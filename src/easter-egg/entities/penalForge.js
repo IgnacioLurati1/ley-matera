@@ -22,8 +22,8 @@ const rnd = () => Math.random() - 0.5;
 const GOLD_RGB = [[1, 0.85, 0.45], [1, 0.95, 0.75], [1, 0.72, 0.25]];
 // Cuánto de los fogonazos, del velo blanco y de la luz del mate (el usuario,
 // 2026-10-07: "bajar un poco el brillo del mate dorado cuando se arma, te deja
-// ciego"). 1: como era. globalThis.__mduForgeBright: otro valor, para comparar.
-const BRIGHT = () => globalThis.__mduForgeBright ?? 0.5;
+// ciego"). 1: como era.
+const BRIGHT = () => 0.5;
 
 export default class PenalForge {
   constructor(ee, onEnd) {

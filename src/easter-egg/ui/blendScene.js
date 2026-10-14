@@ -105,18 +105,9 @@ export default class BlendScene {
       cam.updateProjectionMatrix();
     }
     cam.updateMatrixWorld();
-    // el foco: el de la cámara de Blender; sin él, la lente enfoca sola a los personajes
+    // el foco: el de la cámara de Blender
     const fo = C.focus[f0] > 0 && C.focus[f1] > 0 ? C.focus[f0] + (C.focus[f1] - C.focus[f0]) * al : 0;
     this.focus = fo;
-    const lens = this.g.post?.lens;
-    if (lens) {
-      if (fo > 0) {
-        // (cuánto queda nítido alrededor del foco: más abierto el diafragma, menos)
-        const fs = C.fstop[f0] || 2.8;
-        const w = Math.max(0.05, Math.min(0.6, fs / 20));
-        lens.setManual({ near: fo * (1 - w), far: fo * (1 + 1.6 * w), ramp: fs / 8 });
-      } else lens.setManual(null);
-    }
   }
 
   // Cada cuadro, después de actors.tick(dt): los cuerpos, la cámara y los eventos.
@@ -174,13 +165,13 @@ export default class BlendScene {
   }
 
   // La luz de los personajes en el segundo t: la llave anterior, mezclada con
-  // la que sigue si no hay un corte en el medio. (globalThis.__mduNoLuzCine: sin ella)
+  // la que sigue si no hay un corte en el medio.
   light(t) {
     const L = this.D.luz;
     if (!L?.length) return;
     let i = -1;
     for (let k = 0; k < L.length && L[k].t <= t; k++) i = k;
-    const a = i >= 0 && globalThis.__mduNoLuzCine !== true ? L[i] : null;
+    const a = i >= 0 ? L[i] : null;
     let b = a && L[i + 1] ? L[i + 1] : null;
     if (b && this.cutT.some((c) => c > a.t + 1e-3 && c <= b.t + 1e-3)) b = null;
     const u = b ? Math.max(0, Math.min(1, (t - a.t) / Math.max(1e-3, b.t - a.t))) : 0;
@@ -201,11 +192,10 @@ export default class BlendScene {
 
   // Un paso o un roce de ropa, donde pasó (la animación de Blender dice
   // cuándo apoya cada pie y cuándo una mano arranca rápido).
-  // (globalThis.__mduNoPasosCine: sin ellos)
   foley(e) {
     const g = this.g;
     const A = g.audio;
-    if (globalThis.__mduNoPasosCine === true || !A?.out) return;
+    if (!A?.out) return;
     const r = this.byName[e.actor];
     if (r?.a && !r.a.group.visible) return;
     const pos = va.set(e.p[0], e.p[1], e.p[2]);
@@ -223,7 +213,6 @@ export default class BlendScene {
   }
 
   dispose() {
-    this.g.post?.lens?.setManual(null);
     for (const { r } of this.cast) {
       const U = r.a?.M?.gaucho?.userData.life;
       if (!U?.uCineKey) continue;

@@ -91,8 +91,8 @@ export function vallaDoor(M, group, pieces, width, seed = 1) {
   // (sobre la fila de columnas del frente del Propileo: un tramo en cada hueco
   // entre columnas, en el medio de la fila, y al abrir sale derecho por el
   // hueco; antes los tramos de 2 m atravesaban las columnas, cerrados y
-  // volando. globalThis.__mduNoVallaCols: como antes)
-  const gaps = globalThis.__mduNoVallaCols === true ? null : columnGaps(group, width);
+  // volando)
+  const gaps = columnGaps(group, width);
   if (gaps) {
     for (const gp of gaps) {
       const v = valla(M, gp.w - 0.1);

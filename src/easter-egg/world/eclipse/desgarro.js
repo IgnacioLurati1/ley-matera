@@ -273,7 +273,7 @@ export function bake(w, gb, mats, extra = [], { noShadow = [], isla = '' } = {})
 // finitas y con tanto contraste titilaban al moverse). Cada tramo lleva tres
 // filas de vértices (borde, medio, borde) y el borde se apaga en el alfa: la
 // luz y el labio oscuro de abajo, más ancho. Una malla para todas.
-// strips: [px, pz, nx, nz, ux, uz, pw, nw, fy]. globalThis.__mduOldCracks: como antes.
+// strips: [px, pz, nx, nz, ux, uz, pw, nw, fy].
 const CRACK_COL = new THREE.Color(0.62, 0.2, 1.45);
 export function softCracks(strips, fy0 = 0) {
   const pos = [];
@@ -541,8 +541,6 @@ function monoliths(w, isl, rnd) {
 let LIVE = null;
 
 export function build(w, g, isl) {
-  // (__mduNoEclipseRiftArt: solo los bloques y la roca)
-  if (globalThis.__mduNoEclipseRiftArt === true) return;
   const M = mats(w);
   const y = isl.y;
   const cells = islandCells(w, isl.zones);
@@ -629,7 +627,7 @@ export function build(w, g, isl) {
     const ox = Math.sign(L.pos[0] - isl.center[0]);
     // (mundo, it. 4: con el Nudo grande las luces 'cristal' están adentro, en el piso: el manojo
     // nace del piso; arriba del cerco, solo si la luz cae en el borde. Antes flotaban a 1,2 m)
-    const onFloor = isFloor(Math.floor(L.pos[0]), Math.floor(L.pos[2])) && globalThis.__mduNoCristalFloor !== true;
+    const onFloor = isFloor(Math.floor(L.pos[0]), Math.floor(L.pos[2]));
     cluster(crystals, L.pos[0], onFloor ? w.floorAt(L.pos[0], L.pos[2]) - 0.05 : y + 1.2, L.pos[2], rnd, { n: 7, size: 1.1, dir: [ox * 0.9, 0] });
   }
   // el telón de atrás del Pack-a-Pava: cristales altos que se abren hacia atrás
@@ -682,12 +680,7 @@ export function build(w, g, isl) {
     crack(MC[0] + Math.cos(a) * markR, MC[1] + Math.sin(a) * markR, a, 7 + rnd() * 8, 0.06 + rnd() * 0.03, 0);
   }
   // cada tramo: el labio oscuro (más ancho) y la luz adentro, 6 mm más arriba
-  if (globalThis.__mduOldCracks !== true) w.root.add(softCracks(strips, fy));
-  else for (const [px, pz, nx, nz, ux, uz, pw, nw] of strips) {
-    const S = (k, yy) => [[px - ux * pw * k, yy, pz - uz * pw * k], [px + ux * pw * k, yy, pz + uz * pw * k], [nx + ux * nw * k, yy, nz + uz * nw * k], [nx - ux * nw * k, yy, nz - uz * nw * k]];
-    quad(gb, 'crackLip', S(2.4, fy - 0.006), [0, 1, 0]);
-    quad(gb, 'crack', S(1, fy), [0, 1, 0]);
-  }
+  w.root.add(softCracks(strips, fy));
 
   // ---- abajo de la isla: cristales que cuelgan de la roca (se ven desde el claro)
   const rock = w.root.getObjectByName('eclipseRock');
@@ -746,10 +739,9 @@ export function build(w, g, isl) {
   knot.scale.set(1, 1.9, 1);
   // (mundo, it. 4: en el Nudo grande nada flota: el cristal del nudo se para en el piso de
   // la terraza, quieto, sin la corona que giraba ni las piedras que rondaban)
-  const grounded = globalThis.__mduNoNudoGround !== true;
   // (a 2,6 m del nudo, al este: en el nudo se clava la guadaña del Temple)
-  const kX = NUDO[0] + (grounded ? 2.6 : 0);
-  const kY = grounded ? w.floorAt(kX, NUDO[1], y + 4) + 1.71 * 0.92 : y + 6.6;
+  const kX = NUDO[0] + 2.6;
+  const kY = w.floorAt(kX, NUDO[1], y + 4) + 1.71 * 0.92;
   knot.position.set(kX, kY, NUDO[1]);
   knot.castShadow = false;
   live.add(knot);
@@ -757,7 +749,7 @@ export function build(w, g, isl) {
   const shard = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.22, 0), M.knot, 3);
   shard.scale.set(1, 1, 1);
   shard.frustumCulled = false;
-  shard.visible = !grounded;
+  shard.visible = false;
   live.add(shard);
   // las piedras negras que flotan alrededor (un dibujo)
   const N = 22;
@@ -780,10 +772,10 @@ export function build(w, g, isl) {
       rs: 0.2 + rnd() * 0.5,
     });
   }
-  flo.visible = !grounded;
+  flo.visible = false;
   live.add(flo);
   w.root.add(live);
-  LIVE = { w, knot, shard, flo, orb, y, NUDO, ojos, orb9, grounded, kY, m: new THREE.Matrix4(), q: new THREE.Quaternion(), qs: new THREE.Quaternion(), v: new THREE.Vector3(), s: new THREE.Vector3(), crack: M.crack, base: M.crack.color.clone() };
+  LIVE = { w, knot, shard, flo, orb, y, NUDO, ojos, orb9, grounded: true, kY, m: new THREE.Matrix4(), q: new THREE.Quaternion(), qs: new THREE.Quaternion(), v: new THREE.Vector3(), s: new THREE.Vector3(), crack: M.crack, base: M.crack.color.clone() };
   update(0, 0);
 }
 

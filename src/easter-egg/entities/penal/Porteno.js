@@ -92,8 +92,8 @@ export default class Porteno {
     this.cuerpos = new PzCuerpos(game);
     this.enc = new PzEncierro(this);
     // (usuario 10-13) los sabotajes del policía y la telesilla gratis
-    // (entities/penal/pzSabotaje.js; globalThis.__mduPorteñoSinSabotajes = true: sin nada de eso)
-    this.sab = globalThis.__mduPorteñoSinSabotajes === true ? null : new PzSabotaje(this);
+    // (entities/penal/pzSabotaje.js)
+    this.sab = new PzSabotaje(this);
     this.buildButton();
     this.buildHud();
     // la luz prendida y todo abierto: no hay nada que comprar

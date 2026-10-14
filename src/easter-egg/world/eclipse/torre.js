@@ -26,7 +26,7 @@ import { fragment, orbiters, grime, wallCrack, portalOrbs, keepOut } from './cen
 //  · Arcos rotos, sueltos (O9): un pedazo de la galería arrancado, inclinado.
 //  · Alrededor, lo que levanta el remolino (tablas y tejas) dando vueltas; piedras
 //    en los portales; grietas de luz; humedad y musgo en el ladrillo (centro.grime).
-// Todo sale del config (ZONES, LIGHTS con tag de torre.py). __mduNoEclipseTowerArt: solo los bloques.
+// Todo sale del config (ZONES, LIGHTS con tag de torre.py).
 
 let LIVE = null;
 
@@ -61,7 +61,6 @@ const zoneOfCell = (w, x, z) => {
 };
 
 export function build(w, g, isl) {
-  if (globalThis.__mduNoEclipseTowerArt === true) return;
   const M = w.M;
   const y = isl.y;
   const open = isl.zones.filter((k) => !ZONES[k].frag && ZONES[k].outdoor);

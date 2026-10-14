@@ -192,7 +192,7 @@ export default class LuzMala {
       const zn = ZONES[key];
       if (!zn) continue;
       // (el patio de la 2043 del Monumento no: es de día y las rondas esperan)
-      if (key === 'P' && zn.y === 150 && !globalThis.__mduNoLuzPatio) continue;
+      if (key === 'P' && zn.y === 150) continue;
       // cualquiera de los rectángulos de la zona (o el cuadrado del círculo)
       const rects = zoneRects(key);
       if (zn.circle) rects.push([zn.circle.x - zn.circle.r, zn.circle.z - zn.circle.r, zn.circle.x + zn.circle.r, zn.circle.z + zn.circle.r]);

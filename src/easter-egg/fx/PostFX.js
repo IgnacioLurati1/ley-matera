@@ -9,10 +9,9 @@ import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 import Epic, { LEVELS, FOLIAGE_B } from './Epic';
-import { GB, gbBeginPass, gbEndPass } from './gbMrt';
+import { gbBeginPass, gbEndPass } from './gbMrt';
 import Surfaces from './Surfaces';
 import TAAPass, { GRASS_JIT } from './TAA';
-import LensPass from './Lens';
 import FsrPass, { FSR_SCALE } from './Fsr';
 import { FEATURES, MAP_ID } from '../config/map';
 import SliceWalk from './sliceWalk';
@@ -24,11 +23,10 @@ import SliceWalk from './sliceWalk';
 // el ruido de las sombras. Ahí sigue todo como era (SMAA, grano 0,06).
 // (Eclipse Matero, 2026-10-07, ITERACION-6 M2, el usuario: "sigue titilando
 // los bordes" del pasto. Medido: en Eclipse el suavizado temporal nunca
-// arrancaba —esto era solo el estero— y el pasto corrido para él (W4,
-// __mduNoEclGrassJit) quedaba sin efecto: los bordes de las cañas y matas,
-// recortados, serruchados y titilando. Ahora como en el estero.
-// globalThis.__mduNoEclGrassAA: como antes)
-const grassy = () => !!FEATURES.esteros || (!!FEATURES.eclipse && globalThis.__mduNoEclGrassAA !== true);
+// arrancaba —esto era solo el estero— y el pasto corrido para él (W4)
+// quedaba sin efecto: los bordes de las cañas y matas,
+// recortados, serruchados y titilando. Ahora como en el estero)
+const grassy = () => !!FEATURES.esteros || !!FEATURES.eclipse;
 // lo de fx/Epic (LEVELS) que un mapa puede cambiarle a su calidad (Game.mapGfx)
 const LEVEL_KEYS = ['live', 'soft', 'ao', 'light', 'vol', 'gres', 'lamps', 'bounce'];
 
@@ -38,8 +36,7 @@ const MSAA = 4;
 const SWEEP_N = 300;
 
 // El color de cada mapa (2026-10-04: el usuario lo vio en La Tapera y el penal
-// y lo quiso en todos). globalThis.__mduNoMapGrade = true: el de antes, igual
-// en todos. sat/con: saturación y contraste; sh/hi: el tinte de las sombras y
+// y lo quiso en todos). sat/con: saturación y contraste; sh/hi: el tinte de las sombras y
 // de las luces; gain/lift: por canal.
 // - La Tapera: atardecer de cosecha, luces doradas y sombras verdosas, el negro
 //   un poco más hondo.
@@ -323,18 +320,6 @@ class WorldPass extends RenderPass {
     this.msaa = null;
   }
 
-  // La lente de cine (fx/Lens) necesita la profundidad del mundo: sin MSAA ni
-  // Épica no la guarda nadie, y el mundo se dibuja a un blanco propio (sin
-  // muestras de más) que sí.
-  setDepth(on) {
-    if (on === !!this.needDepth) return;
-    this.needDepth = on;
-    if (!this.samples) {
-      this.msaa?.dispose();
-      this.msaa = null;
-    }
-  }
-
   setSize(w, h) {
     this.w = w;
     this.h = h;
@@ -356,51 +341,15 @@ class WorldPass extends RenderPass {
   draw(renderer, writeBuffer, readBuffer, dt, mask) {
     // B (fx/gbMrt.js): con el G-buffer de Épica prendido, el mundo escribe el color
     // y el G-buffer a la vez y la segunda pasada no dibuja nada
-    // (globalThis.__mduGbAparte: la segunda pasada, como antes)
     const E = this.epic;
-    if (E && E.gbuffer.enabled && GB.ok && !this.renderToScreen && globalThis.__mduGbMrt === true && globalThis.__mduGbAparte !== true) return this.drawMrt(renderer, writeBuffer, readBuffer, dt, mask);
     this.mrtOn = false;
     E?.bindGb(null);
-    if ((!this.samples && !this.needDepth) || this.renderToScreen) return super.render(renderer, writeBuffer, readBuffer, dt, mask);
+    if (!this.samples || this.renderToScreen) return super.render(renderer, writeBuffer, readBuffer, dt, mask);
     // (con su profundidad: la usa el suavizado temporal para llevar lo de antes)
     if (!this.msaa) this.msaa = new THREE.WebGLRenderTarget(this.w, this.h, { type: THREE.HalfFloatType, samples: this.samples, depthTexture: new THREE.DepthTexture(this.w, this.h) });
     super.render(renderer, writeBuffer, this.msaa, dt, mask);
     const m = this.copy.material;
     m.uniforms.tDiffuse.value = this.msaa.texture;
-    renderer.setRenderTarget(readBuffer);
-    this.copy.render(renderer);
-  }
-
-  // El mundo a un blanco de dos salidas (color; normal en vista + reflejo) con su
-  // profundidad, y el color copiado al del composer
-  drawMrt(renderer, writeBuffer, readBuffer, dt, mask) {
-    if (!this.mrt || this.mrtSamples !== this.samples) {
-      this.mrt?.dispose();
-      const depth = new THREE.DepthTexture(this.w, this.h);
-      depth.format = THREE.DepthStencilFormat;
-      depth.type = THREE.UnsignedInt248Type;
-      this.mrt = new THREE.WebGLRenderTarget(this.w, this.h, { count: 2, type: THREE.HalfFloatType, samples: this.samples, depthTexture: depth });
-      const n = this.mrt.textures[1];
-      n.minFilter = THREE.NearestFilter;
-      n.magFilter = THREE.NearestFilter;
-      n.generateMipmaps = false;
-      this.mrtSamples = this.samples;
-    }
-    this.mrtOn = true;
-    this.epic.bindGb({ depth: this.mrt.depthTexture, normal: this.mrt.textures[1] });
-    const clr = this.clear;
-    renderer.setRenderTarget(this.mrt);
-    renderer.clear();
-    gbBeginPass();
-    this.clear = false;
-    try {
-      super.render(renderer, writeBuffer, this.mrt, dt, mask);
-    } finally {
-      this.clear = clr;
-      gbEndPass();
-    }
-    const m = this.copy.material;
-    m.uniforms.tDiffuse.value = this.mrt.textures[0];
     renderer.setRenderTarget(readBuffer);
     this.copy.render(renderer);
   }
@@ -458,10 +407,6 @@ export default class PostFX {
     this.world.taa = this.taa;
     this.taa.enabled = false;
     this.composer.addPass(this.taa);
-    // la lente de cine (fx/Lens.js): solo en las escenas (setLens)
-    this.lens = new LensPass(camera, () => (!this.world.mrtOn && this.world.msaa?.depthTexture) || (this.epic.on ? this.epic.gbBound.depth : null));
-    this.lensHull = null;
-    this.composer.addPass(this.lens);
     this.composer.addPass(this.vm);
     this.composer.addPass(this.bloom);
     this.composer.addPass(this.output);
@@ -498,7 +443,6 @@ export default class PostFX {
     this.world.scene = scene;
     this.world.camera = camera;
     this.taa.camera = camera;
-    this.lens.camera = camera;
     this.taa.valid = false;
     this.epic.setScenes(scene, camera);
     this.surfaces.setScene(scene, this.game?.world?.T);
@@ -580,12 +524,6 @@ export default class PostFX {
     this.grade.uniforms.uRes.value.set(w * p, h * p);
   }
 
-  // La lente de cine: hull = los muñecos en cuadro (ui/cineLens.js lensHull),
-  // o null fuera de las escenas. Lo pide Game cada cuadro.
-  setLens(hull) {
-    this.lensHull = hull;
-  }
-
   flash(v) {
     this.flashV = Math.max(this.flashV, v);
   }
@@ -594,8 +532,8 @@ export default class PostFX {
     const u = this.grade.uniforms;
     // (Eclipse Matero: el color de la isla en la que está la cámara, mezclado;
     // world/eclipseMood.js lo cambia en cada cuadro)
-    const EM = MAP_ID === 'eclipse' && globalThis.__mduNoMapGrade !== true ? this.game?.eclMood?.grade : null;
-    const G = EM || (globalThis.__mduNoMapGrade !== true && MAP_GRADE[MAP_ID]) || GRADE_BASE;
+    const EM = MAP_ID === 'eclipse' ? this.game?.eclMood?.grade : null;
+    const G = EM || MAP_GRADE[MAP_ID] || GRADE_BASE;
     if (G !== this.gradeOf || EM) {
       this.gradeOf = G;
       u.uSat.value = G.sat;
@@ -618,18 +556,16 @@ export default class PostFX {
     const P = this.game?.player;
     u.uWish.value = (this.game?.state !== 'title' && P?.wishFx) || 0;
     u.uWishBeat.value = P?.wishBeat || 0;
-    // (guadana5: la Furia y el Eclipse, solo en los bordes; el rasgón, a la mitad.
-    // globalThis.__mduNoFuriaSoft: como antes)
-    const softF = globalThis.__mduNoFuriaSoft === true ? 0 : 1;
+    // (guadana5: la Furia y el Eclipse, solo en los bordes; el rasgón, a la mitad)
+    const softF = 1;
     u.uSoftF.value = softF;
-    u.uFuria.value = (globalThis.__mduNoFuriaTint !== true && this.game?.state !== 'title' && this.game?.weapons?.cosmic?.tint) || 0;
-    // (globalThis.__mduNoRip: sin el rasgón)
+    u.uFuria.value = (this.game?.state !== 'title' && this.game?.weapons?.cosmic?.tint) || 0;
     const cz = this.game?.weapons?.cosmic;
-    u.uRip.value.set(globalThis.__mduNoRip !== true && this.game?.state !== 'title' ? (cz?.rip || 0) * (softF ? 0.5 : 1) : 0, cz?.ripA || 0, cz?.ripSeed || 0);
-    u.uKeepNeon.value = globalThis.__mduNoEclKeepNeon === true ? 0 : 1;
-    u.uEclipse.value = globalThis.__mduNoEclTint !== true && this.game?.state !== 'title' ? cz?.eclK || 0 : 0;
-    // (furia11; globalThis.__mduNoFuriaTens: sin la tensión de la pantalla)
-    u.uTens.value = globalThis.__mduNoFuriaTens !== true && this.game?.state !== 'title' ? cz?.tens || 0 : 0;
+    u.uRip.value.set(this.game?.state !== 'title' ? (cz?.rip || 0) * (softF ? 0.5 : 1) : 0, cz?.ripA || 0, cz?.ripSeed || 0);
+    u.uKeepNeon.value = 1;
+    u.uEclipse.value = this.game?.state !== 'title' ? cz?.eclK || 0 : 0;
+    // (furia11)
+    u.uTens.value = this.game?.state !== 'title' ? cz?.tens || 0 : 0;
     u.uTime.value = t;
     u.uHurt.value += (hurt - u.uHurt.value) * Math.min(1, dt * 6);
     u.uDown.value += (down - u.uDown.value) * Math.min(1, dt * 3);
@@ -648,8 +584,6 @@ export default class PostFX {
       this.vmT = 1;
       this.vm.scene?.traverse(sweepOne);
     }
-    this.lens.update(dt, this.lensHull);
-    this.world.setDepth(this.lens.enabled && !this.epic.on);
     this.taa.jitter();
     // las luces de evento a las del pool (World.adoptLight), antes que las
     // sombras de fuegos de Épica las miren; el pasto lejano (World.preRender)
@@ -682,7 +616,6 @@ export default class PostFX {
     this.epic.dispose();
     this.world.dispose();
     this.taa.dispose();
-    this.lens.dispose();
     this.fsr.dispose();
     this.composer.dispose();
   }

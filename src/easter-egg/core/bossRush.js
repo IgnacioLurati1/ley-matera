@@ -38,14 +38,13 @@
 // siempre (Arrival: 'start' con el mapa, sin la entrada). En la sala, todos
 // ven "Rush de jefes" en vez del mapa (ui/Lobby.js; 'pick').
 //
-// globalThis.__mduSinRush = true: sin el modo (ni el botón, ni el logro).
 // El Boss Rush Mayhem (el usuario, 2026-10-13) es este mismo rush con la
 // bandera `mayhem`: jefes más fuertes, combos y el pozo sin grises
-// (core/rushMayhem.js; globalThis.__mduSinMayhem = true: sin el botón).
+// (core/rushMayhem.js).
 // (pruebas: globalThis.__mduRushEntre = n pisa CARTAS_ENTRE_JEFES)
 import * as L from './logros';
 import { MAP_LIST, EE, ZONES } from '../config/map';
-import { tierBag, dealSet, takeCard, newDeck, describe, dealArmas, armaAparte, dejables } from './rushCards';
+import { tierBag, dealSet, takeCard, newDeck, describe, dealArmas, dejables } from './rushCards';
 import { EMPANADA } from '../config/empanadas';
 import RushCards from '../ui/RushCards';
 import RushBuild from './rushBuild';
@@ -53,7 +52,7 @@ import * as Armas from './armas';
 import { rushOver, clearRushOver } from '../ui/overRush';
 import { maizal } from '../entities/maizaster';
 // el Boss Rush Mayhem: este mismo rush con la bandera `mayhem` (core/rushMayhem.js)
-import { MAYHEM, Mayhem, mayhemOff, mayhemBag, mayhemTiers, POZO_MAYHEM } from './rushMayhem';
+import { MAYHEM, Mayhem, mayhemBag, mayhemTiers, POZO_MAYHEM } from './rushMayhem';
 // la munición y los muertos de cada pelea, parejos en todas (core/rushPelea.js)
 import RushPelea from './rushPelea';
 
@@ -92,9 +91,7 @@ export const RUSH_PESOS_JEFE = 1;
 // el Boss Rush Mayhem paga el doble que el rush (la experiencia y los pesos,
 // al ganar y lo de consuelo) y suma su logro, "Ni el diablo" (el usuario,
 // 2026-10-13: "el doble que el rush normal más logro").
-// globalThis.__mduMayhemPremioViejo = true: como el rush, sin el logro nuevo.
 export const MAYHEM_PREMIO = 2;
-const premioMayhem = () => globalThis.__mduMayhemPremioViejo !== true;
 // las cartas: cuántos sets de 3 salen al arrancar y entre jefe y jefe (de
 // cada set se elige una). Con 3 y 2 se llega al último jefe con 13 elegidas;
 // el pozo (core/rushCards.js) tiene 10 perks, 2 o 3 mates con hasta 2
@@ -115,8 +112,6 @@ const FADE_MS = 900;
 // última carta a la arena, "acortalos"): el negro arranca al elegir la
 // última —debajo de la animación de la carta, ui/RushCards.js early— y los
 // dos fundidos del viaje duran esto (ms). Lo que se hace en negro, igual.
-// globalThis.__mduRushViajeLento = true: como antes.
-const viajeLento = () => globalThis.__mduRushViajeLento === true;
 const FADE_VIAJE = 500;
 const FADE_DESTAPE = 600;
 // El viaje de arena en arena (el usuario, 2026-10-13: "ahora irá de arena en
@@ -134,8 +129,6 @@ const FADE_DESTAPE = 600;
 // pantalla de carga, sin el sorbo y sin la llegada del Luisón
 // (entities/EsterosEgg.js). Va en down/onNet/showCards, así lo usa igual el
 // Mayhem (y cualquier modo hermano).
-// globalThis.__mduRushViajeViejo = true: como antes (la postal y la carga).
-export const viajeViejo = () => globalThis.__mduRushViajeViejo === true;
 // pasado esto en negro después de las cartas, un indicador mínimo (ms)
 const WAIT_HINT = 6000;
 // para qué lado va la carta que sobra (13 sets son 39 cartas: 19 y 20) en la próxima partida
@@ -144,8 +137,6 @@ const PAR_KEY = 'lm-zombies-rush-par';
 const zero = () => ({ kills: 0, headshots: 0, knifeKills: 0, earned: 0, time: 0 });
 const mapName = (id) => MAP_LIST.find((m) => m.id === id)?.name || id;
 const entre = () => (typeof globalThis.__mduRushEntre === 'number' ? globalThis.__mduRushEntre : CARTAS_ENTRE_JEFES);
-
-export const rushOff = () => globalThis.__mduSinRush === true;
 
 // El orden de una partida: los cinco al azar y el castillo al final.
 function sortear() {
@@ -201,13 +192,13 @@ export default class BossRush {
 
   // Por cuánto se multiplica el premio (el Mayhem, MAYHEM_PREMIO).
   // Sin el contador de puntos mientras dura el rush (no hay nada que comprar;
-  // world/Interactables.js tampoco deja). __mduRushConPuntos = true: como antes.
+  // world/Interactables.js tampoco deja).
   sinPuntos() {
-    this.g.hud?.root?.classList.toggle('is-rush', this.on && globalThis.__mduRushConPuntos !== true);
+    this.g.hud?.root?.classList.toggle('is-rush', this.on);
   }
 
   premio() {
-    return this.mayhem && premioMayhem() ? MAYHEM_PREMIO : 1;
+    return this.mayhem ? MAYHEM_PREMIO : 1;
   }
 
   // (entities/Player.js damage) Lo que pega todo en la pelea del Mayhem, a cada uno en su compu.
@@ -243,12 +234,11 @@ export default class BossRush {
     // ("Nueva arma" en el Mayhem: el tier de cada mate, como las cartas de su pozo, sin grises)
     if (this.mayhem) this.deck.armaTiers = { oro: 1 - MAYHEM.prisma, prisma: MAYHEM.prisma };
     // ("Nueva arma": los mates, en una elección aparte antes de cada tanda; showCards)
-    this.deck.armaAparte = armaAparte();
+    this.deck.armaAparte = true;
     // (los especialistas: en el rush arrancan todos apagados y los prende
     // una carta; el usuario, 2026-10-12. core/armas.js)
-    const viejo = globalThis.__mduRushViejo === true;
-    this.deck.espDe = (id) => (viejo || globalThis.__mduSinAccesorios === true ? null : Armas.especialista(id));
-    Armas.especialistasDePartida(viejo ? null : []);
+    this.deck.espDe = (id) => Armas.especialista(id);
+    Armas.especialistasDePartida([]);
     // cuántos compañeros hay (el Resurgir del mate solo sale con alguno:
     // core/rushCards.js options; en el título, la lista de la sala)
     this.deck.equipo = () => {
@@ -263,8 +253,8 @@ export default class BossRush {
     // Revive en el mazo (loadout lo da en cada arena, con su ícono, y te
     // levanta solo como en la partida normal: entities/Player.js damage). Como
     // ya lo tenés, su carta no sale (core/rushCards.js options). En línea,
-    // como antes. globalThis.__mduRushSinRevive = true: como antes.
-    if (!this.deck.equipo() && globalThis.__mduRushSinRevive !== true) {
+    // como antes.
+    if (!this.deck.equipo()) {
       this.deck.perks.push('revive');
       // (el usuario, 2026-10-13: "Maximo 3 (1 por boss fight) ... En mayhem es
       // una sola"): cuántas levantadas quedan en el rush (levanta). Ya
@@ -283,14 +273,14 @@ export default class BossRush {
   // salen las cartas y, cuando eligieron todos, el primero.
   start() {
     const g = this.g;
-    if (rushOff() || g.net?.guest) return false;
+    if (g.net?.guest) return false;
     this.on = true;
     this.sinPuntos();
     this.i = 0;
     this.order = sortear();
     this.tot = zero();
     this.going = false;
-    this.mayhem = !!this.mayhemPick && !mayhemOff();
+    this.mayhem = !!this.mayhemPick;
     this.mh.reset();
     this.fresh();
     this.send({ a: 'state', order: this.order, mh: this.mayhem ? 1 : 0 });
@@ -324,7 +314,7 @@ export default class BossRush {
   // (anfitrión, en la sala) Si el rush está elegido, para los invitados.
   sendPick() {
     if (!this.g.net?.host) return;
-    this.send({ a: 'pick', p: this.pick && !rushOff() ? 1 : 0, mh: this.pick && this.mayhemPick && !mayhemOff() ? 1 : 0 });
+    this.send({ a: 'pick', p: this.pick ? 1 : 0, mh: this.pick && this.mayhemPick ? 1 : 0 });
   }
 
   // (todos) Lo que avisa otro: el anfitrión, o un invitado que terminó sus cartas.
@@ -357,7 +347,7 @@ export default class BossRush {
       if (g.net?.guest) {
         this.ui?.close();
         // (de arena en arena: eligieron todos, el negro; travel)
-        if (g.arrival.pre && !viajeViejo()) {
+        if (g.arrival.pre) {
           g.arrival.blackP = new Promise((r) => this.cover(r, this.fadeViaje()));
           this.hint();
         }
@@ -365,17 +355,14 @@ export default class BossRush {
     } else if (m.a === 'next') {
       this.addStats();
       this.i = m.i | 0;
-      if (viajeViejo()) this.cover();
-      else {
-        // (de arena en arena: las cartas ya, y cada uno arma de fondo la que
-        // sigue cuando le salen —showCards—; sin cartas, en negro ya)
-        this.hold();
-        this.wantPrep = true;
-        if (m.n === 0) {
-          g.arrival.blackP = new Promise((r) => this.cover(r, this.fadeViaje()));
-          this.prep();
-          this.hint();
-        }
+      // (de arena en arena: las cartas ya, y cada uno arma de fondo la que
+      // sigue cuando le salen —showCards—; sin cartas, en negro ya)
+      this.hold();
+      this.wantPrep = true;
+      if (m.n === 0) {
+        g.arrival.blackP = new Promise((r) => this.cover(r, this.fadeViaje()));
+        this.prep();
+        this.hint();
       }
     } else if (m.a === 'done') this.complete(m.board || null);
     // (lo que se ve de la habilidad de otro y, al invitado, sus bajas: core/rushBuild.js)
@@ -437,11 +424,11 @@ export default class BossRush {
       // ("Nueva arma" sin lugar: tus mates, para elegir cuál dejás)
       dejables: () => dejables(this.deck),
       // (entre jefes: el negro del viaje arranca al elegir la última; fadeViaje)
-      early: this.i > 0 && !viajeViejo() && !viajeLento(),
+      early: this.i > 0,
       cancel,
     });
     // (de arena en arena: con las cartas ya en pantalla, la arena que sigue; prepSoon)
-    if (this.wantPrep && !viajeViejo()) this.prepSoon();
+    if (this.wantPrep) this.prepSoon();
   }
 
   // Entre jefe y jefe: la pelea terminada queda quieta mientras se elige
@@ -523,8 +510,8 @@ export default class BossRush {
     // (el usuario, 2026-10-13: "abierto todo en Mate no Numa": la pelea del
     // Luisón, en el rush y en el Mayhem, con todas las puertas del estero
     // abiertas; en cada compu, de una, sin sonido, todavía en negro. Las otras
-    // arenas, como estaban. globalThis.__mduRushEsteroCerrado = true: como antes)
-    if (this.cur.map === 'esteros' && globalThis.__mduRushEsteroCerrado !== true) g.interact?.applyPreDoors(g.interact.list.filter((x) => x.kind === 'door').map((x) => x.door.index));
+    // arenas, como estaban)
+    if (this.cur.map === 'esteros') g.interact?.applyPreDoors(g.interact.list.filter((x) => x.kind === 'door').map((x) => x.door.index));
     this.enterAt = g.net?.guest ? null : g.time + (g.net ? ENTER_AFTER : ENTER_SOLO);
   }
 
@@ -538,7 +525,7 @@ export default class BossRush {
     if (!D) return;
     // (Mule Kick primero: con él entra el tercer mate)
     // (Quick Revive de solo, sin levantadas que queden: no; levanta)
-    for (const id of D.perks) if (id !== 'revive' || !D.revSolo || D.revLeft > 0 || globalThis.__mduReviveSinTope === true) P.givePerk(id);
+    for (const id of D.perks) if (id !== 'revive' || !D.revSolo || D.revLeft > 0) P.givePerk(id);
     // (también 0: el Pacto con el Mandinga lo baja, y de jefe en jefe no se acumula)
     P.setHat(D.hat || 0);
     // las mejoras y la habilidad (antes de llenar la vida y las bombas: las tocan)
@@ -546,12 +533,12 @@ export default class BossRush {
     // (el Maizaster fuera de La Tapera: las matas se arman solo donde está su
     // máquina; acá, en cada mapa si alguien lo lleva. entities/maizaster.js)
     if (D.perks.includes('maiz') || this.maizMates?.size) maizal(g);
-    if (globalThis.__mduRushViejo !== true) Armas.especialistasDePartida(D.esp || []);
+    Armas.especialistasDePartida(D.esp || []);
     P.health = P.maxHealth;
     // (la carta del escudo mejorado: el de este mapa, con su propiedad, y
     // lleno en cada pelea aunque se haya roto en la anterior. core/rushCards.js
     // RAROS.escudo; world/Activities equipShield)
-    if (D.mej?.some((x) => x.id === 'escudo') && globalThis.__mduRushSinEscudo !== true) {
+    if (D.mej?.some((x) => x.id === 'escudo')) {
       g.activities?.equipShield(true);
       // (y el de la mano —Z— ya compilado, acá en negro: al levantarlo por
       // primera vez compilaba un programa, ~27 ms)
@@ -582,8 +569,8 @@ export default class BossRush {
     this.canasta = D.emps.slice().sort((a, b) => (ORD[EMPANADA[a]?.use] ?? 2) - (ORD[EMPANADA[b]?.use] ?? 2));
     this.empI = 0;
     // (sin el cartel de la empanada al arrancar cada jefe; el usuario,
-    // 2026-10-12: "El 5 sacalo". __mduRushViejo: con el cartel, como antes)
-    this.nextEmp(globalThis.__mduRushViejo !== true);
+    // 2026-10-12: "El 5 sacalo")
+    this.nextEmp(true);
   }
 
   // (el usuario, 2026-10-13: "Maximo 3 (1 por boss fight), en boss rush
@@ -594,10 +581,9 @@ export default class BossRush {
   // perdés un perk al azar; en el Mayhem, todos. Lo perdido se va del mazo
   // por el resto del rush (su carta puede volver a salir). false: como antes
   // (Player saca todos los perks de esta arena y el mazo los devuelve).
-  // globalThis.__mduReviveSinTope = true: como antes.
   levanta(P) {
     const D = this.deck;
-    if (!this.on || !D?.revSolo || globalThis.__mduReviveSinTope === true) return false;
+    if (!this.on || !D?.revSolo) return false;
     const g = this.g;
     D.revLeft = Math.max(0, (D.revLeft || 0) - 1);
     P.perks.delete('revive');
@@ -718,8 +704,8 @@ export default class BossRush {
     // (el usuario, 2026-10-13: la música de la pelea a veces seguía después de
     // matar al jefe —el estero y el castillo no salen de su paso en el rush, y
     // al invitado la arena no le pasa a 'won'—): se apaga con fundido al caer
-    // el jefe, en todos. __mduRushViajeViejo: como antes)
-    if (this.entered && !this.muted && !viajeViejo() && this.fightOver()) {
+    // el jefe, en todos)
+    if (this.entered && !this.muted && this.fightOver()) {
       this.muted = true;
       g.music?.stop(2);
     }
@@ -834,10 +820,6 @@ export default class BossRush {
     this.i++;
     const n = entre();
     this.send({ a: 'next', n });
-    if (viajeViejo()) {
-      this.cover(() => (n > 0 ? this.draft(n, () => this.load()) : this.load()));
-      return true;
-    }
     // (el usuario, 2026-10-13: "las cards salgan al terminar la boss fight,
     // que cargue de mientras y luego salga la pantalla negra después de que
     // todos los jugadores hayan elegido"): las cartas ya, sobre la pelea
@@ -902,7 +884,7 @@ export default class BossRush {
     if (this.won) return;
     this.won = true;
     // (el del Mayhem primero: los avisos salen de a uno)
-    if (!g.cheated) g.logros?.got?.([this.mayhem && premioMayhem() ? L.unlock('mayhem') : null, L.unlock('rush')]);
+    if (!g.cheated) g.logros?.got?.([this.mayhem ? L.unlock('mayhem') : null, L.unlock('rush')]);
     setTimeout(() => this.victory(board), 3200);
   }
 
@@ -1008,9 +990,9 @@ export default class BossRush {
     el.classList.remove('is-now');
   }
 
-  // El fundido a negro del viaje (y el destape, uncover) más cortos; __mduRushViajeLento: como antes.
+  // El fundido a negro del viaje (y el destape, uncover) más cortos.
   fadeViaje() {
-    this.rapido = !viajeLento();
+    this.rapido = true;
     return this.rapido ? FADE_VIAJE : FADE_MS;
   }
 

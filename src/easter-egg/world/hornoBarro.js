@@ -507,10 +507,9 @@ export function buildHorno(T, seed = 0) {
   basket.position.set(-0.42, top, 0.33);
   g.add(basket);
   // (las de la canasta con menos detalle y sin sombra: eran 26 mil triángulos
-  // por horno, en cada pasada de sombra; globalThis.__mduNoHornoLite: como antes)
-  const lite = globalThis.__mduNoHornoLite !== true;
+  // por horno, en cada pasada de sombra)
   const decor = ['carne', 'humita', 'jyq'].map((id, i) => {
-    const e = buildEmpanada(id, { lite });
+    const e = buildEmpanada(id, { lite: true });
     e.mesh.geometry.rotateY(i * 2.1 + seed);
     e.mesh.geometry.translate(Math.cos(i * 2.1) * 0.05, 0.09 + i * 0.012, Math.sin(i * 2.1) * 0.05);
     return e;
@@ -518,7 +517,7 @@ export function buildHorno(T, seed = 0) {
   const decorMesh = new THREE.Mesh(mergeGeometries(decor.map((e) => e.mesh.geometry)), decor[0].mesh.material);
   decor.forEach((e) => e.dispose());
   decorMesh.position.copy(basket.position);
-  decorMesh.castShadow = !lite;
+  decorMesh.castShadow = false;
   g.add(decorMesh);
   // la pizarra colgada en la base
   const canvas = document.createElement('canvas');
