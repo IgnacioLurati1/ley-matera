@@ -323,13 +323,20 @@ export default class TowerChallenge {
     if (!d) return;
     this.dragonT += dt;
     const t = this.dragonT;
-    const a = t * 0.16;
-    const r = 24 + Math.sin(t * 0.13) * 2.5;
+    // (2026-10-12, el usuario: "órbita para el dragón cambiada": de 21,5 a
+    // 26,5 m del medio metía la punta de las alas en las esquinas y los arcos
+    // de la torre (llega 10,7 m para adentro y las esquinas están a 18,4 m).
+    // Ahora de 30,5 a 35,5 m (con 29,5 todavía rozaba una esquina), a la misma
+    // velocidad (da la vuelta más despacio). __mduDragonViejo: como antes)
+    const old = globalThis.__mduDragonViejo === true;
+    const w = old ? 0.16 : 0.116;
+    const a = t * w;
+    const r = (old ? 24 : 33) + Math.sin(t * 0.13) * 2.5;
     const y = 38 + Math.sin(t * 0.21) * 15;
     const vy = Math.cos(t * 0.21) * 15 * 0.21;
     d.root.position.set(TOWER.cx + Math.cos(a) * r, y, TOWER.cz + Math.sin(a) * r);
     // mirando para donde va (el modelo mira a +z), inclinado para adentro
-    d.root.rotation.set(-Math.atan2(vy, r * 0.16) * 0.8, Math.atan2(-Math.sin(a), Math.cos(a)), 0, 'YXZ');
+    d.root.rotation.set(-Math.atan2(vy, r * w) * 0.8, Math.atan2(-Math.sin(a), Math.cos(a)), 0, 'YXZ');
     d.root.rotateZ(-0.28);
     // (la animación del cuerpo y las alas, a medio ritmo: es de adorno)
     this.dragonAcc += dt;

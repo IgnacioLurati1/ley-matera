@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { clampT } from '../bossSkin';
 import { attach, armPose, update as chainUpdate } from '../skinChain';
 import { assetUrl } from '../../../lib/assets';
+import { loadMayhemClips, RUGE } from './mayhemClips';
 
 // El Gauchito Gil con cuerpo de verdad (entities/bossSkin.js): el low poly de
 // poncho grande (Meshy: concepto, malla y esqueleto; el poncho repesado al
@@ -198,6 +199,8 @@ export default {
       S.mat.userData.color0 = S.mat.color.clone();
     }
     attach(S, { side: 'Right', len: 1.6 });
+    // (el grito del Boss Rush Mayhem: entities/skins/mayhemClips.js)
+    loadMayhemClips(S, 'gil');
     // los del final del penal (se suman a los de la pelea; S.cineGil cuando llegan)
     if (globalThis.__mduBlend !== false)
       fetch(assetUrl('/assets/sotano/modelos/gil/cine-gil.json'))
@@ -304,6 +307,11 @@ export default {
         return { key: 'carga', t: S.chargeT % C.carga.dur };
       case 'stunned':
         return { key: 'dolor', t: clampT(S, 'dolor', 0.1 + Tt) };
+      // el aviso de un combo del Boss Rush Mayhem (core/rushMayhem.js): quieto,
+      // se encorva y grita con los brazos abiertos (sin el clip: el grito de guerra)
+      case 'mhRoar':
+        if (C.ruge) return { key: 'ruge', t: clampT(S, 'ruge', RUGE.t0 + Tt), fade: 0.35 };
+        return { key: 'grito', t: clampT(S, 'grito', 0.2 + Tt) };
       case 'chase':
         return move(S, dt, s, z);
     }

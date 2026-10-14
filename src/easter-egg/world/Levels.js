@@ -89,6 +89,47 @@ function stairSide(w, i, dx, dz) {
   return RAMPS[r].dir[1] === 'x' ? dz !== 0 : dx !== 0;
 }
 
+// (Eclipse Matero, el usuario 2026-10-12: "que en las escaleras no se vea a
+// través del mapa en sus bordes". Al costado de una escalera metida en un piso
+// más alto —las del Nudo— la cara de ese piso no se dibujaba donde los dos
+// quedan casi a la misma altura (se pasa caminando), y entre el escalón y el
+// piso de al lado quedaba abierto hasta el vacío; los escalones, además, van
+// 3 cm adentro y por esa ranura también se veía el vacío. Ahora la cara del
+// piso vecino baja hasta el pie de la escalera y la escalera lleva una tapa
+// abajo. globalThis.__mduOldEclStairGap = true: como antes)
+// El pie de la escalera de la celda vecina (nx, nz) si es una escalera ajena a i.
+function stairFoot(w, i, nx, nz) {
+  if (!FEATURES.eclipse || globalThis.__mduOldEclStairGap === true) return null;
+  if (!w.inside(nx, nz)) return null;
+  const r = w.rampAt[w.idx(nx, nz)];
+  if (r < 0 || !RAMPS[r].steps || w.rampAt[i] === r) return null;
+  return Math.min(RAMPS[r].y0, RAMPS[r].y1) - 0.05;
+}
+
+// ¿La celda i toca de costado una escalera ajena? (sus caras van con las de la escalera: la punta del
+// cordón del costado de la escalera pisaba la cara de la esquina y la corría. Ver stairFoot)
+function stairNear(w, i, x, z) {
+  if (!FEATURES.eclipse || globalThis.__mduOldEclStairGap === true) return false;
+  return DIRS.some(([dx, dz]) => stairFoot(w, i, x + dx, z + dz) !== null);
+}
+
+// (world/eclipseDedupe corre para atrás 1,2 o 2,4 cm la cara que otra pisa —el
+// cordón de arriba, la punta del cordón de al lado— y no a todas por igual: entre
+// dos caras seguidas quedaba un escalón y por la junta se veía el vacío. Una
+// pestaña en cada punta, de la línea del borde a 3 cm para atrás, cierra la junta
+// esté donde esté cada una. Ver stairFoot)
+function stairTabs(gb, key, ax, az, ya, bx, bz, yb, lo, dx, dz) {
+  const ox = -dx * 0.03;
+  const oz = -dz * 0.03;
+  for (const [px, pz, py] of [[ax, az, ya], [bx, bz, yb]]) {
+    const u = (px * -dz + pz * dx) / 2;
+    const T = [[px, lo, pz], [px + ox, lo, pz + oz], [px + ox, py, pz + oz], [px, py, pz]];
+    const TU = [[u, lo / 2], [u + 0.015, lo / 2], [u + 0.015, py / 2], [u, py / 2]];
+    quadUV(gb, key, T, TU, [bx - ax, 0, bz - az]);
+    quadUV(gb, key, T, TU, [ax - bx, 0, az - bz]);
+  }
+}
+
 // Quad que mira hacia `hint`: acomoda el orden de los vértices (si no, la
 // cara se descarta) y calcula su normal. u sigue a `run`, v sube.
 function quadFacing(gb, key, a, b, c, d, hint, run, lat) {
@@ -558,6 +599,11 @@ export function addLevelBoxes(w, DOORS) {
 // Arquitectura con alturas: paredes, pisos, techos, escalones, barandas y desniveles.
 export function buildLevelArchitecture(w, DOORS) {
   const gb = new GeoBuilder();
+  // (Eclipse: lo que cierra los costados de las escaleras va en su propia malla,
+  // 'eclipse:escaleras': world/eclipseDedupe la cuenta como arte de la isla y no
+  // la corre para atrás por lo que la pise; corrida, por las juntas se veía el
+  // vacío. Ver stairFoot)
+  const gbE = FEATURES.eclipse && globalThis.__mduOldEclStairGap !== true ? new GeoBuilder() : gb;
   const M = w.M;
   const isWallish = (t) => t === WALL || t === DOOR || t === WINDOW;
   const open = (x, z) => w.inside(x, z) && w.grid[w.idx(x, z)] !== FLOOR && w.edge[w.idx(x, z)] !== 0;
@@ -912,6 +958,12 @@ export function buildLevelArchitecture(w, DOORS) {
       if (alongX) gb.box(key, x0 + s0, low, z0 + ins, x0 + s1, hTop, z1 + 1 - ins);
       else gb.box(key, x0 + ins, low, z0 + s0, x1 + 1 - ins, hTop, z0 + s1);
     }
+    // (la tapa de abajo, de borde a borde: cierra el fondo de la ranura de 3 cm; ver stairFoot)
+    if (ins && globalThis.__mduOldEclStairGap !== true) {
+      // (3 cm más ancha que la escalera: queda debajo del piso de al lado y tapa también la junta con su cara)
+      const X0 = x0 - 0.03, X1 = x1 + 1.03, Z0 = z0 - 0.03, Z1 = z1 + 1.03;
+      quadUV(gbE, key, [[X0, low, Z0], [X1, low, Z0], [X1, low, Z1], [X0, low, Z1]], [[X0 / 2, Z0 / 2], [X1 / 2, Z0 / 2], [X1 / 2, Z1 / 2], [X0 / 2, Z1 / 2]], [0, 1, 0]);
+    }
     if (FEATURES.farm) farmStairSides(w, gb, R);
   });
   // vigas del techo de cada zona techada
@@ -964,6 +1016,20 @@ export function buildLevelArchitecture(w, DOORS) {
       DIRS.forEach(([dx, dz], d) => {
         if ((w.pass[i] >> d) & 1) {
           if (w.grid[i] === DOOR && w.groundCell && !w.groundCell[i]) doorStep(i, x, z, dx, dz, d);
+          // (al lado de una escalera: la cara baja hasta su pie aunque se pase caminando; ver stairFoot)
+          const foot = stairFoot(w, i, x + dx, z + dz);
+          if (foot !== null) {
+            const [ax, az, ya, bx, bz, yb] = edgeEnds(w, x, z, d);
+            if (Math.max(ya, yb) > foot + 0.01) {
+              const ua = (ax * -dz + az * dx) / 2;
+              const ub = (bx * -dz + bz * dx) / 2;
+              const ck = zoneOf(i)?.cliff || 'stoneWall';
+              const lo = foot - 0.02;
+              // (arriba, 4 mm sobre la baldosa: entre el escalón y el piso quedaba un hilo de 1 mm)
+              quadUV(gbE, ck, [[ax, lo, az], [bx, lo, bz], [bx, yb + 0.004, bz], [ax, ya + 0.004, az]], [[ua, lo / 2], [ub, lo / 2], [ub, yb / 2], [ua, ya / 2]], [dx, 0, dz]);
+              stairTabs(gbE, ck, ax, az, ya, bx, bz, yb, lo, dx, dz);
+            }
+          }
           return;
         }
         const nx = x + dx;
@@ -974,7 +1040,9 @@ export function buildLevelArchitecture(w, DOORS) {
         if (skip === 'all') return;
         const [ax, az, ya, bx, bz, yb] = edgeEnds(w, x, z, d);
         const [, , la, , , lb] = edgeEnds(w, nx, nz, d ^ 1);
-        const lo = Math.min(la, lb);
+        // (contra una escalera, hasta su pie: ver stairFoot)
+        const foot = stairFoot(w, i, nx, nz);
+        const lo = foot !== null ? Math.min(la, lb, foot) : Math.min(la, lb);
         if (Math.max(ya, yb) <= Math.max(la, lb) + 0.01) return;
         // la granja: al costado de una escalera no va barranco (se pisaba con
         // el costado de los escalones) ni baranda suelta: los arma farmStairSides
@@ -986,7 +1054,9 @@ export function buildLevelArchitecture(w, DOORS) {
         const ua = (ax * -dz + az * dx) / 2;
         const ub = (bx * -dz + bz * dx) / 2;
         // (al costado de una escalera la cara ya la ponen los escalones: si no, se pisan y titilan)
-        if (!stairSide(w, i, dx, dz) && skip !== 'face') gb.quad(key, [ax, lo - 0.02, az], [bx, lo - 0.02, bz], [bx, yb, bz], [ax, ya, az], [dx, 0, dz], [ua, lo / 2], [ub, lo / 2], [ub, yb / 2], [ua, ya / 2]);
+        const nearS = foot !== null || stairNear(w, i, x, z);
+        if (!stairSide(w, i, dx, dz) && skip !== 'face') (nearS ? gbE : gb).quad(key, [ax, lo - 0.02, az], [bx, lo - 0.02, bz], [bx, yb, bz], [ax, ya, az], [dx, 0, dz], [ua, lo / 2], [ub, lo / 2], [ub, yb / 2], [ua, ya / 2]);
+        if (nearS && !stairSide(w, i, dx, dz) && skip !== 'face') stairTabs(gbE, key, ax, az, ya, bx, bz, yb, lo - 0.02, dx, dz);
         // (Eclipse Matero: al costado de una escalera no va la baranda suelta
         // celda por celda —quedaban caños escalonados cruzando los escalones en
         // las secciones copiadas—. globalThis.__mduNoEclStairRail: como antes)
@@ -1010,9 +1080,16 @@ export function buildLevelArchitecture(w, DOORS) {
         const cz = (az + bz) / 2 + pz;
         gb.box(rk, cx - rt - 0.01, my, cz - rt - 0.01, cx + rt + 0.01, my + RAIL_H, cz + rt + 0.01, 1);
         // borde de piedra del desnivel (apenas salido de la cara, para que no se pisen)
-        const out = 0.012;
-        if (dx) gb.box('trim', ax - (dx > 0 ? 0.08 : out), my - 0.06, Math.min(az, bz), ax + (dx < 0 ? 0.08 : out), my + 0.01, Math.max(az, bz), 1);
-        else gb.box('trim', Math.min(ax, bx), my - 0.06, az - (dz > 0 ? 0.08 : out), Math.max(ax, bx), my + 0.01, az + (dz < 0 ? 0.08 : out), 1);
+        // (Eclipse: a 1,2 cm de la cara y con la tapa a 1 cm del piso,
+        // world/eclipseDedupe los tomaba por la misma cara: corría la cara 1,2 cm
+        // para atrás y hundía 1,2 cm la baldosa de al lado, y por las juntas se
+        // veía el vacío —la raya violeta junto a las escaleras del Nudo—. A 2,5 cm
+        // ya no se juntan; a la vista sobresale lo mismo que antes. Ver stairFoot)
+        const e25 = FEATURES.eclipse && globalThis.__mduOldEclStairGap !== true;
+        const out = e25 ? 0.025 : 0.012;
+        const tt = e25 ? 0.025 : 0.01;
+        if (dx) gb.box('trim', ax - (dx > 0 ? 0.08 : out), my - 0.06, Math.min(az, bz), ax + (dx < 0 ? 0.08 : out), my + tt, Math.max(az, bz), 1);
+        else gb.box('trim', Math.min(ax, bx), my - 0.06, az - (dz > 0 ? 0.08 : out), Math.max(ax, bx), my + tt, az + (dz < 0 ? 0.08 : out), 1);
       });
     }
   }
@@ -1041,6 +1118,11 @@ export function buildLevelArchitecture(w, DOORS) {
   }
   buildOpenEdges(w, gb);
   w.root.add(gb.build(M));
+  if (gbE !== gb) {
+    const gE = gbE.build(M);
+    gE.name = 'eclipse:escaleras';
+    w.root.add(gE);
+  }
 }
 
 // Barandas bajas (el muelle, el cerro) y rejas altas (los patios) en los bordes abiertos.

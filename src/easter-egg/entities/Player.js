@@ -90,7 +90,8 @@ export default class Player {
 
   get reloadMult() {
     // (Manos Rápidas, una empanada: otro tanto)
-    return (this.perks.has('speed') ? 0.5 : 1) * (this.g.emp?.reloadMult() ?? 1);
+    // (y el Cebador ligero, una carta del rush de jefes: core/rushBuild.js)
+    return (this.perks.has('speed') ? 0.5 : 1) * (this.g.emp?.reloadMult() ?? 1) * (this.g.rush?.build?.reload ?? 1);
   }
 
   // En gaucho life (el penal) los muertos no te ven; al volver al cuerpo hay
@@ -138,6 +139,17 @@ export default class Player {
     if (hadMule) this.g.weapons.trimSlots();
   }
 
+  // Uno solo (el Quick Revive de solo en el rush de jefes: core/bossRush.js levanta)
+  losePerk(id) {
+    if (!this.perks.delete(id)) return;
+    if (id === 'jugg') {
+      this.maxHealth = PLAYER.health + (this.hatHp || 0);
+      this.health = Math.min(this.health, this.maxHealth);
+    }
+    this.g.hud.setPerks([...this.perks]);
+    if (id === 'mule') this.g.weapons.trimSlots();
+  }
+
   // src: el zombie que pegó, si se sabe (para lo que hace el escudo mejorado)
   damage(amount, from, explosion = false, src = null) {
     const g = this.g;
@@ -163,6 +175,10 @@ export default class Player {
         return;
       }
     }
+    // el Boss Rush Mayhem pega más (core/rushMayhem.js MAYHEM.dmg)
+    if (g.rush?.mayhem) amount *= g.rush.dmgIn();
+    // el rush de jefes (core/rushBuild.js): el Cuero de vaca, el Payé, el Pique y Siete vidas
+    if (g.rush?.build?.blocks(amount, from, explosion)) return;
     this.health -= amount;
     this.lastHit = g.time;
     this.hurtT = 1;
@@ -300,7 +316,8 @@ export default class Player {
       this.reviveUses++;
       this.downed = true;
       this.downT = 0;
-      this.loseAllPerks();
+      // (en el rush de jefes, con tope y perdiendo uno al azar: core/bossRush.js levanta)
+      if (!g.rush?.levanta?.(this)) this.loseAllPerks();
       g.audio.sting();
       g.onPlayerDowned();
       return;
@@ -386,6 +403,8 @@ export default class Player {
     speed *= moveMult;
     // Stamin-Up: un 25% más rápido en todo (caminando, corriendo, apuntando)
     if (stamin && !this.downed) speed *= 1.25;
+    // las Alpargatas nuevas (carta del rush de jefes: core/rushBuild.js)
+    if (!this.downed) speed *= g.rush?.build?.speed ?? 1;
     // las Botas de potro (potenciador del Challenge de la torre): se corre más
     if (g.powerups?.active.botas > 0 && !this.downed) speed *= 1.4;
     // el aullido del Luisón hiela: un rato se anda a menos de la mitad
@@ -395,6 +414,8 @@ export default class Player {
     }
     // la adrenalina del Dying Wish: se corre un poco más
     if (wishActive(this)) speed *= WISH_SPEED;
+    // Zombies gauchescos: el zombi va más rápido que el humano (entities/esteros/Gauchescos.js)
+    if (g.gz) speed *= g.gz.speedMul;
     // el agua: vadeando se va más lento; sin hacer pie se nada (swimMove, más abajo)
     const W = playerWater(this, dt);
     if (this.swim === 1) speed *= wadeSlow(W.depth, SWIM, this.perks.has('aqua'));
@@ -451,7 +472,8 @@ export default class Player {
       // lo más alto desde que dejó el piso (para el golpe de la caída)
       this.airTop = this.onGround ? this.pos.y : Math.max(this.airTop ?? this.pos.y, this.pos.y);
       this.landKick = Math.max(0, this.landKick - dt * 4);
-      g.world.collide(this.pos, PLAYER.radius, this.pos.y + 0.05, this.pos.y + 1.7);
+      // (el zombi de Zombies gauchescos cruza la paja como el Luisón: g.gz.coll)
+      g.world.collide(this.pos, PLAYER.radius, this.pos.y + 0.05, this.pos.y + 1.7, g.gz?.coll);
     }
     // arriba del bote del penal: va sentado donde lo lleve el bote (entities/PenalBoat.js)
     this.ride?.(dt, input);
@@ -472,8 +494,10 @@ export default class Player {
     }
 
     // vida: se regenera sola si no te pegan un rato
-    if (!this.downed && g.time - this.lastHit > PLAYER.regenDelay && this.health < this.maxHealth) {
-      this.health = Math.min(this.maxHealth, this.health + PLAYER.regenRate * dt);
+    // (el Mate cocido, carta del rush de jefes: antes y más rápido; core/rushBuild.js)
+    const rg = g.rush?.build?.regen ?? 1;
+    if (!this.downed && g.time - this.lastHit > PLAYER.regenDelay / rg && this.health < this.maxHealth) {
+      this.health = Math.min(this.maxHealth, this.health + PLAYER.regenRate * rg * dt);
     }
     // la pantalla roja sigue a la vida, la cambie quien la cambie (al
     // levantarte de caído o con el Juggernog quedaba roja hasta el próximo

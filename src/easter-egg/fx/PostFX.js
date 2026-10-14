@@ -9,6 +9,7 @@ import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 import Epic, { LEVELS, FOLIAGE_B } from './Epic';
+import { GB, gbBeginPass, gbEndPass } from './gbMrt';
 import Surfaces from './Surfaces';
 import TAAPass, { GRASS_JIT } from './TAA';
 import LensPass from './Lens';
@@ -338,6 +339,7 @@ class WorldPass extends RenderPass {
     this.w = w;
     this.h = h;
     this.msaa?.setSize(w, h);
+    this.mrt?.setSize(w, h);
   }
 
   render(renderer, writeBuffer, readBuffer, dt, mask) {
@@ -352,6 +354,13 @@ class WorldPass extends RenderPass {
   }
 
   draw(renderer, writeBuffer, readBuffer, dt, mask) {
+    // B (fx/gbMrt.js): con el G-buffer de Épica prendido, el mundo escribe el color
+    // y el G-buffer a la vez y la segunda pasada no dibuja nada
+    // (globalThis.__mduGbAparte: la segunda pasada, como antes)
+    const E = this.epic;
+    if (E && E.gbuffer.enabled && GB.ok && !this.renderToScreen && globalThis.__mduGbMrt === true && globalThis.__mduGbAparte !== true) return this.drawMrt(renderer, writeBuffer, readBuffer, dt, mask);
+    this.mrtOn = false;
+    E?.bindGb(null);
     if ((!this.samples && !this.needDepth) || this.renderToScreen) return super.render(renderer, writeBuffer, readBuffer, dt, mask);
     // (con su profundidad: la usa el suavizado temporal para llevar lo de antes)
     if (!this.msaa) this.msaa = new THREE.WebGLRenderTarget(this.w, this.h, { type: THREE.HalfFloatType, samples: this.samples, depthTexture: new THREE.DepthTexture(this.w, this.h) });
@@ -362,7 +371,42 @@ class WorldPass extends RenderPass {
     this.copy.render(renderer);
   }
 
+  // El mundo a un blanco de dos salidas (color; normal en vista + reflejo) con su
+  // profundidad, y el color copiado al del composer
+  drawMrt(renderer, writeBuffer, readBuffer, dt, mask) {
+    if (!this.mrt || this.mrtSamples !== this.samples) {
+      this.mrt?.dispose();
+      const depth = new THREE.DepthTexture(this.w, this.h);
+      depth.format = THREE.DepthStencilFormat;
+      depth.type = THREE.UnsignedInt248Type;
+      this.mrt = new THREE.WebGLRenderTarget(this.w, this.h, { count: 2, type: THREE.HalfFloatType, samples: this.samples, depthTexture: depth });
+      const n = this.mrt.textures[1];
+      n.minFilter = THREE.NearestFilter;
+      n.magFilter = THREE.NearestFilter;
+      n.generateMipmaps = false;
+      this.mrtSamples = this.samples;
+    }
+    this.mrtOn = true;
+    this.epic.bindGb({ depth: this.mrt.depthTexture, normal: this.mrt.textures[1] });
+    const clr = this.clear;
+    renderer.setRenderTarget(this.mrt);
+    renderer.clear();
+    gbBeginPass();
+    this.clear = false;
+    try {
+      super.render(renderer, writeBuffer, this.mrt, dt, mask);
+    } finally {
+      this.clear = clr;
+      gbEndPass();
+    }
+    const m = this.copy.material;
+    m.uniforms.tDiffuse.value = this.mrt.textures[0];
+    renderer.setRenderTarget(readBuffer);
+    this.copy.render(renderer);
+  }
+
   dispose() {
+    this.mrt?.dispose();
     this.msaa?.dispose();
     this.copy.dispose();
     this.copy.material.dispose();
@@ -408,12 +452,14 @@ export default class PostFX {
     this.composer.addPass(this.world);
     for (const p of this.epic.passes) this.composer.addPass(p);
     // el suavizado temporal (Épica): después de la luz y antes del mate en la mano
-    this.taa = new TAAPass(camera, () => this.world.msaa?.depthTexture || this.epic.gbuffer.depthTexture, () => this.epic.gbuffer.target.texture, FOLIAGE_B / 15);
+    this.world.epic = this.epic;
+    // (B: con el mundo en MRT, el G-buffer es el suyo: Epic.gbBound)
+    this.taa = new TAAPass(camera, () => (!this.world.mrtOn && this.world.msaa?.depthTexture) || this.epic.gbBound.depth, () => this.epic.gbBound.normal, FOLIAGE_B / 15);
     this.world.taa = this.taa;
     this.taa.enabled = false;
     this.composer.addPass(this.taa);
     // la lente de cine (fx/Lens.js): solo en las escenas (setLens)
-    this.lens = new LensPass(camera, () => this.world.msaa?.depthTexture || (this.epic.on ? this.epic.gbuffer.depthTexture : null));
+    this.lens = new LensPass(camera, () => (!this.world.mrtOn && this.world.msaa?.depthTexture) || (this.epic.on ? this.epic.gbBound.depth : null));
     this.lensHull = null;
     this.composer.addPass(this.lens);
     this.composer.addPass(this.vm);

@@ -1450,8 +1450,12 @@ export default class Interactables {
     box.uses++;
     box.taker = null; // si la abrió un invitado, lo anota el anfitrión después
     g.audio.boxOpen(box.center);
-    // la taza de café aparece a partir del 4to uso (no en fire sale)
-    const coffeeChance = box.uses >= 4 && box.sale == null && !g.powerups.active.firesale ? 0.18 + (box.uses - 4) * 0.03 : 0;
+    // la taza de café aparece a partir del 4to uso (no en fire sale). Se muda menos:
+    // 10% el 4to uso y 2% más por cada uno (era 18% + 3%: unos 7 usos en promedio
+    // antes de mudarse; ahora unos 10). El usuario, 2026-10-12, todos los mapas.
+    // globalThis.__mduCajaMudaVieja: como antes)
+    const [c0, cStep] = globalThis.__mduCajaMudaVieja === true ? [0.18, 0.03] : [0.1, 0.02];
+    const coffeeChance = box.uses >= 4 && box.sale == null && !g.powerups.active.firesale ? c0 + (box.uses - 4) * cStep : 0;
     box.coffee = Math.random() < coffeeChance;
     // (no ofrece lo que ya tiene el que la abrió: antes, con un invitado, se
     // salteaban los mates del anfitrión y al invitado le salía uno que ya tenía)
@@ -1821,6 +1825,10 @@ export default class Interactables {
     const fwd = tmpV.set(0, 0, -1).applyQuaternion(cam.quaternion);
     let best = null;
     let bestScore = -Infinity;
+    // (el rush de jefes y el Mayhem: no se compra nada ni se convida plata; el
+    // usuario, 2026-10-13: "no se puede comprar y no hay puntos en ningún rush".
+    // __mduRushConPuntos = true: como antes)
+    const noBuy = !!g.rush?.on && globalThis.__mduRushConPuntos !== true;
     for (const it of this.list) {
       let ix = it.pos.x;
       let iz = it.pos.z;
@@ -1839,6 +1847,7 @@ export default class Interactables {
       if (g.world.levels && Math.abs(it.pos.y - g.player.pos.y - 1.1) > 2.2) continue;
       const dot = (dx * fwd.x + dz * fwd.z) / (d || 1) / Math.max(0.3, Math.hypot(fwd.x, fwd.z));
       if (d > 0.8 && dot < (it.wide ? 0.1 : 0.35)) continue;
+      if (noBuy && (it.locked || it.cost() > 0)) continue;
       const pr = it.locked ? 'lock' : it.prompt();
       if (!pr) continue;
       const score = dot * 2 - d;
@@ -1851,7 +1860,7 @@ export default class Interactables {
     if (!best) {
       this.holdT = 0;
       // en línea, mirando a un compañero: convidarle plata (no sentado en el bote del penal)
-      if (g.net && !g.ee?.boat?.seats?.includes(g.net.id ?? 0) && this.shareCheck(dt, input, fwd)) return;
+      if (g.net && !noBuy && !g.ee?.boat?.seats?.includes(g.net.id ?? 0) && this.shareCheck(dt, input, fwd)) return;
       g.hud.setHold(null);
       return;
     }

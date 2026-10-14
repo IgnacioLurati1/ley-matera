@@ -30,3 +30,23 @@ export function settleMemory() {
     }
   }, 60);
 }
+
+// Y en cada descanso entre rondas (escritorio 3, tanda de optimización,
+// 2026-10-12): la pasada grande del recolector caía en plena ronda (en Eclipse,
+// Épica, 9 en 90 s, la peor de 43 ms). Con la ronda terminada y sin muertos
+// vivos se pasa ahí, a 1,5 s del final (el cartel de la ronda ya está arriba).
+// En la torre el descanso es corto y quedan muertos: no se hace.
+// globalThis.__mduNoBreakGc: como antes. globalThis.__mduBreakGc: cuánto tardó.
+export function settleBreak(g) {
+  if (globalThis.__mduNoBreakGc === true || typeof globalThis.gc !== 'function') return;
+  setTimeout(() => {
+    if (g.rounds?.state !== 'break' || g.zombies?.pool?.some((z) => z.active && !z.dead)) return;
+    const t0 = performance.now();
+    try {
+      globalThis.gc();
+      globalThis.__mduBreakGc = Math.round(performance.now() - t0);
+    } catch {
+      /* sin recolector a mano: como antes */
+    }
+  }, 1500);
+}

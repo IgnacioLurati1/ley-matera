@@ -196,6 +196,7 @@ export default class Hud {
   reset() {
     this.cache = {};
     this.popups.innerHTML = '';
+    this.popPool = null;
     // lo de un instante (el cartel del potenciador, la sangre del cuchillazo, el
     // golpe): con el HUD escondido la animación CSS queda a medias y arrancaba
     // de nuevo al mostrarlo en la partida siguiente, en otro mapa
@@ -282,11 +283,30 @@ export default class Hud {
     this.ptsT = setTimeout(this.flushPoints, 120);
   }
 
+  // (tanda de optimización, 2026-10-12: un span nuevo por golpe, agregado y sacado de
+  // la página, rehacía el acomodo del HUD cada vez; ahora 6 fijos que se reusan y la
+  // animación se reinicia con pulse. globalThis.__mduHudViejo: como antes)
   popPoints(n) {
-    const p = el('span', n < 0 ? 'is-neg' : '', this.popups, `${n > 0 ? '+' : ''}${n}`);
+    const txt = `${n > 0 ? '+' : ''}${n}`;
+    let p;
+    if (globalThis.__mduHudViejo === true) {
+      p = el('span', n < 0 ? 'is-neg' : '', this.popups, txt);
+      setTimeout(() => p.remove(), 900);
+    } else {
+      if (!this.popPool) {
+        this.popPool = Array.from({ length: 6 }, () => el('span', 'mdu-pp', this.popups));
+        this.popI = 0;
+      }
+      p = this.popPool[this.popI++ % this.popPool.length];
+      p.textContent = txt;
+      p.classList.toggle('is-neg', n < 0);
+      this.pulse(p, 'is-on');
+      // (al terminar se apaga: si el HUD estaba escondido, no vuelve a salir al mostrarse)
+      const tok = (p.popTok = (p.popTok || 0) + 1);
+      setTimeout(() => p.popTok === tok && p.classList.remove('is-on'), 950);
+    }
     p.style.setProperty('--dx', `${-40 - Math.random() * 60}px`);
     p.style.setProperty('--dy', `${-10 - Math.random() * 40}px`);
-    setTimeout(() => p.remove(), 900);
   }
 
   // Reinicia la animación CSS de `cls`: saca la clase ya y la vuelve a poner en
@@ -332,7 +352,22 @@ export default class Hud {
   setCrosshair(spread, visible, scope) {
     const px = Math.round(6 + spread * 700);
     this.set('cross', `${px}|${visible}`, () => {
-      this.cross.style.setProperty('--gap', `${px}px`);
+      // (tanda de optimización, 2026-10-12: abrir la mira cambiando --gap movía los
+      // cuatro brazos con top/left: acomodo y pintado en cada tiro. Ahora con
+      // transform. globalThis.__mduHudViejo: como antes)
+      const arms = this.cross.children;
+      if (globalThis.__mduHudViejo === true) {
+        if (this.crossT) for (const a of arms) a.style.transform = '';
+        this.crossT = false;
+        this.cross.style.setProperty('--gap', `${px}px`);
+      } else {
+        if (!this.crossT) this.cross.style.setProperty('--gap', '0px');
+        this.crossT = true;
+        arms[0].style.transform = `translateY(${-px}px)`;
+        arms[1].style.transform = `translateY(${px}px)`;
+        arms[2].style.transform = `translateX(${-px}px)`;
+        arms[3].style.transform = `translateX(${px}px)`;
+      }
       this.cross.style.opacity = visible ? '1' : '0';
     });
     this.set('scope', scope, (s) => this.scope.classList.toggle('is-on', s));

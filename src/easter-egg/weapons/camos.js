@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { WEAPONS, ELEM_INFO } from '../config/weapons';
 import * as P from '../core/progress';
 import { isKnight } from '../core/eggs';
+import { diaDelMate } from '../core/diaDelMate';
 import { PAINT, PAINT_PAP, fbm, hash } from './camoPaint';
 
 // Camuflajes de los mates (como los de Black Ops): se desbloquean subiendo de
@@ -182,7 +183,9 @@ export function camoable(id) {
 }
 export const CAMOABLE = Object.keys(WEAPONS).filter(camoable);
 
-export const camoUnlocked = (c) => !!c && P.unlocked(c);
+// (el Día del Mate, 30/11: todos, ese día y sin guardarlos; core/diaDelMate.js.
+// El usuario, 2026-10-12)
+export const camoUnlocked = (c) => !!c && (diaDelMate() || P.unlocked(c));
 
 // El camuflaje que lleva este mate (sin mejorar): el elegido, si ya está desbloqueado.
 export function camoFor(id) {

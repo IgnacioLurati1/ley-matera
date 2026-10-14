@@ -111,11 +111,15 @@ export default class Powerups {
     } else if (Math.random() < POWERUP.randomChance) this.drop(pos);
   }
 
-  drop(pos, force = false, forcedType = null) {
+  // keep: el lugar ya está elegido y tiene piso (el max ammo del rush de jefes,
+  // core/rushPelea.js: en las arenas fuera de las zonas del mapa —la
+  // Salamanca, la isla del castillo— caía a los pies del anfitrión y lo
+  // levantaba él solo al aparecer)
+  drop(pos, force = false, forcedType = null, keep = false) {
     const g = this.g;
     if (!force) this.dropsThisRound++;
     // no dejarlo afuera del mapa (zombies que mueren en la ventana)
-    const zone = g.world.zoneAt(pos.x, pos.z);
+    const zone = keep || g.world.zoneAt(pos.x, pos.z);
     const p = pos.clone();
     if (!zone) {
       p.set(g.player.pos.x + (Math.random() - 0.5) * 2, g.player.pos.y, g.player.pos.z + (Math.random() - 0.5) * 2);

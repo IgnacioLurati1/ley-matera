@@ -761,7 +761,10 @@ export default class PenalLift {
       this.t += dt;
       if (host && this.t >= CLOSE_T) this.depart();
     } else if (this.st === 'move') {
-      this.t += dt;
+      // (Porteño encubierto: el policía la traba un rato y después sigue;
+      // entities/penal/pzSabotaje.js. En lo demás stallT no existe)
+      if (this.stallT > 0) this.stallT = Math.max(0, this.stallT - dt);
+      else this.t += dt;
       if (host && this.t >= TOTAL) this.arrive();
     } else this.cd = Math.max(0, this.cd - dt);
     this.where(this.pos);
@@ -1069,7 +1072,7 @@ export default class PenalLift {
   }
 
   netState() {
-    return { pw: this.powered ? 1 : 0, at: this.at, st: this.st, t: +this.t.toFixed(2), cd: +this.cd.toFixed(1) };
+    return { pw: this.powered ? 1 : 0, at: this.at, st: this.st, t: +this.t.toFixed(2), cd: +this.cd.toFixed(1), sl: this.stallT > 0 ? +this.stallT.toFixed(2) : undefined };
   }
 
   applyState(s) {
@@ -1094,6 +1097,7 @@ export default class PenalLift {
     this.st = s.st;
     this.t = s.t;
     this.cd = s.cd;
+    this.stallT = s.sl || 0;
     this.setWalls();
   }
 

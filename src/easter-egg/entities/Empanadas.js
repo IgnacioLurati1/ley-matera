@@ -3,7 +3,7 @@ import * as P from '../core/progress';
 import { EMPANADA, defaultCanasta, HORNO_COST } from '../config/empanadas';
 import { HORNO_SPOTS, PERK_SPOTS, PLAYER_START, MAP_W, MAP_H } from '../config/map';
 import { PERKS } from '../config/perks';
-import { WEAPONS, maxTier, tierOf, weaponStats } from '../config/weapons';
+import { WEAPONS, maxTier, tierOf } from '../config/weapons';
 import { keyLabel } from '../core/controls';
 import { buildHorno, drawBoard, HORNO } from '../world/hornoBarro';
 import { buildEmpanada, buildEatHand, empanadaIcon } from '../weapons/empanadaModels';
@@ -529,7 +529,9 @@ export default class Empanadas {
   }
 
   // El efecto arranca (y reemplaza al que había).
-  start(id) {
+  // (quiet: sin el cartel "Nombre: qué hace"; el rush de jefes al arrancar
+  // cada jefe, core/bossRush.js. El usuario, 2026-10-12: "El 5 sacalo")
+  start(id, quiet = false) {
     const g = this.g;
     const E = EMPANADA[id];
     this.stop(true);
@@ -537,7 +539,7 @@ export default class Empanadas {
     if (E.use === 'tiempo') c.until = g.time + E.dur;
     if (E.use === 'rondas') c.toRound = g.rounds.round + E.dur - 1;
     this.cur = c;
-    g.hud.subtitle(`${E.name}: ${E.desc}${E.use === 'activa' ? ` Usala con [${keyLabel('empanada')}].` : ''}`, 5);
+    if (!quiet) g.hud.subtitle(`${E.name}: ${E.desc}${E.use === 'activa' ? ` Usala con [${keyLabel('empanada')}].` : ''}`, 5);
     this.sfxActivate(E.kind === 'especial');
     // lo que hace efecto al toque
     if (id === 'yacare') {
@@ -970,7 +972,8 @@ export default class Empanadas {
     const s = W.slot;
     if (!s || s.temp || tierOf(s.up) >= 1 || maxTier(s.id) < 1 || WEAPONS[s.id]?.kind === 'melee') return false;
     if (c.lend) this.endLend(c);
-    const st = weaponStats(s.id, 1);
+    // (con los accesorios de la armería: W.statsOf, no weaponStats)
+    const st = W.statsOf(s.id, 1, s);
     c.lend = { id: s.id, was: s.up, until: g.time + c.E.secs };
     s.up = 1;
     s.mag = st.mag;
@@ -990,7 +993,7 @@ export default class Empanadas {
     // (si lo mejoró de verdad en el medio, se lo queda)
     if (!s || s.up !== 1 || s.lendKeep) return;
     s.up = L.was;
-    const st = weaponStats(s.id, s.up);
+    const st = W.statsOf(s.id, s.up, s);
     s.mag = Math.min(s.mag, st.mag);
     s.reserve = Math.min(s.reserve, st.reserve);
     if (W.slot === s) W.equipModel();

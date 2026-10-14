@@ -85,7 +85,7 @@ export const RANKS = ['Gurí', 'Peón', 'Chasqui', 'Domador', 'Baqueano', 'Rastr
 export const rankName = (level) => RANKS[Math.min(RANKS.length - 1, Math.floor((Math.min(level, LEVELS) - 1) / 5))];
 export const PRESTIGE_NAMES = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'Maestro'];
 
-const fresh = () => ({ v: VERSION, level: 1, prestige: 0, xp: 0, bank: 0, total: 0, pesos: 0, megas: {}, canasta: null, camos: {}, eggs: {}, superEgg: false, games: 0, created: Date.now(), saved: 0 });
+const fresh = () => ({ v: VERSION, level: 1, prestige: 0, xp: 0, bank: 0, total: 0, pesos: 0, megas: {}, canasta: null, camos: {}, armas: {}, eggs: {}, superEgg: false, games: 0, created: Date.now(), saved: 0 });
 
 let data = null;
 let saveT = 0;
@@ -115,7 +115,9 @@ function sane(d) {
   out.level = Math.max(1, Math.min(MASTER_MAX, out.level | 0));
   out.prestige = Math.max(0, Math.min(MASTER, out.prestige | 0));
   for (const k of ['xp', 'bank', 'total', 'pesos', 'games']) out[k] = Math.max(0, Math.floor(+out[k] || 0));
-  for (const k of ['megas', 'camos', 'eggs']) if (!out[k] || typeof out[k] !== 'object') out[k] = {};
+  // (armas: el nivel y los accesorios de cada mate, core/armas.js; un código
+  // viejo no lo trae y arranca vacío)
+  for (const k of ['megas', 'camos', 'armas', 'eggs']) if (!out[k] || typeof out[k] !== 'object' || Array.isArray(out[k])) out[k] = {};
   if (out.canasta && !Array.isArray(out.canasta)) out.canasta = null;
   if (!out.logros || typeof out.logros !== 'object') out.logros = null;
   return out;
@@ -421,6 +423,17 @@ export function setCamo(weaponId, camoId) {
   else delete d.camos[weaponId];
   save();
   emit('change', d);
+}
+
+// ---------- la armería mejorada ----------
+// El nivel, los accesorios y el especialista de cada mate (core/armas.js los
+// lee y los ordena). Viven en el perfil: viajan con la copia de seguridad.
+export const armasData = () => load().armas;
+// now: lo importante (poner un accesorio, subir de nivel) se guarda y avisa
+// enseguida; los puntos de cada baja, de a ratos y sin avisar.
+export function saveArmas(now = true) {
+  save(now);
+  if (now) emit('change', data);
 }
 
 // ---------- copia de seguridad ----------

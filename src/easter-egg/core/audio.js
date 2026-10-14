@@ -25,8 +25,17 @@ const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
 // paneo HRTF, con eco y en total (los de posición) antes de aflojar
 const LOAD_TAU = 0.8;
 const LOAD_HRTF = 14;
-const LOAD_VERB = 26;
+// (era 26: en una pelea normal en una compu buena el eco se iba casi todo el
+// rato; el usuario, 2026-10-12. Con __mduAudioTopeViejo, 26 otra vez)
+const LOAD_VERB = 40;
+const LOAD_VERB_VIEJO = 26;
+// el tope de antes: pasado esto (x budget) los de posición nuevos no sonaban
+// (solo con __mduAudioTopeViejo)
 const LOAD_MAX = 48;
+// el de ahora: pasado esto se saltean solo los muy lejanos o muy bajos (ver out)
+const LOAD_TOPE = 120;
+const TOPE_DIST = 40;
+const TOPE_VOL = 0.05;
 
 // Los truenos grabados y cuánto se les sube o baja para que suenen parejos
 // (el intenso queda unos 3 dB arriba de los medios). El del carpincho es el
@@ -121,7 +130,10 @@ export default class GameAudio {
     // ~40 ms de colchón (el mínimo, 'interactive', son ~10): con la compu
     // cargada y pocos fps la música se entrecortaba; esto no se nota en los tiros
     // (era 25, que Chrome redondeaba a 30; subido por seguridad para las compus flojas)
-    this.ctx = new Ctx({ latencyHint: 0.04 });
+    // En la app de escritorio, 60 ms: un poco más de colchón contra los cortes
+    // con mucho sonando (el usuario, 2026-10-12; __mduAudioTopeViejo: 40)
+    const desk = typeof window !== 'undefined' && !!window.mduDesktop && globalThis.__mduAudioTopeViejo !== true;
+    this.ctx = new Ctx({ latencyHint: desk ? 0.06 : 0.04 });
     const c = this.ctx;
     this.master = c.createGain();
     this.comp = c.createDynamicsCompressor();
@@ -586,6 +598,13 @@ export default class GameAudio {
     this.hallK.gain.setTargetAtTime(1 - 0.6 * k, t, 0.25);
   }
 
+  // ¿Hay lugar para un eco más? (el mismo tope que out(): con muchos sonidos
+  // a la vez, sin eco). Lo usa la cola del tiro (core/sentirTiro.js).
+  ecoLibre() {
+    const viejo = globalThis.__mduAudioTopeViejo === true;
+    return (this.load || 0) <= (viejo ? LOAD_VERB_VIEJO : LOAD_VERB) * (this.budget ?? 1);
+  }
+
   // Punto de salida: opcionalmente espacializado y con envío a reverb.
   // ref: a qué distancia se oye con toda su fuerza (lo grande se oye de lejos)
   // occl: las paredes entre el oído y el lugar lo tapan (this.block, lo pone
@@ -597,22 +616,43 @@ export default class GameAudio {
     // cuántos sonidos arrancaron hace poco (se olvida en ~1 s). Con muchos a
     // la vez (la guerra final: mates y explosiones seguidas) el hilo de audio
     // no daba abasto y la música se trababa: primero paneo simple (el HRTF es
-    // de lo más caro), después sin eco y, al tope, los de posición no suenan
+    // de lo más caro), después sin eco y, al tope, los de posición lejanos o
+    // muy bajos no suenan (ver abajo)
     const now = c.currentTime;
     this.load = (this.load || 0) * Math.exp(-(now - (this.loadT || 0)) / LOAD_TAU) + 1;
     this.loadT = now;
     // (budget: lo pone Game según cuánto tarda cada cuadro; con la compu
     // trabada los topes bajan y el HRTF se deja del todo)
     const k = this.budget ?? 1;
-    if (pos && !bus && this.load > LOAD_MAX * k) return g;
-    if (this.load > LOAD_VERB * k) reverb = 0;
+    // (el usuario, 2026-10-12: "el sonido se cortaba o se muteaba cuando había
+    // muchas cosas sonando". Con el tope de antes, en una compu lenta, más de la
+    // mitad de los de posición de una pelea no sonaban, también los de al lado.)
+    // Ahora el budget solo recorta el HRTF y el eco; pasado LOAD_MAX suenan en
+    // su forma barata (paneo simple, sin eco ni paredes: medido, cientos a la
+    // vez aguantan) y recién pasado LOAD_TOPE se saltean los muy lejanos o muy
+    // bajos. Lo propio (sin posición, o con bus) suena siempre.
+    // (globalThis.__mduAudioTopeViejo: el tope y el eco como antes)
+    const viejo = globalThis.__mduAudioTopeViejo === true;
+    const roll = ref > 2.2 ? 0.8 : 1.3;
+    if (pos && !bus) {
+      if (viejo) {
+        if (this.load > LOAD_MAX * k) return g;
+      } else if (this.load > LOAD_TOPE && this.ear) {
+        const e = this.ear;
+        const d = Math.hypot(pos.x - e.x, pos.y - e.y, pos.z - e.z);
+        // cuánto llega al oído (la misma cuenta que el panner, 'inverse')
+        const r = Math.min(70, Math.max(d, ref));
+        if (d > TOPE_DIST || (gain * ref) / (ref + roll * (r - ref)) < TOPE_VOL) return g;
+      }
+    }
+    if (this.load > (viejo ? LOAD_VERB_VIEJO : LOAD_VERB) * k) reverb = 0;
     let node = g;
     if (pos) {
       const p = c.createPanner();
       p.panningModel = this.flat || k < 0.6 || this.load > LOAD_HRTF * k ? 'equalpower' : 'HRTF';
       p.distanceModel = 'inverse';
       p.refDistance = ref;
-      p.rolloffFactor = ref > 2.2 ? 0.8 : 1.3;
+      p.rolloffFactor = roll;
       p.maxDistance = 70;
       if (p.positionX) {
         p.positionX.value = pos.x;

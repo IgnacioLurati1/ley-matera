@@ -75,7 +75,21 @@ export default class DeathTour {
     // en una arena aparte (la Gran Guerra, el infierno...) el mapa no está:
     // solo el paneo alrededor de donde cayó
     if (g.arena?.active) {
-      out.push(this.orbit(g.endCam ? new THREE.Vector3(g.endCam.x, g.endCam.y, g.endCam.z) : g.player.pos.clone(), 16, 9, FINAL_D + 2));
+      const at = g.endCam ? new THREE.Vector3(g.endCam.x, g.endCam.y, g.endCam.z) : g.player.pos.clone();
+      // (el usuario, 2026-10-13: "la cámara final de muerte del rush de
+      // Francisco está mal puesta"): la grúa de 16 m alrededor de donde cayó
+      // salía de la caverna del Infierno (radio 14, cerrada con roca) y se veía
+      // la roca de afuera, en negro; en el rush y en la partida normal. En una
+      // arena cerrada (Game.encerrada) la grúa va por adentro: alrededor del
+      // centro, a 6/10 del radio y más baja que las estalactitas, arrancando
+      // del lado opuesto a donde cayó (queda a la vista). Las arenas al aire
+      // libre, como antes. globalThis.__mduCamMuerteVieja = true: como antes.
+      const A = g.endCam ? g.endCam.arena : g.encerrada?.();
+      if (A) {
+        const c = new THREE.Vector3(A.x, A.y || 0, A.z);
+        const a0 = Math.atan2(at.z - c.z, at.x - c.x) + Math.PI - 0.35;
+        out.push(this.orbit(c, A.r * 0.6, 7, FINAL_D + 2, a0));
+      } else out.push(this.orbit(at, 16, 9, FINAL_D + 2));
       return out;
     }
     const intro = g.intro?.S?.shots || [];

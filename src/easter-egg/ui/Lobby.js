@@ -1,6 +1,13 @@
 import Net, { MAX_PLAYERS } from '../net/Net';
 import { MAP_LIST, MAP_MODES } from '../config/map';
 import { mapChip } from './MapSelect';
+import { rushOff } from '../core/bossRush';
+import { mayhemOff } from '../core/rushMayhem';
+import { HORNS } from './PlayMenu';
+import { pzLobby } from '../entities/penal/Porteno';
+
+// (el rush de jefes en la sala: la corona del botón de ui/PlayMenu.js)
+const CROWN = '<svg viewBox="0 0 24 24"><path d="M3 18 L4.6 7.5 L9 12 L12 4.5 L15 12 L19.4 7.5 L21 18 Z" fill="currentColor"/><rect x="3" y="19.2" width="18" height="2.2" fill="currentColor"/></svg>';
 
 // Pantalla para jugar de a varios. Con "código de sala" (si el sitio trae
 // dónde encontrarse) alcanza con pasarle 5 letras a los amigos. Si no hay
@@ -36,6 +43,8 @@ export default class Lobby {
       <div class="mdu-lobby__room" data-room hidden>
         <p class="mdu-lobby__code">Código: <b data-codeout></b></p>
         <p class="mdu-lobby__map" data-mapout></p>
+        <button class="mdu-rushpick mdu-lobby__rush" data-act="rushpick" aria-pressed="false" hidden><i aria-hidden="true">${CROWN}</i><span><b>Rush de jefes</b><small>Los seis, uno atrás del otro</small></span></button>
+        <button class="mdu-rushpick mdu-rushpick--mayhem mdu-lobby__rush" data-act="mayhempick" aria-pressed="false" hidden><i aria-hidden="true">${HORNS}</i><span><b>Boss Rush Mayhem</b><small>Más bravos, sin grises</small></span></button>
         <div data-mappick hidden>${mapChip()}</div>
         <ul class="mdu-lobby__players" data-players></ul>
         <div class="mdu-list">
@@ -71,6 +80,7 @@ export default class Lobby {
 
   show() {
     this.section('menu');
+    pzLobby(this);
     this.status(this.g.signal ? '' : 'Este sitio no tiene salas por código: se usa el modo manual (copiar y pegar).');
   }
 
@@ -93,7 +103,30 @@ export default class Lobby {
     if (out) out.textContent = m ? `Mapa: ${m.name}${md ? ` · ${md}` : ''}` : '';
     const pick = this.el.querySelector('[data-mappick]');
     if (pick) pick.hidden = !g.net?.host;
+    // (Porteño encubierto: cuántos policías, entities/penal/Porteno.js)
+    pzLobby(this);
     for (const b of this.el.querySelectorAll('[data-map]')) b.setAttribute('aria-pressed', String(b.dataset.map === g.mapId));
+    // el rush de jefes (core/bossRush.js; el usuario, 2026-10-12: que la sala lo
+    // muestre a todos): elegido por el anfitrión, en vez del mapa. El anfitrión
+    // lo prende o lo apaga acá también; el invitado solo lo ve.
+    const R = g.rush;
+    const btn = this.el.querySelector('[data-act="rushpick"]');
+    if (!R || !btn || rushOff()) return;
+    const on = g.net?.guest ? R.roomPick : R.pick;
+    // (el Boss Rush Mayhem, core/rushMayhem.js: el mismo rush con mayhemPick; uno u otro)
+    const mh = !!on && !mayhemOff() && !!(g.net?.guest ? R.roomMayhem : R.mayhemPick);
+    btn.hidden = !(g.net?.host || (on && !mh));
+    btn.disabled = !g.net?.host;
+    btn.setAttribute('aria-pressed', String(!!on && !mh));
+    const mbtn = this.el.querySelector('[data-act="mayhempick"]');
+    if (mbtn) {
+      mbtn.hidden = mayhemOff() || !(g.net?.host || mh);
+      mbtn.disabled = !g.net?.host;
+      mbtn.setAttribute('aria-pressed', String(mh));
+    }
+    if (out) out.hidden = !!on;
+    if (pick && on) pick.hidden = true;
+    R.sendPick();
   }
 
   status(text) {
@@ -202,6 +235,21 @@ export default class Lobby {
         }
         return;
       }
+      if (a === 'rushpick') {
+        if (!this.net?.host || !g.rush) return;
+        g.rush.pick = !(g.rush.pick && !g.rush.mayhemPick);
+        g.rush.mayhemPick = false;
+        this.syncMap();
+        return;
+      }
+      if (a === 'mayhempick') {
+        if (!this.net?.host || !g.rush || mayhemOff()) return;
+        const on = !(g.rush.pick && g.rush.mayhemPick);
+        g.rush.pick = on;
+        g.rush.mayhemPick = on;
+        this.syncMap();
+        return;
+      }
       if (a === 'start') {
         if (!this.net?.host) return;
         this.menus.show(null);
@@ -223,5 +271,8 @@ export default class Lobby {
   renderPlayers(list) {
     const ul = this.el.querySelector('[data-players]');
     ul.innerHTML = (list || []).map((p) => `<li>${p.name}${p.id === 0 ? ' (anfitrión)' : ''}</li>`).join('');
+    pzLobby(this);
+    // (el que llega se entera de si está elegido el rush de jefes)
+    if (this.net?.host) this.g.rush?.sendPick?.();
   }
 }

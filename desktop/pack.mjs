@@ -14,7 +14,7 @@ if (!existsSync(resolve(here, 'app', 'index.html'))) {
   process.exit(1);
 }
 // (solo el proceso principal, el package.json y el juego armado)
-const KEEP = ['/main.cjs', '/package.json'];
+const KEEP = ['/main.cjs', '/preload.cjs', '/package.json'];
 const paths = await packager({
   dir: here,
   out: resolve(here, 'out'),

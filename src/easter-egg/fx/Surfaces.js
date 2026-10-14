@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { patchTiling, tilingFor, TILING_KEY } from './Tiling';
 import { patchDetail, detailFor, DETAIL_KEY } from './Detail';
+import { GFX_PLUS } from '../config/quality';
+import { MAP_ID } from '../config/map';
 
 // Relieve de paredes y pisos: normal maps de verdad desde Media (en Baja y
 // Rendimiento no se calcula nada y queda el bump sacado del color, como siempre).
@@ -29,6 +31,40 @@ const POM_FAR = 7;
 const KINDS = new Set(['MeshStandardMaterial', 'MeshPhysicalMaterial', 'MeshPhongMaterial', 'MeshLambertMaterial']);
 // pendiente por pixel → inclinación de la normal (el resto lo da `scale`)
 const K = 6;
+
+// Relieve 2 (2026-10-12, el usuario, mejoras de Ultra y Épica #9: "ladrillos
+// y piedras con profundidad al mirarlos de costado"). El paralaje de arriba
+// llegaba hasta 7 m (de lejos, una pared larga mirada de costado quedaba
+// plana) y no lo tenían las baldosas, las tejas, la roca ni el contrapiso.
+// Con él: hasta POM_FAR2 m y esas texturas con su hondura (EXTRA_DEPTH; la
+// altura ya estaba en el normal map). Todo por uniforms: prenderlo o apagarlo
+// no recompila. Va según el mapa y la calidad de config/quality.js
+// GFX_PLUS.relief (en Personalizada, "Relieve de paredes: Con paralaje
+// ampliado"). globalThis.__mduSinRelieve2: como antes.
+const POM_FAR2 = 13;
+const EXTRA_DEPTH = { terracotta: 0.016, calcareo: 0.008, damero: 0.005, azulejo: 0.004, rock: 0.035, concrete: 0.006 };
+const Q_ORDER = ['perf', 'low', 'medium', 'high', 'ultra', 'epic'];
+// (compartidos por todos los materiales con paralaje: el alcance y, para
+// medir, prendido o no: globalThis.__mduSinPom lo apaga)
+export const POM_U = { far: { value: POM_FAR }, on: { value: 1 } };
+const extras = new Set();
+function plus2() {
+  if (globalThis.__mduSinRelieve2 === true) return false;
+  const min = GFX_PLUS.relief?.maps?.[MAP_ID];
+  return !!min && Q_ORDER.indexOf(Q) >= Q_ORDER.indexOf(min);
+}
+// el nombre de una textura en T (el mismo que usan Tiling y Detail)
+let namesT = null;
+let names = null;
+function nameIn(map) {
+  if (!T || !map) return null;
+  if (namesT !== T) {
+    namesT = T;
+    names = new Map();
+    for (const k of Object.keys(T)) if (T[k]?.isTexture && !names.has(T[k])) names.set(T[k], k);
+  }
+  return names.get(map) || null;
+}
 
 // cuánto tardó armar los normal maps (para medir)
 export const stats = { baked: 0, ms: 0, read: 0, h: 0, blur: 0, sobel: 0 };
@@ -234,15 +270,17 @@ function ormFor(map) {
 // tangente sale de las derivadas (no hay atributo de tangentes) y la escala en
 // metros de las del uv. Después de esto, todo lo que lee vMapUv/vNormalMapUv
 // (el color, el normal map y lo de fx/Tiling) usa el uv corrido.
-function patchPom(sh, depth) {
-  sh.uniforms.uPomDepth = { value: depth };
-  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uPomDepth;').replace(
+function patchPom(sh, depthU) {
+  sh.uniforms.uPomDepth = depthU;
+  sh.uniforms.uPomFar = POM_U.far;
+  sh.uniforms.uPomOn = POM_U.on;
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uPomDepth, uPomFar, uPomOn;').replace(
     '#include <map_fragment>',
     `#if defined( USE_MAP ) && defined( USE_NORMALMAP ) && !defined( FLAT_SHADED )
   vec2 pomUv = vMapUv;
   vec2 pomUvN = vNormalMapUv;
   {
-    float pk = 1.0 - smoothstep(${(POM_FAR * 0.6).toFixed(2)}, ${POM_FAR.toFixed(2)}, length(vViewPosition));
+    float pk = uPomOn * (1.0 - smoothstep(uPomFar * 0.6, uPomFar, length(vViewPosition)));
     vec3 q0 = dFdx(-vViewPosition);
     vec3 q1 = dFdy(-vViewPosition);
     vec2 s0 = dFdx(vNormalMapUv);
@@ -253,7 +291,7 @@ function patchPom(sh, depth) {
     float D = dot(q0, q1p);
     vec3 V = normalize(vViewPosition);
     float vn = dot(V, N);
-    if (pk > 0.0 && abs(D) > 1e-14 && vn > 0.05) {
+    if (pk > 0.0 && uPomDepth > 0.0 && abs(D) > 1e-14 && vn > 0.05) {
       // gradientes del uv (uv por metro) y el corrimiento a la profundidad máxima
       vec3 gu = (q1p * s0.x + q0p * s1.x) / D;
       vec3 gv = (q1p * s0.y + q0p * s1.y) / D;
@@ -319,7 +357,12 @@ function enhance(m) {
   // world/eclipseGfxTex— lleva el suavizado y el grano de la original)
   const as = map.userData?.tileAs || map;
   const tile = tilingFor(as, T);
-  const depth = nt ? map.image.relief.depth || 0 : 0;
+  // (las de EXTRA_DEPTH llevan el paralaje solo con el relieve 2 prendido al
+  // armarse el material: sin él, el mismo programa de antes)
+  const extra = nt && !map.image.relief.depth && plus2() ? EXTRA_DEPTH[nameIn(as)] || 0 : 0;
+  const depth = nt ? map.image.relief.depth || extra : 0;
+  const depthU = { value: depth };
+  if (extra) extras.add({ m, depthU, extra });
   const orm = nt && !m.aoMap ? ormFor(map) : null;
   const rt = orm && orm.userData.mean != null && m.isMeshStandardMaterial && !m.roughnessMap;
   // grano fino de cerca (fx/Detail, de 4d)
@@ -352,7 +395,7 @@ function enhance(m) {
     const pom = () => depth > 0 && (LEVEL[Q] ?? 0) >= 2 && !debug.noPom;
     m.onBeforeCompile = function (sh, r) {
       prev.call(this, sh, r);
-      if (pom()) patchPom(sh, depth);
+      if (pom()) patchPom(sh, depthU);
       if (det) patchDetail(sh, det, Q);
       if (tile) patchTiling(sh, Q, tile);
     };
@@ -417,10 +460,22 @@ export default class Surfaces {
 
   setQuality(q) {
     const lv = LEVEL[q] ?? 0;
-    if (q === Q && lv === this.level) return;
+    if (q === Q && lv === this.level) return this.applyPlus();
     Q = q;
     this.level = lv;
     this.sync();
+    this.applyPlus();
+  }
+
+  // El relieve 2: el alcance del paralaje y la hondura de las texturas nuevas.
+  applyPlus() {
+    const on = plus2();
+    POM_U.far.value = on ? POM_FAR2 : POM_FAR;
+    POM_U.on.value = globalThis.__mduSinPom === true ? 0 : 1;
+    for (const e of extras) {
+      if (!saved.has(e.m)) extras.delete(e);
+      else e.depthU.value = on ? e.extra : 0;
+    }
   }
 
   sync() {

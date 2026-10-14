@@ -428,7 +428,8 @@ export default class Sable {
     this.combo = chain ? (this.combo + 1) % COMBO.length : 0;
     this.move = COMBO[this.combo];
     const mv = MOVES[this.move];
-    const rate = g.player.perks.has('doubletap') ? 1.2 : 1;
+    // (el Double Tap 2.0 no toca el cuerpo a cuerpo: __mduDoubleTapViejo, +20 % como antes)
+    const rate = g.player.perks.has('doubletap') && globalThis.__mduDoubleTapViejo === true ? 1.2 : 1;
     this.dur = (60 / st.rpm / rate) * mv.len;
     this.mode = 'slash';
     this.t = 0;

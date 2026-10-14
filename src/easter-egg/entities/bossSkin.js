@@ -698,7 +698,10 @@ export function updateBossSkin(zs, dt) {
   // (want.fade: cuánto tarda en entrar esta capa; si no, FADE)
   if (want.fade && top.w < 1) top.fade = want.fade;
   for (const L of S.layers) {
-    if (L !== top) L.t += dt;
+    // (want.hold: las que se van quedan quietas mientras se mezclan; si no, el
+    // paso que se va sigue andando y el pie apoyado se corre. Porteño, la
+    // visita del Alcaide: entities/penal/pzEncierro.js, 2026-10-13)
+    if (L !== top) L.t += want.hold ? 0 : dt;
     else if (want.t == null) L.t += dt;
     else L.t = want.t;
   }

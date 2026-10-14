@@ -974,7 +974,8 @@ export default class EasterEgg {
     const g = this.g;
     // (el Capataz Maldito: se apaga la última luz y su tesoro queda ahí)
     this.noche?.onBossDeath(_pos, z);
-    if (!z?.mandinga || g.net?.guest) return;
+    // (en el rush de jefes no se terminó el easter egg: ni el aviso ni el logro; core/bossRush.js)
+    if (!z?.mandinga || g.net?.guest || g.rush?.on) return;
     const secs = Math.round(g.time - (this.started ?? g.time));
     this.eggDone(secs);
     g.net?.event('ee', { egg: secs });

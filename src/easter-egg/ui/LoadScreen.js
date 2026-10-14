@@ -1,4 +1,5 @@
 import './loadscreen.css';
+import './mapFonts.css';
 
 // Pantalla de carga al entrar a un mapa, estilo Black Ops 2: la postal del
 // mapa, su nombre, un consejo, quién ya cargó y la barra. Cuando todos están
@@ -18,10 +19,13 @@ export default class LoadScreen {
     this.el = null;
   }
 
-  // { name, sub, image, tip, quick }: quick = cambio de mapa en el título (sin consejo ni jugadores)
-  open({ name, sub = '', image = null, tip = '', quick = false }) {
+  // { name, sub, image, tip, quick, map }: quick = cambio de mapa en el título (sin consejo ni jugadores);
+  // map: el nombre grande va con la letra del propio mapa, la de su entrada (ui/intro.css;
+  // el usuario, 2026-10-13. __mduPostalLetraVieja = true: Creepster en todos)
+  open({ name, sub = '', image = null, tip = '', quick = false, map = '' }) {
     this.close();
-    const el = h(`<div class="mdu-arrive${quick ? ' is-quick' : ''}" role="status" aria-live="polite">
+    const dm = map && globalThis.__mduPostalLetraVieja !== true ? ` data-map="${esc(map)}"` : '';
+    const el = h(`<div class="mdu-arrive${quick ? ' is-quick' : ''}"${dm} role="status" aria-live="polite">
       <div class="mdu-arrive__bg"></div>
       <div class="mdu-arrive__grid">
         <figure class="mdu-postal">

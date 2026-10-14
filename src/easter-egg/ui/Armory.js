@@ -6,6 +6,11 @@ import { MAP_LIST } from '../config/map';
 import { buildMate, getMats } from '../weapons/viewmodels';
 import { CAMOS, CAMO_BY_ID, CAMOABLE, KNIGHT, PAP_CAMO, camoCanvas, papCanvas, camoUnlocked, knightEarned, papPreviewMaterial, tickCamos, tickMolino } from '../weapons/camos';
 import './armory.css';
+// la armería mejorada: nivel de cada mate, accesorios y especialista (el usuario, 2026-10-12)
+import * as Armas from '../core/armas';
+import { ponerAccesorios, animarAccesorios, tieneModelo } from '../weapons/accesorios';
+import { instalarAvisos } from './armeriaAviso';
+import './armeria-accesorios.css';
 
 // La armería (menú del título): los mates comunes a la izquierda, el mate
 // elegido en 3D en el medio (gira solo; se arrastra para girarlo y la rueda
@@ -27,6 +32,16 @@ const TABS = [
   { id: 'pap', name: 'Pack-a-Pava' },
 ];
 const SEL_KEY = 'mdu-armory-sel';
+const MODE_KEY = 'mdu-armory-mode';
+// los dibujitos de cada parte del mate (core/armas.js PARTES)
+const PART_SVG = {
+  bombilla: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 21L17 4.5l2.5 1.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="7" cy="20.5" r="2.2" fill="currentColor"/></svg>',
+  pico: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20L14 8c2-2.6 5-2.4 5 .5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  virola: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9" ry="4.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M3 12v3c0 2.5 4 4.5 9 4.5s9-2 9-4.5v-3" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".7"/></svg>',
+  cuerpo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-.5 3c4 1.6 5.5 5 5.5 8.5C20 19 16.5 21.5 12 21.5S4 19 4 14.5C4 11 5.5 7.6 9.5 6z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.6 12.5h14.8" stroke="currentColor" stroke-width="2.6"/></svg>',
+  yerba: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19c1-8 6-13 16-15-1 10-6 15-14 15z" fill="currentColor" opacity=".85"/><path d="M5 20L15 9" stroke="#1a0f08" stroke-width="1.6"/></svg>',
+};
+const STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.6 6.2 6.7.6-5.1 4.4 1.6 6.6L12 16.8l-5.8 3.5 1.6-6.6-5.1-4.4 6.7-.6z" fill="currentColor"/></svg>';
 const SEEN_KEY = 'mdu-camos-seen';
 const store = {
   get(k, d) {
@@ -74,6 +89,11 @@ export default class Armory {
     this.hover = null;
     this.pick = null;
     this.seen = new Set(store.get(SEEN_KEY, []));
+    // la mitad de la derecha: camuflajes o accesorios; accHover: el accesorio
+    // bajo el mouse (se prueba en el mate)
+    this.mode = store.get(MODE_KEY, 'camos') === 'acc' ? 'acc' : 'camos';
+    this.accHover = null;
+    instalarAvisos(menus.g);
     this.swatches = new Map();
     this.queue = [];
     menus.screen(
@@ -93,6 +113,8 @@ export default class Armory {
          </section>
          <aside class="mdu-arm__camos">
            <div class="mdu-arm__mate"><b data-mname></b><em data-mmeta></em></div>
+           <div class="mdu-arm__modes"><button class="mdu-arm__mode" data-mode="camos">Camuflajes</button><button class="mdu-arm__mode" data-mode="acc">Accesorios</button></div>
+           <div class="mdu-acc" data-accs hidden></div>
            <div class="mdu-kit-tabs mdu-arm__tabs">${TABS.map((t) => `<button class="mdu-kit-tab" data-tab="${t.id}"><span>${t.name}</span><i data-tabn="${t.id}"></i></button>`).join('')}</div>
            <div class="mdu-arm__grid" data-grid></div>
          </aside>
@@ -121,7 +143,16 @@ export default class Armory {
       const c = e.target.closest('[data-camo]');
       if (c) this.pickCamo(c.dataset.camo);
       if (e.target.closest('[data-equip]')) this.equipShown();
+      const md = e.target.closest('[data-mode]');
+      if (md) this.pickMode(md.dataset.mode);
+      const ac = e.target.closest('[data-acc]');
+      if (ac) this.pickAcc(ac.dataset.acc);
+      if (e.target.closest('[data-esp]')) this.pickEsp();
     });
+    // pasar por arriba de un accesorio lo prueba en el mate
+    const accs = $('[data-accs]');
+    accs.addEventListener('pointerover', (e) => this.previewAcc(e.target.closest('[data-acc]')?.dataset.acc || null));
+    accs.addEventListener('pointerleave', () => this.previewAcc(null));
     // pasar por arriba de un camuflaje lo muestra en el mate
     const grid = $('[data-grid]');
     grid.addEventListener('pointerover', (e) => {
@@ -168,12 +199,15 @@ export default class Armory {
         const i = list.indexOf(this.sel) + (e.code === 'ArrowUp' ? -1 : 1);
         if (list[i]) this.pickMate(list[i]);
         e.preventDefault();
-      } else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+      } else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && this.mode === 'camos') {
         const i = TABS.findIndex((t) => t.id === this.tab) + (e.code === 'ArrowLeft' ? -1 : 1);
         if (TABS[i]) this.pickTab(TABS[i].id);
       }
     }));
     window.addEventListener('resize', (this.onResize = () => this.on && this.layout()));
+    // (angosta, la columna se desplaza: el mate sigue a su lugar y no queda
+    // dibujado detrás de la lista; prueba de la armería mejorada, 2026-10-12)
+    this.el.addEventListener('scroll', () => this.on && this.layout(), { capture: true, passive: true });
     // (jugando no: lo sincroniza el showHooks al volver al título)
     P.on('change', () => {
       if (menus.g.state !== 'title') return;
@@ -200,9 +234,11 @@ export default class Armory {
 
   close() {
     this.on = false;
+    this.freshFor = null;
     if (this.m.stage === this.stage) this.m.stage = null;
-    // lo visto deja de ser nuevo
-    store.set(SEEN_KEY, [...this.seen]);
+    // lo visto deja de ser nuevo (lo que se vio solo por el Día del Mate no:
+    // cuando se gane de verdad, sale nuevo; core/diaDelMate.js, 2026-10-12)
+    store.set(SEEN_KEY, [...this.seen].filter((id) => !CAMO_BY_ID[id] || P.unlocked(CAMO_BY_ID[id])));
     this.syncBadge();
   }
 
@@ -221,7 +257,8 @@ export default class Armory {
   // ¿Cuántos camuflajes desbloqueados todavía no vio? (el número del botón)
   syncBadge() {
     if (!this.btn) return;
-    const n = CAMOS.filter((c) => camoUnlocked(c) && !this.seen.has(c.id)).length;
+    // (más los accesorios ganados que todavía no se vieron: core/armas.js nuevos; el usuario, 2026-10-12)
+    const n = CAMOS.filter((c) => camoUnlocked(c) && !this.seen.has(c.id)).length + Armas.cuantosNuevos();
     this.btn.classList.toggle('mdu-btn--new', n > 0);
     this.btn.dataset.new = n > 0 ? String(n) : '';
   }
@@ -232,6 +269,7 @@ export default class Armory {
     this.syncTabs();
     this.syncGrid();
     this.syncInfo();
+    this.syncMode();
   }
 
   syncMates() {
@@ -246,6 +284,7 @@ export default class Armory {
       return `<button class="mdu-arm__row${id === this.sel ? ' is-sel' : ''}" data-w="${id}" aria-pressed="${id === this.sel}" title="${on ? esc(c.name) : 'Sin camuflaje'}">
         <span class="mdu-arm__chip${on ? '' : ' is-none'}" data-chip="${on ? c.id : ''}"></span>
         <b class="mdu-arm__rowtxt">${esc(w.name)}</b>
+        <i class="mdu-arm__lv${Armas.nuevos(id).length ? ' is-new' : ''}" title="Nivel del mate">${Armas.estado(id).level}</i>
       </button>`;
     }).join('');
     for (const el of box.querySelectorAll('[data-chip]')) if (el.dataset.chip) this.fillSwatch(el, el.dataset.chip);
@@ -398,6 +437,8 @@ export default class Armory {
     }
     this.syncGrid();
     this.syncInfo();
+    this.accHover = null;
+    if (this.mode === 'acc') this.syncAccs(true);
     this.showMate(true);
   }
 
@@ -470,7 +511,7 @@ export default class Armory {
 
   // Arma el mate de la escena con lo que se está mirando (los bloqueados se
   // ven enteros: es para tentar).
-  showMate(pop = false) {
+  showMate(pop = false, instant = pop) {
     if (!this.stage) return;
     const id = this.shown;
     if (id && id.startsWith('pap:')) this.stage.show(this.sel, { pap: id.slice(4) }, pop);
@@ -480,6 +521,161 @@ export default class Armory {
       if (!this.hover && !this.pick && c && !camoUnlocked(c)) c = null;
       this.stage.show(this.sel, { camo: c ? c.id : null }, pop);
     }
+    // los accesorios: entran y salen con su animación (al cambiar de mate, ya puestos)
+    this.stage.setAcc(this.accShown(), instant);
+  }
+
+  // ---------------- accesorios (core/armas.js) ----------------
+  // Lo que se ve puesto: lo que lleva y, si pasa por arriba de uno, ese en su
+  // parte (también los bloqueados: para tentar).
+  accShown() {
+    // (el Lanzapava del Mate 47 se ve colgado de la bombilla mientras el especialista está puesto)
+    const on = [...Armas.puestos(this.sel), ...(this.sel === 'mate47' && Armas.especialista('mate47')?.on ? ['lanzapava'] : [])];
+    const h = this.mode === 'acc' && this.accHover && Armas.ACCESORIOS[this.accHover];
+    if (!h) return on;
+    return [...on.filter((a) => Armas.ACCESORIOS[a].parte !== h.parte), this.accHover];
+  }
+
+  pickMode(mode) {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    store.set(MODE_KEY, mode);
+    this.accHover = null;
+    this.hover = null;
+    this.pick = null;
+    this.g.audio?.shell();
+    this.syncMode(true);
+    this.syncInfo();
+    this.showMate();
+  }
+
+  syncMode(enter = false) {
+    const acc = this.mode === 'acc';
+    for (const b of this.el.querySelectorAll('[data-mode]')) {
+      const on = b.dataset.mode === this.mode;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+    this.$('[data-accs]').hidden = !acc;
+    this.$('.mdu-arm__tabs').hidden = acc;
+    this.$('[data-grid]').hidden = acc;
+    this.el.classList.toggle('is-acc', acc);
+    if (acc) this.syncAccs(enter);
+  }
+
+  // El nivel del mate y su barra, los tres lugares, la lista de su categoría
+  // y el especialista. enter: las tarjetas entran en cascada (al cambiar de
+  // mate o de mitad; al poner o sacar, no).
+  syncAccs(enter = false) {
+    const box = this.$('[data-accs]');
+    const id = this.sel;
+    const S = Armas.estado(id);
+    const list = Armas.lista(id);
+    const on = Armas.puestos(id);
+    const n = Armas.lugares(S.level);
+    const E = Armas.especialista(id);
+    const k = S.max ? 1 : S.xp / S.need;
+    const slots = Armas.ARMERIA.lugares
+      .map((lvl, i) => {
+        if (i >= n) return `<div class="mdu-acc__slot is-lock">${LOCK_SVG}<span>Nivel ${lvl}</span></div>`;
+        const a = on[i] && Armas.ACCESORIOS[on[i]];
+        if (!a) return '<div class="mdu-acc__slot is-free"><span>Libre</span></div>';
+        return `<button class="mdu-acc__slot is-on" data-acc="${on[i]}" title="Sacar">${PART_SVG[a.parte] || ''}<span>${esc(a.name)}</span></button>`;
+      })
+      .join('');
+    const tag = (ok, eq, lvl, idle) => (!ok ? `${LOCK_SVG}Nivel ${lvl}` : eq ? `${CHECK_SVG}Puesto` : idle);
+    // (los ganados que todavía no se habían visto: marcados mientras se mira ese
+    // mate, hasta cambiar de mate o cerrar la armería; core/armas.js nuevos)
+    if (this.freshFor !== id) {
+      this.freshFor = id;
+      this.fresh = new Set(this.on ? Armas.nuevos(id) : []);
+    }
+    const fresh = this.fresh;
+    const cards = list
+      .map((a, i) => {
+        const eq = on.includes(a.id);
+        return `<button class="mdu-acc__card${a.ok ? '' : ' is-lock'}${eq ? ' is-eq' : ''}${fresh.has(a.id) ? ' is-new' : ''}" data-acc="${a.id}" style="--i:${i}">
+          <i class="mdu-acc__ico">${PART_SVG[a.parte] || ''}</i>
+          <b class="mdu-acc__name">${esc(a.name)}</b>
+          <em class="mdu-acc__fx">${esc(a.txt)}</em>
+          <span class="mdu-acc__tag">${tag(a.ok, eq, a.lvl, esc(Armas.PARTES[a.parte]))}</span>
+        </button>`;
+      })
+      .join('');
+    const esp = E
+      ? `<button class="mdu-acc__card mdu-acc__esp${E.ok ? '' : ' is-lock'}${E.on ? ' is-eq' : ''}" data-esp style="--i:${list.length}">
+          <i class="mdu-acc__ico is-star">${STAR_SVG}</i>
+          <b class="mdu-acc__name"><small>Especialista</small>${esc(E.name)}</b>
+          <em class="mdu-acc__fx">${esc(E.txt)}</em>
+          <span class="mdu-acc__tag">${tag(E.ok, E.on, Armas.ARMERIA.especialista, 'Poner')}</span>
+        </button>`
+      : '';
+    box.classList.toggle('is-enter', enter);
+    box.innerHTML = `<div class="mdu-acc__lvl">
+        <span class="mdu-acc__cat">${esc(Armas.CATEGORIAS[S.cat] || '')}</span>
+        <b class="mdu-acc__n">Nivel ${S.level}</b>
+        <small class="mdu-acc__xp">${S.max ? 'Máximo' : `${Math.floor(S.xp)} / ${S.need}`}</small>
+        <div class="mdu-acc__bar"><span style="--k:${k.toFixed(3)}"></span></div>
+      </div>
+      <div class="mdu-acc__slots" data-slots>${slots}</div>
+      <div class="mdu-acc__list">${cards || '<p class="mdu-acc__none">Sin accesorios todavía</p>'}${esp}</div>`;
+    if (fresh.size) {
+      Armas.verNuevos(id);
+      this.syncBadge();
+      this.$(`[data-w="${id}"] .mdu-arm__lv`)?.classList.remove('is-new');
+    }
+  }
+
+  previewAcc(id) {
+    if (id === this.accHover) return;
+    this.accHover = id;
+    this.stage?.setAcc(this.accShown());
+  }
+
+  // Tocar un accesorio: ponerlo (si ya hay uno en esa parte, lo cambia) o sacarlo.
+  pickAcc(accId) {
+    const id = this.sel;
+    const a = Armas.lista(id).find((x) => x.id === accId);
+    if (!a) return;
+    if (!a.ok) {
+      this.g.audio?.deny();
+      this.stage?.nudge();
+      return;
+    }
+    if (Armas.puestos(id).includes(accId)) {
+      Armas.sacar(id, accId);
+      this.g.audio?.shell();
+    } else if (Armas.poner(id, accId)) this.g.audio?.purchase();
+    else {
+      // sin lugar libre: se sacude la fila de lugares
+      this.g.audio?.deny();
+      const sl = this.$('[data-slots]');
+      sl?.classList.remove('is-deny');
+      void sl?.offsetWidth;
+      sl?.classList.add('is-deny');
+      return;
+    }
+    // (lo que se acaba de tocar ya no es prueba: se ve como queda)
+    this.accHover = null;
+    this.syncAccs();
+    this.syncMates();
+    this.stage?.setAcc(this.accShown());
+  }
+
+  // El especialista: se pone o se saca acá (no ocupa lugar; el usuario, 2026-10-12)
+  pickEsp() {
+    const E = Armas.especialista(this.sel);
+    if (!E) return;
+    if (!E.ok) {
+      this.g.audio?.deny();
+      this.stage?.nudge();
+      return;
+    }
+    Armas.prenderEspecialista(this.sel, !E.on);
+    if (E.on) this.g.audio?.shell();
+    else this.g.audio?.purchase();
+    this.syncAccs();
+    this.stage?.setAcc(this.accShown());
   }
 }
 
@@ -502,6 +698,9 @@ class ArmoryStage {
     this.popT = 1;
     this.shake = 0;
     this.cache = new Map();
+    // los accesorios (core/armas.js): cuánto entró cada uno (0 a 1) y cuáles van
+    this.accK = new Map();
+    this.accWant = new Set();
     const S = (this.scene = new THREE.Scene());
     S.background = new THREE.Color(0x050304);
     this.camera = new THREE.PerspectiveCamera(30, 16 / 9, 0.02, 20);
@@ -595,11 +794,41 @@ class ArmoryStage {
     const b = new THREE.Box3().setFromObject(mate);
     const flat = !m.bombGroup;
     mate.position.set(flat ? -(b.min.x + b.max.x) / 2 : 0, 0.006 - b.min.y, flat ? -(b.min.z + b.max.z) / 2 : 0);
+    // los accesorios de su categoría, todos, escondidos: entran y salen
+    // animados (ui/Armory accShown; weapons/accesorios.js)
+    const accIds = [...Armas.lista(id).map((a) => a.id), ...(id === 'mate47' ? ['lanzapava'] : [])].filter(tieneModelo);
+    if (accIds.length && globalThis.__mduSinAccesorios !== true) ponerAccesorios(m, accIds, this.T, { armeria: true });
     const g = new THREE.Group();
     g.add(mate);
+    g.userData.acc = m.acc || null;
     if (hand === 'L') g.scale.x = -1;
     this.cache.set(key, g);
     return g;
+  }
+
+  // Qué accesorios se ven puestos; instant: sin animación (otro mate).
+  setAcc(ids, instant = false) {
+    this.accWant = new Set(ids);
+    if (!instant) return;
+    this.accK.clear();
+    for (const id of ids) this.accK.set(id, 1);
+  }
+
+  // Cada cuadro: avanza la entrada o la salida de cada accesorio y la aplica a
+  // los mates de la escena (los de dos manos, a los dos).
+  tickAcc(dt) {
+    const all = new Map();
+    for (const c of this.holder.children) for (const [id, a] of Object.entries(c.userData.acc || {})) all.set(id, [...(all.get(id) || []), a]);
+    const step = [];
+    for (const [id, list] of all) {
+      let k = this.accK.get(id) ?? 0;
+      const want = this.accWant.has(id) ? 1 : 0;
+      if (k !== want) k = want > k ? Math.min(1, k + dt / 0.75) : Math.max(0, k - dt / 0.6);
+      this.accK.set(id, k);
+      for (const a of list) step.push([a, k]);
+    }
+    // (todos juntos: si uno sale y otro entra en la misma parte, lo que tapan lo decide el que más entró)
+    if (step.length) animarAccesorios(step);
   }
 
   show(id, look, pop) {
@@ -654,6 +883,7 @@ class ArmoryStage {
     const pop = 1 + Math.sin(this.popT * Math.PI) * 0.06 * (1 - this.popT);
     this.holder.rotation.set(this.rotX * 0.6, this.rotY + Math.sin(t * 40) * 0.08 * this.shake, 0);
     this.holder.scale.setScalar(pop);
+    this.tickAcc(dt);
     this.dist += (this.distTo - this.dist) * Math.min(1, dt * 6);
     const cam = this.camera;
     const aim = this.aim ?? 0.1;

@@ -43,6 +43,20 @@ if (q.has('test')) {
 const css = document.createElement('style');
 css.textContent = '.mdu-btn[data-act="original"]{display:none!important}';
 document.head.appendChild(css);
+// la prueba de rendimiento (Opciones › Gráficos; main.cjs abre con ?medir): con
+// ajustes fijos, que se devuelven al terminar (desktop/medir.js)
+let medirSaved;
+if (q.has('medir')) {
+  const k = 'lm-zombies-settings';
+  try {
+    medirSaved = localStorage.getItem(k);
+    const s = JSON.parse(medirSaved || '{}') || {};
+    localStorage.setItem(k, JSON.stringify({ ...s, quality: 'high', qualityMode: 'manual', fpsCap: '0', voiceMode: 'off', supremoAsked: true }));
+  } catch {
+    /* sin ajustes */
+  }
+}
 const r = await launch({ signal: createSignal(), onExit: () => window.close() });
 for (const b of document.querySelectorAll('.mdu-btn[data-act="exit"]')) b.textContent = 'Salir del juego';
 if (q.has('test')) window.g = r?.game;
+if (q.has('medir') && r?.game) import('./medir.js').then((m) => m.medir(r.game, medirSaved, q.has('corto')));

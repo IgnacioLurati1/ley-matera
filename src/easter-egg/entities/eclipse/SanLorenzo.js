@@ -16,6 +16,8 @@ import CineActors from '../../ui/cineActors';
 import Caballeria from './slCaballeria';
 import SlJinetes from './slJinetes';
 import { eclSfx } from '../../fx/eclipseSfx';
+// (el final nuevo, a medias: globalThis.__mduSlFinal = true lo prende; ver slFinal.js)
+import SlFinal, { finOn } from './slFinal';
 
 // La pelea final de Eclipse Matero: el Combate de San Lorenzo (3 de febrero de
 // 1813). El corte con la Furia (entities/EclipseEgg.js) abre el desgarro y se
@@ -744,7 +746,10 @@ export default class SanLorenzo {
       this.scene?.skip?.();
       this.darkTo = 0;
       // (si ya suena —entró con el grito de San Martín, slCabral marcha—, sigue)
-      if (!music?.is('marcha-san-lorenzo')) {
+      // (el final nuevo, slFinal: la Marcha se va; sigue la de la pelea y la canción nueva entra con la corona rota)
+      if (finOn()) {
+        if (!music?.is('jefe-eclipse')) music?.play('jefe-eclipse', { loop: true, fadeIn: 1.5, while: keep([4]) });
+      } else if (!music?.is('marcha-san-lorenzo')) {
         music?.stop(0.4);
         music?.play('marcha-san-lorenzo', { loop: true, while: keep([4, 5]) });
       }
@@ -771,6 +776,12 @@ export default class SanLorenzo {
         this.send({ a: 'bel', i: 3 });
         if (late) this.send({ a: 'lit', i: this.st.cr.findIndex((x) => x > 0) });
       }
+    } else if (n === 5 && finOn()) {
+      // (el final nuevo, slFinal: El Eclipse queda de rodillas hasta el golpe; los muertos los mata la onda)
+      g.hud?.setBossBar?.(null);
+      this.vivo?.setBoats(false);
+      this.fin ||= new SlFinal(this);
+      this.fin.start(0);
     } else if (n === 5) {
       g.hud?.setBossBar?.(null);
       B.fall();
@@ -1136,7 +1147,9 @@ export default class SanLorenzo {
       }
     }
     // fase 5: el blanco y el final
-    if (this.st.phase === 5) {
+    if (this.st.phase === 5 && this.fin?.on) {
+      if (!this.st.done) this.fin.update(dt);
+    } else if (this.st.phase === 5) {
       this.endT += dt;
       if (this.endT > 6.5 && !this.st.done) this.finish();
     }
@@ -1617,6 +1630,8 @@ export default class SanLorenzo {
     const g = this.g;
     const w = g.world;
     this.disposed = true;
+    this.fin?.dispose();
+    this.fin = null;
     this.cabralWarm?.dispose?.();
     this.cabralWarm = null;
     if (this.base) {

@@ -265,3 +265,15 @@
   .mdu-arrive__info,
   .mdu-arrive__credit { animation: none; }
 }
+
+/* el nombre grande con la letra de su propio mapa, la misma de su entrada
+   (ui/intro.css; el usuario, 2026-10-13). El molino y el Monumento ya usan la
+   de siempre. */
+.mdu-arrive[data-map='granja'] .mdu-arrive__map { font-family: 'Rye', 'Special Elite', serif; color: #ffd49a; text-shadow: 0 0 30px rgba(255, 140, 50, 0.55), 0 4px 0 #2a1204; }
+.mdu-arrive[data-map='penal'] .mdu-arrive__map { font-family: 'Stardos Stencil', 'Special Elite', serif; font-weight: 700; color: #ffd6c8; text-shadow: 0 0 30px rgba(255, 70, 40, 0.55), 0 4px 0 #2a0a0a; }
+.mdu-arrive[data-map='torre'] .mdu-arrive__map { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 900; font-size: clamp(30px, 3.9vw, 56px); letter-spacing: 0.06em; line-height: 1.05; color: #ffe6a8; text-shadow: 0 0 34px rgba(255, 200, 90, 0.6), 0 4px 0 #2a1a0a; }
+.mdu-arrive[data-map='castillo'] .mdu-arrive__map { font-family: 'UnifrakturMaguntia', 'Cinzel', serif; color: #f2e6c8; text-shadow: 0 0 34px rgba(150, 190, 255, 0.55), 0 4px 0 #0a1224; }
+.mdu-arrive[data-map='esteros'] .mdu-arrive__map { font-family: 'Kaushan Script', 'Special Elite', serif; line-height: 1.1; color: #e8f4ea; text-shadow: 0 0 34px rgba(120, 230, 170, 0.5), 0 4px 0 #04140e; }
+.mdu-arrive[data-map='eclipse'] .mdu-arrive__map { font-family: 'Cinzel', 'Special Elite', serif; font-weight: 900; font-size: clamp(30px, 3.9vw, 56px); letter-spacing: 0.1em; line-height: 1.05; color: #f6d88a; text-shadow: 0 0 2px #07020f, 0 0 36px rgba(140, 70, 255, 0.75), 0 4px 0 #12062a; }
+/* la postal: "Saludos desde" con la letra del mapa (ui/mapFonts.css), en la tinta de siempre */
+.mdu-arrive[data-map] .mdu-postal figcaption b { font-family: var(--mapfont, 'Creepster', 'Special Elite', serif); font-weight: var(--mapfont-w, normal); font-size: calc(clamp(22px, 2.6vw, 34px) * var(--mapfont-k, 1)); }

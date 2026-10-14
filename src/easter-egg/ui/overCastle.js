@@ -33,7 +33,8 @@ export function decorateOver(g, s, { won = false } = {}) {
   s.querySelector('.mdu-ovc')?.remove();
   s.querySelector('.mdu-ovc-el')?.remove();
   s.classList.remove('mdu-over--castillo', 'is-won', 'is-lost');
-  if (g.mapId !== 'castillo') return;
+  // (el rush de jefes termina en el castillo con su propia pantalla: ui/overRush.js)
+  if (g.mapId !== 'castillo' || g.rush?.on) return;
   s.classList.add('mdu-over--castillo', won ? 'is-won' : 'is-lost');
   const deco = h(`<div class="mdu-ovc" aria-hidden="true">
       <i class="mdu-ovc__sun"></i><i class="mdu-ovc__rays"></i>
@@ -59,7 +60,8 @@ export function decorateOver(g, s, { won = false } = {}) {
 }
 
 // ---------------- los números ----------------
-function countUp(stats, s) {
+// (también la del rush de jefes: ui/overRush.js)
+export function countUp(stats, s) {
   const items = [];
   [...stats.querySelectorAll('dd')].forEach((dd, i) => {
     const txt = dd.textContent.trim();

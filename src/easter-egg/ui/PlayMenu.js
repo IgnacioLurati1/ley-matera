@@ -2,7 +2,11 @@
 // elegido arriba y, abajo, la entrada a la versión original.
 
 import { mapChip } from './MapSelect';
+import { rushOff } from '../core/bossRush';
+import { mayhemOff } from '../core/rushMayhem';
+import { diaDelMate } from '../core/diaDelMate';
 import './playMenu.css';
+import './rush.css';
 
 // Un mate de perfil (para los dibujos de las tarjetas).
 const mate = (x, y, s, body = '#6a4020') => `<g transform="translate(${x} ${y}) scale(${s})">
@@ -33,12 +37,48 @@ const RONDA = `<svg viewBox="0 0 240 150" aria-hidden="true">
   ${mate(52, 100, 1.5, '#7a4a22')}${mate(86, 110, 1.35, '#5a3418')}${mate(196, 106, 1.45, '#8a5a2a')}
 </svg>`;
 
+// la corona del botón del rush
+const CROWN = '<svg viewBox="0 0 24 24"><path d="M3 18 L4.6 7.5 L9 12 L12 4.5 L15 12 L19.4 7.5 L21 18 Z" fill="currentColor"/><rect x="3" y="19.2" width="18" height="2.2" fill="currentColor"/></svg>';
+
+// el del Boss Rush Mayhem (core/rushMayhem.js): la corona con cuernos
+export const HORNS = '<svg viewBox="0 0 24 24"><path d="M2 18 L2.6 4.5 L7.2 11 L9.4 2.5 L12 9 L14.6 2.5 L16.8 11 L21.4 4.5 L22 18 Z" fill="currentColor"/><rect x="2" y="19.2" width="20" height="2.2" fill="currentColor"/><circle cx="12" cy="14.2" r="1.7" fill="#000" opacity=".55"/></svg>';
+
+// El botón del rush, prendido o no (y el mapa elegido, apagado mientras tanto).
+// (con el Mayhem: uno u otro; el Mayhem es el rush con mayhemPick)
+function syncRush(menus) {
+  const R = menus.g.rush;
+  const on = !!R?.pick && !rushOff();
+  const mh = on && !!R.mayhemPick && !mayhemOff();
+  const s = menus.screens.play;
+  s.querySelector('[data-act="rush"]')?.setAttribute('aria-pressed', String(on && !mh));
+  s.querySelector('[data-act="mayhem"]')?.setAttribute('aria-pressed', String(mh));
+  s.classList.toggle('is-rush', on);
+}
+
+// El Día del Mate (core/diaDelMate.js): un aviso corto en el título ese día.
+function syncDia(menus) {
+  const t = menus.screens.title;
+  let el = t?.querySelector('[data-diamate]');
+  const on = diaDelMate();
+  if (!on) {
+    el?.remove();
+    return;
+  }
+  if (el || !t) return;
+  el = document.createElement('p');
+  el.className = 'mdu-diamate';
+  el.dataset.diamate = '';
+  el.textContent = 'Día del Mate: experiencia y pesos x2, todos los camuflajes';
+  t.querySelector('.mdu-tag')?.after(el);
+}
+
 export default class PlayMenu {
   constructor(menus) {
     menus.screen(
       'play',
       `<h2 class="mdu-kit-title">Jugar</h2>
        <div class="mdu-play__map">${mapChip()}</div>
+       ${rushOff() ? '' : `<div class="mdu-rushrow"><button class="mdu-rushpick" data-act="rush" aria-pressed="false"><i aria-hidden="true">${CROWN}</i><span><b>Rush de jefes</b><small>Los seis, uno atrás del otro</small></span></button>${mayhemOff() ? '' : `<button class="mdu-rushpick mdu-rushpick--mayhem" data-act="mayhem" aria-pressed="false"><i aria-hidden="true">${HORNS}</i><span><b>Boss Rush Mayhem</b><small>Más bravos, sin grises</small></span></button>`}</div>`}
        <div class="mdu-play">
          <button class="mdu-kit-card mdu-play__card" data-act="solo">
            <span class="mdu-play__art">${SOLO}</span>
@@ -55,6 +95,30 @@ export default class PlayMenu {
        </div>`,
     );
     menus.screens.play.classList.add('mdu-menu--play');
+    // el rush de jefes (core/bossRush.js; el usuario, 2026-10-12): elegido,
+    // Solo y la sala arrancan el rush en vez del mapa (Game.startGame)
+    menus.acts.rush = () => {
+      const R = menus.g.rush;
+      if (!R) return;
+      // (con el Mayhem elegido, pasa al rush de siempre)
+      R.pick = !(R.pick && !R.mayhemPick);
+      R.mayhemPick = false;
+      syncRush(menus);
+    };
+    // el Boss Rush Mayhem (core/rushMayhem.js; el usuario, 2026-10-13): el
+    // mismo rush, con jefes más bravos y combos
+    menus.acts.mayhem = () => {
+      const R = menus.g.rush;
+      if (!R || mayhemOff()) return;
+      const on = !(R.pick && R.mayhemPick);
+      R.pick = on;
+      R.mayhemPick = on;
+      syncRush(menus);
+    };
+    menus.showHooks.push((name) => {
+      if (name === 'play') syncRush(menus);
+      if (name === 'title') syncDia(menus);
+    });
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape' && menus.current === 'play') menus.act('back');
     });

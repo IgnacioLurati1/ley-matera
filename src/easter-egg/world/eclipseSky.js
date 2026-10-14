@@ -3,6 +3,7 @@ import { SKY, ZONES } from '../config/map';
 import { ISLANDS } from '../config/maps/eclipse';
 import { buildSkyFight } from './eclipseGfxFight';
 import { eclSfx } from '../fx/eclipseSfx';
+import { plusOn } from '../config/quality';
 
 // (2026-10-08, el usuario: "cosmical shockwave, es para cuando el Chiquitijuein
 // y Francisco en el cielo chocan y generan la onda de choque; ojo con la
@@ -169,7 +170,7 @@ const FRAG = /* glsl */ `
   uniform float uTime, uCloud, uFlash, uBlood, uFogAmt, uDay;
   uniform vec3 uFogColor, uSun, uHorizon, uZenith, uGlow;
   uniform vec3 uE, uEU, uEV;
-  uniform float uK, uPulse, uCrack, uQ, uDark, uNight, uDim, uSunSoft, uDimOld, uNebOn;
+  uniform float uK, uPulse, uCrack, uQ, uDark, uNight, uDim, uSunSoft, uDimOld, uNebOn, uNebVol;
   // la pelea: cuánto dura el choque (1 → 0), hacia dónde se lanza la sombra y el ángulo del rayo
   uniform float uClash, uClashA;
   uniform vec2 uClashD;
@@ -277,6 +278,19 @@ const FRAG = /* glsl */ `
     // los dos brazos (el gas los deforma) y, entre ellos, casi nada
     float arm = smoothstep(0.2, 0.85, 0.5 + 0.5 * cos(2.0 * s1 + (n1 - 0.5) * 3.2));
     float veil = smoothstep(0.38, 0.82, n1) * (0.22 + 0.78 * arm);
+    // (cielo con volumen, 2026-10-12, mejoras de Ultra/Épica #14 "la nebulosa
+    // con profundidad": el eclipse alumbra el gas —el lado que da a él se
+    // prende, lo de atrás queda en sombra— y atrás de todo va una capa más
+    // honda, muy lenta. uNebVol 0: como antes; globalThis.__mduSinCieloVol)
+    float lit = 1.0;
+    float deep = 0.0;
+    if (uNebVol > 0.001) {
+      float dl = 0.16;
+      float n1t = fbmP(vec2((lr - dl) * 0.9 + t * 0.012 + 3.7, (s1 - 1.5 * dl) * kS), 6.0, fw, o4 > 3 ? 3 : o4);
+      lit = mix(1.0, 0.5 + 1.15 * clamp((n1 - n1t) * 5.0 + 0.5, 0.0, 1.0), uNebVol);
+      float s0 = psi + 0.75 * lr + t * 0.005;
+      deep = smoothstep(0.42, 0.85, fbmP(vec2(lr * 0.45 + t * 0.004 + 21.0, s0 * kS * 0.5), 3.0, fw * 0.5, 2)) * uNebVol;
+    }
     float rid = 1.0 - abs(2.0 * n2 - 1.0);
     float fil = smoothstep(0.6, 1.0, rid);
     fil = fil * fil * (0.16 + 0.84 * arm);
@@ -292,8 +306,10 @@ const FRAG = /* glsl */ `
     float fall = 0.2 + 0.36 * exp(-th * 1.5);
     float pulse = 0.5 + 0.5 * sin(lr * 5.0 - t * 0.7 + n1 * 3.0);
     pulse = 1.0 + 0.5 * pulse * pulse * pulse * pulse;
-    vec3 c = tint * (veil * 0.085 + fil * 0.27 * pulse + knot * 0.22 * pulse) * fall;
+    vec3 c = tint * (veil * 0.085 * lit + fil * 0.27 * pulse * (0.75 + 0.25 * lit) + knot * 0.22 * pulse) * fall;
     c *= 1.0 - lane * 0.8;
+    // la capa honda: fría y tenue, solo donde el gas de adelante no tapa
+    c += mix(vec3(0.1, 0.12, 0.42), vec3(0.32, 0.1, 0.4), smoothstep(0.3, 1.2, th)) * deep * 0.045 * (1.0 - veil * 0.8) * (1.0 - lane);
     // las chispas que se traga: puntos que corren por los brazos hacia el eclipse
     vec2 ps = vec2(lr * 6.0 + t * 0.5, s1 * kS * 4.0);
     vec2 ci = floor(ps);
@@ -917,6 +933,8 @@ export function buildEclipseSky(w) {
     uDimOld: { value: globalThis.__mduDimOld === true ? 1 : 0 },
     // (la nebulosa de la noche y la segunda capa de estrellas: globalThis.__mduNebOld las saca)
     uNebOn: { value: globalThis.__mduNebOld === true ? 0 : 1 },
+    // el volumen de la nebulosa (cielo con volumen; lo pone extraUpdate)
+    uNebVol: { value: 0 },
     uNight: { value: SKY_NIGHT() },
     uDim: { value: 0 },
     // el sol de La Tapera, más suave (globalThis.__mduOldTaperaSun: como antes)
@@ -1091,6 +1109,11 @@ export function buildEclipseSky(w) {
   const tmp = new THREE.Vector3();
   w.extraUpdate = (dt, t) => {
     prev?.(dt, t);
+    // el cielo con volumen (config/quality.js GFX_PLUS.sky): de a poco, salvo al cargar
+    const nv = plusOn(w.g, 'sky') ? 1 : 0;
+    const U = uniforms.uNebVol;
+    U.value = w.nebFirst ? Math.max(0, Math.min(1, U.value + (nv ? 1 : -1) * Math.min(dt, 0.1) * 1.2)) : nv;
+    w.nebFirst = true;
     ecl.update(dt, t);
     fight.update(dt, t);
     // los sprites del contrato, en la dirección del eclipse desde la cámara

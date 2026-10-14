@@ -109,7 +109,8 @@ export default class Net {
         this.signal.send({ t: 'busy', to: msg.from });
         return;
       }
-      if (this.peers.size + 1 >= MAX_PLAYERS) {
+      // (cap: el tope del modo elegido, Game.attachNet: 10 en Porteño encubierto)
+      if (this.peers.size + 1 >= (this.cap?.() || MAX_PLAYERS)) {
         this.signal.send({ t: 'full', to: msg.from });
         return;
       }

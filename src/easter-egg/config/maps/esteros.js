@@ -542,3 +542,39 @@ export const HORNO_SPOTS = [
   { cell: [46, 11], face: [0, -1] },
   { cell: [14, 41], face: [-1, 0] },
 ];
+
+// Zombies gauchescos (el modo en línea; entities/esteros/Gauchescos.js, la
+// escalera en config/gauchescos.js): sin historia, sin muertos de la
+// computadora, sin nada que comprar. EE.gz: dónde flota la cura y los lugares
+// donde aparece cada uno (el usuario, 2026-10-13: "spots previamente puestos
+// en el mapa y no un lugar absolutamente random"), puestos a mano y mirados
+// uno por uno: piso firme, fuera del agua honda y de la paja, sin nada encima.
+export function gauchescos() {
+  return {
+    FEATURES: { ...FEATURES, egg: 'gauchescos', special: null, boss: null },
+    EE: {
+      gz: {
+        cure: [43, 42],
+        spots: [
+          [39.5, 14],
+          [31, 12],
+          [51, 14],
+          [74, 34.5],
+          [70, 44],
+          [67, 29],
+          [39, 63],
+          [44.5, 62],
+          [33, 66],
+          [14, 30],
+          [17, 43],
+          [22, 73],
+          [10.5, 8.5],
+          [18, 7],
+          [73.5, 17],
+          [78, 15],
+        ],
+      },
+    },
+    TEXT: { ...TEXT, egg: 'Zombies gauchescos', loading: 'La cura flota en el estero…' },
+  };
+}

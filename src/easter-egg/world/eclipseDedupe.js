@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { cacheTomar, cacheGuardar, cacheHuella } from '../core/cacheDisco';
 
 // Las caras repetidas de Eclipse Matero (sesión 1f, 2026-10-07). El usuario:
 // "la zona del Monumento tiene paredes que clipean en todos lados". Cada isla
@@ -81,6 +82,15 @@ export function dedupeEclipse(w) {
     // (las transparentes tapan —el pasto copiado del origen— pero no se tocan)
     const see = m.transparent || m.depthWrite === false;
     meshes.push({ o, r, edit: !see && geoUse.get(o.geometry) === 1 });
+  }
+  // (lo de una carga anterior con los mismos vértices: core/cacheDisco; ~1 s)
+  const huella = cacheHuella('dedupe', OLD, TOL, AREA, AREA_COVER, meshes.map(({ o, r, edit }) => [o.geometry.attributes.position.array, o.geometry.index?.array, o.matrixWorld.elements, r, edit]));
+  const guardado = cacheTomar('eclipse', 'dedupe', huella);
+  if (guardado) {
+    aplicar(meshes, guardado);
+    globalThis.__eclDedupe = { ...guardado.stats, cache: true, ms: Math.round(performance.now() - t0) };
+    if (globalThis.__mduDedupeHuella === true) globalThis.__eclDedupe.fin = huellaFin(meshes);
+    return globalThis.__eclDedupe;
   }
   // los triángulos grandes: plano, rango y su proyección 2D (typed arrays)
   let cap = 1 << 16;
@@ -327,7 +337,8 @@ export function dedupeEclipse(w) {
     }
   }
   const tC = performance.now();
-  // borrar: el triángulo queda en un punto
+  // lo que se borra y lo que va para atrás, en el orden de siempre (por malla,
+  // como aparecen): se aplica igual armado o traído del disco
   const byMesh = new Map();
   const back = new Map();
   for (let i = 0; i < N; i++) if (dead[i]) {
@@ -336,52 +347,76 @@ export function dedupeEclipse(w) {
     if (!M.has(mi)) M.set(mi, []);
     M.get(mi).push(i);
   }
+  const R = { dead: [], back: [], bn: [] };
+  for (const [mi, list] of byMesh) for (const i of list) R.dead.push(mi, I[i * 4 + 1]);
+  for (const [mi, list] of back) {
+    for (const i of list) {
+      const f = i * 12;
+      R.back.push(mi, I[i * 4 + 1]);
+      R.bn.push(F[f], F[f + 1], F[f + 2], push[i]);
+    }
+  }
+  R.dead = Int32Array.from(R.dead);
+  R.back = Int32Array.from(R.back);
+  R.bn = Float64Array.from(R.bn);
+  aplicar(meshes, R);
+  const ms = Math.round(performance.now() - t0);
+  globalThis.__eclDedupe = { tris: N, killed, pushed, spared, meshes: meshes.length, ms, build: Math.round(tA - t0), reg: Math.round(tB - tA), test: Math.round(tC - tB) };
+  R.stats = { tris: N, killed, pushed, spared, meshes: meshes.length };
+  if (globalThis.__mduDedupeHuella === true) globalThis.__eclDedupe.fin = huellaFin(meshes);
+  cacheGuardar('eclipse', 'dedupe', huella, R);
+  return globalThis.__eclDedupe;
+}
+
+// (para las pruebas: cómo quedaron las mallas que mira, armado o del disco)
+const huellaFin = (meshes) => cacheHuella(meshes.map(({ o }) => [o.geometry.attributes.position.array, o.geometry.index?.array]));
+
+// Borra (el triángulo queda en un punto) y corre para atrás lo que dice R.
+function aplicar(meshes, R) {
   // las de atrás: cada vértice una vez, en el espacio de la malla
   const inv = new THREE.Matrix4();
   const nl = new THREE.Vector3();
-  for (const [mi, list] of back) {
-    const o = meshes[mi].o;
-    const geo = o.geometry;
-    const pos = geo.attributes.position;
-    const idx = geo.index;
-    inv.copy(o.matrixWorld).invert();
-    const moved = new Set();
-    for (const i of list) {
-      const f = i * 12;
-      const t = I[i * 4 + 1];
-      // la normal al espacio de la malla (sin escala rara: las del layout no tienen)
-      nl.set(F[f], F[f + 1], F[f + 2]).transformDirection(inv).multiplyScalar(-push[i]);
-      for (let v = 0; v < 3; v++) {
-        const vi = idx ? idx.getX(t * 3 + v) : t * 3 + v;
-        if (moved.has(vi)) continue;
-        moved.add(vi);
-        pos.setXYZ(vi, pos.getX(vi) + nl.x, pos.getY(vi) + nl.y, pos.getZ(vi) + nl.z);
-      }
+  let cur = -1;
+  let pos = null;
+  let idx = null;
+  let moved = null;
+  for (let k = 0; k < R.back.length / 2; k++) {
+    const mi = R.back[k * 2];
+    const t = R.back[k * 2 + 1];
+    if (mi !== cur) {
+      if (pos) pos.needsUpdate = true;
+      cur = mi;
+      const o = meshes[mi].o;
+      pos = o.geometry.attributes.position;
+      idx = o.geometry.index;
+      inv.copy(o.matrixWorld).invert();
+      moved = new Set();
     }
-    pos.needsUpdate = true;
+    // la normal al espacio de la malla (sin escala rara: las del layout no tienen)
+    nl.set(R.bn[k * 4], R.bn[k * 4 + 1], R.bn[k * 4 + 2]).transformDirection(inv).multiplyScalar(-R.bn[k * 4 + 3]);
+    for (let v = 0; v < 3; v++) {
+      const vi = idx ? idx.getX(t * 3 + v) : t * 3 + v;
+      if (moved.has(vi)) continue;
+      moved.add(vi);
+      pos.setXYZ(vi, pos.getX(vi) + nl.x, pos.getY(vi) + nl.y, pos.getZ(vi) + nl.z);
+    }
   }
-  for (const [mi, list0] of byMesh) {
-    const list = list0.map((i) => I[i * 4 + 1]);
-    const geo = meshes[mi].o.geometry;
-    const idx = geo.index;
-    if (idx) {
-      for (const t of list) {
-        const v = idx.getX(t * 3);
-        idx.setX(t * 3 + 1, v);
-        idx.setX(t * 3 + 2, v);
-      }
-      idx.needsUpdate = true;
+  if (pos) pos.needsUpdate = true;
+  for (let k = 0; k < R.dead.length / 2; k++) {
+    const geo = meshes[R.dead[k * 2]].o.geometry;
+    const t = R.dead[k * 2 + 1];
+    const ix = geo.index;
+    if (ix) {
+      const v = ix.getX(t * 3);
+      ix.setX(t * 3 + 1, v);
+      ix.setX(t * 3 + 2, v);
+      ix.needsUpdate = true;
     } else {
-      const pos = geo.attributes.position;
-      for (const t of list) {
-        const x = pos.getX(t * 3), y = pos.getY(t * 3), z = pos.getZ(t * 3);
-        pos.setXYZ(t * 3 + 1, x, y, z);
-        pos.setXYZ(t * 3 + 2, x, y, z);
-      }
-      pos.needsUpdate = true;
+      const p = geo.attributes.position;
+      const x = p.getX(t * 3), y = p.getY(t * 3), z = p.getZ(t * 3);
+      p.setXYZ(t * 3 + 1, x, y, z);
+      p.setXYZ(t * 3 + 2, x, y, z);
+      p.needsUpdate = true;
     }
   }
-  const ms = Math.round(performance.now() - t0);
-  globalThis.__eclDedupe = { tris: N, killed, pushed, spared, meshes: meshes.length, ms, build: Math.round(tA - t0), reg: Math.round(tB - tA), test: Math.round(tC - tB) };
-  return globalThis.__eclDedupe;
 }

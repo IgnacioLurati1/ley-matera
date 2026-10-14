@@ -5,6 +5,7 @@ import { readyBossSkins } from '../entities/bossSkin';
 import { hasRetired, keepOf, flushRetired } from '../core/sceneFlush';
 import { keyLabel } from '../core/controls';
 import { settleMemory } from '../core/memSettle';
+import { cacheAbrir } from '../core/cacheDisco';
 
 // Llegada a un mapa: la carga del principio (arma el mapa elegido), el cambio
 // de mapa en el título y la entrada a la partida. En línea, el anfitrión
@@ -133,6 +134,9 @@ const frame = () =>
 const infoOf = (id) => MAP_LIST.find((m) => m.id === id) || { id, name: id, sub: '' };
 // El mapa elegido con su modo (el Challenge de la torre lleva su nombre y su línea).
 const labelOf = (g) => {
+  // (el rush de jefes: el mapa y, abajo, qué jefe es; core/bossRush.js)
+  const rush = g.rush?.label?.();
+  if (rush) return rush;
   const info = infoOf(g.mapId);
   const md = MAP_MODES[g.mapId]?.find((m) => m.id === g.modeNow && m.id !== 'story');
   return md ? { ...info, name: `${info.name} · ${md.name}`, sub: md.sub } : info;
@@ -170,7 +174,10 @@ function showZombies(g) {
 // con lo escondido incluido (los mates de la caja y de las paredes, la Luz Mala).
 // También el mate en la mano, que va en su propia escena.
 // (Game.applyQuality la vuelve a llamar si cambia la calidad en plena partida.)
-export async function compile(g) {
+// late = false (core/bossRush.js, la arena de fondo con las cartas a la
+// vista): sin lo que traba al terminar —usar cada programa y soltar lo del
+// mapa anterior—; lo hace la compilación de la entrada, ya en negro.
+export async function compile(g, { late = true } = {}) {
   const R = g.renderer;
   const prev = R.getRenderTarget();
   R.setRenderTarget(g.post?.composer?.renderTarget1 || prev);
@@ -210,7 +217,7 @@ export async function compile(g) {
       g.weapons.vmScene.add(extra);
       jobs.push(R.compileAsync(g.weapons.vmScene, g.weapons.vmCamera));
       // (con todo a la vista: lo que el mapa nuevo usa, para soltar lo del viejo)
-      if (hasRetired()) keep = keepOf(g);
+      if (late && hasRetired()) keep = keepOf(g);
       // en el gaucho life (el penal arranca ahí) la mano lleva su luz: otra
       // luz puntual en la escena del mate, y todo lo de la mano se recompilaba
       // al arrancar. Se compila también con esa luz (compile arma los
@@ -239,7 +246,7 @@ export async function compile(g) {
   g.powerups?.releaseWarm?.(pups);
   // lo del mapa anterior que este no usa (core/sceneFlush)
   if (keep) g.flushed = flushRetired(keep);
-  usePrograms(g);
+  if (late) usePrograms(g);
 }
 
 // Cada programa compilado, usado una vez acá (en la carga). La primera vez que
@@ -535,6 +542,91 @@ export default class Arrival {
     this.run = 0;
     this.active = false;
     this.switching = false;
+    // (el rush de jefes: la arena siguiente armada de fondo, y la entrada a
+    // ella sin la pantalla de carga; preload)
+    this.pre = null;
+    this.quiet = false;
+    // (el rush: cuándo queda la pantalla entera en negro; load espera eso para dibujar)
+    this.blackP = null;
+  }
+
+  // ---------------- el rush de jefes: la arena siguiente, de fondo ----------------
+  // (el usuario, 2026-10-13: "durante la elección de cartas previas al
+  // siguiente jefe, ahí arrancará a cargar la siguiente arena en segundo
+  // plano, para que cuando se termine de cargar, y dé con un fade in en
+  // negro, apareceremos en la siguiente". core/bossRush.js prep)
+  // Con las cartas a la vista y el juego en pausa (core/bossRush.js prepSoon):
+  // armar el mapa (0,4-1,2 s que traban la página: `built`) y compilar (la
+  // placa en paralelo: `ready`). Desde que arranca no se dibuja nada
+  // (switchHold: detrás de las cartas queda el último cuadro de la pelea; el
+  // primer cuadro del mapa nuevo las trabaría). La entrada (start /
+  // startGuest), cuando eligieron todos y ya en negro, usa lo armado sin la
+  // pantalla de carga: espera a `ready`, calienta (load) y entra.
+  preload(id, mode = 'story') {
+    const g = this.g;
+    this.dropPre();
+    const P = { id, key: null, scene: null, ok: false };
+    this.pre = P;
+    let built;
+    P.built = new Promise((r) => (built = r));
+    P.ready = (async () => {
+      try {
+        g.setMap(id, { save: false, mode });
+        P.key = g.mapKey;
+        g.switchHold = true;
+        await frame();
+        await cacheAbrir(id);
+        if (this.pre !== P) return false;
+        // (armado como en la carga de siempre, 'arriving': en pausa,
+        // applyQuality —adentro de buildScene— recompilaba y dibujaba el mapa
+        // entero de fondo con el aviso "Aplicando gráficos…", que se veía en el
+        // negro y trababa las cartas al salir)
+        const st = g.state;
+        g.state = 'arriving';
+        try {
+          g.buildScene();
+        } finally {
+          g.state = st;
+        }
+        P.scene = g.scene;
+        // (el jefe de ronda, como en load: a la vista mientras se compila)
+        const bosses = FEATURES?.boss ? await readyBossSkins(g.zombies, FEATURES.boss === 'mixed' ? ['capataz', 'alcaide'] : FEATURES.boss) : null;
+        if (this.pre !== P || g.scene !== P.scene) return false;
+        bosses?.show(true);
+        let job;
+        try {
+          job = compile(g, { late: false });
+        } finally {
+          bosses?.show(false);
+        }
+        built();
+        await job;
+        // (lo que dibuja —warmWorld, el mapa entero subido a la placa— y las
+        // radios —rayos contra todo el mapa— quedan para load, ya en negro:
+        // con las cartas a la vista trababan)
+        P.ok = this.pre === P;
+      } catch (err) {
+        console.error(err);
+      } finally {
+        built();
+      }
+      return P.ok;
+    })();
+    return P;
+  }
+
+  // La arena de fondo, si es la del mapa de ahora (la entrada no la vuelve a
+  // armar ni muestra la pantalla de carga).
+  usePre() {
+    const P = this.pre;
+    return P && P.key === this.g.mapKey && (!P.scene || P.scene === this.g.scene) ? P : null;
+  }
+
+  // Se suelta la de fondo (se entró, se salió del rush, se cortó todo).
+  dropPre() {
+    if (!this.pre) return;
+    this.pre = null;
+    this.g.switchHold = false;
   }
 
   // ---------------- cambio de mapa en el título ----------------
@@ -551,7 +643,7 @@ export default class Arrival {
         const key = g.mapKey;
         const info = labelOf(g);
         const t0 = performance.now();
-        this.screen.open({ name: info.name, sub: info.sub, image: postalOf(id), quick: true });
+        this.screen.open({ name: info.name, sub: info.sub, image: postalOf(id), quick: true, map: id });
         this.screen.progress(0.1, `Viajando a ${info.name}…`);
         // (la postal ya decodificada antes de trabar armando el mapa: postalReady)
         if (globalThis.__mduNoPostalWarm !== true) await Promise.race([postalReady(id), later(1500)]);
@@ -567,6 +659,9 @@ export default class Arrival {
         // tapado por la postal—: cada programa que dibujaba antes de que la placa
         // terminara lo esperaba ahí, ~4 s en Eclipse. __mduNoSwitchHold: como antes)
         g.switchHold = globalThis.__mduNoSwitchHold !== true;
+        // (lo que cargas anteriores ya armaron de este mapa: core/cacheDisco)
+        await cacheAbrir(id);
+        if (g.state !== 'title' || g.mapKey !== key) continue;
         try {
           g.buildScene();
           built = key;
@@ -597,6 +692,9 @@ export default class Arrival {
   // restart: el fast restart (sin la cinemática de entrada).
   async start(build, { restart = false } = {}) {
     const g = this.g;
+    // (el rush: la arena ya armada de fondo; sin la pantalla de carga)
+    this.quiet = !!this.usePre();
+    if (this.quiet) build = false;
     const token = this.begin();
     this.noIntro = restart;
     // el clic en "Jugar" sirve para capturar el mouse desde ya
@@ -614,13 +712,15 @@ export default class Arrival {
       this.checkAll();
       return;
     }
-    await later(Math.max(0, MIN_SHOW - (performance.now() - this.opened)));
+    if (!this.quiet) await later(Math.max(0, MIN_SHOW - (performance.now() - this.opened)));
     if (token === this.run) this.go();
   }
 
   // Invitado: el anfitrión dio la orden de arrancar.
   async startGuest(build, restart = false) {
     const g = this.g;
+    this.quiet = !!this.usePre();
+    if (this.quiet) build = false;
     const token = this.begin();
     this.noIntro = restart;
     this.renderPlayers();
@@ -647,7 +747,8 @@ export default class Arrival {
     g.hud.show(false);
     const info = labelOf(g);
     const tip = TIPS[Math.floor(Math.random() * TIPS.length)]();
-    this.screen.open({ name: info.name, sub: info.sub, image: postalOf(g.mapId), tip });
+    // (el rush, de arena en arena: en negro, sin la postal; core/bossRush.js)
+    if (!this.quiet) this.screen.open({ name: info.name, sub: info.sub, image: postalOf(g.mapId), tip, map: g.mapId });
     this.opened = performance.now();
     return token;
   }
@@ -659,9 +760,18 @@ export default class Arrival {
     await frame();
     await frame();
     if (token !== this.run) return false;
+    // (el rush: la arena armada de fondo mientras se elegían las cartas; si no
+    // terminó, se la espera acá, en negro. Si no llegó a armarse, se arma)
+    const P = this.quiet ? this.pre : null;
+    if (P) {
+      await P.ready;
+      if (token !== this.run) return false;
+      if (P.scene !== g.scene) build = true;
+    }
     if (build) {
       this.screen.progress(0.2, 'Armando el mapa…');
       await frame();
+      await cacheAbrir(g.mapId);
       if (token !== this.run) return false;
       g.buildScene();
     }
@@ -703,14 +813,22 @@ export default class Arrival {
     // lo que la cinemática de entrada necesita ya bajado (los clips y los
     // cuerpos de verdad): la primera vez arrancaba con los muñecos de piezas
     // (ui/Intro ready; hasta 15 s; globalThis.__mduNoIntroWait: como antes)
-    if (globalThis.__mduNoIntroWait !== true && g.intro?.ready) {
+    // (el rush entra sin la cinemática: ni se la espera ni se la calienta)
+    if (globalThis.__mduNoIntroWait !== true && g.intro?.ready && !P) {
       await g.intro.ready();
       if (token !== this.run) return false;
     }
     await compile(g);
     if (token !== this.run) return false;
     // un cuadro desde cada toma de la cinemática de entrada (que no se trabe al pasar)
-    g.intro?.warm();
+    if (!P) g.intro?.warm();
+    // (el rush: lo que dibuja, recién con la pantalla entera en negro —el
+    // fundido arrancó cuando eligieron todos: core/bossRush.js travel—)
+    if (P && this.blackP) {
+      await this.blackP;
+      if (token !== this.run) return false;
+    }
+    this.blackP = null;
     // un cuadro desde donde se aparece: texturas y sombras ya en la placa
     g.player.updateCamera(g.camera);
     // (antes, todo el mapa: lo que no se ve desde acá tampoco traba después)
@@ -721,6 +839,8 @@ export default class Arrival {
     g.render(0.016);
     bosses?.show(false);
     doneAv?.();
+    // (la de fondo ya está usada: el bucle vuelve a dibujar)
+    if (P && this.pre === P) this.dropPre();
     if (!postcards.has(g.mapId)) {
       warmTitle(g);
       snapPostcard(g, g.mapId);
@@ -808,8 +928,13 @@ export default class Arrival {
     clearTimeout(this.timeout);
     this.screen.toBlack();
     g.audio.resume();
-    g.audio.sip();
-    await later(SIP_MS);
+    // (el rush, de arena en arena: ya está en negro y entra derecho, sin el sorbo)
+    const quiet = this.quiet;
+    this.quiet = false;
+    if (!quiet) {
+      g.audio.sip();
+      await later(SIP_MS);
+    }
     if (token !== this.run) return;
     this.active = false;
     if (g.net?.guest) {
@@ -835,6 +960,9 @@ export default class Arrival {
     clearTimeout(this.timeout);
     this.active = false;
     this.going = false;
+    this.quiet = false;
+    this.blackP = null;
+    this.dropPre();
     this.screen.close();
   }
 }

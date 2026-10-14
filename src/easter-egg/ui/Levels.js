@@ -11,6 +11,9 @@ import { zombieCount, dogCount } from '../config/rules';
 import { rankSvg, pesoSvg } from './rankIcons';
 import { unlocksAt, KIND_NAME } from './unlocks';
 import { eggsDone, eggsTotal } from '../core/eggs';
+import { mateK } from '../core/diaDelMate';
+// lo que subió cada mate de la armería en la partida (core/armas.js; el usuario, 2026-10-12)
+import * as Armas from '../core/armas';
 import './levels.css';
 
 const fmt = (n) => Math.round(n).toLocaleString('es-AR');
@@ -36,6 +39,8 @@ const WHY = [
   ['buys', 'Compras'],
   ['boards', 'Ventanas'],
   ['revives', 'Compañeros levantados'],
+  // (el premio de ganar el rush de jefes entero: core/bossRush.js)
+  ['rush', 'Rush de jefes'],
   ['egg', 'Easter egg'],
   ['super', 'Super easter egg'],
 ];
@@ -78,6 +83,7 @@ export default class Levels {
 
   // ---------- durante la partida ----------
   newGame() {
+    Armas.nuevaPartida();
     const r = P.rank();
     this.run = { from: { level: r.level, prestige: r.prestige, xp: r.xp }, by: {}, total: 0, ups: [], pesos: 0, boards: 0, boardRound: 0, part: 0, ended: false };
     P.askPersist();
@@ -89,6 +95,10 @@ export default class Levels {
     if (!this.run) this.newGame();
     // la empanada del Patrón: experiencia doble un rato (entities/Empanadas)
     n *= g.emp?.xpMult?.() ?? 1;
+    // el Día del Mate (30/11): el doble de experiencia y de pesos (core/diaDelMate.js;
+    // el usuario, 2026-10-12; __mduDiaDelMate = false lo apaga)
+    const k = mateK();
+    n *= k;
     const R = this.run;
     // (las bajas dan fracciones: se juntan y se anota lo entero)
     R.part += n;
@@ -99,6 +109,11 @@ export default class Levels {
     R.total += whole;
     const ups = P.addXp(whole);
     for (const u of ups) {
+      // (los pesos del nivel, también dobles; el aviso los muestra ya sumados)
+      if (k > 1 && u.pesos) {
+        P.addPesos(u.pesos * (k - 1));
+        u.pesos *= k;
+      }
       R.ups.push(u);
       R.pesos += u.pesos;
     }
@@ -143,9 +158,16 @@ export default class Levels {
     if (challenge) return this.gain(P.XP.challenge, 'egg');
     const first = P.markEggXp(g.mapId);
     this.gain(P.XP.egg * (first ? 2 : 1), 'egg');
-    const n = first ? P.PESOS.eggFirst : P.PESOS.egg;
+    this.earnPesos(first ? P.PESOS.eggFirst : P.PESOS.egg);
+  }
+
+  // Pesos ganados jugando: al perfil y al resumen de la partida (el Día del
+  // Mate, dobles: core/diaDelMate.js). Devuelve cuántos fueron.
+  earnPesos(n) {
+    n *= mateK();
     P.addPesos(n);
     if (this.run) this.run.pesos += n;
+    return n;
   }
 
   superEgg() {
@@ -153,8 +175,7 @@ export default class Levels {
     this.gain(P.XP.superEgg, 'super');
     // y 100 pesos (y el Mate Supremo en la caja: core/eggs supremoOn)
     if (!P.takeSuperPesos()) return;
-    P.addPesos(P.PESOS.superEgg);
-    if (this.run) this.run.pesos += P.PESOS.superEgg;
+    this.earnPesos(P.PESOS.superEgg);
   }
 
   // Fin de la partida (muerte o victoria): a veces un peso de más en las
@@ -169,11 +190,7 @@ export default class Levels {
       // desde la ronda 10: 15% y +2% por ronda (hasta 60%); desde la 25, uno seguro
       let n = Math.random() < Math.min(0.6, 0.15 + (r - 10) * 0.02) ? 1 : 0;
       if (r >= 25) n++;
-      if (n) {
-        P.addPesos(n);
-        R.pesos += n;
-        R.drop = n;
-      }
+      if (n) R.drop = this.earnPesos(n);
     }
     if (R.total > 0) P.countGame();
     return R;
@@ -196,6 +213,12 @@ export default class Levels {
     if (!this.queue.length || g.state !== 'playing') {
       this.queue.length = 0;
       this.showing = false;
+      return;
+    }
+    // (una escena que pide silencio —ui/finEclipseBlend, holdToasts— lo deja para cuando termine)
+    if (g.ee?.scene?.cine?.holdToasts) {
+      this.showing = true;
+      setTimeout(() => this.nextToast(), 1000);
       return;
     }
     this.showing = true;
@@ -263,6 +286,7 @@ export default class Levels {
       <ul class="mdu-xp__by">${rows.join('')}</ul>
       ${nUps || R.pesos ? `<p class="mdu-xp__ups">${nUps ? `¡Subiste ${nUps} ${nUps > 1 ? 'niveles' : 'nivel'}!` : ''}${R.pesos ? ` <span>${pesoSvg(18)} +${R.pesos} ${R.pesos > 1 ? 'pesos' : 'peso'} para la pulpería</span>` : ''}</p>` : ''}
       ${news.length ? `<div class="mdu-xp__new">${news.map((x) => `<span class="mdu-xp__chip mdu-xp__chip--${x.kind}">${KIND_NAME[x.kind] || 'Nuevo'}: <b>${x.name}</b></span>`).join('')}</div>` : ''}
+      ${armasHtml()}
       ${to.canPrestige ? '<p class="mdu-xp__ups">Llegaste al nivel 55: ya podés prestigiar desde el menú (Niveles).</p>' : ''}`;
     this.animate(box, R, to);
   }
@@ -314,4 +338,13 @@ export default class Levels {
     };
     this.anim = requestAnimationFrame(tick);
   }
+}
+
+// Una línea por mate de la armería: cuánto subió en la partida y en qué nivel
+// quedó (core/armas.js partida; "Mate Porongo +340 · Nivel 6").
+function armasHtml() {
+  const list = Armas.partida();
+  if (!list.length) return '';
+  const row = (a) => `<li class="${a.to > a.from ? 'is-up' : ''}"><span>${a.name}</span><b>+${fmt(Math.round(a.pts))} · Nivel ${a.to}</b></li>`;
+  return `<ul class="mdu-xp__by mdu-xp__armas">${list.map(row).join('')}</ul>`;
 }

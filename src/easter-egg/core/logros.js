@@ -40,6 +40,13 @@ const GENERAL = [
   { id: 'lvl55', name: 'Gaucho completo', desc: 'Llegá al nivel 55.', icon: 'star', tier: 'oro' },
   { id: 'prest', name: 'Prestigio', desc: 'Prestigiá por primera vez.', icon: 'sun', tier: 'oro' },
   { id: 'super', name: 'Super easter egg', desc: 'Todos los easter eggs.', icon: 'egg', tier: 'platino' },
+  // ganar el rush de jefes entero (core/bossRush.js; el usuario, 2026-10-12).
+  // Sin el modo (globalThis.__mduSinRush = true) no se lista.
+  ...(globalThis.__mduSinRush === true ? [] : [{ id: 'rush', name: 'Ni uno en pie', desc: 'Ganá el rush de jefes.', icon: 'crown', tier: 'platino' }]),
+  // ganar el Boss Rush Mayhem (core/bossRush.js MAYHEM_PREMIO; el usuario,
+  // 2026-10-13: "el doble que el rush normal más logro"). Sin el Mayhem
+  // (__mduSinMayhem) o con __mduMayhemPremioViejo, no se lista.
+  ...(globalThis.__mduSinRush === true || globalThis.__mduSinMayhem === true || globalThis.__mduMayhemPremioViejo === true ? [] : [{ id: 'mayhem', name: 'Ni el diablo', desc: 'Ganá el Boss Rush Mayhem.', icon: 'horns', tier: 'platino' }]),
 ];
 
 // Lo de cada mapa: el easter egg, la ronda 20 y los anunciados.

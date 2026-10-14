@@ -27,6 +27,15 @@ export const ACTIONS = [
   { id: 'shield', label: 'Escudo adelante', key: 'KeyZ' },
   { id: 'vida', label: 'Gaucho life (el penal)', key: 'KeyX' },
   { id: 'empanada', label: 'Comer la empanada (las que se usan)', key: 'KeyB' },
+  // (el especialista del Mate 47: weapons/lanzapava.js)
+  { id: 'lanzapava', label: 'Lanzapava (Mate 47 al nivel 20)', key: 'KeyN' },
+  // (la habilidad de las cartas del rush de jefes: core/rushBuild.js; la Y
+  // es la que quedaba libre cerca de la mano izquierda)
+  { id: 'habilidad', label: 'Habilidad (rush de jefes)', key: 'KeyY' },
+  // (las dos prismáticas que se usan: core/rushPrisma.js. Cada una su tecla,
+  // aunque tengas habilidad; el 5 y el 6, al lado de los mates 1-3 y la pava)
+  { id: 'heredero', label: 'Heredero del caos (rush de jefes)', key: 'Digit5' },
+  { id: 'resurgir', label: 'Resurgir del mate (rush de jefes)', key: 'Digit6' },
   // (la Furia Cósmica del Desgarrador mejorado: weapons/Desgarrador.js. Solo
   // con el mapa de Eclipse Matero prendido: mientras está en obra no aparece en
   // el menú de controles de nadie)

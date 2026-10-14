@@ -45,6 +45,27 @@ export const MAP_MODES = {
     { id: 'story', name: 'Historia', sub: 'Las Revelaciones: Martín Fierro, la Voz y el Infierno Matero' },
     { id: 'challenge', name: 'Challenge', sub: 'Sin historia ni ayuda: pisos sin centro, muertos que corren y la Supernova arriba de todo' },
   ],
+  // Zombies gauchescos (el usuario, 2026-10-13; entities/esteros/Gauchescos.js,
+  // config/maps/esteros.js gauchescos()). globalThis.__mduSinGauchescos = true: sin el modo
+  ...(globalThis.__mduSinGauchescos === true
+    ? {}
+    : {
+        esteros: [
+          { id: 'story', name: 'Historia', sub: 'El pacto del Gauchito Gil y el Luisón' },
+          { id: 'gauchescos', name: 'Zombies gauchescos', sub: 'Uno humano, los demás zombis. En línea, de 2 o más' },
+        ],
+      }),
+  // Porteño encubierto (el usuario, 2026-10-13: el Among Us del penal;
+  // entities/penal/Porteno.js, config/maps/penal.js porteno()).
+  // globalThis.__mduSinPorteño = true: sin el modo
+  ...(globalThis.__mduSinPorteño === true
+    ? {}
+    : {
+        penal: [
+          { id: 'story', name: 'Historia', sub: 'Los tres gauchos presos y el Gauchito Gil' },
+          { id: 'porteno', name: 'Porteño encubierto', sub: 'Gauchos y un policía disfrazado. En línea, de 4 a 10' },
+        ],
+      }),
 };
 export const modeOf = (id, mode) => (MAP_MODES[id]?.some((m) => m.id === mode) ? mode : 'story');
 
@@ -94,7 +115,9 @@ export function useMap(id, mode = 'story') {
   MAP_ID = MAPS[id] ? id : 'molino';
   MODE = modeOf(MAP_ID, mode);
   // el otro modo: los mismos datos con lo que cambia encima
-  const m = MODE !== 'story' && base.challenge ? { ...base, ...base.challenge() } : base;
+  // (el modo con su nombre: esteros.gauchescos(); si no, el challenge() de la torre)
+  const over = MODE !== 'story' ? base[MODE] || base.challenge : null;
+  const m = over ? { ...base, ...over() } : base;
   ({ MAP_W, MAP_H, WALL_H, ZONES, START_ZONE, PLAYER_START, WINDOWS, RISERS, WALL_BUYS, PERK_SPOTS, POWER, PAP, BOX_SPOTS, BOX_START, LIGHTS, EE, PROPS, ACT, CRITTERS, FEATURES, FIRES, TITLE_CAM, TEXT, SKY } = m);
   // las puertas se copian: el mundo les cuelga sus cajas de colisión
   DOORS = m.DOORS.map((d) => ({ ...d }));

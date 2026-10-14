@@ -623,6 +623,9 @@
   animation: mdu-float 0.9s ease-out forwards;
 }
 .mdu-popups span.is-neg { color: var(--red-hi); }
+/* los "+10" que se reusan (ui/Hud.js popPoints): quietos y sin verse hasta que salen */
+.mdu-popups span.mdu-pp { opacity: 0; animation: none; }
+.mdu-popups span.mdu-pp.is-on { animation: mdu-float 0.9s ease-out forwards; }
 @keyframes mdu-float {
   from { opacity: 1; transform: translate(0, 0); }
   to { opacity: 0; transform: translate(var(--dx), var(--dy)); }

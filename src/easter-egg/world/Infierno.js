@@ -5,6 +5,7 @@ import { mesh, cylGeo, boxGeo } from './props';
 import { toTexture } from '../core/textures';
 import { EE } from '../config/map';
 import { maxAlive } from '../config/rules';
+import { municionDelRush } from '../core/rushPelea';
 
 // El Infierno Matero: la caverna adonde caen los que subieron la escalera
 // divina. Queda lejos de la torre (al este), encerrada en roca, con ríos de
@@ -586,8 +587,12 @@ export default class Infierno extends Arena {
     this.setWard(false);
     this.landFx(F.land.x, F.land.z);
     this.send({ land: [+F.land.x.toFixed(2), +F.land.z.toFixed(2)] });
-    g.powerups.bag.push('maxammo');
-    g.powerups.drop(tmpV.set(this.A.x + (Math.random() - 0.5) * 6, this.A.y || 0, this.A.z + 3 + Math.random() * 3).clone(), true);
+    // (en el rush de jefes la munición la reparte el rush, pareja en todas las
+    // peleas: core/rushPelea.js. __mduRushMunicionVieja: también acá)
+    if (!municionDelRush(g)) {
+      g.powerups.bag.push('maxammo');
+      g.powerups.drop(tmpV.set(this.A.x + (Math.random() - 0.5) * 6, this.A.y || 0, this.A.z + 3 + Math.random() * 3).clone(), true);
+    }
     this.setStage(next);
     this.send({ st: next });
     this.slamCd = 8;

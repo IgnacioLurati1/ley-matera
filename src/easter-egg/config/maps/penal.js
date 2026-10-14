@@ -328,12 +328,14 @@ export const PROPS = [
   // (2026-10-05, el usuario: más adentro del muelle, que se pueda pasar por el lado del agua)
   { type: 'cajones', pos: [51.2, 78.4], rot: 0.2 },
   { type: 'cajones', pos: [42.2, 78.5], rot: -0.3 },
-  { type: 'celdaK', pos: [19.0, 51.5], rot: Math.PI / 2, w: 4, d: 4 },
-  { type: 'celdaK', pos: [19.0, 71.0], rot: Math.PI / 2, w: 4, d: 4, open: 1 },
+  // (a, h: la reja de pared a pared y hasta el techo; la de la punta quedaba
+  // medio metro corta de un lado: world/penalProps.js celdaK)
+  { type: 'celdaK', pos: [19.0, 51.5], rot: Math.PI / 2, w: 4, d: 4, a: [-2.5, 1.5], h: 3.4 },
+  { type: 'celdaK', pos: [19.0, 71.0], rot: Math.PI / 2, w: 4, d: 4, open: 1, a: [-2, 2], h: 3.4 },
   // (la del encierro: la reja va centrada en la celda (z 61 a 68) y el hueco
   // de la puerta cae justo en la fila 64 de la grilla, con 1,5 m: antes quedaba
   // a caballo de dos filas y los muertos iban derecho contra los barrotes)
-  { type: 'celdaK', pos: [26.5, 64.5], rot: -Math.PI / 2, w: 7, d: 5, open: 1, door: 1.5, swing: -2.9 },
+  { type: 'celdaK', pos: [26.5, 64.5], rot: -Math.PI / 2, w: 7, d: 5, open: 1, door: 1.5, swing: -2.9, a: [-3.5, 3.5], h: 3.4 },
   { type: 'grilletes', pos: [21.05, 55], rot: Math.PI / 2 },
   { type: 'grilletes', pos: [21.05, 65], rot: Math.PI / 2 },
   { type: 'grilletes', pos: [21.05, 77.5], rot: Math.PI / 2 },
@@ -531,3 +533,52 @@ export const HUECOS = [
   { door: 10, cell: [49, 25], into: [0, -1], panel: { cell: [53, 25], face: [0, -1] }, where: 'a la izquierda de la reja', label: 'OFICINA' },
   { door: 3, cell: [57, 48], into: [1, 0], panel: { cell: [57, 47], face: [1, 0] }, where: 'a la derecha de la reja', label: 'PATIO' },
 ];
+
+// Porteño encubierto (el Among Us del penal, en línea; entities/penal/Porteno.js,
+// los números en config/porteno.js): sin historia, sin muertos de la
+// computadora, sin gaucho life y sin nada que comprar. EE.pz: las tareas (dónde
+// se para el que la hace, adónde mira, cuánto dura), el botón rojo del medio del
+// pabellón y los lugares del pabellón adonde se vuelve (al arrancar y después
+// de cada encierro). Las celdas salen de las marcas de las rejas (world/penalProps.js celdas).
+export function porteno() {
+  return {
+    FEATURES: { ...FEATURES, egg: 'porteno', vida: false, special: null, boss: 'alcaide' },
+    // (con lo del mapa de siempre: el cerro y los demás lo leen al armarse; sin eso, posiciones NaN)
+    EE: {
+      ...EE,
+      pz: {
+        tasks: [
+          { id: 'olla', name: 'Revolver el guiso', zone: 'B', at: [34.8, 43.7], look: [34.8, 42.45, 1.0], secs: 7, fx: 'steam' },
+          { id: 'fogon', name: 'Avivar el fogón', zone: 'C', at: [50.5, 44.1], look: [50.5, 42.6, 0.7], secs: 6, fx: 'fire' },
+          { id: 'mate', name: 'Cebar el mate', zone: 'C', at: [51.2, 47.8], look: [51.2, 46.6, 0.9], secs: 6, fx: 'steam' },
+          { id: 'lena', name: 'Cargar leña', zone: 'S', at: [49.4, 65.4], look: [49.4, 66.8, 0.4], secs: 8, fx: 'dust' },
+          { id: 'yerba', name: 'Cosechar yerba', zone: 'I', at: [56, 65.5], look: [56, 64.2, 0.8], secs: 8, fx: 'leaves' },
+          { id: 'bote', name: 'Amarrar el bote', zone: 'J', at: [31.4, 83], look: [32.7, 83, 0.4], secs: 6, fx: 'splash' },
+          { id: 'red', name: 'Remendar la red', zone: 'J', at: [48.5, 77.6], look: [48.5, 76.3, 0.6], secs: 8, fx: 'dust' },
+          { id: 'tablero', name: 'Arreglar el tablero', zone: 'D', at: [21.5, 31.1], look: [21.5, 30, 1.5], secs: 7, fx: 'sparks' },
+          { id: 'canilla', name: 'Cerrar las canillas', zone: 'D', at: [21.4, 32.8], look: [20.0, 32.8, 1.0], secs: 5, fx: 'splash' },
+          { id: 'reja', name: 'Engrasar las rejas', zone: 'A', at: [44.5, 37.1], look: [44.5, 38.1, 1.2], secs: 6, fx: 'sparks' },
+          { id: 'remedios', name: 'Ordenar los remedios', zone: 'F', at: [42.8, 16.3], look: [43.98, 16.3, 1.3], secs: 7, fx: 'glint' },
+          { id: 'velas', name: 'Prender las velas', zone: 'G', at: [61, 15.2], look: [61, 13.9, 1.0], secs: 6, fx: 'fire' },
+          { id: 'papeles', name: 'Sellar los papeles', zone: 'E', at: [50.6, 19.3], look: [50.5, 18, 0.9], secs: 6, fx: 'glint' },
+          { id: 'pesas', name: 'Levantar las pesas', zone: 'H', at: [66.2, 50.9], look: [66.2, 52.2, 0.5], secs: 7, fx: 'dust' },
+          { id: 'grilletes', name: 'Revisar los grilletes', zone: 'K', at: [22.2, 55], look: [21.05, 55, 1.0], secs: 6, fx: 'glint' },
+        ],
+        button: [46, 34.6],
+        spots: [
+          [34.6, 36.2],
+          [37.3, 36.4],
+          [39.8, 36.2],
+          [41.6, 36.6],
+          [45.4, 36.6],
+          [47.6, 36.2],
+          [50.6, 36.0],
+          [53.4, 35.4],
+          [40.6, 33.2],
+          [50.0, 33.4],
+        ],
+      },
+    },
+    TEXT: { ...TEXT, egg: 'Porteño encubierto', loading: 'Alguien no es quien dice ser…' },
+  };
+}

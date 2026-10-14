@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MAP_W, MAP_H } from '../config/map';
+import { skyVolUniforms, skyVolGlsl, SKYVOL_VERT, SKYVOL_VERT_MAIN, buildVeil } from './skyVol';
 
 // El cielo del castillo: noche despejada de alta montaña, con muchísimas
 // estrellas, la Vía Láctea cruzada por sus nubes oscuras y la luna llena que
@@ -24,11 +25,15 @@ export function buildCastleSky(w) {
       uSun: { value: new THREE.Vector3(-0.86, 0.1, -0.5).normalize() },
       // el eje de la Vía Láctea (normal del gran círculo que dibuja)
       uGal: { value: new THREE.Vector3(0.55, 0.35, -0.76).normalize() },
+      // el cielo con volumen (world/skyVol.js; en 0 queda como siempre)
+      ...skyVolUniforms(new THREE.Vector3(-0.42, 0.66, -0.62).normalize()),
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
+      ${SKYVOL_VERT}
       void main() {
         vDir = normalize(position);
+        ${SKYVOL_VERT_MAIN}
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }`,
     fragmentShader: /* glsl */ `
@@ -44,6 +49,7 @@ export function buildCastleSky(w) {
         return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), f.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + vec2(1.0, 1.0)), f.x), f.y);
       }
       float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * vnoise(p); p *= 2.03; a *= 0.5; } return s; }
+      ${skyVolGlsl(1.4, '0.01, 0.004')}
       void main() {
         vec3 d = normalize(vDir);
         float h = d.y;
@@ -76,11 +82,23 @@ export function buildCastleSky(w) {
         // nubes finitas que tapan las estrellas y se prenden con los relámpagos
         // (bajo el horizonte no hay nubes: el tope evita dividir por cero)
         vec2 cp = d.xz / max(h + 0.25, 0.05) * 1.4 + vec2(uTime * 0.01, uTime * 0.004);
-        float cl = smoothstep(0.62 - uCloud * 0.45, 0.95 - uCloud * 0.2, fbm(cp)) * smoothstep(-0.02, 0.15, h);
-        col += starCol * (star * tw * 0.9 + big * 1.6) * (1.0 - cl);
+        float fb = fbm(cp);
+        float hm = smoothstep(-0.02, 0.15, h);
+        float cl = smoothstep(0.62 - uCloud * 0.45, 0.95 - uCloud * 0.2, fb) * hm;
+        // (cielo con volumen, world/skyVol.js: la capa alta y fina, atrás)
+        float cl2 = uVol > 0.001 && hm > 0.001 ? svHigh(d, hm) * uVol * (1.0 - cl) : 0.0;
+        col += starCol * (star * tw * 0.9 + big * 1.6) * (1.0 - cl) * (1.0 - cl2);
         col *= 1.0 - cl * 0.25;
         vec3 cloudCol = mix(vec3(0.05, 0.06, 0.08), vec3(0.09, 0.02, 0.02), uBlood);
-        col = mix(col, cloudCol, cl * 0.9);
+        float vm = 0.0;
+        if (uVol > 0.001) {
+          col = mix(col, cloudCol * 1.15 + uMoonTint * 0.05 * pow(max(dot(d, uMoonDir), 0.0), 4.0), cl2);
+          if (cl > 0.003) cloudCol = svCloudLit(cloudCol, d, cp, fb, cl, uVol);
+          // (delante de la luna las pinta el velo)
+          vm = svMoonMask() * uVol;
+          col += uMoonTint * svRays(d) * 0.07 * uVol * smoothstep(0.2, 0.65, uCloud) * (1.0 - cl * 0.85);
+        }
+        col = mix(col, cloudCol, cl * 0.9 * (1.0 - vm));
         col += uFlash * (vec3(0.35, 0.4, 0.55) * (0.4 + cl * 1.2)) * smoothstep(-0.1, 0.3, h);
         // la luna roja tiñe todo
         col = mix(col, col * vec3(1.6, 0.5, 0.45) + vec3(0.06, 0.0, 0.0) * above, uBlood * 0.8);
@@ -107,6 +125,14 @@ export function buildCastleSky(w) {
   w.moonDir = moonDir;
   w.moonSprite = moon;
   w.moonHalo = halo;
+  // las nubes delante de la luna (cielo con volumen, world/skyVol.js)
+  w.skyVeil = buildVeil(w, sky, moon.position, {
+    S: 1.4,
+    DR: '0.01, 0.004',
+    colGlsl: 'return mix(vec3(0.05, 0.06, 0.08), vec3(0.09, 0.02, 0.02), uBlood);',
+    flashGlsl: `col += uFlash * vec3(0.35, 0.4, 0.55) * (0.4 + cl * 1.2) * smoothstep(-0.1, 0.3, h);
+      col = mix(col, col * vec3(1.6, 0.5, 0.45) + vec3(0.06, 0.0, 0.0) * smoothstep(-0.02, 0.18, h), uBlood * 0.8);`,
+  });
 }
 
 // La luna con sus mares (manchas grises) pintada en un canvas.

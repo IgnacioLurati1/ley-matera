@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import SliceWalk from './sliceWalk';
 import { downHit, hasGrid, warmGrids } from './flatGrid';
+import StainDecals from './stainDecals';
 
 // Partículas (sangre, chispas, polvo, vapor, fuego, escarcha, almas),
 // haces (trazadoras, rayos), calcos en paredes, luces de destello y restos.
@@ -215,6 +216,9 @@ export default class Effects {
       this.scene.add(m);
       return { mesh: m, next: 0, used: 0 };
     });
+    // sangre y barro que quedan, con relieve y brillo (fx/stainDecals.js; Ultra
+    // y Épica en los mapas de config/quality.js GFX_PLUS.stains)
+    this.stains = new StainDecals(game, this.scene);
 
     // luces de destello reutilizables (cantidad fija para no recompilar shaders).
     // Una sola de verdad; las otras dos (cuando se pisan dos destellos, la
@@ -322,7 +326,8 @@ export default class Effects {
   }
 
   // Impacto contra pared/piso: polvo + chispitas + agujero.
-  impact(hit) {
+  // (mark = false: el polvo sin la marca, en lo fino; world/marcas.js)
+  impact(hit, mark = true) {
     // abajo del agua no hay polvo (el salpicón lo hace fx/Water)
     if (this.g.water?.under(hit.point)) return;
     const n = hit.normal;
@@ -330,7 +335,7 @@ export default class Effects {
     if (Math.random() < 0.5) this.sparks(hit.point, 0.4, n);
     // salpicón de agua/vapor del mate
     this.alpha.spawn(hit.point.x, hit.point.y, hit.point.z, n.x * 0.5, 0.4, n.z * 0.5, { color: [0.45, 0.47, 0.5], size: 0.04, size1: 0.18, life: 0.4, alpha: 0.18, drag: 2, gravity: -0.5 });
-    this.decal(0, hit.point, n, 0.1 + Math.random() * 0.05);
+    if (mark) this.decal(0, hit.point, n, 0.1 + Math.random() * 0.05);
   }
 
   // Chorro de agua hirviendo (Bombilla del Diablo): gotas a lo largo y vapor.
@@ -475,6 +480,12 @@ export default class Effects {
       });
     }
     this.dust({ x: p.x, y: (p.y || 0) + 0.1, z: p.z }, { x: 0, y: 1, z: 0 }, [0.35, 0.18, 0.1], 6);
+    // el que sale de la tierra deja su barro (las manchas que quedan; no en el agua)
+    // (en el piso de verdad: hay quien la llama 20 cm arriba; si el piso queda lejos, nada)
+    if (n >= 16 && this.stains?.on && !((this.g.world?.waterDepth?.(p.x, p.z) || 0) > 0.05)) {
+      const fy = this.g.world?.floorAt ? this.g.world.floorAt(p.x, p.z, (p.y || 0) + 0.5) : p.y || 0;
+      if (Number.isFinite(fy) && Math.abs(fy - (p.y || 0)) < 0.8) this.decal(3, { x: p.x, y: fy + 0.02, z: p.z }, { x: 0, y: 1, z: 0 }, 1.1 + Math.random() * 0.5);
+    }
   }
 
   // (color: el de las almas de ese frasco; cada mapa tiene el suyo)
@@ -551,8 +562,12 @@ export default class Effects {
   }
 
   decal(kind, p, n, size) {
+    // (1 sangre y 3 barro, el nuevo: con las manchas que quedan van a fx/stainDecals;
+    // sin ellas el barro no se dibuja, como antes)
+    const st = (kind === 1 || kind === 3) && this.stains?.on;
+    if (kind === 3 && !st) return;
     const D = this.decals[kind];
-    const m = D.mesh;
+    const m = D?.mesh;
     // en el piso, arriba de lo que tape el piso de la grilla (las tablas de un
     // muelle, una tarima): si no, de cerca el calco queda abajo y se ve de lejos nomás
     let py = p.y;
@@ -562,6 +577,7 @@ export default class Effects {
     }
     tmpV.set(p.x + n.x * 0.005, py + n.y * 0.005, p.z + n.z * 0.005);
     tmpA.set(n.x, n.y, n.z);
+    if (st) return this.stains.add(kind === 3 ? 1 : 0, tmpV, tmpA, size);
     const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), tmpA);
     q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.random() * Math.PI * 2));
     tmpM.compose(tmpV, q, tmpB.set(size, size, size));
@@ -675,6 +691,7 @@ export default class Effects {
   }
 
   clearAll() {
+    this.stains?.clear();
     this.add.count = 0;
     this.alpha.count = 0;
     this.beams.length = 0;
@@ -687,6 +704,7 @@ export default class Effects {
   }
 
   update(dt, camera) {
+    this.stains?.update();
     // (los rayos de los calcos: varios por cuadro con la rejilla, uno sin ella;
     // armar la rejilla de una malla, una por cuadro)
     this.topBudget = globalThis.__mduNoFlatGrid === true ? 1 : 6;

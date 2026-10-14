@@ -240,6 +240,8 @@ export default class WeaponSfx {
       }),
     );
     L.push(src);
+    // la cola del eco, distinta adentro y afuera (core/sentirTiro.js; __mduSinPesoDisparo: sin)
+    a.colaTiro?.(src.out, pos);
     src.onended = () => {
       const i = L.indexOf(src);
       if (i >= 0) L.splice(i, 1);

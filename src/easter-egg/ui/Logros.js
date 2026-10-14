@@ -1,5 +1,6 @@
 import * as L from '../core/logros';
 import './logros.css';
+import './mapFonts.css';
 
 // Los logros en el menú: una tarjeta chica abajo de la del nivel (no es un
 // renglón más de la lista: en pantallas chicas la lista ya llega justo) y su
@@ -24,6 +25,8 @@ const ICONS = {
   friends: '<circle class="f" cx="8.5" cy="8.2" r="3.2"/><circle class="f" cx="15.8" cy="9.2" r="2.8"/><path class="f" d="M2.8 19.5c0-3.5 2.5-6 5.7-6s5.7 2.5 5.7 6z"/><path class="f" d="M12.2 19.5c.2-3 1.6-5.2 3.6-5.2 2.6 0 4.6 2.2 4.6 5.2z"/>',
   hand: '<path class="f" d="M9.5 3.5h5v6h6v5h-6v6h-5v-6h-6v-5h6z" style="fill:#e8483a"/>',
   crown: '<path class="f" d="M3.5 17.5l-1-10 5.2 4.4L12 4.5l4.3 7.4 5.2-4.4-1 10z" style="fill:#f2c14e"/><rect class="f" x="3.5" y="17.5" width="17" height="3" rx=".6" style="fill:#f2c14e"/>',
+  // (el del Boss Rush Mayhem: la corona con cuernos de su botón, ui/PlayMenu.js HORNS)
+  horns: '<path class="f" d="M2.5 17.5L3 5.2l4.4 6.1 2.1-8.1L12 9.4l2.5-6.2 2.1 8.1 4.4-6.1.5 12.3z" style="fill:#b06ad8"/><rect class="f" x="2.5" y="18.4" width="19" height="2.4" rx=".6" style="fill:#b06ad8"/>',
   empanada: '<path class="f" d="M2.8 15.5C3.6 9.6 7.6 6 12 6s8.4 3.6 9.2 9.5z" style="fill:#e0a24a"/><path class="s" d="M4.4 14.4l1.6-1.4 1.4 1.2 1.6-1.4 1.4 1.2 1.6-1.4 1.4 1.2 1.6-1.4 1.4 1.2 1.6-1.4" style="stroke:#8a4a14;stroke-width:1.3"/>',
   shoe: '<path class="f" d="M3 16.5V9.6l3.6 1.2c1.7-.4 3.2 0 4.4 1.1 2.9.7 6.2 1.9 8.4 3.3.9.6 1 1.3.6 1.3z"/><path class="f" d="M2.8 16.4h18.4v2.2H2.8z" style="fill:#c8923a"/><path class="s" d="M.8 11.4h1.6M.8 14h1.6" style="stroke-width:1.4"/>',
   map: '<path class="f" d="M3 6.2l5.6-2.2 6.8 2.2L21 4v13.8l-5.6 2.2-6.8-2.2L3 20z"/><path class="s" d="M8.6 4v13.8M15.4 6.2V20" style="stroke:#2a1a10;stroke-width:1"/>',
@@ -180,7 +183,7 @@ export default class LogrosMenu {
         const list = L.LOGROS.filter((d) => d.cat === m.id);
         const ex = extras.filter((x) => x.map === m.id);
         const n = list.filter((d) => L.has(d.id)).length;
-        return `<section class="mdu-lg__map"><h3>${esc(m.name)}<small>${n} de ${list.length}</small></h3><div class="mdu-lg__list">${list.map((d) => this.item(d, true)).join('')}${ex.map((x) => this.item({ name: x.title, desc: x.text, icon: 'star', tier: 'plata' }, true, x.t)).join('')}</div></section>`;
+        return `<section class="mdu-lg__map" data-map="${esc(m.id)}"><h3>${esc(m.name)}<small>${n} de ${list.length}</small></h3><div class="mdu-lg__list">${list.map((d) => this.item(d, true)).join('')}${ex.map((x) => this.item({ name: x.title, desc: x.text, icon: 'star', tier: 'plata' }, true, x.t)).join('')}</div></section>`;
       }).join('')}</div>`;
     }
     pane.scrollTop = 0;

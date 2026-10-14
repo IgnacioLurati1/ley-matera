@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clampT } from '../bossSkin';
+import { loadMayhemClips, mhSetScale } from './mayhemClips';
 
 // El Espantapájaros con cuerpo de verdad (entities/bossSkin.js; modelo
 // facetado, esqueleto y clips de Meshy, los clips de su biblioteca en el mismo
@@ -111,8 +112,12 @@ const fvq = new THREE.Quaternion();
 function holdFork(S, z, dt) {
   const B = S.bones;
   const st = z?.state;
-  const strike = st === 'slam' || st === 'whipWind' || st === 'whip' ? 1 : 0;
-  const lance = st === 'charge' ? 1 : 0;
+  // (el salto del Mayhem: de lanza en los trancos y el vuelo, por la línea del
+  // brazo cuando clava, y de bastón al levantarse)
+  const Tt = z?.stateT || 0;
+  const jump = st === 'mhSalto';
+  const strike = st === 'slam' || st === 'whipWind' || st === 'whip' || (jump && Tt >= 1.3 && Tt < 2.4) ? 1 : 0;
+  const lance = st === 'charge' || (jump && Tt < 1.3) ? 1 : 0;
   // (atontado, colgado como una bolsa: la horquilla le cuelga de la mano)
   const hang = st === 'stunned' ? 1 : 0;
   const k = Math.min(1, dt * 8);
@@ -587,6 +592,8 @@ export default {
     S.root.add(S.fork);
     S.fk = 0;
     S.fl = 0;
+    // (el salto de ataque del Boss Rush Mayhem: entities/skins/mayhemClips.js)
+    loadMayhemClips(S, 'scarecrow');
     // (sin el cuervo del hombro: pedido del usuario 2026-10-01)
     // el fuego del final: la brasa en la ropa y la paja, y el carbón (uniforms:
     // el programa es uno solo, prendido o apagado)
@@ -615,6 +622,8 @@ export default {
     S.plant = false;
     S.tp = null;
     S.legK = 1;
+    // (lo que avanza el salto del Mayhem, en metros: core/rushMayhem.js saltoAnillo)
+    mhSetScale('scarecrow', s);
     // el final: de rodillas, mira al cielo, en cruz, se cae y se hunde
     const F = g.cine;
     if (F?.sc === z) {
@@ -710,6 +719,14 @@ export default {
         S.dy = z.P.rootY || 0;
         want(S, { crossL: 0, crossR: 0, stiff: 0, wob: 0, limp: 0.7, twitch: 0.3 }, 5);
         return { key: 'ruge', t: clampT(S, 'ruge', 3.9 + Tt) };
+      // el salto de ataque del Boss Rush Mayhem (core/rushMayhem.js saltoAnillo):
+      // tres trancos, salta y cae clavando las manos y la horquilla; lo que avanza
+      // lo pone el juego. Sin el clip (el invitado sin cargarlo): el salto de siempre
+      case 'mhSalto':
+        want(S, { crossL: 0, crossR: 0, flopL: 0.1, flopR: 0.25, stiff: 0, tilt: 0.4, wob: 0.15, twitch: 0 }, 10);
+        // (en el anfitrión, el tiempo con que se movió al jefe: core/rushMayhem.js mhT)
+        if (C.saltoAtaque) return { key: 'saltoAtaque', t: clampT(S, 'saltoAtaque', z.mhT ?? Tt), fade: 0.25 };
+        return { key: 'salto', t: clampT(S, 'salto', CROUCH - 0.15 + Tt * 0.6) };
       case 'emerge':
         S.dy = z.P.rootY || 0;
         want(S, { crossL: 0.35, crossR: 0.35, flopL: 0.8, wob: 0.3 }, 9);

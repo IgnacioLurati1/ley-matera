@@ -2,6 +2,8 @@
 import './core/eclipseFlag';
 import './ui/style.css';
 import './ui/hudThemes.css';
+// la piel de vidrio de los menús (el usuario, 2026-10-13); se prende abajo, en launch
+import './ui/skinVidrio.css';
 import Game from './Game';
 import { playStudioLogo, studioLogoWanted } from './ui/StudioLogo';
 import { softCanvas } from './core/softCanvas';
@@ -11,8 +13,10 @@ import { softCanvas } from './core/softCanvas';
 // reutilizar en cualquier otro sitio con `launch()`.
 
 // Creepster y Special Elite para todo; Rye (La Tapera), Stardos Stencil (el
-// penal) y Cinzel (la torre) para el HUD de cada mapa.
-const FONTS = 'https://fonts.googleapis.com/css2?family=Creepster&family=Special+Elite&family=Rye&family=Stardos+Stencil:wght@400;700&family=Cinzel:wght@500;700;900&family=UnifrakturMaguntia&family=Kaushan+Script&display=swap';
+// penal) y Cinzel (la torre) para el HUD de cada mapa. Manrope y Cormorant
+// Garamond: los menús con la piel de vidrio (ui/skinVidrio.css). (Si cambia esta
+// lista, la versión de escritorio las baja de nuevo con desktop/tools/fonts.mjs.)
+const FONTS = 'https://fonts.googleapis.com/css2?family=Creepster&family=Special+Elite&family=Rye&family=Stardos+Stencil:wght@400;700&family=Cinzel:wght@500;700;900&family=UnifrakturMaguntia&family=Kaushan+Script&family=Manrope:wght@400;500;600;700;800&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap';
 let running = null;
 
 // logo: el logo de Luta Studios ya andando (ui/StudioLogo: lo abre el sitio
@@ -30,6 +34,12 @@ export async function launch({ onExit, signal, logo = null } = {}) {
   root.className = 'mdu-root';
   root.setAttribute('role', 'application');
   root.setAttribute('aria-label', 'Mate der Untoten');
+  // los menús de vidrio con tinta (el usuario, 2026-10-13; ui/skinVidrio.css);
+  // globalThis.__mduMenuViejo = true: la piel de antes
+  if (!globalThis.__mduMenuViejo) root.dataset.skin = 'vidrio';
+  // (el desenfoque del vidrio, medido: ~0,25 ms por cuadro sobre la partida a
+  // 960x540; globalThis.__mduVidrioSinBlur = true lo saca en todas las pantallas)
+  if (globalThis.__mduVidrioSinBlur) root.style.setProperty('--vd-bf', 'none');
   document.body.appendChild(root);
   const prevOverflow = document.documentElement.style.overflow;
   document.documentElement.style.overflow = 'hidden';

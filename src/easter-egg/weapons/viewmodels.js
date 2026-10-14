@@ -132,6 +132,28 @@ function yerba(r, y, M) {
   return m;
 }
 
+// El filtro de la bombilla, entero (el usuario, 2026-10-12: "la parte que
+// entra en la yerba está como cortada"; era media esfera abierta porque
+// quedaba tapada, y en la armería la bombilla sale y entra a la vista): una
+// paleta de bulbo cerrada, chata de frente, con el cuellito que la une al caño
+// y cinco ranuras alrededor. No pasa del radio de la media esfera de antes
+// (así no se sale del mate). r: el caño; R: el radio del filtro.
+// __mduFiltroViejo = true: la media esfera de antes.
+function filtroGeo(r, R) {
+  if (globalThis.__mduFiltroViejo === true) return new THREE.SphereGeometry(R, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2).rotateX(Math.PI);
+  // (en forma de pera: lo que crece para arriba va por adentro del caño, así
+  // para abajo no pasa del radio de antes)
+  const pts = [[r * 0.98, R * 0.46], [r * 1.3, R * 0.4], [r * 1.3, R * 0.33], [R * 0.42, R * 0.12], [R * 0.6, -R * 0.08]];
+  // las ranuras: el bulbo se mete un poco en cinco lugares (de lejos se leen como agujeritos)
+  for (let i = 0; i <= 10; i++) {
+    const y = -R * (0.16 + i * 0.054);
+    const bulge = Math.sin(((i + 0.5) / 11) * Math.PI);
+    pts.push([R * (0.62 + bulge * 0.12) * (i % 2 ? 0.92 : 1), y]);
+  }
+  pts.push([R * 0.6, -R * 0.8], [R * 0.42, -R * 0.93], [R * 0.17, -R * 0.99], [0, -R]);
+  return new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 18).scale(1, 1, 0.7);
+}
+
 // Bombilla: caño, pico curvo y filtro. Devuelve el grupo y la punta.
 function bombilla({ len = 0.24, thick = 1, mat, tilt = VM_POSE.bombTilt, count = 1, spread = 0.02, bend = 0, filter = null }, M, y) {
   const g = new THREE.Group();
@@ -146,8 +168,7 @@ function bombilla({ len = 0.24, thick = 1, mat, tilt = VM_POSE.bombTilt, count =
     // el filtro queda enterrado en la yerba: con las bombillas gruesas no crece
     // más que la boca (si no, al inspeccionar asoma media esfera por arriba)
     // (filter: el radio, para los de cuello finito: si no, el filtro asoma por el costado)
-    const fil = new THREE.Mesh(new THREE.SphereGeometry(filter ?? Math.min(r * 3, 0.017), 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat || M.silver);
-    fil.rotation.x = Math.PI;
+    const fil = new THREE.Mesh(filtroGeo(r, filter ?? Math.min(r * 3, 0.017)), mat || M.silver);
     b.add(fil);
     // pico: tramo corto doblado
     const pico = new THREE.Group();
@@ -166,6 +187,15 @@ function bombilla({ len = 0.24, thick = 1, mat, tilt = VM_POSE.bombTilt, count =
     ring.rotation.x = Math.PI / 2;
     ring.position.y = len * 0.72;
     b.add(ring);
+    // el codo: una bolita en el quiebre del pico (si no, al doblarse queda un
+    // hueco; el usuario, 2026-10-13. __mduSinCodo = true: sin él). Va después
+    // del anillo: weapons/accesorios.js lo trata como lo pegado (largo y grosor)
+    if (globalThis.__mduSinCodo !== true) {
+      const codo = sph(r, mat || M.silver, 10, 8);
+      codo.position.y = len;
+      codo.userData.codo = true;
+      b.add(codo);
+    }
     b.position.set((k - (count - 1) / 2) * spread, y - 0.03, 0.006);
     b.rotation.x = -tilt;
     g.add(b);
@@ -398,7 +428,7 @@ function hornGeo(r0, r1, len, curve = 0.5, seg = 20, rs = 14) {
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
-  return { geo: g, top: path.getPointAt(1), r1 };
+  return { geo: g, top: path.getPointAt(1), r1, path };
 }
 
 // El Mate de la Luz Mala Eterna (el mejorado): no sale con el camuflaje del
@@ -546,6 +576,8 @@ export function buildMate(id, upgraded, T, hand = 'R', camoId = null) {
   };
   const hornR = (h, r0, len) => {
     rAt = (y) => r0 + (h.r1 - r0) * Math.pow(Math.min(1, Math.max(0, y / len)), 0.8);
+    // (el eje curvo de la guampa, para los accesorios de la armería: weapons/accesorios.js)
+    mate.userData.hornPath = h.path;
   };
   // Las guampas son curvas: la boca queda corrida y un poco inclinada. Todo lo
   // de arriba (virola, yerba, hielo) va en este grupo, y la bombilla se corre.
@@ -558,12 +590,16 @@ export function buildMate(id, upgraded, T, hand = 'R', camoId = null) {
     const vir = addVirola(virolaMat, virolaH);
     vir.position.y = -h.top.y;
     mouth.add(vir);
-    mouth.add(yerba(top.r, 0, M));
+    // (la que tapa una yerba de la armería: weapons/accesorios.js)
+    mate.userData.yerba = yerba(top.r, 0, M);
+    mouth.add(mate.userData.yerba);
     return mouth;
   };
   const addVirola = (mat = M.silver, h = 0.012) => {
     const v = lathe([[top.r - 0.001, top.y - h], [top.r + 0.003, top.y - h], [top.r + 0.004, top.y - h / 2], [top.r + 0.003, top.y + 0.002], [top.r - 0.001, top.y + 0.002], [top.r - 0.001, top.y - h]], mat, 24);
     mate.add(v);
+    // (la que tapa una virola de la armería: weapons/accesorios.js)
+    mate.userData.virola = v;
     return v;
   };
 
@@ -832,6 +868,8 @@ export function buildMate(id, upgraded, T, hand = 'R', camoId = null) {
       tea.rotation.x = -Math.PI / 2;
       tea.position.y = 0.08;
       mate.add(tea);
+      // (lo que reemplaza una yerba de la armería: weapons/accesorios.js)
+      mate.userData.te = tea;
       const string = cyl(0.0008, 0.0008, 0.09, M.teabag, 4);
       string.position.set(0.02, 0.12, 0.02);
       string.rotation.z = -0.4;
@@ -1118,7 +1156,17 @@ export function buildMate(id, upgraded, T, hand = 'R', camoId = null) {
 
   // Inclinar: la boca del mate mira hacia adelante y la bombilla apunta al frente.
   const tilt = new THREE.Group();
-  mate.add(cupHand(M, rAt, top.y));
+  const cup = cupHand(M, rAt, top.y);
+  mate.add(cup);
+  // (los accesorios de la armería, weapons/accesorios.js: la forma del mate y
+  // hasta dónde suben los dedos, para no meterse en la mano)
+  let handTop = 0;
+  cup.traverse((o) => {
+    if (!o.isMesh) return;
+    o.geometry.computeBoundingBox();
+    handTop = Math.max(handTop, o.geometry.boundingBox.max.y);
+  });
+  mate.userData.fit = { rAt, top: top.y, r: top.r, hand: handTop };
   // la boca del mate: ahí apunta el chorro del termo al cebar
   const mouth = new THREE.Object3D();
   mouth.position.set(mate.userData.hornTop ? mate.userData.hornTop.x : 0, top.y - 0.004, 0);
@@ -1711,4 +1759,4 @@ export function getMats(T) {
 }
 
 // Las piezas para armar mates en otros archivos.
-export const VM = { mats, lathe, cyl, box, sph, tor, bombilla, cupHand, wrapHand, yerba, profileRadius, topOf, limb, PROFILES };
+export const VM = { mats, lathe, cyl, box, sph, tor, bombilla, filtroGeo, cupHand, wrapHand, yerba, profileRadius, topOf, limb, PROFILES };

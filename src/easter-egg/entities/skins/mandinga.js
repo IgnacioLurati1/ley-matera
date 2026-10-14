@@ -1,4 +1,5 @@
 import { clampT } from '../bossSkin';
+import { loadMayhemClips, RUGE } from './mayhemClips';
 
 // El Mandinga con cuerpo de verdad (entities/bossSkin.js), el jefe de la
 // Salamanca (world/Arena.js). Low poly, con clips propios de la biblioteca de
@@ -50,6 +51,10 @@ export default {
   // el tridente (la pieza 17 de las piezas) en la mano con que pega
   hand: { part: 17, fore: 'RightForeArm', bone: 'RightHand' },
   alias: { whip: 'RightHand' },
+  // (el grito del Boss Rush Mayhem: entities/skins/mayhemClips.js)
+  ready(S) {
+    loadMayhemClips(S, 'mandinga');
+  },
 
   pick(z, { S, dt, g, s }) {
     const st = z.state;
@@ -91,6 +96,12 @@ export default {
       case 'shocked':
       case 'zapped':
         return { key: 'dolor', t: clampT(S, 'dolor', Tt) };
+      // el aviso de un combo del Boss Rush Mayhem (core/rushMayhem.js): quieto,
+      // se encorva y grita con los brazos abiertos (sin el clip: llama a los peones)
+      case 'mhRoar':
+        // (el tridente parado como un bastón: si no, seguía la mano y revoleaba)
+        if (C.ruge) return { key: 'ruge', t: clampT(S, 'ruge', RUGE.t0 + Tt), fade: 0.35, staff: true };
+        return { key: 'invoca', t: clampT(S, 'invoca', Tt * 2.2) };
       case 'chase':
       case 'toLock':
         break;

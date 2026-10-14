@@ -1333,6 +1333,8 @@ export default class GranGuerra extends Arena {
 
   hitGnome(n) {
     const g = this.g;
+    // (las mejoras de daño del rush de jefes: core/rushBuild.js)
+    if (g.rush?.build?.on) n = g.rush.build.gnomo(n);
     g.hud.hitmarker(false);
     g.fx.sparkle(tmpV.copy(this.gnome.pos).setY(this.gnome.pos.y + 0.7), [1, 0.2, 0.1], 6, 0.3);
     if (isHost(g)) this.damageGnome(n);
@@ -1843,7 +1845,8 @@ export default class GranGuerra extends Arena {
     for (const M of this.mines || []) M.grp.removeFromParent();
     this.mines = [];
     for (const z of g.zombies.pool) if (z.active && !z.dead && isHost(g)) g.zombies.kill(z, { type: 'nuke', noPoints: true });
-    g.later(3, () => g.ee.playEnding?.());
+    // (el rush de jefes sigue sin el final: core/bossRush.js)
+    g.later(3, () => g.rush?.down() || g.ee.playEnding?.());
   }
 
   blinkFx(a, b) {

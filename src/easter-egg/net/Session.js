@@ -12,6 +12,7 @@ import { killXp } from '../ui/Levels';
 import { camoFor } from '../weapons/camos';
 import { hellTracer } from '../weapons/maquinaModel';
 import { trailShot } from '../weapons/nuevosFx';
+import * as Armas from '../core/armas';
 
 // Sincronización de la partida. El anfitrión simula todo (zombies, rondas,
 // puertas, caja, clima) y manda 15 fotos por segundo con las posiciones; los
@@ -51,6 +52,8 @@ export default class Session {
     this.moveT = 0;
     this.pts = new Map();
     this.xpq = new Map();
+    // los puntos de nivel de los mates de cada invitado (core/armas.js)
+    this.armq = new Map();
     this.ptsT = 0;
     this.buf = new ArrayBuffer(4096);
     this.view = new DataView(this.buf);
@@ -92,8 +95,16 @@ export default class Session {
   }
 
   // Un invitado liquidó un zombie (el anfitrión lo anota a su nombre).
-  creditKill(id, type, zone, z) {
+  creditKill(id, type, zone, z, wp) {
     this.credit(id, 'kills');
+    // el nivel del mate con que lo bajó (wp: lo dice su 'hit'; se le manda con los puntos)
+    // (un jefe vale más: core/armas.js ARMERIA.jefe)
+    const ap = wp ? Armas.puntos(type, zone, !!z?.boss) : 0;
+    if (ap) {
+      const q = this.armq.get(id) || {};
+      q[wp] = (q[wp] || 0) + ap;
+      this.armq.set(id, q);
+    }
     // su experiencia (se le manda con los puntos)
     this.xpq.set(id, (this.xpq.get(id) || 0) + killXp(this.g.rounds?.round, z, type, zone));
     if (zone === 'head' && (type === 'bullet' || type === 'knife')) this.credit(id, 'heads');
@@ -216,6 +227,8 @@ export default class Session {
         this.pts.clear();
         for (const [id, v] of this.xpq) if (v) this.net.to(id, { t: 'xp', v });
         this.xpq.clear();
+        for (const [id, a] of this.armq) this.net.to(id, { t: 'xpa', a });
+        this.armq.clear();
       }
     } else {
       this.moveT -= dt;
@@ -232,13 +245,16 @@ export default class Session {
       const s = g.weapons.slot;
       // (la hoz de oro, la del bastón del Yasy: si no, los demás veían la común)
       const gold = s?.id === 'hoz' && !!g.player?.baston;
-      const key = s ? `${s.id}|${tierOf(s.up)}|${gold ? 1 : 0}` : '';
+      // (|L: el Mate 47 en modo lanzapava, que los demás ven con la tapa abierta)
+      const lz = !!g.weapons?.lanza?.on;
+      const key = s ? `${s.id}|${tierOf(s.up)}|${gold ? 1 : 0}${lz ? '|L' : ''}` : '';
       this.wpnT -= dt;
       if (key !== this.wpnKey || this.wpnT <= 0) {
         this.wpnKey = key;
         this.wpnT = 4;
         // (c: el camuflaje de la armería, que se ve hasta el Pack-a-Pava)
-        this.share('wpn', { id: this.id, w: s?.id || '', u: s ? tierOf(s.up) : 0, c: gold ? 'oro' : (s && !s.up && camoFor(s.id)) || '' });
+        // (a: los accesorios de la armería, que también se ven: core/armas.js)
+        this.share('wpn', { id: this.id, w: s?.id || '', u: s ? tierOf(s.up) : 0, c: gold ? 'oro' : (s && !s.up && camoFor(s.id)) || '', a: s && !s.temp ? Armas.modelo(s.id).map((x) => (lz && x === 'lanzapava' ? 'lanzapavaAbierta' : x)).join(',') : '' });
       }
     }
     // panel de compañeros
@@ -342,7 +358,8 @@ export default class Session {
   sendSnapshot() {
     const g = this.g;
     const v = this.view;
-    const list = g.zombies.pool.filter((z) => z.active);
+    // (sin los jugadores zombis de Zombies gauchescos: cada compu arma los suyos)
+    const list = g.zombies.pool.filter((z) => z.active && z.gz == null);
     const boss = g.zombies.boss;
     const pomb = g.pombero?.snapshot();
     const crow = g.crow?.snapshot();
@@ -377,7 +394,9 @@ export default class Session {
       v.setInt16(o + 6, Math.round(z.yaw * 5000), true);
       v.setUint8(o + 8, STATES.indexOf(z.state) + 1);
       // (bit 1 en un bicho: yacaré; los bichos no se arrastran)
-      v.setUint8(o + 9, (z.crawler || (z.dog && z.yac) ? 1 : 0) | (z.dead ? 2 : 0) | (SPEEDS.indexOf(z.speedType) << 2) | (z.hidden & (1 << 2) ? 16 : 0) | (z.dog ? 32 : 0) | (z.level ? 64 : 0) | (z.horse ? 128 : 0));
+      // (muerto, el paso ya no importa: esos dos bits dicen para qué lado cae y si le
+      // reventó la cabeza; core/sentirTiro.js z.mduCaida)
+      v.setUint8(o + 9, (z.crawler || (z.dog && z.yac) ? 1 : 0) | (z.dead ? 2 : 0) | ((z.dead && z.mduCaida != null ? z.mduCaida : SPEEDS.indexOf(z.speedType)) << 2) | (z.hidden & (1 << 2) ? 16 : 0) | (z.dog ? 32 : 0) | (z.level ? 64 : 0) | (z.horse ? 128 : 0));
       v.setInt16(o + 10, packY(z.pos.y), true);
       o += ZOMBIE_BYTES;
     }
@@ -456,7 +475,7 @@ export default class Session {
       const y = v.getInt16(o + 10, true) / 100;
       o += ZOMBIE_BYTES;
       seen.add(id);
-      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1) && !(f & 32), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', noHead: !!(f & 16), dog: !!(f & 32), level: !!(f & 64), horse: !!(f & 128), yac: !!(f & 1) && !!(f & 32), y });
+      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1) && !(f & 32), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', caida: (f >> 2) & 3, noHead: !!(f & 16), dog: !!(f & 32), level: !!(f & 64), horse: !!(f & 128), yac: !!(f & 1) && !!(f & 32), y });
     }
     this.g.zombies.pruneRemote(seen);
     if (hasBoss) {
@@ -605,6 +624,9 @@ export default class Session {
       g.addPoints(m.v, null, true);
     });
     net.on('xp', (m) => g.levels?.gain(m.v, 'kills'));
+    // el nivel de los mates (core/armas.js; sumar revisa lo que llega)
+    // (red: también cuentan como bajas para el Lanzapava: weapons/lanzapava.js)
+    net.on('xpa', (m) => Armas.sumar(g, m.a, { red: true }));
     // la tabla de puntos: la plata de un invitado, y la tabla que reparte el anfitrión
     net.on('score', (m, from) => {
       if (!this.host) return;
@@ -695,6 +717,10 @@ export default class Session {
     });
     net.on('shot', (m) => this.remoteShot(m));
     net.on('hit', (m, from) => this.applyRemoteHit(m, from));
+    // el anfitrión confirma una baja del invitado (core/sentirTiro.js)
+    net.on('bj', (m) => g.sentir?.bajaRemota(m));
+    // el anfitrión avisa una baja que le sirve al especialista del invitado (weapons/especialistas.js)
+    net.on('operb', (m) => g.weapons?.oper?.bajaRemota(m));
     net.on('use', (m, from) => this.applyRemoteUse(m, from));
     net.on('ok', (m) => this.applyUseResult(m));
     net.on('ev', (m) => this.applyEvent(m));
@@ -864,8 +890,10 @@ export default class Session {
   }
 
   // ---------------- disparos y daño ----------------
-  sendShot(muzzle, end, kind, upgraded) {
+  // (extra: lo del especialista, weapons/especialistas.js red: n tiros, tc color del trazo, rp/rb el rebote)
+  sendShot(muzzle, end, kind, upgraded, extra) {
     const m = { t: 'shot', pid: this.id, x: +muzzle.x.toFixed(2), y: +muzzle.y.toFixed(2), z: +muzzle.z.toFixed(2), ex: +end.x.toFixed(2), ey: +end.y.toFixed(2), ez: +end.z.toFixed(2), k: kind, u: upgraded ? 1 : 0 };
+    if (extra) Object.assign(m, extra);
     if (this.host) this.net.broadcast(m);
     else this.net.send(m);
   }
@@ -883,7 +911,9 @@ export default class Session {
     // los mates nuevos (weapons/nuevosFx.js): la Llamarada en fuego, el Caótico
     // en grieta de vacío; el cohete del Explosivo llega aparte ('cohete')
     else if (m.k === 'llamarada' || m.k === 'caotico') trailShot(g, { trail: m.k === 'llamarada' ? 'fuego' : 'caos', upgraded: !!m.u }, vis, to);
-    else if (m.k !== 'cohete') g.fx.tracer(vis, to, m.u ? 0xffa0ff : 0xfff0c8);
+    else if (m.k !== 'cohete' && m.tc !== 0xffc640) g.fx.tracer(vis, to, m.tc ?? (m.u ? 0xffa0ff : 0xfff0c8));
+    // (lo del especialista: los tiros de más, la estela dorada, el rebote)
+    if (m.n || m.tc || m.rp || m.cu) g.weapons?.oper?.remoteShot(m, vis, to);
     g.critters?.onNoise(from);
     g.fx.flash(vis, 0xffb060, 6, 0.05, 6);
     g.audio.shot(m.k, vis, !!m.u);
@@ -911,12 +941,18 @@ export default class Session {
       cp: info.cap || undefined,
       zp: info.zap ? 1 : undefined,
       dc: info.decap ? 1 : 0,
+      // (si su tiro revienta cabezas o es de escopeta: core/sentirTiro.js)
+      sf: this.g.sentir?.marcas(info) || undefined,
       // (un potenciador especial: el anfitrión le baja el daño a los jefes)
       pu: info.pup || undefined,
       // (el tope al jefe final de la medialuna de la hoz de oro)
       cp: info.cap || undefined,
       // (el tajo de la hoz: la baja paga como a cuchillo)
       ml: info.melee ? 1 : undefined,
+      // (el mate con que tiró, para su nivel en la armería: core/armas.js)
+      wp: Armas.deQuien(this.g, info.type) || undefined,
+      // (el especialista del tiro: lo que le hace al muerto lo decide el anfitrión; weapons/especialistas.js)
+      es: info.esp || undefined,
     });
   }
 
@@ -938,6 +974,9 @@ export default class Session {
       pup: m.pu,
       cap: m.cp,
       melee: !!m.ml,
+      wp: typeof m.wp === 'string' ? m.wp.slice(0, 24) : undefined,
+      esp: typeof m.es === 'string' ? m.es.slice(0, 16) : undefined,
+      sf: m.sf | 0,
       point: new THREE.Vector3(m.x, m.y, m.w),
       dir: new THREE.Vector3(m.dx, 0, m.dz),
       noPoints: true,
@@ -1198,6 +1237,15 @@ export default class Session {
       case 'cohete':
         g.weapons?.ghostRocket(m);
         break;
+      // la pavita del Lanzapava de otro jugador (weapons/lanzapava.js; solo se ve)
+      case 'lpava':
+        g.weapons?.lanza?.ghost(m);
+        break;
+      // lo de los especialistas que ven todos: el fuego, el tilo, el vacío, la
+      // bombilla a voluntad, el Camionero caliente (weapons/especialistas.js)
+      case 'oper':
+        g.weapons?.oper?.evento(m);
+        break;
       // la Piedra de Molino o el Mate Dragón de otro jugador (solo se ve)
       case 'esp':
         g.weapons?.esp?.ghost(m);
@@ -1257,7 +1305,7 @@ export default class Session {
         break;
       // el mate que tiene en la mano un compañero (net/Avatars lo dibuja)
       case 'wpn':
-        if (m.id !== this.id) this.wpn.set(m.id, { w: m.w || '', u: m.u | 0, c: typeof m.c === 'string' ? m.c.slice(0, 24) : '' });
+        if (m.id !== this.id) this.wpn.set(m.id, { w: m.w || '', u: m.u | 0, c: typeof m.c === 'string' ? m.c.slice(0, 24) : '', a: typeof m.a === 'string' ? m.a.slice(0, 120) : '' });
         break;
       // lo que hace un compañero (Session.act; net/gauchoSkin lo muestra)
       case 'act': {
@@ -1372,6 +1420,10 @@ export default class Session {
       case 'win':
         g.win(m);
         break;
+      // el rush de jefes (core/bossRush.js): arranca, el siguiente, ganado
+      case 'rush':
+        g.rush?.onNet(m);
+        break;
       case 'pause':
         g.hostPause(!!m.on);
         break;
@@ -1450,5 +1502,5 @@ export default class Session {
   }
 }
 
-export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn', 'whipWind', 'whip', 'chargeWind', 'charge', 'stunned', 'enrage', 'summon', 'stairs', 'fall', 'boat', 'boatHit', 'howl', 'melting', 'aim', 'shoot', 'burrow', 'emerge', 'reel', 'zapped', 'lurk', 'lurkIn', 'ladder', 'ram', 'dance', 'danceWatch', 'lance', 'sliced'];
+export const STATES = ['approach', 'tear', 'climb', 'chase', 'attack', 'rise', 'dead', 'frozen', 'shocked', 'flung', 'intro', 'slam', 'toLock', 'locking', 'burnrun', 'drop', 'dogspawn', 'whipWind', 'whip', 'chargeWind', 'charge', 'stunned', 'enrage', 'summon', 'stairs', 'fall', 'boat', 'boatHit', 'howl', 'melting', 'aim', 'shoot', 'burrow', 'emerge', 'reel', 'zapped', 'lurk', 'lurkIn', 'ladder', 'ram', 'dance', 'danceWatch', 'lance', 'sliced', 'volteado', 'mhRoar', 'mhSalto'];
 export const SPEEDS = ['walk', 'run', 'sprint'];

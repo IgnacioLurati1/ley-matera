@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { FEATURES, ZONES } from '../config/map';
+import { FEATURES, ZONES, MAP_ID } from '../config/map';
+import { GFX_PLUS, plusOn } from '../config/quality';
+import LitMotes, { MOTE_SPEC } from './litMotes';
 import { SILL, HEAD } from '../world/World';
 import { windowBeams } from './Shafts';
 
@@ -169,6 +171,10 @@ export default class Ambience {
     this.dust.frustumCulled = false;
     this.root.add(this.dust);
     this.center = new THREE.Vector3();
+    // las partículas con luz (fx/litMotes.js; Ultra/Épica en los mapas de
+    // config/quality.js GFX_PLUS.motes): se arman con el mapa (y se compilan
+    // con él) aunque arranquen apagadas, así nunca aparecen tarde
+    this.motes = GFX_PLUS.motes.maps[MAP_ID] && MOTE_SPEC[MAP_ID] ? new LitMotes(game, MOTE_SPEC[MAP_ID], this.root) : null;
   }
 
   // El halo o el cono de una lámpara: su color y, si cambió, si se ve.
@@ -218,6 +224,12 @@ export default class Ambience {
         this.beams.setQuality(this.beamQ);
       }
       this.beams.update(dt, g.camera);
+    }
+    // las partículas con luz reemplazan al polvo de siempre (se funden)
+    if (this.motes) {
+      this.motes.update(dt, plusOn(g, 'motes'));
+      this.dust.material.opacity = 0.2 * (1 - this.motes.fade);
+      this.dust.visible = this.motes.fade < 0.999;
     }
     // el polvo acompaña al jugador: lo que sale de la caja entra por el otro lado
     const p = g.player.pos;

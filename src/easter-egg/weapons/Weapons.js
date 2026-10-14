@@ -25,8 +25,16 @@ import { zombieHealth } from '../config/rules';
 import { startMate } from '../core/eggs';
 import { cherryReady, cherryShock } from './electricCherry';
 import { camoFor, CAMOABLE, setPapMap, tickCamos } from './camos';
+// la armería mejorada: nivel, accesorios y especialista de cada mate (core/armas.js)
+import * as Armas from '../core/armas';
+import { ponerAccesorios } from './accesorios';
+// el Lanzapava, especialista del Mate 47 (weapons/lanzapava.js)
+import { Lanzapava } from './lanzapava';
+// los especialistas de la segunda vuelta (weapons/especialistas.js)
+import { Especialistas } from './especialistas';
 import ShieldHand, { SHIELD_VM } from './shieldHand';
 import { hozBaston } from '../entities/Yasy';
+import { marca } from '../world/marcas';
 import { maquinaSpin, hellTracer } from './maquinaModel';
 // los cuatro mates nuevos de la caja: sus modelos (se registran solos) y sus efectos
 import './nuevosMates';
@@ -204,7 +212,8 @@ const HOZ_COMBO = ['fore', 'back', 'over'];
 // La faka: pose absoluta del cuchillo [x, y, z, rx, ry, rz, -] en cada clave
 // (mismas curvas que la hoz). Toma envión, corta rápido, acompaña y se va.
 // Tajo y revés se van turnando; si hay que tirarse encima del zombie, puñalada.
-const KNIFE_MOVES = {
+// (exportado: el facón del policía de Porteño encubierto, entities/penal/Porteno.js)
+export const KNIFE_MOVES = {
   // tajo: cargado arriba a la derecha, cruza hacia la izquierda y abajo
   tajo: {
     trail: [0.3, 0.54],
@@ -432,6 +441,10 @@ export default class Weapons {
     // el Mate Supremo, el premio de los seis easter eggs (weapons/Supremo.js;
     // arma sus soles y columnas en el grupo escondido de prebuild)
     this.supremo = new Supremo(this);
+    // el Lanzapava del Mate 47 (su especialista: weapons/lanzapava.js)
+    this.lanza = new Lanzapava(this);
+    // los especialistas de la segunda vuelta (weapons/especialistas.js)
+    this.oper = new Especialistas(this);
     // el rayo de oro de la hoz al nivel 3 (weapons/hozBeam.js; sus rayos
     // también esperan en el grupo escondido)
     this.hozBeam = new HozBeam(this);
@@ -506,7 +519,8 @@ export default class Weapons {
   // super easter egg (core/eggs.js).
   startSlot() {
     const id = startMate();
-    return { id, up: 0, mag: WEAPONS[id].mag, reserve: WEAPONS[id].mag * 4 };
+    // (el cargador, con lo que le suman los accesorios: core/armas.js)
+    return { id, up: 0, mag: this.statsOf(id, 0).mag, reserve: WEAPONS[id].mag * 4 };
   }
 
   // Alt+O (Game): cambia en la mano el Porongo por el del Caballero (o al revés).
@@ -515,13 +529,15 @@ export default class Weapons {
     const other = id === 'caballero' ? 'porongo' : 'caballero';
     const s = this.slots.find((x) => x.id === other);
     if (!s) return;
-    Object.assign(s, { id, mag: WEAPONS[id].mag, reserve: Math.max(s.reserve, WEAPONS[id].mag * 4) });
+    Object.assign(s, { id, mag: this.statsOf(id, 0).mag, reserve: Math.max(s.reserve, WEAPONS[id].mag * 4) });
     this.equipModel();
     this.startRaise();
     this.updateHud();
   }
 
   reset() {
+    this.lanza?.reset();
+    this.oper?.reset();
     // el camuflaje del Pack-a-Pava de este mapa y los de la armería (weapons/camos.js)
     setPapMap(this.g.mapId, this.T);
     this.warmCamos();
@@ -557,10 +573,18 @@ export default class Weapons {
     return this.temp || this.slots[this.cur];
   }
 
+  // Las estadísticas de un mate con sus accesorios y su especialista
+  // (core/armas.js; __mduSinAccesorios: las de siempre).
+  statsOf(id, up, slot = null) {
+    return Armas.aplicar(weaponStats(id, up), slot || { id, mag: 0 });
+  }
+
   get stats() {
     const s = this.slot;
     if (!s) return null;
-    const st = weaponStats(s.id, s.up);
+    const st = this.statsOf(s.id, s.up, s);
+    // (los especialistas que cambian según cómo se tira: weapons/especialistas.js)
+    if (st.esp) this.oper?.vivo(st);
     // (con el bastón de oro del Yasy: tajo más ancho y medialuna más fuerte)
     // (el Desgarrador con la Furia Cósmica: más rápido y se corre más)
     if (st.kind === 'cosmic' && this.cosmic) return this.cosmic.boost(st);
@@ -623,12 +647,12 @@ export default class Weapons {
       this.updateHud();
       return 'tactical';
     }
-    const st = weaponStats(id, up);
+    const st = this.statsOf(id, up);
     const existing = this.slots.findIndex((s) => s.id === id);
     if (existing >= 0) {
       const s = this.slots[existing];
       s.up = Math.max(up, tierOf(s.up));
-      const full = weaponStats(id, s.up);
+      const full = this.statsOf(id, s.up);
       s.mag = full.mag;
       s.reserve = full.reserve;
       if (existing !== this.cur) this.switchTo(existing);
@@ -671,11 +695,14 @@ export default class Weapons {
 
   maxAmmo() {
     for (const s of this.slots) {
-      s.reserve = weaponStats(s.id, s.up).reserve;
+      s.reserve = this.statsOf(s.id, s.up).reserve;
       // la hoz (que no se recarga) queda con el cargador lleno (y el Sable Corvo, sus tiros)
       if (WEAPONS[s.id].kind === 'melee' || (WEAPONS[s.id].kind === 'sable' && !globalThis.__mduNoSableAmmo)) s.mag = weaponStats(s.id, s.up).mag;
     }
-    this.grenades = GRENADE.max;
+    // (más la Bolsa de yerba, carta del rush de jefes: core/rushBuild.js)
+    this.grenades = GRENADE.max + (this.g.rush?.build?.granadas ?? 0);
+    // (y el Lanzapava del Mate 47: los dos cargados y su repuesto; el usuario, 2026-10-13)
+    this.lanza?.lleno();
     // la pava silbadora también se llena (aunque ya las hayas tirado todas)
     if (this.tactical?.id === 'pava') this.tactical.count = WEAPONS.pava.count;
     this.updateHud();
@@ -685,7 +712,7 @@ export default class Weapons {
   ammoFull(id) {
     const s = this.slots.find((x) => x.id === id);
     if (!s) return false;
-    const st = weaponStats(id, s.up);
+    const st = this.statsOf(id, s.up);
     return s.reserve >= st.reserve && s.mag >= st.mag;
   }
 
@@ -704,6 +731,8 @@ export default class Weapons {
       this.sable?.fx?.warm?.(grp);
       // (las grietas, la guadaña espectral y el rayo del Desgarrador)
       this.cosmic?.fx?.warm?.(grp);
+      // (el vacío del Caótico y las zetas del tilo: weapons/especialistas.js)
+      this.oper?.warm?.(grp);
       this.elem?.warm?.(grp);
       const sm = this.ensureStuck();
       const one = new THREE.InstancedMesh(sm.geometry, sm.material, 1);
@@ -736,7 +765,7 @@ export default class Weapons {
   refillAmmo(id) {
     const s = this.slots.find((x) => x.id === id);
     if (!s) return false;
-    const st = weaponStats(id, s.up);
+    const st = this.statsOf(id, s.up);
     if (s.reserve >= st.reserve && s.mag >= st.mag) return false;
     s.reserve = st.reserve;
     this.updateHud();
@@ -790,15 +819,29 @@ export default class Weapons {
       this.warm.add(this.modelOf(id, 0, c).root);
       if (WEAPONS[id].akimbo) this.warm.add(this.modelOf(id, 0, c, 'L').root);
     }
+    // los mates con accesorios (core/armas.js): sin mejorar y mejorados, ya
+    // armados y con sus materiales compilados al cargar el mapa
+    for (const id of CAMOABLE) {
+      const acc = Armas.modelo(id);
+      if (!acc.length) continue;
+      for (let up = 0; up <= maxTier(id); up++) {
+        const c = up ? null : camoFor(id);
+        this.warm.add(this.modelOf(id, up, c, 'R', acc).root);
+        if (WEAPONS[id].akimbo) this.warm.add(this.modelOf(id, up, c, 'L', acc).root);
+      }
+    }
   }
 
   // Un mate armado, de la caché: `${id}|${up}`, más `|${camo}` si lleva
   // camuflaje (solo sin mejorar) y `|L` el de la mano izquierda.
-  modelOf(id, up, camo = null, hand = 'R') {
-    const key = `${id}|${up}${camo ? `|${camo}` : ''}${hand === 'L' ? '|L' : ''}`;
+  // acc: los accesorios de la armería (core/armas.js modelo), `|a:...` en la clave.
+  modelOf(id, up, camo = null, hand = 'R', acc = null) {
+    const ak = acc?.length ? acc.join(',') : '';
+    const key = `${id}|${up}${camo ? `|${camo}` : ''}${hand === 'L' ? '|L' : ''}${ak ? `|a:${ak}` : ''}`;
     let m = this.models.get(key);
     if (!m) {
       m = buildMate(id, up, this.T, hand, camo);
+      if (ak) ponerAccesorios(m, acc, this.T);
       if (hand === 'L') {
         // espejado entero: además de dar vuelta la escala, el giro hacia el
         // centro va para el otro lado (si no, la bombilla apunta para afuera)
@@ -820,13 +863,15 @@ export default class Weapons {
     // el camuflaje de la armería va hasta que el mate pasa por el Pack-a-Pava
     // (la hoz: dorada con el bastón del Yasy, mejorada o no)
     const camo = s.id === 'hoz' ? (this.g.player?.baston ? 'oro' : null) : s.up ? null : camoFor(s.id);
-    const m = this.modelOf(s.id, s.up, camo);
+    // (los accesorios van mejorado o no; el camuflaje, solo sin mejorar)
+    const acc = s.temp ? null : Armas.modelo(s.id);
+    const m = this.modelOf(s.id, s.up, camo, 'R', acc);
     this.model = m;
     this.holder.add(m.root);
     m.muzzle.add(this.flash);
     if (WEAPONS[s.id].akimbo) {
       // el de la otra mano: el mismo mate espejado (el Mark III tiene otro)
-      const m2 = this.modelOf(s.id, s.up, camo, 'L');
+      const m2 = this.modelOf(s.id, s.up, camo, 'L', acc);
       this.model2 = m2;
       this.holder2.add(m2.root);
     }
@@ -844,7 +889,9 @@ export default class Weapons {
     // la hoz sin mejorar no lleva munición; la Máquina de Muerte no se acaba
     // (el Sable Corvo tampoco, salvo los tiros del derecho: Sable.usesAmmo)
     const melee = (st?.kind === 'melee' || st?.kind === 'sable') && !st.alt && !(st?.kind === 'sable' && this.sable?.usesAmmo(st));
-    this.g.hud?.setWeapon(st ? { name: st.upgraded ? st.name : WEAPONS[s.id].name, mag: melee || s.temp ? '∞' : s.mag, reserve: melee || s.temp || st.infinite ? '∞' : s.reserve, upgraded: s.up, desc: st.upgraded && st.desc ? st.desc : WEAPONS[s.id].desc } : null);
+    // (en modo lanzapava: sus tiros; weapons/lanzapava.js)
+    if (st && this.lanza?.on) this.g.hud?.setWeapon(this.lanza.hud());
+    else this.g.hud?.setWeapon(st ? { name: st.upgraded ? st.name : WEAPONS[s.id].name, mag: melee || s.temp ? '∞' : s.mag, reserve: melee || s.temp || st.infinite ? '∞' : s.reserve, upgraded: s.up, desc: st.upgraded && st.desc ? st.desc : WEAPONS[s.id].desc } : null);
     // el cuchillo de Anacleto (el penal) ocupa el lugar de la pava y se muestra aparte
     const knife = this.tactical?.id === 'cuchillo';
     // (negativo: volando o enfriándose, se ve apagado)
@@ -870,10 +917,13 @@ export default class Weapons {
 
     // ADS
     // con un mate en cada mano no se apunta con la mira (ni con las que tiran de la cadera)
-    const wantAds = canAct && input.mouse.right && !p.sprinting && this.state !== 'drink' && this.state !== 'knife' && st && !st.akimbo && st.kind !== 'melee' && !st.temp && !st.noAds && !this.shieldHand.active;
+    const wantAds = canAct && input.mouse.right && !p.sprinting && this.state !== 'drink' && this.state !== 'knife' && st && !st.akimbo && st.kind !== 'melee' && !st.temp && !st.noAds && !this.shieldHand.active && !this.lanza?.on;
     // se terminó la Máquina de Muerte
     if (this.temp && (this.g.time >= this.temp.until || !p.alive || p.downed)) this.clearTemp();
-    this.adsT += ((wantAds ? 1 : 0) - this.adsT) * Math.min(1, dt * 14 * (g.emp?.adsMult() ?? 1));
+    // (st.adsMult: los accesorios de la armería que apuran la mira, core/armas.js)
+    this.adsT += ((wantAds ? 1 : 0) - this.adsT) * Math.min(1, dt * 14 * (g.emp?.adsMult() ?? 1) * (st?.adsMult || 1));
+    this.lanza?.update(dt);
+    this.oper?.update(dt, input);
     this.ads = this.adsT > 0.6;
 
     switch (this.state) {
@@ -1041,6 +1091,8 @@ export default class Weapons {
     // tumbado: ni cuchillo, ni granada, ni pava (solo el mate en la mano)
     const down = p.downed;
     if (input.hit('KeyV') && !down && !['knife', 'throw', 'drink'].includes(this.state)) {
+      // (con el Asta de Toro y su especialista, la V es la cornada: weapons/especialistas.js)
+      if (this.oper?.cornada(st)) return;
       this.startKnife();
       return;
     }
@@ -1054,10 +1106,15 @@ export default class Weapons {
     }
     const s = this.slot;
     // (el Sable Corvo no se recarga: su cargador se llena solo, weapons/Sable.js)
+    // el Lanzapava del Mate 47: la N cambia de modo y, en lanzapava, el gatillo es suyo
+    if (this.lanza?.input(input, st, p, down)) return;
     if (input.hit('KeyR') && this.state === 'idle' && s.mag < st.mag && s.reserve > 0 && st.kind !== 'sable') {
       this.startReload(st);
       return;
     }
+    // los especialistas que manejan el gatillo: ráfagas, pares, la salva, la
+    // bombilla a voluntad y el Camionero recalentado (weapons/especialistas.js)
+    if (st.esp && this.oper?.input(input, st, p, s)) return;
     // el Sable Corvo (weapons/Sable.js): tajos, el tiro y la Carga de San Lorenzo
     if (st.kind === 'sable') {
       this.sable.input(input, st, p);
@@ -1412,12 +1469,18 @@ export default class Weapons {
     const g = this.g;
     const p = g.player;
     const s = this.slot;
-    const rateMult = p.perks.has('doubletap') ? 1.33 : 1;
+    // (y el Dedo nervioso, carta del rush de jefes: core/rushBuild.js)
+    // (el Double Tap 2.0 ya no apura la cadencia: dobleTap; __mduDoubleTapViejo: +33 % como antes)
+    const rateMult = (p.perks.has('doubletap') && globalThis.__mduDoubleTapViejo === true ? 1.33 : 1) * (g.rush?.build?.rate ?? 1);
     // (las de 30 tiros por segundo guardan lo que sobró del cuadro: si no, a
     // 30 cuadros salía un tiro sí y otro no y tiraba de a 20 por segundo)
     const gap = 60 / st.rpm / rateMult;
     this.fireCd = (st.rapid ? Math.max(-gap, Math.min(0, this.fireCd)) : 0) + gap;
     if (!s.temp) s.mag--;
+    // (los especialistas: cuántos salen, la patada, los dos mates, el abanico; weapons/especialistas.js)
+    const x = this.oper ? this.oper.alDisparar(st, s) : { n: 1, kick: 1, dos: false, fan: 0 };
+    // (el Double Tap 2.0: cada bala sale doble; dobleTap)
+    const dtK = this.dobleTap(st);
     // akimbo: tira una mano y después la otra
     if (this.model2) {
       this.side ^= 1;
@@ -1425,6 +1488,9 @@ export default class Weapons {
     }
     this.updateHud();
     g.audio.shot(st.sound, null, st.upgraded);
+    // el peso del tiro (la sacudida) y lo que sus golpes necesitan saber de él
+    // (core/sentirTiro.js: si revienta cabezas, si es escopeta)
+    g.sentir?.disparo(st);
     g.stats.shots++;
     const cam = g.camera;
     const origin = cam.position;
@@ -1441,17 +1507,25 @@ export default class Weapons {
     spread += this.bloom * (this.ads ? 0.3 : 1) * 0.04 * (st.rapid ? 0.35 : 1);
     if (st.wobble) spread += Math.sin(g.time * 13) * 0.02;
 
-    const kick = st.recoil * (this.ads ? 0.6 : 1) * (p.crouching ? 0.8 : 1);
+    // (el Pulso firme, carta del rush de jefes: core/rushBuild.js)
+    const kick = st.recoil * (this.ads ? 0.6 : 1) * (p.crouching ? 0.8 : 1) * (g.rush?.build?.recoil ?? 1) * x.kick;
     p.addRecoil(kick * 0.35, (Math.random() - 0.5) * kick * 0.25);
     if (this.model2 && this.side) this.kickL = Math.min(1.5, this.kickL + kick * 6 + 0.3);
     else this.recoilKick = Math.min(1.5, this.recoilKick + kick * 6 + 0.3);
+    // (los Gemelos tirando los dos: patean las dos manos)
+    if (x.dos) {
+      if (this.side) this.recoilKick = Math.min(1.5, this.recoilKick + kick * 6 + 0.3);
+      else this.kickL = Math.min(1.5, this.kickL + kick * 6 + 0.3);
+    }
     this.bloom = Math.min(1, this.bloom + st.recoil * 2);
     // la Máquina de Muerte tira tanto que el fogonazo va suave y salteado (si no, deja ciego)
     this.shotN = (this.shotN || 0) + 1;
     const soft = !!st.temp || !!st.rapid;
     this.flashT = soft ? (this.shotN % 3 === 0 ? 0.03 : 0) : 0.05;
     if ((!st.special || st.kind === 'projectile') && (!soft || this.shotN % 4 === 0)) {
-      g.fx.flash(muzzle, st.kind === 'projectile' && st.projectile?.glow ? st.projectile.color : trailFlash(st) ?? 0xffb060, soft ? 2.5 : 8, soft ? 0.04 : 0.06, soft ? 4 : 7);
+      // (más fuerte según el mate, con la misma luz: core/sentirTiro.js FOGONAZO)
+      const F = g.sentir?.fogonazo(st, soft);
+      g.fx.flash(muzzle, st.kind === 'projectile' && st.projectile?.glow ? st.projectile.color : trailFlash(st) ?? 0xffb060, F ? F.i : soft ? 2.5 : 8, F ? F.t : soft ? 0.04 : 0.06, F ? F.d : soft ? 4 : 7);
     }
     // la Llamarada escupe brasas; el Caótico, motas del caos (weapons/nuevosFx.js)
     if (st.trail) muzzleTrail(g, st, muzzle, fwd, this.shotN);
@@ -1472,11 +1546,24 @@ export default class Weapons {
     }
 
     switch (st.kind) {
-      case 'hitscan':
-        for (let i = 0; i < (st.pellets || 1); i++) this.hitscan(st, origin, fwd, muzzle, spread, i);
+      case 'hitscan': {
+        // (los de dos tiros: las dos bombillas, el doble sorbo, los dos mates)
+        const np = st.pellets || 1;
+        const m2 = x.dos ? this.oper.muzzle2(new THREE.Vector3()) : muzzle;
+        if (x.dos) g.fx.flash(m2, trailFlash(st) ?? 0xffb060, 6, 0.05, 6);
+        const sh = x.st || st;
+        for (let i = 0; i < np * x.n; i++) this.hitscan(sh, origin, fwd, i < np ? muzzle : m2, spread, i % np);
+        // (el Double Tap 2.0: la segunda de cada bala, con lo que pega la
+        // segunda en ese mate; config/perks.js doubletap.segunda)
+        if (dtK) {
+          const s2 = { ...st, damage: st.damage * dtK };
+          for (let i = 0; i < np * x.n; i++) this.hitscan(s2, origin, fwd, i < np ? muzzle : m2, spread, (i % np) + np);
+        }
         break;
+      }
       case 'projectile':
-        this.fireProjectile(st, origin, fwd, muzzle, spread);
+        // (la salva del Explosivo: varios a la vez, en abanico)
+        for (let i = 0; i < x.n; i++) this.fireProjectile(x.st || st, origin, x.fan ? this.oper.abanico(fwd, i, x.n, x.fan) : fwd, muzzle, spread);
         break;
       case 'bolt':
         this.fireBolt(st, origin, fwd, muzzle);
@@ -1521,7 +1608,7 @@ export default class Weapons {
     // en línea: los demás ven y escuchan el disparo
     // (la Liquidificador manda su bola aparte: los demás no ven un trazo)
     if (g.net && st.kind !== 'liquid' && st.kind !== 'nova' && st.kind !== 'supremo') {
-      g.net.sendShot(muzzle, this.netShotEnd(fwd, Math.min(st.range, 40)), st.sound, st.upgraded);
+      g.net.sendShot(muzzle, this.netShotEnd(fwd, Math.min(st.range, 40)), st.sound, st.upgraded, this.oper?.red(st, x));
     }
     // recarga automática al vaciar
     if (s.mag <= 0 && s.reserve > 0) this.g.later(0.2, () => this.state === 'idle' && this.slot === s && this.startReload(this.stats));
@@ -1723,7 +1810,8 @@ export default class Weapons {
     const chain = g.time - (this.swingEnd ?? -9) < 0.3;
     this.swingN = chain ? ((this.swingN || 0) + 1) % HOZ_COMBO.length : 0;
     this.swingMove = HOZ_COMBO[this.swingN];
-    const rateMult = g.player.perks.has('doubletap') ? 1.2 : 1;
+    // (el Double Tap 2.0 no toca la hoz: __mduDoubleTapViejo, +20 % como antes)
+    const rateMult = g.player.perks.has('doubletap') && globalThis.__mduDoubleTapViejo === true ? 1.2 : 1;
     this.swingTime = 60 / st.rpm / rateMult;
     this.fireCd = this.swingTime;
   }
@@ -1837,6 +1925,21 @@ export default class Weapons {
     return out;
   }
 
+  // Double Tap 2.0 (el usuario, 2026-10-13: "que sea 2.0" y "saca el +33 de
+  // cadencia, ya dispara el doble"): en los mates de bala cada tiro sale doble
+  // y gasta una; la segunda pega lo de config/perks.js doubletap.segunda (por
+  // categoría). No va en explosivos ni proyectiles (ni el Torpedo mejorado,
+  // que revienta), en las maravillas (la Gut, la Máquina de Muerte, los de los
+  // potenciadores), cuerpo a cuerpo ni chorros: esos no son 'hitscan' o
+  // llevan temp/rapid/gutFrac/explosive/special. Devuelve lo que pega la
+  // segunda (0: no sale). __mduDoubleTapViejo = true: como antes.
+  dobleTap(st) {
+    if (globalThis.__mduDoubleTapViejo === true || !this.g.player?.perks?.has('doubletap') || !st) return 0;
+    if (st.kind !== 'hitscan' || st.temp || st.rapid || st.gutFrac || st.explosive || st.special) return 0;
+    const t = PERKS.doubletap.segunda;
+    return t[Armas.categoria(st.id)] ?? t.otro;
+  }
+
   // Deadshot Daiquiri (el Nadarias): los tiros que pegan por zona, +25% a la
   // cabeza (y al cuello) y +15% al cuerpo; no se suman (el usuario, 2026-10-05;
   // __mduNoDeadshot: no hace nada, como antes)
@@ -1869,8 +1972,9 @@ export default class Weapons {
       else if (h.zone === 'neck') mult = Math.max(1, st.headMult * 0.5);
       // Bombilla Gut: cada bombilla se lleva una parte fija de la vida del muerto,
       // así sigue matando de un tiro en cualquier ronda (a los jefes no)
-      const base = st.gutFrac && !h.z.boss ? Math.max(st.damage, (h.z.maxHp || 0) * st.gutFrac) : st.damage;
-      g.zombies.damage(h.z, base * mult * falloff * dmgMult * this.zoneMult(h.zone, h.z), { type: st.gutFrac ? 'gut' : 'bullet', zone: h.zone, arm: h.arm, point, dir, burn: st.burn, elem: st.elem, pup: st.bossMult, hell: st.hell, cap: st.bossCap });
+      // (la bala cuchilla del Imperial: mata a los comunes; weapons/especialistas.js)
+      const base = st.cuchilla ? this.oper.filo(h.z, st, point) : st.gutFrac && !h.z.boss ? Math.max(st.damage, (h.z.maxHp || 0) * st.gutFrac) : st.damage;
+      g.zombies.damage(h.z, base * mult * falloff * dmgMult * this.zoneMult(h.zone, h.z), { type: st.gutFrac ? 'gut' : 'bullet', zone: h.zone, arm: h.arm, point, dir, burn: st.burn, elem: st.elem, pup: st.bossMult, hell: st.hell, cap: st.bossCap, esp: st.esp === 'brasa' ? (!hitAny && pellet === 0 ? this.oper?.brasa(h.z) : undefined) : st.esp });
       // (las balas del infierno: chispas de fuego donde pegan)
       if (st.hell && this.shotN % 3 === 0) g.fx.sparks(point, 3, { x: -dir.x * 0.5, y: 0.6, z: -dir.z * 0.5 }, [1, 0.45, 0.1]);
       if (st.trail && pellet === 0 && this.shotN % 3 === 0) trailHit(g, st, point, { x: -dir.x * 0.5, y: 0.6, z: -dir.z * 0.5 });
@@ -1881,19 +1985,24 @@ export default class Weapons {
         g.audio.hitmarker(h.zone === 'head');
       }
       hitAny = true;
-      dmgMult *= 0.75;
+      // (st.penMult: lo que le queda a la que atraviesa; el Chorro a presión del Vidrio, core/armas.js)
+      dmgMult *= st.penMult ?? 0.75;
       endT = h.t;
       pen--;
     }
     // la bala siguió de largo hasta una pared
     if (pen > 0 && Number.isFinite(wallT) && wallT <= range) {
       endT = wallT;
-      g.fx.impact(hitTmp);
+      // (en la utilería, la marca donde está lo dibujado: world/marcas.js)
+      const mk = marca(g, origin, dir, wallT, hitTmp);
+      if (mk) g.fx.impact(mk, mk.k > 1);
       if (st.hell && this.shotN % 2 === 0) g.fx.sparks(hitTmp.point, 4, hitTmp.normal, [1, 0.45, 0.1]);
       if (st.trail && pellet === 0 && this.shotN % 2 === 0) trailHit(g, st, hitTmp.point, hitTmp.normal);
       if (st.explosive && !hitAny) this.explode(hitTmp.point, st.explosive.radius, st.explosive.damage, { color: [0.6, 1, 0.4], elem: st.elem });
       // la bombilla queda clavada en la pared
       if (st.gutFrac) this.stickBombilla(hitTmp.point, dir, null, hitTmp.normal);
+      // (la bala de goma rebota una vez: weapons/especialistas.js)
+      if (st.esp === 'deGoma' && pellet === 0) this.oper?.rebota(st, dir, new THREE.Vector3().copy(hitTmp.point), new THREE.Vector3().copy(hitTmp.normal), st.damage);
     }
     // la bala que cruza el agua la salpica (fx/Water)
     g.water?.shot(origin, dir, Math.min(endT, range));
@@ -1907,7 +2016,11 @@ export default class Weapons {
       // (las balas del infierno: un trazo de fuego con el centro blanco caliente)
       if (st.hell) hellTracer(g, muzzle, end, st.upgraded);
       else if (st.trail) trailShot(g, st, muzzle, end);
-      else g.fx.tracer(muzzle, end, st.gutFrac ? (st.upgraded ? 0xe0b0ff : 0xe8f0ff) : st.upgraded ? 0xffa0ff : 0xfff0c8);
+      // (st.tracer: el especialista que lo marca, core/armas.js)
+      // (el Último sorbo: la estela dorada, más gruesa; weapons/especialistas.js)
+      else if (st.esp === 'ultimoSorbo' && st.tracer) this.oper.dorado(muzzle, end);
+      else if (st.cuchilla) this.oper.filoFx(muzzle, end);
+      else g.fx.tracer(muzzle, end, st.tracer ?? (st.gutFrac ? (st.upgraded ? 0xe0b0ff : 0xe8f0ff) : st.upgraded ? 0xffa0ff : 0xfff0c8));
     }
   }
 
@@ -2746,14 +2859,15 @@ export default class Weapons {
     }
     if (zhit) {
       const type = st.id === 'oro' ? 'yerba' : 'explosive';
-      g.zombies.damage(zhit.z, P.damage * (zhit.zone === 'head' ? st.headMult || 1 : 1) * this.zoneMult(zhit.zone, zhit.z), { type: P.radius > 0 ? type : 'bullet', zone: zhit.zone, point, dir, elem: st.elem });
+      g.zombies.damage(zhit.z, P.damage * (zhit.zone === 'head' ? st.headMult || 1 : 1) * this.zoneMult(zhit.zone, zhit.z), { type: P.radius > 0 ? type : 'bullet', zone: zhit.zone, point, dir, elem: st.elem, esp: st.esp });
       g.hud.hitmarker(zhit.zone === 'head');
     }
     if (P.radius > 0) {
       const color = colorArr(P.color);
       this.explode(point, P.radius, P.splash ?? P.damage, { color, selfDamage: P.selfDamage ?? (st.id === 'porongo' ? 35 : 0), skip: zhit?.z, type: st.id === 'oro' ? 'yerba' : 'explosive', big: P.glow ? 0.6 : 1, elem: st.elem, boom: st.id === 'porongo' || st.id === 'caballero' ? 'porongo-explosion' : P.rocket ? rocketBoom() : null });
     } else if (!zhit && hitTmp.normal) {
-      g.fx.impact({ point, normal: hitTmp.normal });
+      const mk = hitTmp.point && hitTmp.point.distanceToSquared(point) < 1e-4 ? marca(g, point.clone().addScaledVector(dir, -1), dir, 1, hitTmp) : { k: 2, point, normal: hitTmp.normal };
+      if (mk) g.fx.impact(mk, mk.k > 1);
     }
     p.mesh?.removeFromParent();
     return true;
@@ -3275,6 +3389,10 @@ export default class Weapons {
       this.holder2.position.set(-pose.pos.x - akL[0], pose.pos.y + akL[1], pose.pos.z + dk * 0.025 + akL[2]);
       this.holder2.rotation.set(rx + dk * 0.09 + akL[3], -ry - akL[4], -rz - akL[5]);
     }
+    // (el Mate 47 dado vuelta en modo lanzapava: weapons/lanzapava.js)
+    this.lanza?.pose(this.holder);
+    // (la cornada, el Camionero recalentado y la salva: weapons/especialistas.js)
+    this.oper?.pose(this.holder);
     this.animatePour(pour, dt);
     this.animateYerba(yerbaK, dt);
     this.animateGut(gut, gutK, ik, dt);
@@ -3835,7 +3953,7 @@ export default class Weapons {
 
 // Estela del tajo: un arco que se desvanece hacia la punta.
 // Pose de la hoz en la fracción k de un golpe (claves [k, pose, curva]).
-function hozPose(keys, k, out) {
+export function hozPose(keys, k, out) {
   let i = 1;
   while (i < keys.length - 1 && k > keys[i][0]) i++;
   const [k0, a] = keys[i - 1];

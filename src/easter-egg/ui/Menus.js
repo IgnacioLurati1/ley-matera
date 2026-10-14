@@ -213,6 +213,12 @@ export default class Menus {
            <label class="mdu-field" title="Las capas de niebla baja y las luciérnagas">Niebla baja <select data-gfx="night"><option value="perf">Apagada</option><option value="low">Liviana (2 capas)</option><option value="medium">Media (3 capas)</option><option value="high">Completa (4 capas)</option></select></label>
            <label class="mdu-field">Fuego del dragón <select data-gfx="fire"><option value="low">Liviano</option><option value="high">Completo</option></select></label>
            <label class="mdu-field" title="Se aplica al cargar el mapa">Pasto <select data-gfx="grass"><option value="perf">Liviano</option><option value="high">Tupido</option></select></label>
+           <label class="mdu-field" title="Polvo, ceniza, hojas y chispas que alumbra el farol de al lado (en los mapas donde se lucen)">Partículas con luz <input type="checkbox" data-gfx="motes"></label>
+           <label class="mdu-field" title="Sangre y barro que quedan en el piso, con relieve y brillo de mojado">Manchas que quedan <input type="checkbox" data-gfx="stains"></label>
+           <label class="mdu-field" title="Nubes con luz que tapan la luna, rayos de luna y la nebulosa con profundidad">Cielo con volumen <input type="checkbox" data-gfx="sky"></label>
+           <label class="mdu-field" title="Muertos, gauchos y pasto pegados al piso (necesita la oclusión o los reflejos)">Sombras de contacto <input type="checkbox" data-gfx="contact"></label>
+           <label class="mdu-field" title="El destello de cada tiro y cada explosión tira sombra (necesita luces con sombra)">Fogonazos con sombra <input type="checkbox" data-gfx="flashShadow"></label>
+           <label class="mdu-field" title="Charcos que reflejan, piso mojado y relámpagos en el reflejo, en los mapas con lluvia (necesita los reflejos)">Lluvia que moja <input type="checkbox" data-gfx="rainWet"></label>
            </div>
            <div class="mdu-custom__col">
            <p class="mdu-small mdu-custom__head">Sombras</p>
@@ -245,6 +251,11 @@ export default class Menus {
          <label class="mdu-field">Mostrar FPS <input type="checkbox" data-set="showFps"></label>
          <label class="mdu-field">Menos destellos <input type="checkbox" data-set="calmFx"></label>
          <p class="mdu-small" data-gpu2></p>
+         <div data-desk hidden>
+           <label class="mdu-field" title="Cómo le habla el juego a la placa de video. Se aplica al volver a abrir el juego">Modo de video <select data-desk-video><option value="auto">Automático</option><option value="d3d11">DirectX 11</option><option value="vulkan">Vulkan</option><option value="gl">OpenGL</option></select></label>
+           <div class="mdu-list"><button class="mdu-btn mdu-btn--mini" data-act="medir" title="Prueba los tres modos de video: el juego se cierra y se abre solo, unos 6 minutos">Prueba de rendimiento</button></div>
+           <p class="mdu-small" data-desk-note></p>
+         </div>
        </div>
        <button class="mdu-btn" data-act="back">Volver</button>`,
     );
@@ -395,7 +406,33 @@ export default class Menus {
     this.lobby?.syncMap();
   }
 
+  // Solo en la app de escritorio (desktop/preload.cjs): el modo de video y la
+  // prueba de rendimiento (desktop/medir.js). En la web no se muestran.
+  async syncDesk() {
+    const D = window.mduDesktop;
+    const box = this.screens.options.querySelector('[data-desk]');
+    if (!D || !box) return;
+    box.hidden = false;
+    const sel = box.querySelector('[data-desk-video]');
+    const note = box.querySelector('[data-desk-note]');
+    const NAME = { d3d11: 'DirectX 11', vulkan: 'Vulkan', gl: 'OpenGL' };
+    const v = await D.video().catch(() => null);
+    if (!v) return;
+    sel.value = v.elegido;
+    const last = await D.medirUltimo().catch(() => null);
+    const best = last?.modos?.slice().sort((a, b) => b.fps - a.fps)[0];
+    note.textContent = `Ahora: ${NAME[v.actual] || v.actual}.` + (best ? ` Última prueba: rindió más ${best.modo} (resultados en el escritorio).` : '');
+    if (!sel.dataset.wired) {
+      sel.dataset.wired = '1';
+      sel.addEventListener('change', async () => {
+        await D.setVideo(sel.value);
+        note.textContent = 'Se aplica al volver a abrir el juego.';
+      });
+    }
+  }
+
   syncOptions() {
+    this.syncDesk();
     const s = this.g.settings;
     const a = this.g.audio;
     const note = this.screens.options.querySelector('[data-voice-note]');
@@ -469,6 +506,9 @@ export default class Menus {
     const needs = [];
     if (c.bounce && !c.ao && !c.light) needs.push('el rebote de la luz necesita la oclusión o los reflejos');
     if (c.taa && !c.ao && !c.light) needs.push('el suavizado temporal del pasto necesita la oclusión o los reflejos');
+    if (c.contact && !c.ao && !c.light) needs.push('las sombras de contacto necesitan la oclusión o los reflejos');
+    if (c.flashShadow && !c.lamps) needs.push('los fogonazos con sombra necesitan luces con sombra');
+    if (c.rainWet && !c.light) needs.push('la lluvia que moja necesita los reflejos');
     const note = opt.querySelector('[data-custom-note]');
     if (note) note.textContent = needs.length ? `Ojo: ${needs.join('; ')}.` : '';
   }
@@ -548,6 +588,9 @@ export default class Menus {
         break;
       case 'resume':
         g.resume();
+        break;
+      case 'medir':
+        window.mduDesktop?.medir();
         break;
       case 'resetSound':
         g.resetSound();
@@ -713,6 +756,8 @@ export default class Menus {
     decorateOver(this.g, s, { won });
     // Eclipse Matero (el final canónico): su eclipse que se abre (ui/overEclipse.js)
     decorateOverEclipse(this.g, s, { won });
+    // el rush de jefes: hasta qué jefe se llegó y lo de todos los mapas (core/bossRush.js)
+    this.g.rush?.decorateOver(s, { won, team });
     this.show('over');
   }
 

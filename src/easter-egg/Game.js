@@ -18,6 +18,7 @@ import Navigation from './world/Navigation';
 import Barriers from './world/Barriers';
 import Interactables from './world/Interactables';
 import Effects from './fx/Effects';
+import SentirTiro from './core/sentirTiro';
 import PostFX from './fx/PostFX';
 import { LEVELS } from './fx/Epic';
 import { tiersOf, MAP_GFX } from './config/quality';
@@ -63,6 +64,8 @@ import TowerCinematic from './ui/TowerCinematic';
 import CastleEnding from './ui/CastleEnding';
 import CastleEgg from './entities/CastleEgg';
 import EsterosEgg from './entities/EsterosEgg';
+import Gauchescos, { gzBlockStart } from './entities/esteros/Gauchescos';
+import Porteno, { pzBlockStart, pzCap } from './entities/penal/Porteno';
 import MonumentoEgg from './entities/MonumentoEgg';
 import EclipseEgg from './entities/EclipseEgg';
 import { ECLIPSE_KEY } from './core/eclipseFlag';
@@ -85,7 +88,9 @@ import LogrosTracker from './entities/logrosTracker';
 import Dialogos from './ui/dialogos';
 import MenuAmbience from './ui/menuAmbience';
 import { addPesos } from './core/progress';
+import BossRush from './core/bossRush';
 import Arrival, { prewarmMaps, compile as rewarmShaders, warmWorld } from './ui/Arrival';
+import { cacheAbrir } from './core/cacheDisco';
 import TitleIntro from './ui/TitleIntro';
 import { askSupremo } from './ui/SupremoAsk';
 import DeathTour from './ui/DeathTour';
@@ -310,6 +315,8 @@ export default class Game {
     this.levels = new Levels(this);
     // los logros (core/logros.js): se cuelgan de los niveles y del aviso del HUD
     this.logros = new LogrosTracker(this);
+    // el rush de jefes (core/bossRush.js; el usuario, 2026-10-12)
+    this.rush = new BossRush(this);
     this.hud.setSubScale(this.settings.subSize);
     this.hud.show(false);
     // el HUD va debajo de los menús
@@ -317,6 +324,8 @@ export default class Game {
 
     await step(0.3, TEXT.loading);
     this.roomEnv = await roomEnvP;
+    // lo que cargas anteriores ya armaron de este mapa (core/cacheDisco)
+    await cacheAbrir(this.mapId);
     this.buildScene();
     // Lo que sigue (posproceso y compilar los shaders del mapa) ocupa la placa
     // en tandas largas, y el logo de Luta Studios (ui/StudioLogo, un lienzo
@@ -384,6 +393,24 @@ export default class Game {
       if (e.altKey && e.code === 'KeyH') {
         this.hitch?.toggle();
         e.preventDefault();
+      }
+      // Alt+N en el menú del título (también en el sitio publicado): el easter
+      // egg de Mate no Numa queda anotado como hecho, como al terminarlo con la
+      // traición (el juego no guarda qué se eligió, solo que se terminó), con
+      // su logro. El usuario, 2026-10-14. Interruptor: __mduSinAtajoEsteros.
+      if (e.altKey && e.code === 'KeyN' && this.state === 'title' && !this.net && !globalThis.__mduSinAtajoEsteros) {
+        e.preventDefault();
+        const first = markEgg('esteros');
+        this.logros?.retro?.();
+        this.menus.syncEggs();
+        // (el aviso del HUD no se ve en el título: un cartelito propio)
+        const t = document.createElement('div');
+        t.className = 'mdu-atajo-aviso';
+        t.textContent = first ? 'Mate no Numa: easter egg anotado como hecho' : 'Mate no Numa ya estaba hecho';
+        t.style.cssText = 'position:fixed;right:3%;top:30%;z-index:2147483000;padding:10px 18px;border-radius:10px;background:rgba(20,16,12,0.82);color:#f5efe4;font:600 15px system-ui,sans-serif;pointer-events:none;transition:opacity .5s';
+        document.body.appendChild(t);
+        setTimeout(() => { t.style.opacity = '0'; }, 2400);
+        setTimeout(() => t.remove(), 3000);
       }
       // Alt+I en el menú del título: ir directo a cada escena con música (prueba)
       if (dev && e.altKey && e.code === 'KeyI' && this.state === 'title' && !this.net && this.menus.toggleMusic()) e.preventDefault();
@@ -674,6 +701,9 @@ export default class Game {
     this.navs = new Map();
     this.navFor = (p) => this.towerNav(p);
     this.fx = new Effects(this);
+    // cómo se siente tirar y matar: la baja confirmada, la carne, la caída y
+    // el peso del tiro (core/sentirTiro.js; __mduFeedbackViejo: como antes)
+    this.sentir = new SentirTiro(this);
     this.barriers = new Barriers(this);
     this.player = new Player(this);
     if (!this.weapons) {
@@ -697,7 +727,7 @@ export default class Game {
     this.vida = FEATURES.vida ? new GauchoLife(this) : null;
     // el cuervo es el jefe de la granja (el Capataz, el del molino)
     this.crow = FEATURES.boss === 'crow' || FEATURES.boss === 'mixed' ? new Crow(this) : null;
-    this.ee = FEATURES.egg === 'hoz' ? new FarmEgg(this) : FEATURES.egg === 'gauchos' ? new PenalEgg(this) : FEATURES.egg === 'revelaciones' ? new TowerEgg(this) : FEATURES.egg === 'reto' ? new TowerChallenge(this) : FEATURES.egg === 'mateendrache' ? new CastleEgg(this) : FEATURES.egg === 'pacto' ? new EsterosEgg(this) : FEATURES.egg === 'bandera' ? new MonumentoEgg(this) : FEATURES.egg === 'primermate' ? new EclipseEgg(this) : new EasterEgg(this);
+    this.ee = FEATURES.egg === 'hoz' ? new FarmEgg(this) : FEATURES.egg === 'gauchos' ? new PenalEgg(this) : FEATURES.egg === 'revelaciones' ? new TowerEgg(this) : FEATURES.egg === 'reto' ? new TowerChallenge(this) : FEATURES.egg === 'mateendrache' ? new CastleEgg(this) : FEATURES.egg === 'pacto' ? new EsterosEgg(this) : FEATURES.egg === 'gauchescos' ? new Gauchescos(this) : FEATURES.egg === 'porteno' ? new Porteno(this) : FEATURES.egg === 'bandera' ? new MonumentoEgg(this) : FEATURES.egg === 'primermate' ? new EclipseEgg(this) : new EasterEgg(this);
     // La Tapera: el matorral de atrás de la atahona y sus Yasy (después del
     // easter egg: la Yerba Madre es su sexta planta)
     this.matorral = FEATURES.egg === 'hoz' ? new Matorral(this) : null;
@@ -829,6 +859,12 @@ export default class Game {
   startGame() {
     // (en una sala, el invitado no arranca nada: espera la orden del anfitrión)
     if (this.state === 'arriving' || this.net?.guest) return;
+    // (el rush de jefes elegido en el menú de jugar: arranca por el primero; core/bossRush.js)
+    if (this.rush?.pick && !this.rush.on && this.rush.start()) return;
+    // (Zombies gauchescos: en línea, de a dos o más; entities/esteros/Gauchescos.js)
+    if (gzBlockStart(this)) return;
+    // (Porteño encubierto: en línea, de 4 a 10; entities/penal/Porteno.js)
+    if (pzBlockStart(this)) return;
     // la primera partida con los seis easter eggs: ¿el Mate Supremo en la
     // caja? (ui/SupremoAsk; contestada, arranca)
     if (askSupremo(this, () => this.startGame())) return;
@@ -860,6 +896,8 @@ export default class Game {
 
   // Engancha una sala ya conectada: de acá en más se sincroniza la partida.
   attachNet(net) {
+    // (cuántos entran a la sala: 10 en Porteño encubierto, 5 en lo demás; net/Net.js cap)
+    net.cap ||= () => pzCap(this);
     this.net = new Session(this, net);
     // (el invitado contesta lo del Mate Supremo mientras espera al anfitrión)
     if (this.net.guest) askSupremo(this);
@@ -892,6 +930,8 @@ export default class Game {
 
   // Salir de la sala (o cerrarla, si sos el anfitrión) y volver al título.
   leaveRoom(message) {
+    // (se sale del rush de jefes: el título vuelve al mapa del jugador)
+    this.rush?.stop();
     this.arrival?.cancel();
     const net = this.net;
     this.net = null;
@@ -1092,7 +1132,8 @@ export default class Game {
     this.audio.setCine(false);
     this.sceneOn = false;
     this.cheated = false;
-    this.levels.newGame();
+    // (en el rush, del segundo jefe en adelante sigue la experiencia de la partida)
+    if (!this.rush?.keepRun) this.levels.newGame();
     this.weapons.reset();
     this.player.reset();
     this.emp?.newRun();
@@ -1118,7 +1159,9 @@ export default class Game {
     this.audio.startAmbience();
     this.input.lock();
     this.hud.location(ZONES[START_ZONE].name, ZONES[START_ZONE].sub || '');
-    this.hud.subtitle('Aguantá lo que puedas.', 4);
+    // (el rush: directo a la arena, sin el cartel de la partida; core/bossRush.js)
+    if (this.rush?.on) this.rush.onNewRun();
+    else if (!this.gz && !this.pz) this.hud.subtitle('Aguantá lo que puedas.', 4);
   }
 
   // En línea, el jugador `id` (1, 2, 3) arranca a un costado del comienzo
@@ -1343,6 +1386,42 @@ export default class Game {
 
   // Animación del final: te caés, la vista se apaga y el alma sube despacio
   // mirando tu cuerpo tirado mientras los zombies se juntan alrededor.
+  // (la cámara de muerte; el usuario, 2026-10-13: "la cámara final de muerte
+  // del rush de Francisco está mal puesta") La arena cerrada donde se cayó
+  // —la que no es al aire libre: la caverna del Infierno de la torre—, con su
+  // centro y su radio; si no, null. La grúa del final (ui/DeathTour.js) y el
+  // alma que sube (updateEnd) quedan adentro de la roca.
+  // globalThis.__mduCamMuerteVieja = true: como antes (null siempre).
+  encerrada() {
+    if (globalThis.__mduCamMuerteVieja === true || !this.arena?.active) return null;
+    const A = this.arena.A;
+    const e = this.endCam || this.player.pos;
+    const zone = ZONES[this.world.zoneAt(e.x, e.z, e.y)];
+    return A?.r > 0 && zone && !zone.outdoor ? A : null;
+  }
+
+  // La altura de la rama (o la copa) más baja del algarrobo del estero que
+  // queda encima de por donde sube el alma (startEnd); null: ninguna (o el
+  // mapa no lo tiene). Las cajas de sus piezas se calculan una vez.
+  ramaEncima(e) {
+    const A = this.world.dynamic?.algarrobo;
+    if (!A?.pieces) return null;
+    if (!A.userData.cajas) {
+      A.updateMatrixWorld(true);
+      const m = new THREE.Matrix4();
+      A.userData.cajas = A.pieces
+        .filter((q) => q.geometry && (q.userData.part?.kind === 'branch' || q.userData.part?.kind === 'crown'))
+        .map((q) => {
+          if (!q.geometry.boundingBox) q.geometry.computeBoundingBox();
+          return q.geometry.boundingBox.clone().applyMatrix4(m.multiplyMatrices(A.matrixWorld, q.matrix));
+        });
+    }
+    const R = 0.6 + e.wide;
+    let low = null;
+    for (const b of A.userData.cajas) if (b.min.x < e.x + R && b.max.x > e.x - R && b.min.z < e.z + R && b.max.z > e.z - R && b.min.y > e.y && (low == null || b.min.y < low)) low = b.min.y;
+    return low;
+  }
+
   startEnd() {
     const p = this.player;
     const zone = this.world.zoneAt(p.pos.x, p.pos.z, p.pos.y);
@@ -1352,6 +1431,15 @@ export default class Game {
     // (w: en línea el alma va con el reloj de verdad, como las escenas: el paseo
     // del final arranca a la vez en todas las compus; updateEnd)
     this.endCam = { t: 0, x: p.pos.x, y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch, eye: p.eye, top: indoor ? 3.15 : 8.5, wide: indoor ? 0.9 : 3.4, w: this.net && globalThis.__mduNoCineSync !== true ? performance.now() : 0 };
+    this.endCam.arena = this.encerrada();
+    // (el usuario, 2026-10-13, "Si" a arreglar el alma en el algarrobo de los
+    // colgados, en el estero: el rush te pone en su hueco): subía hasta 8,5 m
+    // por adentro de las ramas y la copa, y la pantalla quedaba casi negra
+    // ~3 s (en el rush y en la partida normal). Debajo del árbol, el alma
+    // sube hasta la rama más baja que tiene encima. ramaEncima;
+    // globalThis.__mduAlmaEnArbol = true: como antes.
+    const rama = indoor || globalThis.__mduAlmaEnArbol === true ? null : this.ramaEncima(this.endCam);
+    if (rama != null) this.endCam.top = Math.max(1.2, Math.min(this.endCam.top, rama - y - 0.4));
     this.endBody = new Avatars(this, this.net);
     const body = { id: this.net?.id || 0, name: '', noTag: true, corpse: true, shield: !!p.shield, pos: new THREE.Vector3(p.pos.x, y, p.pos.z), yaw: p.yaw, pitch: 0, speed: 0 };
     this.endBody.add(body);
@@ -1408,6 +1496,16 @@ export default class Game {
     const rad = 0.3 + u * e.wide;
     tmpCam.set(e.x + Math.sin(a) * rad, e.y + h, e.z + Math.cos(a) * rad);
     this.world.collide(tmpCam, 0.3, e.y + h - 0.2, e.y + h + 0.2);
+    // (en una arena cerrada, el alma no se va contra la pared: en el Infierno,
+    // cayendo cerca de la orilla, subía hasta salirse de la roca y quedaba
+    // todo negro; encerrada)
+    if (e.arena) {
+      const dx = tmpCam.x - e.arena.x;
+      const dz = tmpCam.z - e.arena.z;
+      const d = Math.hypot(dx, dz);
+      const m = Math.max(1, e.arena.r - 3);
+      if (d > m) tmpCam.set(e.arena.x + (dx / d) * m, tmpCam.y, e.arena.z + (dz / d) * m);
+    }
     cam.position.copy(tmpCam);
     cam.lookAt(e.x, e.y + 0.2, e.z);
     if (Math.random() < dt * 3) this.fx.sparkle(new THREE.Vector3(e.x, e.y + 0.3 + u * (e.top - 0.8), e.z), [1, 0.62, 0.3], 1, 0.3);
@@ -1427,6 +1525,8 @@ export default class Game {
   // Venciste al Mandinga: cinemática y fin de la partida.
   win(info = null) {
     if (this.state !== 'playing' && this.state !== 'paused') return;
+    // el rush de jefes: al siguiente (o el premio), sin el final del easter egg
+    if (this.rush?.down()) return;
     let data = info;
     if (this.net?.host) {
       data = { board: this.net.board() };
@@ -1883,9 +1983,11 @@ export default class Game {
     // en gaucho life no hay mates ni se toca nada: solo la electricidad
     const ghost = !!this.vida?.active;
     A.cat = 'weapons';
-    if (active && !ghost) this.weapons.update(dt, input);
+    // (Zombies gauchescos: el zombi no tiene mates y nadie compra nada; entities/esteros/Gauchescos.js)
+    // (Porteño encubierto: nadie tiene mates; el facón del policía lo maneja entities/penal/Porteno.js)
+    if (active && !ghost && !this.gz?.zombie && !this.pz) this.weapons.update(dt, input);
     A.cat = 'ui';
-    if (active && !ghost) this.interact.update(dt, input);
+    if (active && !ghost && !this.gz && !this.pz) this.interact.update(dt, input);
     else if (this.state === 'playing') this.interact.tick(dt);
     A.cat = null;
     this.vida?.update(dt, active ? input : IDLE_INPUT);
@@ -1898,6 +2000,7 @@ export default class Game {
     if (this.intro?.active) this.intro.update(dt);
     else if (scene) this.ee.sceneCam(dt);
     this.arena.update(dt);
+    this.rush?.update(dt);
     A.cat = 'ui';
     this.powerups.update(dt);
     this.emp?.update(dt, active && !ghost ? input : null);
@@ -1929,6 +2032,7 @@ export default class Game {
     this.world.night?.update(dt);
     A.cat = null;
     this.fx.update(dt, this.camera);
+    this.sentir?.update(dt);
     this.hud.update(dt);
     // la tabla de puntos, mientras se mantiene Tab
     this.hud.setBoard(this.state === 'playing' && !this.menuOpen && input.key('Tab') ? scoreboard(this) : null);
@@ -2019,7 +2123,10 @@ export default class Game {
     // (2026-10-12, el usuario: "sacá la difuminación de todas las cinemáticas, espantoso". Queda
     // apagada en todas; el fondo desenfocado y el barrido vuelven solo con globalThis.__mduLenteCine = true)
     this.post.setLens(cine && this.state !== 'title' && globalThis.__mduLenteCine === true && globalThis.__mduNoLente !== true ? lensHull(this, this.camera) : null);
+    // (la sacudida del tiro va solo en la imagen: core/sentirTiro.js)
+    const shk = !cine && this.sentir?.antesDeDibujar(this.camera);
     this.post.render(dt, this.time, { hurt: clean ? 0 : hurt * 0.9, hit, hitX: p?.hitX || 0, hitY: p?.hitY || 0, down: clean ? 0 : down, crit: this.state === 'title' || clean ? 0 : this.critK || 0, pulse: cine ? 0 : pulse, vida });
+    if (shk) this.sentir.despuesDeDibujar(this.camera);
   }
 
   dispose() {

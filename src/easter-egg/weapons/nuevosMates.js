@@ -141,6 +141,9 @@ function addVirola(c, mat, h = 0.012) {
   const { r, y } = c.top;
   const v = new THREE.Mesh(arcLathe([[r - 0.001, y - h], [r + 0.003, y - h], [r + 0.004, y - h / 2], [r + 0.003, y + 0.002], [r - 0.001, y + 0.002], [r - 0.001, y - h]], 36), mat);
   c.mate.add(v);
+  // (suelta, sin fundir: la tapa una virola de la armería, weapons/accesorios.js)
+  v.userData.dynamic = true;
+  c.mate.userData.virola = v;
   return v;
 }
 
@@ -174,12 +177,35 @@ function finish(c, muzzle, bombGroup, yerba, scale = 1.1) {
   // (userData.dynamic) queda suelto, y la bombilla se junta por su lado:
   // gira aparte (al inspeccionar, y parada en la armería).
   if (bombGroup) mate.remove(bombGroup);
+  // (la yerba, suelta: la tapa una yerba de la armería, weapons/accesorios.js)
+  if (yerba) yerba.userData.dynamic = true;
   compactGroup(mate);
   if (bombGroup) {
-    for (const straw of bombGroup.children) compactGroup(straw);
+    for (const straw of bombGroup.children) {
+      // (el caño, el filtro, el pico y el anillo quedan sueltos: los cambian
+      // las bombillas y los picos de la armería, weapons/accesorios.js; se
+      // juntan solo los adornos)
+      if (straw.children[2]?.isGroup) {
+        for (const k of straw.children.slice(0, 4)) k.userData.dynamic = true;
+        for (const k of straw.children[2].children) k.userData.dynamic = true;
+      }
+      compactGroup(straw);
+    }
     mate.add(bombGroup);
   }
-  mate.add(cupHand(M, c.rAt, c.top.y));
+  const cup = cupHand(M, c.rAt, c.top.y);
+  mate.add(cup);
+  // (los accesorios de la armería, weapons/accesorios.js: la forma del mate y
+  // hasta dónde suben los dedos, como viewmodels buildMate)
+  let handTop = 0;
+  cup.traverse((o) => {
+    if (!o.isMesh) return;
+    o.geometry.computeBoundingBox();
+    handTop = Math.max(handTop, o.geometry.boundingBox.max.y);
+  });
+  mate.userData.fit = { rAt: c.rAt, top: c.top.y, r: c.top.r, hand: handTop };
+  mate.userData.bombGroup = bombGroup || null;
+  mate.userData.yerba = yerba || null;
   const mouth = new THREE.Object3D();
   mouth.position.set(0, c.top.y - 0.004, 0);
   mate.add(mouth);
@@ -959,6 +985,8 @@ function buildCaotico(up, T, hand, camoId) {
   }
   // la boca: el remolino (un embudo que llega hasta la pared de adentro)
   const yerba = fill(c, vortexMat(A, B), { drop: 0.004, dome: -0.011 });
+  // (la yerba de la armería no lo tapa: weapons/accesorios.js yerbaNueva)
+  yerba.userData.efecto = true;
   // la bombilla de hierro negro, con tres aros de vacío que giran y la mota en la punta
   const b = bombilla({ len: 0.24, thick: 1.6, mat: M.bladeDark }, M, c.top.y);
   mate.add(b.group);
@@ -1204,6 +1232,8 @@ function buildLlamarada(up, T, hand, camoId) {
   }
   // la boca: llena de brasas hasta la pared de adentro, con carbones, fuego y chispas
   const yerba = fill(c, emberMat(S.mask, F0, F1), { drop: 0.008, dome: 0.006, rough: 0.002 });
+  // (la yerba de la armería no las tapa: weapons/accesorios.js yerbaNueva)
+  yerba.userData.efecto = true;
   const coal = new THREE.DodecahedronGeometry(1, 0);
   for (let i = 0; i < 7; i++) {
     const a = (i / 7) * Math.PI * 2 + 0.5;

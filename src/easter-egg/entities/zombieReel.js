@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import * as Armas from '../core/armas';
+import { VOLTEO } from '../weapons/especialistas';
 
 // Lo que le hace al zombie el escudo (world/ShieldUpgrade): 'reel' tambalea
 // para atrás (el escudazo, el Empuje del molino, el vapor de la torre) y
@@ -29,6 +31,11 @@ export function reelStep(zs, z, dt, t) {
   reelPose(zs, z, t);
   if (z.reelT <= 0) {
     z.reelV = null;
+    // (el volteado se levantó: el cuerpo, derecho otra vez)
+    if (z.state === 'volteado') {
+      z.P.rootPitch = 0;
+      z.P.rootY = 0;
+    }
     zs.setState(z, 'chase');
   }
 }
@@ -36,6 +43,7 @@ export function reelStep(zs, z, dt, t) {
 // La pose (el anfitrión y el invitado).
 export function reelPose(zs, z, t) {
   const g = zs.g;
+  if (z.state === 'volteado') return volteadoPose(zs, z, t);
   if (z.state === 'zapped') {
     zs.poseShock(z, t);
     if (Math.random() < 0.35) g.fx.electric(tmpV.set(z.pos.x, (z.baseY || 0) + 0.5 + Math.random() * 1.2, z.pos.z), 2);
@@ -65,3 +73,45 @@ export function reelPose(zs, z, t) {
   P.knL = (0.35 + Math.max(0, step) * 0.4) * k;
   P.knR = (0.35 + Math.max(0, -step) * 0.4) * k;
 }
+
+// La cornada del Asta de Toro (weapons/especialistas.js): cae de espaldas,
+// queda en el piso pataleando y se levanta (cae VOLTEO.cae s, el piso lo que
+// diga ESP.cornada.volteo y se levanta en VOLTEO.sube s). Con el reloj del
+// estado: el invitado lo ve igual por la foto de la red.
+export function volteadoPose(zs, z, t) {
+  const P = z.P;
+  zs.g.weapons?.oper?.volt?.add(z);
+  const st = z.stateT || 0;
+  const piso = Armas.ESP.cornada.volteo;
+  const k1 = sm(st / VOLTEO.cae);
+  // se levanta: de acostado a sentado y de sentado a parado
+  const up = sm((st - VOLTEO.cae - piso) / VOLTEO.sube);
+  const lie = k1 * (1 - up);
+  const w = t * 7 + (z.phase || 0);
+  // (en el piso, las piernas y los brazos se mueven buscando pararse)
+  const kick = Math.sin(w) * 0.25 * lie * (st > VOLTEO.cae ? 1 : 0);
+  // a medio levantar: sentado, con el torso adelante
+  const sit = Math.sin(up * Math.PI);
+  P.rootPitch = -(Math.PI / 2) * lie;
+  P.rootY = 0.14 * lie + sit * 0.05;
+  P.hipY = 0.92 - 0.12 * lie - sit * 0.3;
+  P.torsoP = 0.1 * lie + sit * 0.55;
+  P.torsoR = Math.sin(w * 0.5) * 0.12 * lie;
+  P.headP = -0.4 * k1 * (1 - up) + sit * 0.2;
+  P.headR = Math.sin(w * 0.4) * 0.25 * lie;
+  P.shLp = -2.6 * lie - sit * 0.6 + kick;
+  P.shRp = -2.3 * lie - sit * 0.5 - kick;
+  P.shLr = 0.9 * lie + 0.1;
+  P.shRr = -0.8 * lie - 0.1;
+  P.elL = -0.3 - 0.4 * lie;
+  P.elR = -0.6 - 0.3 * lie;
+  P.hipLp = 0.1 * lie + kick * 0.8 - sit * 1.2;
+  P.hipRp = -0.2 * lie - kick * 0.8 - sit * 1.0;
+  P.knL = 0.4 * lie + Math.max(0, kick) + sit * 1.5;
+  P.knR = 0.2 * lie + Math.max(0, -kick) + sit * 1.3;
+}
+
+const sm = (x) => {
+  const k = x < 0 ? 0 : x > 1 ? 1 : x;
+  return k * k * (3 - 2 * k);
+};

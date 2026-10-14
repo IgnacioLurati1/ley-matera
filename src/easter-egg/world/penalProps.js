@@ -399,29 +399,48 @@ const BUILDERS = {
   },
   // Celda de calabozo: la reja al frente (con la puerta) y la paja adentro.
   // door: el ancho del hueco de la puerta; swing: cuánto quedó abierta la hoja.
+  // (2026-10-13, el usuario: "los calabozos no tienen las rejas que llegan al
+  // final de la pared". La celda de la punta estaba corrida medio metro de su
+  // hueco: de un lado la reja se metía en la pared y del otro quedaba abierto
+  // de piso a techo. `a`: [desde, hasta] en x local, de pared a pared (medido
+  // en el juego): la reja va entera ahí y la puerta queda donde estaba. `h`:
+  // el techo: la reja y el marco llegan hasta él, y arriba de la puerta va un
+  // tramo fijo. Sin `a` ni `h`, como antes. globalThis.__mduRejasViejas: como estaba.)
   celdaK(M, o, r) {
     const g = new THREE.Group();
     const w = o.w || 6;
     const d = o.d || 6;
-    const H = 3.2;
+    const nueva = !globalThis.__mduRejasViejas;
+    const [xa, xb] = nueva && o.a ? o.a : [-w / 2, w / 2];
+    const e = nueva && o.a ? 0.02 : 0.05;
+    const H = nueva && o.h ? o.h - 0.065 : 3.2;
     const f = d / 2;
     const door = o.door || 1.1;
-    bars(g, M, -w / 2 + 0.05, -door / 2, f, H, 0.16);
-    bars(g, M, door / 2, w / 2 - 0.05, f, H, 0.16);
-    if (!o.open) bars(g, M, -door / 2, door / 2, f, H - 0.3, 0.16);
+    const dh = 2.9;
+    bars(g, M, xa + e, -door / 2, f, H, 0.16);
+    bars(g, M, door / 2, xb - e, f, H, 0.16);
+    if (nueva && o.h) {
+      // el dintel y los barrotes de arriba de la puerta, hasta el marco
+      B(g, door, 0.05, 0.04, M.bars || M.iron, 0, dh + 0.025, f);
+      const n = Math.max(1, Math.round(door / 0.16));
+      for (let k = 1; k < n; k++) C(g, 0.018, 0.018, H - dh, M.bars || M.iron, -door / 2 + (door * k) / n, (H + dh) / 2, f, 0, 0, 0, 5);
+    }
+    if (!o.open) bars(g, M, -door / 2, door / 2, f, nueva && o.h ? dh : H - 0.3, 0.16);
     else {
       // la puerta quedó abierta hacia afuera
       const dg = new THREE.Group();
       dg.position.set(door / 2, 0, f);
       dg.rotation.y = o.swing ?? -1.9;
-      bars(dg, M, -door, 0, 0, H - 0.3, 0.16);
+      bars(dg, M, -door, 0, 0, nueva && o.h ? dh : H - 0.3, 0.16);
       g.add(dg);
     }
-    B(g, w, 0.12, 0.08, M.iron, 0, H, f);
+    B(g, xb - xa, 0.12, 0.08, M.iron, (xa + xb) / 2, H, f);
     for (let i = 0; i < 12; i++) R(g, 0.5 + r() * 0.4, 0.05, 0.4 + r() * 0.3, M.hay || M.sack, (r() - 0.5) * (w - 1.5), 0.03, (r() - 0.5) * (d - 1.5), 0.02, r() * 3);
-    cot(g, M, -w / 2 + 0.6, -f + 1.3, 0);
-    bucket(g, M, w / 2 - 0.5, 0, -f + 0.5);
-    const boxes = [[-w / 2, 0, f - 0.08, -door / 2, H, f + 0.08], [door / 2, 0, f - 0.08, w / 2, H, f + 0.08]];
+    // la cama y el balde, contra las paredes de verdad (`a`): en la celda
+    // corrida quedaban metidos en la pared (el usuario, 2026-10-13: "sí, correlos")
+    cot(g, M, xa + 0.6, -f + 1.3, 0);
+    bucket(g, M, xb - 0.5, 0, -f + 0.5);
+    const boxes = [[xa, 0, f - 0.08, -door / 2, H, f + 0.08], [door / 2, 0, f - 0.08, xb, H, f + 0.08]];
     if (!o.open) boxes.push([-door / 2, 0, f - 0.08, door / 2, H, f + 0.08]);
     return { obj: g, boxes };
   },

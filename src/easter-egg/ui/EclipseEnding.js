@@ -1091,7 +1091,7 @@ export default class EclipseEnding extends CastleCine {
     // (FIN8: a la vista si se ve el elenco del que lo tiene: en el fogón —el
     // elenco B— el Primer Mate nunca aparecía en las manos de Fierro)
     const cast = FIN8() && o?.r ? [this.A, this.B, this.Sx].find((C) => C.list.includes(o.r)) || this.A : this.A;
-    m.visible = !!o && cast.people.root.visible;
+    m.visible = !!o && cast.people.root.visible && !this.mateHide;
     if (!m.visible) return;
     if (o.kind === 'two') {
       const B = o.r.a?.gs?.bones;
@@ -2457,6 +2457,12 @@ export default class EclipseEnding extends CastleCine {
       line('benito', L4.quedate),
       () => {
         pair(F(5.78, -3.15, 1.56), F(5.8, -2.95, 1.56), F(5.68, -1.5, 1.47), F(5.7, -1.5, 1.48), 33);
+        // (2026-10-13, el usuario: "mate volando" en la toma de "Si me quedo...": Cirilo lo tiene en la palma,
+        // pero el porongo le tapa la mano y al lado asoma una mano abierta: se lee suelto. La captura es del
+        // principio de la toma de Cirilo, con el texto de "Si me quedo..." todavía abajo. Eligió que ahí no se
+        // vea: no está desde esta toma y durante la de Cirilo, y vuelve en el corte siguiente (cuando contesta
+        // el Gil), en la mano de Cirilo. globalThis.__mduMateVisibleSiMeQuedo = true: como antes)
+        if (globalThis.__mduMateVisibleSiMeQuedo !== true) this.mateHide = true;
         return 0.25;
       },
       line('gil', L4.noQueda, 0.35),
@@ -2480,6 +2486,8 @@ export default class EclipseEnding extends CastleCine {
       line('cirilo', L4.cebamos),
       () => {
         pair(F(6.8, 2.0, 1.63), F(6.78, 1.85, 1.62), F(6.14, 0.1, 1.48), F(6.15, 0.1, 1.49), 33);
+        // (en el corte vuelve el Primer Mate, en la mano de Cirilo)
+        this.mateHide = false;
         return 0.2;
       },
       // (FIN10, el usuario: "cambiá la contestación del Gil a ese personaje")

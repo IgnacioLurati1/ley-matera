@@ -63,7 +63,9 @@ export default class Intro {
     this.fov = 55;
     this.el = null;
     // (el Challenge de la torre tiene la suya: sin personajes ni historia)
-    const make = (MODE === 'challenge' && SCRIPTS[`${MAP_ID}Reto`]) || SCRIPTS[MAP_ID];
+    // (Zombies gauchescos, sin historia: sin entrada; entities/esteros/Gauchescos.js)
+    // (Porteño encubierto, tampoco: entities/penal/Porteno.js)
+    const make = MODE === 'gauchescos' || MODE === 'porteno' ? null : (MODE === 'challenge' && SCRIPTS[`${MAP_ID}Reto`]) || SCRIPTS[MAP_ID];
     // el guion del mapa (arma sus muñecos ya, escondidos)
     const before = new Set(g.scene.children);
     this.S = make ? make(g, this) : null;

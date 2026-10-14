@@ -3,6 +3,10 @@ import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js'
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { FEATURES } from '../config/map';
 import { gbufferPass, gbBegin, gbDrop } from '../core/sizeCull';
+import { GB, gbInstall } from './gbMrt';
+// sombras de contacto (agente graficos2, 2026-10-12): fx/contacto.js
+import Contacto from './contacto';
+import { plusOn } from '../config/quality';
 
 // El rebote de luz de Épica (fx/Bounce, de 59). Mientras el archivo no está,
 // no hay rebote (así no se rompe nada).
@@ -28,7 +32,10 @@ export const LEVELS = {
 // Cuántas luces cercanas pueden tirar sombra (cada una renderiza la escena 6 veces).
 // Es el máximo: Ultra usa las tres más cercanas y Épica cinco (con una sola,
 // las demás no tiraban sombra hasta tenerlas encima).
-const SHADOW_LIGHTS = 5;
+// (evaluación de "sombras de todos los faroles y fogones", agente graficos2,
+// 2026-10-12: globalThis.__mduLamparasSombra = N antes de cargar pone N luces
+// con sombra en las calidades que tienen; solo para medir, apagado)
+const SHADOW_LIGHTS = Math.max(5, globalThis.__mduLamparasSombra | 0);
 const REFL_STEPS = 16;
 // (los reflejos: cuánto corre cada píxel el arranque de la marcha, y si promedia el color del choque)
 const OLD_SSR = globalThis.__mduOldSsr === true;
@@ -65,6 +72,12 @@ const LAMP_FALL = 7; // a esta distancia un fuego cuenta la mitad
 const LAMP_HOLD = 1.3; // ventaja del que ya tiene sombra (sin idas y vueltas)
 const LAMP_IN = 0.35; // segundos en que aparece una sombra
 const LAMP_OUT = 0.2; // y en que se va
+// El fogonazo con sombra (Epic.flashLamp): desde qué fuerza de destello, cuánto
+// se puede correr sin rehacer lo quieto de su cubo (m) y cuánto queda la luz en
+// su lugar entre tiro y tiro (s)
+const FLASH_MIN = 4;
+const FLASH_SNAP = 0.4;
+const FLASH_HOLD = 0.25;
 const LAMP_WAIT = 0.6; // segundos que un fuego tiene que estar quieto y prendido// Cubos de sombra de fuegos guardados (lo quieto de cada uno: volver a un
 // fuego es copiarlo, no redibujarlo).
 const LAMP_CACHE = 8;
@@ -296,6 +309,8 @@ class GBufferPass extends Pass {
       this.reflT = 0.5;
       this.refl = new WeakMap();
     }
+    // (B: la pasada principal ya escribió normales y reflejo, fx/gbMrt.js: acá nada)
+    if (this.mrt) return;
     this.nSwapped = 0;
     this.nHidden = 0;
     // (globalThis.__mduNoGbList: recorriendo la escena, como antes)
@@ -536,6 +551,15 @@ const LightShader = {
     uMaxDist: { value: 45 },
     uSkyVol: { value: 1 },
     uWet: { value: 0 },
+    // lluvia que moja (agente graficos2, GFX_PLUS.rainWet): charcos que
+    // reflejan, piso mojado también a la sombra de la luna, gotas en los
+    // charcos y el relámpago en el reflejo. uPuddle 0: como antes.
+    uPuddle: { value: 0 },
+    uRainAmt: { value: 0 },
+    uFlashK: { value: 0 },
+    uTime: { value: 0 },
+    tRainMask: { value: null },
+    uRainMap: { value: new THREE.Vector3(1, 1, 1) },
     uRefl: { value: 1 },
     uVolOn: { value: 1 },
   },
@@ -544,6 +568,9 @@ const LightShader = {
     uniform sampler2D tDiffuse, tDepth, tNormal, tVol;
     uniform highp sampler2DShadow tShadow;
     uniform float uHasShadow, uDensity, uScatter, uMaxDist, uWet, uRefl, uVolOn;
+    uniform float uPuddle, uRainAmt, uFlashK, uTime;
+    uniform sampler2D tRainMask;
+    uniform vec3 uRainMap;
     uniform mat4 uShadowMatrix, uProj, uProjInv, uCamWorld;
     uniform vec3 uCamPos, uUpView, uMoonDir, uMoonColor, uFogColor;
     varying vec2 vUv;
@@ -570,6 +597,48 @@ const LightShader = {
       if (c.x < 0.0 || c.x > 1.0 || c.y < 0.0 || c.y > 1.0 || c.z > 1.0) return 1.0;
       return texture(tShadow, vec3(c.xy, c.z - 0.0015));
     }
+    // ---- lluvia que moja ----
+    // ¿llueve acá? la máscara de world/Weather (R: cielo abierto; G: el techo
+    // de esa celda), con las 4 celdas de al lado para que el borde no sea un escalón
+    float rainOpen(vec3 wp) {
+      vec2 st = wp.xz - 0.5;
+      vec2 i0 = floor(st);
+      vec2 f = st - i0;
+      float o = 0.0;
+      for (int k = 0; k < 4; k++) {
+        vec2 dk = vec2(float(k & 1), float(k >> 1));
+        vec2 ij = clamp(i0 + dk, vec2(0.0), uRainMap.xy - 1.0);
+        vec4 m = texelFetch(tRainMask, ivec2(ij), 0);
+        float ok = m.r > 0.5 || wp.y > m.g * uRainMap.z - 0.05 ? 1.0 : 0.0;
+        vec2 w2 = mix(1.0 - f, f, dk);
+        o += ok * w2.x * w2.y;
+      }
+      return o;
+    }
+    float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float vnoise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = p - i;
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y);
+    }
+    // gotas en el charco: anillos que se abren (celdas de 0,45 m, cada una a su
+    // ritmo); devuelve cuánto inclinan la normal en x/z del mundo
+    vec2 ripples(vec2 p) {
+      vec2 acc = vec2(0.0);
+      for (int k = 0; k < 2; k++) {
+        vec2 q = p / 0.45 + float(k) * vec2(0.37, 0.71);
+        vec2 c = floor(q);
+        vec2 ctr = c + 0.25 + 0.5 * vec2(hash2(c), hash2(c + 3.1));
+        float ph = fract(uTime * (0.9 + 0.5 * hash2(c + 7.7)) + hash2(c + 1.3));
+        vec2 dv = q - ctr;
+        float d = length(dv);
+        float r = ph * 0.5;
+        float ring = exp(-pow((d - r) * 14.0, 2.0)) * (1.0 - ph) * (1.0 - ph);
+        acc += dv / max(d, 1e-3) * ring * (step(hash2(c + 5.0), uRainAmt));
+      }
+      return acc * 0.35;
+    }
 
     void main() {
       vec3 col = finite(texture2D(tDiffuse, vUv).rgb);
@@ -586,10 +655,29 @@ const LightShader = {
         float refl = nr.a * 0.8;
         // piso mojado con la lluvia: lo que mira para arriba y le da el cielo
         // (bajo techo la luna no llega: se usa su sombra para saberlo)
+        float pud = 0.0;
         if (uWet > 0.01 && nr.a >= 0.0) {
           float up = smoothstep(0.82, 0.96, dot(n, uUpView));
           float open = uHasShadow > 0.5 && up > 0.0 ? moonLit((uCamWorld * vec4(vp, 1.0)).xyz + vec3(0.0, 0.05, 0.0)) : 0.0;
-          refl = max(refl, uWet * up * open * 0.4);
+          // (lluvia que moja: mojado donde llueve, también a la sombra de la
+          // luna; y charcos que crecen con lo mojado, más oscuros, planos y con gotas)
+          if (uPuddle > 0.5 && up > 0.0) {
+            vec3 wp = (uCamWorld * vec4(vp, 1.0)).xyz;
+            float om = rainOpen(wp);
+            open = max(open, om);
+            float nz = vnoise(wp.xz * 0.33) * 0.65 + vnoise(wp.xz * 1.07 + 7.3) * 0.35;
+            float th = 0.7 - 0.08 * uWet;
+            pud = smoothstep(th, th + 0.035, nz) * up * om * smoothstep(0.15, 0.6, uWet);
+            col *= 1.0 - 0.12 * uWet * up * om;
+            if (pud > 0.0) {
+              vec2 rp = ripples(wp.xz) * uRainAmt;
+              vec3 nw = normalize(vec3(-rp.x, 1.0, -rp.y));
+              vec3 nv = transpose(mat3(uCamWorld)) * nw;
+              n = normalize(mix(n, nv, pud));
+              col *= 1.0 - 0.3 * pud;
+            }
+          }
+          refl = max(refl, max(uWet * up * open * 0.4, pud * 0.85));
         }
         // lo que refleja 1/15 (revoque, tierra: rugosidad ~0,9) no se ve y la
         // marcha con normal maps salta por toda la pantalla (+1,3 ms a 1440p)
@@ -633,7 +721,8 @@ const LightShader = {
           vec2 tx = 1.5 / vec2(textureSize(tDiffuse, 0));
           hc = hc * 0.4 + 0.15 * (finite(texture2D(tDiffuse, max(hit + vec2(tx.x, 0.0), 0.0)).rgb) + finite(texture2D(tDiffuse, max(hit - vec2(tx.x, 0.0), 0.0)).rgb) + finite(texture2D(tDiffuse, max(hit + vec2(0.0, tx.y), 0.0)).rgb) + finite(texture2D(tDiffuse, max(hit - vec2(0.0, tx.y), 0.0)).rgb));
 #endif
-          vec3 rc = mix(uFogColor * 0.6, hc, fade);
+          // (lo que no se encuentra: la niebla del cielo; con el relámpago, blanca)
+          vec3 rc = mix(uFogColor * (0.6 + 0.6 * pud) + vec3(0.75, 0.8, 0.95) * uFlashK * (0.3 + pud), hc, fade);
           col = mix(col, rc, clamp(refl * fres * (0.35 + 0.65 * fade), 0.0, 0.8));
         }
       }
@@ -926,8 +1015,22 @@ class ShadowCache {
   }
 
   drop(l) {
-    this.entries.get(l)?.rt.dispose();
+    this.freeRT(this.entries.get(l)?.rt);
     this.entries.delete(l);
+  }
+
+  // three 0.186 no borra de la placa la textura de profundidad de un cubo al soltar
+  // el blanco: la crea a mano (WebGLTextures setupDepthTexture) y al soltarla solo
+  // borra las que tiene anotadas. Cada fuego que salía de este caché dejaba unos 6 MB
+  // en la placa para siempre: Eclipse en Épica pasaba de 1 a 3,5 GB de texturas en dos
+  // vueltas por el mapa. Acá se borra a mano. (2026-10-12, tanda de optimización;
+  // globalThis.__mduNoCubeDepthFree: como antes)
+  freeRT(rt) {
+    if (!rt) return;
+    const d = rt.depthTexture;
+    const tex = d?.isCubeDepthTexture && globalThis.__mduNoCubeDepthFree !== true ? this.renderer.properties.get(d).__webglTexture : null;
+    rt.dispose();
+    if (tex) this.renderer.getContext().deleteTexture(tex);
   }
 
   // sin sombras vivas no hace falta nada de lo guardado
@@ -1004,7 +1107,7 @@ class ShadowCache {
   }
 
   target(l, map, old) {
-    old?.rt.dispose();
+    this.freeRT(old?.rt);
     const cube = !!map.isWebGLCubeRenderTarget;
     const w = map.width;
     const h = map.height;
@@ -1232,6 +1335,8 @@ function aoBlur(gtao, depth) {
     blending: THREE.NoBlending,
   });
   const quad = new FullScreenQuad(mat);
+  // (B, fx/gbMrt.js: Epic.bindGb le cambia la profundidad)
+  gtao.aoBlurMat = mat;
   const tmp = gtao.pdRenderTarget.clone();
   const renderPass = gtao._renderPass.bind(gtao);
   gtao._renderPass = (renderer, m, target, cc, ca) => {
@@ -1343,8 +1448,43 @@ export default class Epic {
     // suyo pasa por los reflejos. Comparte los uniforms de la luz (se ponen al
     // día en before()).
     this.bounce = Bounce ? new Bounce({ tDepth: u.tDepth, tNormal: u.tNormal, uProj: u.uProj, uProjInv: u.uProjInv, uCamWorld: u.uCamWorld, uCamPos: u.uCamPos }) : null;
-    this.passes = [this.gbuffer, this.gtao, this.vol, ...(this.bounce ? [this.bounce] : []), this.light];
+    // (el contacto, después de la oclusión: lo leen el rebote y los reflejos)
+    this.contact = new Contacto();
+    this.passes = [this.gbuffer, this.gtao, this.contact, this.vol, ...(this.bounce ? [this.bounce] : []), this.light];
     for (const p of this.passes) p.enabled = false;
+    // B (fx/gbMrt.js): el G-buffer desde la pasada principal. Qué escribe la
+    // salida 1 y con qué reflejo: lo mismo que entraba a la segunda pasada.
+    gbInstall(renderer);
+    const gbuf = this.gbuffer;
+    GB.writes = (o, m) => !(o.isSprite || o.isPoints || o.isLine) && !gbuf.skip(o, m);
+    GB.refl = (m) => {
+      let b = gbuf.refl.get(m);
+      if (b === undefined) gbuf.refl.set(m, (b = reflOf(m)));
+      return b;
+    };
+    this.gbOwn = { depth: gbuf.depthTexture, normal: gbuf.target.texture };
+    this.gbBound = this.gbOwn;
+  }
+
+  // Las texturas del G-buffer que leen la oclusión, los reflejos, el rebote y los
+  // haces de luna: las de la segunda pasada o las del MRT del mundo (null: las propias)
+  bindGb(src) {
+    const t = src || this.gbOwn;
+    this.gbuffer.mrt = src;
+    if (this.gbBound.depth === t.depth && this.gbBound.normal === t.normal) return;
+    this.gbBound = t;
+    const G = this.gtao;
+    G.depthTexture = t.depth;
+    G.normalTexture = t.normal;
+    G.gtaoMaterial.uniforms.tDepth.value = t.depth;
+    G.gtaoMaterial.uniforms.tNormal.value = t.normal;
+    G.pdMaterial.uniforms.tDepth.value = t.depth;
+    G.pdMaterial.uniforms.tNormal.value = t.normal;
+    G.blendMaterial.uniforms.tGNormal.value = t.normal;
+    if (G.aoBlurMat) G.aoBlurMat.uniforms.tDepth.value = t.depth;
+    const u = this.light.material.uniforms;
+    u.tDepth.value = t.depth;
+    u.tNormal.value = t.normal;
   }
 
   setScenes(scene, camera) {
@@ -1375,6 +1515,7 @@ export default class Epic {
   // Aplica lo de una calidad (LEVELS; null apaga todo). Sumar o sacar luces
   // con sombra recompila los shaders: solo pasa al cambiar la calidad.
   configure(cfg, game) {
+    if (cfg?.lamps && globalThis.__mduLamparasSombra > 0) cfg = { ...cfg, lamps: Math.min(SHADOW_LIGHTS, globalThis.__mduLamparasSombra | 0) };
     this.cfg = cfg || null;
     this.game = game;
     const c = this.cfg || {};
@@ -1391,6 +1532,8 @@ export default class Epic {
       this.bounce.configure?.(c, game);
     }
     this.vol.enabled = vol;
+    // (sombras de contacto: con el G-buffer, en los mapas de GFX_PLUS.contact)
+    this.contact.enabled = !!(c.ao || c.light || vol) && plusOn(game, 'contact');
     this.mc.on = !!c.live;
     if (!c.live) this.mc.free();
     this.gbuffer.enabled = !!(c.ao || c.light || vol);
@@ -1484,6 +1627,10 @@ export default class Epic {
     const scene = this.scene;
     if (!cam || !scene) return;
     this.mc.use(game?.world?.moon);
+    // (sombras de contacto: se mira cada cuadro, la casilla o el mapa pueden cambiar)
+    const ct = this.contact;
+    ct.enabled = this.gbuffer.enabled && plusOn(game, 'contact');
+    if (ct.enabled) ct.prep(game, cam, scene, this.gbBound);
     this.candT -= dt;
     if (this.candT <= 0) {
       this.candT = 0.5;
@@ -1533,6 +1680,18 @@ export default class Epic {
     u.uSkyVol.value = V?.sky ?? 1;
     if (fog) u.uFogColor.value.copy(fog.color);
     u.uWet.value = game.weather?.wet || 0;
+    // (lluvia que moja: en los mapas de GFX_PLUS.rainWet, con el clima que llueve)
+    const W = game.weather;
+    const pm = W?.rainU?.uMask?.value;
+    const pud = !!pm && W.rainU.uMap && plusOn(game, 'rainWet');
+    u.uPuddle.value = pud ? 1 : 0;
+    if (pud) {
+      u.tRainMask.value = pm;
+      u.uRainMap.value.set(W.rainU.uMap.value.x, W.rainU.uMap.value.y, W.rainU.uRoof.value);
+      u.uRainAmt.value = W.cur?.rain || 0;
+      u.uFlashK.value = (W.flash || 0) * (game.settings?.calmFx ? 0.3 : 1);
+      u.uTime.value = game.time || 0;
+    }
   }
 
   // Qué fuegos tiran sombra (cada luz con sombra dibuja la escena seis veces:
@@ -1588,9 +1747,12 @@ export default class Epic {
     // es dibujar solo lo que se mueve cerca. Día por medio, todas las lámparas
     // que tienen algo moviéndose al lado.
     this.flip = !this.flip;
+    // (el fogonazo con sombra toma una libre: va antes que los fuegos)
+    this.flashLamp(dt, game, lamps);
     for (let i = 0; i < lamps; i++) {
       const pl = this.pool[i];
       const u = pl.userData;
+      if (u.flash) continue;
       if (u.src && !ranked.some((c) => c.l === u.src)) {
         // se va: primero se apaga su sombra
         u.k = Math.max(0, u.k - dt / LAMP_OUT);
@@ -1647,6 +1809,78 @@ export default class Epic {
       }
       K.length = 0;
     }
+  }
+
+  // Fogonazos y explosiones que tiran sombra (agente graficos2, 2026-10-12;
+  // config/quality.js GFX_PLUS.flashShadow; globalThis.__mduSinSombraFogonazo:
+  // como antes). El destello de fx/Effects (la luz de siempre, flashes[0])
+  // toma una de las luces con sombra que esté libre —nunca la de un fuego: no
+  // se agregan luces ni se recompila nada— mientras dura, con la sombra dura.
+  // Lo quieto de su cubo se rehace solo si el destello se corrió más de
+  // FLASH_SNAP (tirando parado, solo lo que se mueve); entre tiro y tiro la luz
+  // queda FLASH_HOLD s en su lugar, apagada.
+  flashLamp(dt, game, lamps) {
+    const on = plusOn(game, 'flashShadow');
+    const f = on ? game?.fx?.flashes?.[0] : null;
+    const fl = f && f.life > 0 && f.light.intensity >= FLASH_MIN && f.light.parent ? f : null;
+    let pl = null;
+    for (let i = 0; i < lamps; i++) {
+      if (this.pool[i].userData.flash) {
+        pl = this.pool[i];
+        break;
+      }
+    }
+    if (!pl && fl && !this.warmAt) {
+      for (let i = lamps - 1; i >= 0; i--) {
+        const q = this.pool[i];
+        if (!q.userData.src && q.parent) {
+          pl = q;
+          break;
+        }
+      }
+      if (pl) {
+        const u = pl.userData;
+        u.flash = true;
+        u.k = 1;
+        u.hold = 0;
+        u.fp = null;
+        u.life = 0;
+        pl.shadow.radius = 1;
+      }
+    }
+    if (!pl) return;
+    const u = pl.userData;
+    if (!fl) {
+      u.hold += dt;
+      pl.intensity = 0;
+      if (u.hold > FLASH_HOLD || !on) {
+        u.flash = false;
+        u.src = null;
+        u.k = 0;
+        pl.shadow.radius = this.cfg?.lampSoft ?? 3;
+        pl.distance = 1;
+        pl.position.set(0, -500, 0);
+      }
+      return;
+    }
+    u.hold = 0;
+    const L = fl.light;
+    u.src = L;
+    L.getWorldPosition(tmpP);
+    // ¿un tiro nuevo? (Effects.flash vuelve a llenar la vida o la corre de lugar)
+    const fresh = !u.fp || fl.life > u.life + 1e-6 || u.fp.distanceToSquared(tmpP) > 1e-6;
+    u.life = fl.life;
+    if (fresh) {
+      (u.fp ||= new THREE.Vector3()).copy(tmpP);
+      if (pl.position.distanceToSquared(tmpP) > FLASH_SNAP * FLASH_SNAP) pl.position.copy(tmpP);
+      pl.shadow.needsUpdate = true;
+    } else if (this.flip && this.movingNear(pl.position, L.distance, game)) pl.shadow.needsUpdate = true;
+    pl.color.copy(L.color);
+    pl.intensity = L.intensity;
+    pl.distance = L.distance;
+    pl.decay = L.decay;
+    this.borrowed.push(L, L.intensity);
+    L.intensity = 0;
   }
 
   // Algo de keepDyn cambió en p (null: en cualquier lado): Epic.pickLamps
@@ -1708,7 +1942,9 @@ export default class Epic {
       const d = p.distanceTo(c) - (l.userData.zNear ? ZLAMP_HOLD : 0);
       let closer = 0;
       for (const o of this.pool) {
-        if (o === l || !o.parent || !(o.intensity > 0) || !o.castShadow) continue;
+        // (el fogonazo no le saca el lugar a un fuego: si no, la sombra de los
+        // muertos de ese fuego se apagaba en cada tiro; flashLamp)
+        if (o === l || !o.parent || !(o.intensity > 0) || !o.castShadow || o.userData.flash) continue;
         if (o.position.distanceTo(c) - (o.userData.zNear ? ZLAMP_HOLD : 0) < d) closer++;
       }
       near = closer < ZLAMPS;

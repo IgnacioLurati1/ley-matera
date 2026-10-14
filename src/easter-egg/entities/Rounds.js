@@ -2,6 +2,7 @@ import { zombieCount, zombieHealth, spawnDelay, bossRound, maxAlive, dogRound, d
 import { GRENADE } from '../config/weapons';
 import { FEATURES, WATER_Y } from '../config/map';
 import { preloadBossSkin } from './bossSkin';
+import { settleBreak } from '../core/memSettle';
 
 // La creciente del estero (Mate no Numa): cada 10 rondas el agua sube tanto
 // que hay que nadar en casi todos lados; la horda sale del agua y con ella
@@ -369,5 +370,7 @@ export default class Rounds {
     g.hud.roundEnd(this.round);
     g.levels?.round(this.round);
     g.net?.event('round', { n: this.round, phase: 'break' });
+    // (la app de escritorio: el recolector en el descanso, core/memSettle)
+    if (!FEATURES.tower) settleBreak(g);
   }
 }

@@ -79,7 +79,67 @@ export default class TowerNav {
     this.solve(t);
   }
 
+  // Los vecinos de cada nodo, anotados (2026-10-12, tanda de optimización, como
+  // Navigation.masks): la primera vez que un cálculo pasa por el nodo se le
+  // anotan los vecinos que da each() y en el mismo orden; los campos del mapa
+  // (el del jugador, el de cada compañero, el del señuelo) comparten las notas.
+  // Se rehacen si cambia navVersion o T.blocked es otro arreglo (computeNav).
+  // El campo da igual bit a bit: mismos vecinos, mismo orden, mismas cuentas.
+  nbs() {
+    const T = this.T;
+    let C = T.__nbs;
+    if (!C || C.ver !== this.w.navVersion || C.blocked !== T.blocked) {
+      const n = T.L * T.WH;
+      if (C && C.cnt.length === n) {
+        C.cnt.fill(255);
+      } else {
+        C = { ids: new Int32Array(n * 8), diag: new Uint8Array(n * 8), cnt: new Uint8Array(n).fill(255) };
+      }
+      C.ver = this.w.navVersion;
+      C.blocked = T.blocked;
+      T.__nbs = C;
+    }
+    return C;
+  }
+
   solve(start) {
+    if (globalThis.__mduNavViejo === true) return this.solveOld(start);
+    const dist = this.dist;
+    dist.fill(Infinity);
+    const heap = this.heap;
+    heap.clear();
+    dist[start] = 0;
+    heap.push(start, 0);
+    const C = this.nbs();
+    const { ids, diag, cnt } = C;
+    while (heap.size) {
+      const i = heap.popId();
+      const d = heap.lastKey;
+      if (d > dist[i]) continue;
+      let k = cnt[i];
+      const o = i * 8;
+      if (k === 255) {
+        k = 0;
+        this.each(i, (b, c) => {
+          ids[o + k] = b;
+          diag[o + k] = c === 1 ? 0 : 1;
+          k++;
+        });
+        cnt[i] = k;
+      }
+      for (let j = 0; j < k; j++) {
+        const b = ids[o + j];
+        const nd = d + (diag[o + j] ? SQ2 : 1);
+        if (nd < dist[b]) {
+          dist[b] = nd;
+          heap.push(b, nd);
+        }
+      }
+    }
+  }
+
+  // (el de antes, tal cual: globalThis.__mduNavViejo)
+  solveOld(start) {
     const dist = this.dist;
     dist.fill(Infinity);
     const heap = this.heap;

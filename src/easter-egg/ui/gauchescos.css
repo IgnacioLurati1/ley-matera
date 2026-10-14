@@ -1,0 +1,130 @@
+/* Zombies gauchescos (entities/esteros/Gauchescos.js): el reloj, quién es el
+   humano y tu mate de la escalera; el velo de los cambios y la pantalla del final. */
+
+/* sin lo de las rondas, los puntos ni los compañeros */
+.is-gz .mdu-round,
+.is-gz .mdu-points,
+.is-gz .mdu-popups,
+.is-gz .mdu-team,
+.is-gz .mdu-tabhint,
+.is-gz .mdu-inv { display: none !important; }
+/* el zombi no tiene mates ni mira */
+.is-gz-z .mdu-ammo,
+.is-gz-z .mdu-cross { visibility: hidden; }
+
+.mdu-gz {
+  position: absolute;
+  right: 28px;
+  top: 20px;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  font-family: 'Cinzel', 'Special Elite', serif;
+  color: #f4ecd8;
+  text-shadow: 0 1px 3px #000, 0 0 10px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  animation: mdu-gz-in 0.6s ease both;
+}
+.mdu-gz[hidden] { display: none; }
+.mdu-gz__clock {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+.mdu-gz.is-low .mdu-gz__clock { color: #ff8a6a; animation: mdu-gz-pulse 1s ease-in-out infinite; }
+.mdu-gz__who {
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: #c9e8b8;
+}
+.mdu-gz__who.is-me { color: #ffd66e; }
+.mdu-gz__me {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 3px 12px 4px;
+  border: 1px solid rgba(243, 210, 122, 0.35);
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(14, 22, 10, 0.78), rgba(6, 10, 4, 0.7));
+  font-size: 13px;
+}
+.mdu-gz__k { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.7; }
+.mdu-gz__me em { font-style: normal; color: #ffd66e; font-weight: 700; }
+.mdu-gz.is-zombie .mdu-gz__me { border-color: rgba(122, 216, 106, 0.35); opacity: 0.8; }
+
+.mdu-gz-veil {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: #000;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.mdu-gzend {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  font-family: 'Cinzel', 'Special Elite', serif;
+  color: #f4ecd8;
+  text-shadow: 0 1px 3px #000;
+}
+.mdu-gzend__card {
+  width: min(520px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 22px 26px 18px;
+  border: 1px solid rgba(243, 210, 122, 0.4);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(12, 20, 10, 0.92), rgba(5, 8, 4, 0.9));
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 40px -12px rgba(122, 216, 106, 0.5);
+  text-align: center;
+  animation: mdu-gz-card 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.mdu-gzend__k { margin: 0; font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; color: #9fd88a; }
+.mdu-gzend h2 { margin: 6px 0 2px; font-size: 34px; color: #ffd66e; }
+.mdu-gzend__sub { margin: 0 0 14px; font-size: 14px; opacity: 0.8; }
+.mdu-gzend ol { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 5px; }
+.mdu-gzend li {
+  display: grid;
+  grid-template-columns: 26px 1fr auto auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 10px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  text-align: left;
+  font-size: 14px;
+  animation: mdu-gz-row 0.5s ease both;
+  animation-delay: calc(0.35s + var(--i) * 0.12s);
+}
+.mdu-gzend li b { color: #9fd88a; }
+.mdu-gzend li em { font-style: normal; font-size: 12px; opacity: 0.85; }
+.mdu-gzend li i { font-style: normal; font-size: 12px; opacity: 0.7; }
+.mdu-gzend li.is-me { background: rgba(122, 216, 106, 0.12); }
+.mdu-gzend li.is-win { box-shadow: inset 0 0 0 1px rgba(255, 214, 110, 0.55); }
+.mdu-gzend li.is-win b { color: #ffd66e; }
+.mdu-gzend .mdu-btn { font-family: inherit; }
+
+@keyframes mdu-gz-in { from { opacity: 0; transform: translateY(-12px); } }
+@keyframes mdu-gz-pulse { 50% { opacity: 0.55; } }
+@keyframes mdu-gz-card { from { opacity: 0; transform: translateY(24px) scale(0.94); } }
+@keyframes mdu-gz-row { from { opacity: 0; transform: translateX(-14px); } }
+
+/* el aviso del menú: "Mínimo 2 jugadores" (entra y se va solo) */
+.mdu-gz-note {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  color: #ffb08a;
+  opacity: 0;
+}
+.mdu-gz-note.is-on { animation: mdu-gz-note 3.2s ease both; }
+@keyframes mdu-gz-note { 0% { opacity: 0; transform: translateY(6px); } 12%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+/* (los botones del final: Otra partida, solo el anfitrión, y Volver al menú) */
+.mdu-gzend__btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 22px; }

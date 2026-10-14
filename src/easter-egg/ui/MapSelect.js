@@ -38,6 +38,10 @@ const lookOf = (id) => MAP_LOOK[id] || { n: '', place: '', lore: '', font: 'inhe
 // Lo que cambia en el cartel con el otro modo (el Challenge de la torre).
 const MODE_LOOK = {
   challenge: { place: 'Challenge · sin historia', lore: 'Los pisos no tienen centro: el que se cae, cae hasta el fondo. Los muertos corren desde la primera ronda, los minijefes no dan respiro y el remolino se ensaña. Arriba de todo, la Supernova.', acc: '#ff4f9a' },
+  // (Zombies gauchescos: entities/esteros/Gauchescos.js)
+  // (Porteño encubierto: entities/penal/Porteno.js)
+  porteno: { place: 'Porteño encubierto · en línea', lore: 'Entre los presos hay un policía disfrazado de gaucho. Hagan las tareas, encuéntrenlo y que el Alcaide se encargue.', acc: '#e0574a' },
+  gauchescos: { place: 'Zombies gauchescos · en línea', lore: 'Una cura flota en el estero. El que la toma es humano; los demás, zombis que corren entre la paja. Cada baja, otro mate.', acc: '#7ad86a' },
 };
 const modeName = (id, mode) => MAP_MODES[id]?.find((m) => m.id === mode && m.id !== 'story')?.name || '';
 const vars = (L) => `--acc:${L.acc};--font:${L.font};--sky:${L.sky}`;

@@ -68,7 +68,16 @@ export const PERKS = {
     cost: 2000,
     color: '#e8a21c',
     glyph: '✠',
-    desc: 'Disparás más rápido.',
+    // (el 2.0, el usuario 2026-10-13: "saca el +33 de cadencia, ya dispara el
+    // doble"; weapons/Weapons.js dobleTap; __mduDoubleTapViejo: el de antes)
+    desc: globalThis.__mduDoubleTapViejo === true ? 'Disparás más rápido.' : 'Cada bala sale doble.',
+    // lo que pega la segunda bala, por categoría del mate (core/armas.js
+    // categoria): "nerfea un poquito el daño de aquellas armas que se ven
+    // beneficiados por su efecto" (el usuario, 2026-10-13). Las que tiran
+    // muchas balas o perdigones, menos; las semiautomáticas, más.
+    // (el usuario, 2026-10-13 noche: "el doble tap bajalo un poco, no quiero
+    // romper el balance": 10 puntos menos en cada categoría)
+    segunda: { pistola: 0.75, tirador: 0.75, fusil: 0.7, subfusil: 0.65, ametralladora: 0.65, escopeta: 0.65, otro: 0.7 },
     label: {
       brand: 'Doble Cruz',
       tagline: 'DOS CRUCES · EL DOBLE DE BALA',

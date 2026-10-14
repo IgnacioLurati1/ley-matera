@@ -396,6 +396,27 @@ export function drawCost(renderer) {
       pass++;
     }
   };
+  // Precompilar como se dibuja (2026-10-12, tanda de optimización, punto 7): todo se
+  // dibuja en imágenes intermedias (fx/PostFX, composer: salida lineal y sin tono), pero
+  // compile() y compileAsync() sin blanco armaban los programas para la pantalla (sRGB y
+  // ACES), que no usa nadie: Eclipse en Épica compilaba ~330 de más al cargar y los de
+  // verdad recién al primer uso. Se compila con un blanco de 1x1 puesto.
+  // (globalThis.__mduCompilaPantalla: como antes)
+  let lin = null;
+  for (const k of ['compile', 'compileAsync']) {
+    const f = renderer[k];
+    if (!f) continue;
+    renderer[k] = function (...a) {
+      if (globalThis.__mduCompilaPantalla === true || renderer.getRenderTarget() !== null) return f.apply(renderer, a);
+      lin ||= new THREE.WebGLRenderTarget(1, 1);
+      renderer.setRenderTarget(lin);
+      try {
+        return f.apply(renderer, a);
+      } finally {
+        renderer.setRenderTarget(null);
+      }
+    };
+  }
   const rbd = renderer.renderBufferDirect;
   let gated = false;
   const draw = (camera, scene, geometry, material, object, group) => {

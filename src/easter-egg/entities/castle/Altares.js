@@ -295,8 +295,10 @@ export default class Altares {
           w.give(id, A.up);
           const s = w.slots.find((x) => x.id === id);
           if (s && A.ammo) {
-            s.mag = Math.min(A.ammo[0], weaponStats(id, A.up).mag);
-            s.reserve = Math.min(A.ammo[1], weaponStats(id, A.up).reserve);
+            // (con los accesorios de la armería: el cargador +X % no se pierde)
+            const st = w.statsOf(id, A.up, s);
+            s.mag = Math.min(A.ammo[0], st.mag);
+            s.reserve = Math.min(A.ammo[1], st.reserve);
             w.updateHud();
           }
           this.given.add(A.el);

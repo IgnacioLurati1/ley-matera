@@ -6,6 +6,7 @@ import { EclipseAtmos } from './eclipseAtmos';
 import { keepOut, onFloor, zoneAtCell } from './eclipse/centro';
 import { upgradeFloors, hiTex } from './eclipseGfxTex';
 import { buildMood } from './eclipseMood';
+import { cacheTomar, cacheGuardar, cacheHuella } from '../core/cacheDisco';
 
 // La pasada gráfica de Eclipse Matero (grafica-v3, 2026-10-06). El usuario:
 // "poca iluminación, todo muy plano y sin oclusión", "lo que sostiene las
@@ -617,38 +618,60 @@ function rockLook(w, hi) {
     if (o.name === 'eclipseRock' && o.isMesh) mesh = o;
   });
   if (!mesh) return;
-  if (on('__mduNoEclRockShape')) roughenRock(w, mesh);
+  // (la roca ya rota y su unión con el piso, de una carga anterior con la misma
+  // malla y el mismo mapa: core/cacheDisco; ~0,9 s)
+  const rough = on('__mduNoEclRockShape');
+  const G0 = mesh.geometry;
+  const huella = cacheHuella('roca', rough, globalThis.__mduNoEclRockCache === true, ROCK_EDGE, G0.attributes.position.array, G0.attributes.color?.array, w.grid, w.fy, JSON.stringify(Object.values(ISLANDS).map((I) => [I.box, I.y])));
+  const guardado = cacheTomar('eclipse', 'roca', huella);
+  // (la malla solo se reemplaza si se rompe; si no, queda la de siempre)
+  if (guardado?.pos && rough) {
+    const ng = new THREE.BufferGeometry();
+    ng.setAttribute('position', new THREE.BufferAttribute(guardado.pos, 3));
+    if (guardado.col) ng.setAttribute('color', new THREE.BufferAttribute(guardado.col, 3));
+    if (guardado.nrm) ng.setAttribute('normal', new THREE.BufferAttribute(guardado.nrm, 3));
+    ng.computeBoundingSphere();
+    G0.dispose();
+    mesh.geometry = ng;
+    Object.assign(rockStats, guardado.stats);
+  }
+  if (!guardado?.pos && rough) roughenRock(w, mesh);
   // la unión con el piso: la altura del piso de arriba de cada triángulo
   const pos = mesh.geometry.attributes.position;
-  const seam = new Float32Array(pos.count);
-  const boxes = Object.values(ISLANDS);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    let best = null;
-    let bd = Infinity;
-    for (const I of boxes) {
-      const [x0, z0, x1, z1] = I.box;
-      const d = Math.hypot(Math.max(x0 - x, 0, x - x1), Math.max(z0 - z, 0, z - z1));
-      if (d < bd) {
-        bd = d;
-        best = I;
+  let seam = guardado?.seam;
+  if (!seam) {
+    seam = new Float32Array(pos.count);
+    const boxes = Object.values(ISLANDS);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
+      let best = null;
+      let bd = Infinity;
+      for (const I of boxes) {
+        const [x0, z0, x1, z1] = I.box;
+        const d = Math.hypot(Math.max(x0 - x, 0, x - x1), Math.max(z0 - z, 0, z - z1));
+        if (d < bd) {
+          bd = d;
+          best = I;
+        }
       }
+      // el piso de la celda de arriba, si hay; si no, el de la isla
+      const cx = Math.floor(x);
+      const cz = Math.floor(z);
+      let fy = best ? best.y : y;
+      if (w.inside(cx, cz) && w.grid[w.idx(cx, cz)] !== 0 && Number.isFinite(w.fy?.[w.idx(cx, cz)])) fy = w.fy[w.idx(cx, cz)];
+      seam[i] = fy;
     }
-    // el piso de la celda de arriba, si hay; si no, el de la isla
-    const cx = Math.floor(x);
-    const cz = Math.floor(z);
-    let fy = best ? best.y : y;
-    if (w.inside(cx, cz) && w.grid[w.idx(cx, cz)] !== 0 && Number.isFinite(w.fy?.[w.idx(cx, cz)])) fy = w.fy[w.idx(cx, cz)];
-    seam[i] = fy;
-  }
-  // (el piso de arriba, el mismo para los tres vértices de cada triángulo: las
-  // caras de los costados miden diez metros y, con la oclusión por vértice,
-  // salían rayas verticales; la distancia al piso va por píxel)
-  for (let i = 0; i + 2 < pos.count; i += 3) {
-    const top = Math.max(seam[i], seam[i + 1], seam[i + 2]);
-    seam[i] = seam[i + 1] = seam[i + 2] = top;
+    // (el piso de arriba, el mismo para los tres vértices de cada triángulo: las
+    // caras de los costados miden diez metros y, con la oclusión por vértice,
+    // salían rayas verticales; la distancia al piso va por píxel)
+    for (let i = 0; i + 2 < pos.count; i += 3) {
+      const top = Math.max(seam[i], seam[i + 1], seam[i + 2]);
+      seam[i] = seam[i + 1] = seam[i + 2] = top;
+    }
+    const A = mesh.geometry.attributes;
+    cacheGuardar('eclipse', 'roca', huella, rough ? { pos: A.position.array, col: A.color?.array, nrm: A.normal?.array, seam, stats: { ...rockStats } } : { seam });
   }
   mesh.geometry.setAttribute('aEclSeam', new THREE.BufferAttribute(seam, 1));
   // el brillo medio de la textura de roca (la variación va alrededor de eso:

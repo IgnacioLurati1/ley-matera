@@ -18,6 +18,10 @@ import { devKeys } from '../core/devKeys';
 import { LUISON_PREP } from '../core/audio';
 import { gilVincha } from '../net/gilLook';
 
+// (el rush de jefes, de arena en arena: sin la llegada del Luisón; core/bossRush.js.
+// globalThis.__mduRushViajeViejo = true: con la llegada, como antes)
+const rushSinEscena = (g) => !!g.rush?.on && globalThis.__mduRushViajeViejo !== true;
+
 // Lo que suena antes que llegue el Luisón, en segundos de canción desde que
 // arranca (LUISON_FROM) hasta el golpe en que aparece: [cuándo, cuál lobo
 // (audio.wolves; -1: el aullido del Luisón, con su resuello), paneo].
@@ -507,7 +511,7 @@ export default class EsterosEgg {
   // La escena ya armada (y compilada) desde que la luz está en la laguna: al
   // dar la luz no se traba nada (el usuario, 2026-09-29).
   prepArrival() {
-    if (this.arrival || this.step >= 6 || this.arrivalSeen) return;
+    if (this.arrival || this.step >= 6 || this.arrivalSeen || rushSinEscena(this.g)) return;
     prefetchSong();
     try {
       this.arrival = new LuisonArrival(this.g, this);
@@ -520,6 +524,13 @@ export default class EsterosEgg {
   playArrival() {
     const g = this.g;
     if (this.scene || this.arrivalSeen) return;
+    // (el rush de jefes va de arena en arena sin cinemáticas: el Luisón llega
+    // con el golpe de la canción, como sin la escena. core/bossRush.js)
+    if (rushSinEscena(g)) {
+      this.arrivalSeen = true;
+      if (isHost(g)) this.luisonWait = g.time;
+      return;
+    }
     this.prepArrival();
     const cine = this.arrival;
     this.arrival = null;
@@ -615,6 +626,8 @@ export default class EsterosEgg {
     const g = this.g;
     if (this.step >= 6) return;
     this.endAt = null;
+    // (el rush de jefes sigue sin el final: core/bossRush.js)
+    if (g.rush?.down()) return;
     this.step = 6;
     this.netSync();
     g.net?.event('ee', { cine: 'final', hoja: this.saber.hoja ? 1 : 0 });

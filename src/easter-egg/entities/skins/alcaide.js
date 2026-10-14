@@ -63,6 +63,10 @@ export default {
       return { key: 'muere', t: clampT(S, 'muere', S.deadT) };
     }
     S.deadT = null;
+    // (Porteño encubierto, 2026-10-13: en la visita, el guion dice dónde está y
+    // qué clip; entities/penal/pzEncierro.js alcaideScript)
+    const sc = z.script?.(z, S, { s, dt });
+    if (sc) return sc;
     switch (st) {
       // llega o se enoja: grita
       case 'intro':

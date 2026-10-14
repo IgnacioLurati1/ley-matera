@@ -991,9 +991,12 @@ export const PROPS = [
   { type: 'sacks', pos: [163.4, 342.4], rot: 0.4, tp: 'penal' },
   { type: 'cajones', pos: [153.2, 344.4], rot: 0.2, tp: 'penal' },
   { type: 'cajones', pos: [144.2, 344.5], rot: -0.3, tp: 'penal' },
-  { type: 'celdaK', pos: [121, 317.5], rot: 1.5708, w: 4, d: 4, tp: 'penal' },
-  { type: 'celdaK', pos: [121, 337], rot: 1.5708, w: 4, d: 4, open: 1, tp: 'penal' },
-  { type: 'celdaK', pos: [128.5, 330], rot: -1.5708, w: 7, d: 5, open: 1, tp: 'penal' },
+  // (a, h: la reja de pared a pared y hasta el techo; la primera quedaba medio
+  // metro corta de un lado y la del encierro también, con la puerta donde la
+  // atan las cadenas del Sombrero: world/penalProps.js celdaK)
+  { type: 'celdaK', pos: [121, 317.5], rot: 1.5708, w: 4, d: 4, a: [-2.5, 1.5], h: 3.4, tp: 'penal' },
+  { type: 'celdaK', pos: [121, 337], rot: 1.5708, w: 4, d: 4, open: 1, a: [-2, 2], h: 3.4, tp: 'penal' },
+  { type: 'celdaK', pos: [128.5, 330], rot: -1.5708, w: 7, d: 5, open: 1, a: [-3, 4], h: 3.4, tp: 'penal' },
   { type: 'grilletes', pos: [123.05, 321], rot: 1.5708, tp: 'penal' },
   { type: 'grilletes', pos: [123.05, 331], rot: 1.5708, tp: 'penal' },
   { type: 'grilletes', pos: [123.05, 343.5], rot: 1.5708, tp: 'penal' },

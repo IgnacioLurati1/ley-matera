@@ -37,6 +37,45 @@ const NB = [
   [-1, -1, SQ2],
 ];
 
+// Punto 15 de la tanda de optimización (2026-10-12, el usuario: "confío en tu
+// criterio"). El cálculo del campo se iba casi todo en preguntar, por cada
+// vecino de cada celda, si está libre, si corta una esquina, si hay un
+// desnivel (canStep) y si un borde está tapado (edgeOpen, que además armaba
+// una función en cada llamada). Esas respuestas no cambian mientras no cambie
+// el mapa de navegación: quedan anotadas por celda en una máscara de 8 bits
+// (bit k: se puede pasar hacia NB[k]) que se arma la primera vez que un cálculo
+// pasa por la celda, y la comparten todos los campos del mismo mundo. El
+// resultado da igual bit a bit: mismo orden de vecinos, misma cola con los
+// mismos empates, mismas cuentas. globalThis.__mduNavViejo: el de antes, tal cual.
+//
+// Cuándo queda vieja: navBlock y navEdge solo cambian en World.computeNavBlock
+// (arreglos nuevos y navVersion + 1: puertas, escombros, el asedio, el penal,
+// Eclipse) y w.pass solo en computeHeights, al armar el mapa. La máscara se
+// rehace si cambia navVersion o cualquiera de esos tres arreglos. navCost (el
+// agua) y navLinks (la telesilla, los portales) no van en la máscara: se leen
+// en cada cálculo, como antes.
+const STEP = [1, 1, 1, 1, SQ2, SQ2, SQ2, SQ2];
+const MASKS = new WeakMap();
+
+// MinHeap.push con un hueco en vez de intercambios de a dos: las mismas
+// comparaciones (en 32 bits, como quedan guardadas) y el mismo orden final.
+// Devuelve el tamaño nuevo.
+function heapPush(ids, keys, size, id, key) {
+  if (size >= ids.length) return size;
+  const k = Math.fround(key);
+  let h = size;
+  while (h > 0) {
+    const p = (h - 1) >> 1;
+    if (keys[p] <= k) break;
+    ids[h] = ids[p];
+    keys[h] = keys[p];
+    h = p;
+  }
+  ids[h] = id;
+  keys[h] = k;
+  return size + 1;
+}
+
 export default class Navigation {
   constructor(world) {
     // en la torre (pisos apilados) el campo de flujo es por capas: mismo uso,
@@ -99,7 +138,129 @@ export default class Navigation {
     this.solve(t);
   }
 
+  // La máscara de pasos de este mundo, al día (ver STEP).
+  masks() {
+    const w = this.w;
+    const W = w.W;
+    const n = W * w.H;
+    let M = MASKS.get(w);
+    if (!M || M.W !== W || M.mask.length !== n) {
+      M = { W, mask: new Uint8Array(n), stamp: new Int32Array(n), gen: 0, ver: NaN, block: null, edge: null, pass: null, off: new Int32Array(8) };
+      for (let k = 0; k < 8; k++) M.off[k] = NB[k][1] * W + NB[k][0];
+      MASKS.set(w, M);
+    }
+    if (M.ver !== w.navVersion || M.block !== w.navBlock || M.edge !== w.navEdge || M.pass !== w.pass) {
+      M.gen++;
+      M.ver = w.navVersion;
+      M.block = w.navBlock;
+      M.edge = w.navEdge;
+      M.pass = w.pass;
+    }
+    return M;
+  }
+
+  // Los pasos posibles desde la celda i: las mismas preguntas que hace
+  // solveOld por cada vecino, en el mismo orden.
+  cellMask(i) {
+    const w = this.w;
+    const W = w.W;
+    const x = i % W;
+    const z = (i - x) / W;
+    let m = 0;
+    for (let k = 0; k < 8; k++) {
+      const dx = NB[k][0];
+      const dz = NB[k][1];
+      if (this.blocked(x + dx, z + dz)) continue;
+      if (dx && dz && (this.blocked(x + dx, z) || this.blocked(x, z + dz))) continue;
+      if (w.pass && !canStep(w, x, z, dx, dz)) continue;
+      if (!this.edgeOpen(x, z, dx, dz)) continue;
+      m |= 1 << k;
+    }
+    return m;
+  }
+
+  // Lo mismo que solveOld, sobre la máscara y con la cola a mano (ver STEP).
   solve(start) {
+    if (globalThis.__mduNavViejo === true) return this.solveOld(start);
+    const w = this.w;
+    const dist = this.dist;
+    dist.fill(Infinity);
+    const heap = this.heap;
+    const ids = heap.ids;
+    const keys = heap.keys;
+    const M = this.masks();
+    const mask = M.mask;
+    const stamp = M.stamp;
+    const gen = M.gen;
+    const off = M.off;
+    const cost = w.navCost;
+    const links = w.navLinks;
+    const budget = FEATURES.eclipse && globalThis.__mduNoNavBudget !== true ? NAV_BUDGET : Infinity;
+    const eps = globalThis.__mduNoNavEps === true ? 0 : NAV_EPS;
+    dist[start] = 0;
+    let size = heapPush(ids, keys, 0, start, 0);
+    let popped = 0;
+    while (size) {
+      // MinHeap.pop con un hueco: mismas comparaciones que allá
+      const i = ids[0];
+      const d = keys[0];
+      size--;
+      if (size > 0) {
+        const lid = ids[size];
+        const lk = keys[size];
+        let h = 0;
+        for (;;) {
+          const l = h * 2 + 1;
+          const r = l + 1;
+          let m = h;
+          let mk = lk;
+          if (l < size && keys[l] < mk) {
+            m = l;
+            mk = keys[l];
+          }
+          if (r < size && keys[r] < mk) {
+            m = r;
+            mk = keys[r];
+          }
+          if (m === h) break;
+          ids[h] = ids[m];
+          keys[h] = mk;
+          h = m;
+        }
+        ids[h] = lid;
+        keys[h] = lk;
+      }
+      if (d > dist[i]) continue;
+      if (++popped > budget) break;
+      if (stamp[i] !== gen) {
+        mask[i] = this.cellMask(i);
+        stamp[i] = gen;
+      }
+      for (let bits = mask[i], k = 0; bits; bits >>= 1, k++) {
+        if (!(bits & 1)) continue;
+        const ni = i + off[k];
+        const nd = d + (cost ? STEP[k] * cost[ni] : STEP[k]);
+        if (nd < dist[ni] - eps) {
+          dist[ni] = nd;
+          size = heapPush(ids, keys, size, ni, nd);
+        }
+      }
+      const L = links?.get(i);
+      if (L) {
+        for (const [ni, c] of L) {
+          const nd = d + c;
+          if (nd < dist[ni] - eps) {
+            dist[ni] = nd;
+            size = heapPush(ids, keys, size, ni, nd);
+          }
+        }
+      }
+    }
+    heap.size = size;
+  }
+
+  // El cálculo de antes (globalThis.__mduNavViejo), tal cual.
+  solveOld(start) {
     const w = this.w;
     const W = w.W;
     const dist = this.dist;

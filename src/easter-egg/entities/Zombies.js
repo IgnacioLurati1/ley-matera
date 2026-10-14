@@ -26,6 +26,7 @@ import { SPEEDS, rollSpeed, rollSpeedHold, walkPace, runShare, ZOMBIE_DAMAGE, DO
 import { rng } from '../core/noise';
 import BossMoves from './bossMoves';
 import { reelStep, reelPose } from './zombieReel';
+import * as Armas from '../core/armas';
 
 // Zombies por rondas: aparición (ventanas y tierra), IA, animación procedural,
 // render instanciado (una llamada de dibujo por tipo de parte) y daño.
@@ -679,6 +680,14 @@ export default class Zombies {
   // hold: es de una actividad del easter egg donde hay que aguantar (los que
   // salen en un punto fijo, salvo los peones del jefe; y la defensa del yerbal)
   spawn(round, health, at = null, hold = !!at) {
+    // (el rush de jefes: los muertos de la pelea, con la vida del lugar del
+    // jefe en el orden y la velocidad de las arenas; core/rushPelea.js.
+    // globalThis.__mduRushZombiesViejos = true: como venían)
+    const RZ = this.g.rush?.pelea?.zombi(round, health);
+    if (RZ) {
+      round = RZ.round;
+      health = RZ.health;
+    }
     // con alguien en el altillo, muchos se tiran por las claraboyas
     const sky = !at && this.atticBusy() && Math.random() < 0.45 ? SKYLIGHTS[Math.floor(Math.random() * SKYLIGHTS.length)] : null;
     // (el motín del penal: salen de las celdas del pabellón, entities/penalMotin.js)
@@ -1197,6 +1206,9 @@ export default class Zombies {
       }
     } else if (z.kind === 'surubi') {
       // (el chapuzón lo hizo entities/monumento/Surubi.js: emergeFx)
+    } else if (opts.quiet) {
+      // (llega caminando, sin rayo ni grito: la visita del Alcaide en Porteño
+      // encubierto, entities/penal/pzEncierro.js)
     } else {
       g.fx.explosion(at, 2.5, [0.6, 0.8, 1]);
       g.fx.flash(at, 0x9ac8ff, 90, 0.6, 20);
@@ -1207,7 +1219,7 @@ export default class Zombies {
     }
     // (sin cartel de llegada: cada uno se anuncia con su sonido; el Caballero
     // Negro, el Luisón y el Surubí no dicen nada)
-    if (z.kind === 'luison' || z.kind === 'surubi' || z.kind === 'caballero') {
+    if (opts.quiet || z.kind === 'luison' || z.kind === 'surubi' || z.kind === 'caballero') {
       // nada
     } else if (z.kind === 'sargento') {
       g.later(1.6, () => g.say('sargento', SARGENTO[Math.floor(Math.random() * SARGENTO.length)]));
@@ -1291,6 +1303,9 @@ export default class Zombies {
     zz.dead = f.dead || state === 'dead';
     if (f.crawler) zz.hidden |= HIDE_LEGS;
     if (f.noHead) zz.hidden |= HIDE_HEAD;
+    // para qué lado cae y si le reventó la cabeza, como lo decidió el anfitrión
+    // (core/sentirTiro.js; f.caida: Session)
+    this.g.sentir?.remota(zz, f, was, state);
     if (was !== state) this.remoteSound(zz, was, state);
   }
 
@@ -1411,7 +1426,7 @@ export default class Zombies {
   updateRemote(dt, t) {
     const now = performance.now();
     this.moves.update(dt);
-    const all = this.pool.filter((z) => z.active);
+    const all = this.pool.filter((z) => z.active && z.gz == null);
     if (this.boss) all.push(this.boss);
     for (const z of all) {
       z.stateT += dt;
@@ -1494,6 +1509,7 @@ export default class Zombies {
           break;
         case 'reel':
         case 'zapped':
+        case 'volteado':
           reelPose(this, z, t);
           break;
         case 'drop': {
@@ -1613,7 +1629,8 @@ export default class Zombies {
     const freeze = !!g.emp?.frozen() || g.powerups?.active.clarin > 0;
     const slow = !!g.emp?.slowAll();
     for (const z of this.pool) {
-      if (!z.active) continue;
+      // (z.gz: un jugador zombi de Zombies gauchescos; lo mueve entities/esteros/Gauchescos.js)
+      if (!z.active || z.gz != null) continue;
       if (freeze && !z.dead && !z.boss) {
         if (g.powerups?.active.clarin > 0 && !z.dog && z.state !== 'rise') firmes(z, dt);
         continue;
@@ -1642,10 +1659,10 @@ export default class Zombies {
     const list = this.pool;
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
-      if (!a.active || a.dead || a.state !== 'chase' && a.state !== 'attack') continue;
+      if (!a.active || a.dead || a.gz != null || a.state !== 'chase' && a.state !== 'attack') continue;
       for (let j = i + 1; j < list.length; j++) {
         const b = list[j];
-        if (!b.active || b.dead || b.state !== 'chase' && b.state !== 'attack') continue;
+        if (!b.active || b.dead || b.gz != null || b.state !== 'chase' && b.state !== 'attack') continue;
         const dx = b.pos.x - a.pos.x;
         const dz = b.pos.z - a.pos.z;
         const d2 = dx * dx + dz * dz;
@@ -1709,7 +1726,8 @@ export default class Zombies {
           // los puntos del que lo prendió fuego (si es un compañero, se le mandan)
           const by = z.burnBy;
           const remote = by != null && g.net?.host && by !== g.net.id;
-          this.damage(z, z.maxHp * 0.08 + 25, { type: 'burn', by, noPoints: remote, point: tmpV.set(z.pos.x, (z.baseY || 0) + 1.2, z.pos.z).clone() });
+          // (wp: el mate que lo prendió, para su nivel en la armería: core/armas.js)
+          this.damage(z, z.maxHp * 0.08 + 25, { type: 'burn', by, wp: z.burnWp || undefined, noPoints: remote, point: tmpV.set(z.pos.x, (z.baseY || 0) + 1.2, z.pos.z).clone() });
           if (remote && this.lastPoints) g.net.pts.set(by, (g.net.pts.get(by) || 0) + this.lastPoints);
           if (z.dead) return;
         }
@@ -1991,6 +2009,8 @@ export default class Zombies {
       // el escudo lo hizo tambalear o lo electrocutó (entities/zombieReel.js)
       case 'reel':
       case 'zapped':
+      // (la cornada del Asta: entities/zombieReel.js)
+      case 'volteado':
         reelStep(this, z, dt, t);
         break;
       // el asedio del castillo (entities/castle/Asedio.js)
@@ -2255,7 +2275,7 @@ export default class Zombies {
     const wet = z.dog ? this.rigOf(z).waterSpeed?.(z) ?? 1 : zombieWaterSpeed(z);
     const slow = !z.boss && !z.dog && this.g.emp?.slowAll();
     // (z.chainT: el grillete del escudo del penal, world/ShieldUpgrade)
-    const speed = (z.crawler ? 0.75 : slow ? Math.min(z.speed, SPEEDS.walk * 1.1) : z.speed) * (z.slowT > 0 ? 0.4 : z.chainT > 0 ? 0.45 : 1) * (wander ? 0.55 : 1) * wet;
+    const speed = (z.crawler ? 0.75 : slow ? Math.min(z.speed, SPEEDS.walk * 1.1) : z.speed) * (z.slowT > 0 ? 0.4 : z.chainT > 0 ? 0.45 : 1) * (wander ? 0.55 : 1) * wet * (z.tiloT > 0 ? Armas.ESP.tilo.lento : 1);
     const attacking = z.state === 'attack';
     // pasos arrastrados cuando andan cerca
     if (distP < 7) {
@@ -3884,7 +3904,12 @@ export default class Zombies {
   // info: { zone, type, dir, point, weapon, noPoints }
   damage(z, amount, info = {}) {
     if (!z.active || z.dead) return false;
+    // Zombies gauchescos: el zombi es un jugador (entities/esteros/Gauchescos.js)
+    if (z.gz != null) return this.g.gz?.damage(z, amount, info) ?? false;
     const g = this.g;
+    // las mejoras del rush de jefes (core/rushBuild.js): solo los golpes del
+    // jugador de esta compu (el invitado manda el tiro ya multiplicado)
+    if (g.rush?.build?.on) amount = g.rush.build.hit(z, amount, info);
     // el toque de clarín del Monumento: cuadrados, reciben el doble
     if (!g.net?.guest && g.powerups?.active.clarin > 0 && !z.boss) amount *= 2;
     // tumbado no suma: lo que pega o liquida el que está en el piso no da
@@ -3984,17 +4009,31 @@ export default class Zombies {
         if (info.burn && !(z.burnT > 0)) {
           z.burnT = 4;
           z.burnBy = info.by;
+          z.burnWp = this.burnWp(info, type);
           this.paint(z, 0x6a3a20);
         }
         if (info.elem) this.applyElem(z, info, dmg);
       }
+      // (los especialistas: el tilo adormece, la cornada voltea, la brasa prende; weapons/especialistas.js)
+      if (info.esp) g.weapons?.oper?.golpe(z, info);
       if (z.boss && z.state === 'chase' && Math.random() < 0.02) this.setState(z, 'intro');
       // quejido de dolor de vez en cuando
       if (!z.boss && Math.random() < 0.12 && type !== 'burn') g.audio.growl(tmpV.set(z.pos.x, (z.baseY || 0) + 1.5, z.pos.z), 'idle');
       return true;
     }
     this.kill(z, info);
+    // (los especialistas que hacen algo con la baja: el desgarro, la bendición, el cerrojo)
+    if (info.esp) g.weapons?.oper?.mata(z, info, dmg);
     return true;
+  }
+
+  // El mate de la armería que prendió el fuego (sus quemaduras le suman nivel:
+  // core/armas.js; el usuario, 2026-10-12): el del compañero lo dice su tiro;
+  // el propio, el que está en la mano.
+  burnWp(info, type) {
+    if (info.wp) return info.wp;
+    const g = this.g;
+    return info.by == null || info.by === g.net?.id ? Armas.deQuien(g, type) : null;
   }
 
   // Efecto del elemento de un mate mejorado en el Pack-a-Pava.
@@ -4004,6 +4043,7 @@ export default class Zombies {
     if (e === 'fire' && !(z.burnT > 0) && Math.random() < 0.4) {
       z.burnT = 5;
       z.burnBy = info.by;
+      z.burnWp = this.burnWp(info, info.type || 'bullet');
       this.paint(z, 0x6a3a20);
     } else if (e === 'ice' && Math.random() < 0.45) {
       z.slowT = 2.5;
@@ -4025,6 +4065,7 @@ export default class Zombies {
 
   kill(z, info = {}) {
     const g = this.g;
+    if (z.gz != null) return g.gz?.damage(z, 1e9, info) ?? false;
     const type = info.type || 'bullet';
     z.dead = true;
     z.deathFrom = null;
@@ -4045,13 +4086,16 @@ export default class Zombies {
     if (type !== 'nuke' && !info.noPoints) g.addPoints(pts, info.point);
     if (info.by != null && g.net?.host && info.by !== g.net.id) {
       // lo liquidó un compañero: va a su cuenta, no a la del anfitrión
-      g.net.creditKill(info.by, type, info.zone, z);
+      // (wp: el mate con que lo bajó, para su nivel en la armería: core/armas.js)
+      g.net.creditKill(info.by, type, info.zone, z, info.wp);
     } else {
       g.stats.kills++;
       if (info.zone === 'head' && ['bullet', 'knife'].includes(type)) g.stats.headshots++;
       if (type === 'knife') g.stats.knifeKills++;
       // la experiencia (ui/Levels: vale menos en las rondas con más zombies)
       g.levels?.kill(z, type, info.zone);
+      // el nivel del mate que tiene en la mano (core/armas.js)
+      Armas.baja(g, type, info.zone, { wp: info.wp, boss: !!z.boss });
     }
     // dirección de caída
     if (info.dir) {
@@ -4179,13 +4223,16 @@ export default class Zombies {
       if (info.zone === 'head' && !z.boss && type !== 'nuke') {
         const hp = new THREE.Vector3().setFromMatrixPosition(z.mats[2]);
         z.hidden |= HIDE_HEAD;
-        g.fx.blood(hp, { x: 0, y: 1.2, z: 0 }, 26, 1.4);
+        // con los mates de daño alto la cabeza revienta: pone su sangre, sus
+        // pedazos y su crujido (core/sentirTiro.js; __mduSinCabezaRevienta: como antes)
+        const rev = !!g.sentir?.reventar(z, info, hp);
+        if (!rev) g.fx.blood(hp, { x: 0, y: 1.2, z: 0 }, 26, 1.4);
         // (a la altura de su piso: con y fijo en 0, en la Proa del Monumento
         // —piso a -2,6— la mancha quedaba flotando en el aire)
         // (las balas del infierno carbonizan: sin charco; y el calco era el tirón de cada muerte)
         if (!info.hell) g.fx.decal(1, { x: hp.x + (Math.random() - 0.5), y: (z.baseY || 0) + 0.02, z: hp.z + (Math.random() - 0.5) }, { x: 0, y: 1, z: 0 }, 1.2);
-        if (Math.random() < 0.6) g.fx.gib(hp, new THREE.Vector3((info.dir?.x || 0) * 4 + (Math.random() - 0.5) * 2, 3 + Math.random() * 2, (info.dir?.z || 0) * 4 + (Math.random() - 0.5) * 2));
-        g.audio.squish(hp);
+        if (!rev && Math.random() < 0.6) g.fx.gib(hp, new THREE.Vector3((info.dir?.x || 0) * 4 + (Math.random() - 0.5) * 2, 3 + Math.random() * 2, (info.dir?.z || 0) * 4 + (Math.random() - 0.5) * 2));
+        if (!rev) g.audio.squish(hp);
       } else if (type === 'explosive' && !z.boss && Math.random() < 0.5) {
         z.hidden |= 1 << (5 + Math.floor(Math.random() * 2));
         z.state = 'flung';
@@ -4203,6 +4250,12 @@ export default class Zombies {
         g.fx.fire(tmpV.set(z.pos.x, (z.baseY || 0) + 0.8, z.pos.z), 0.5, 8);
       }
     }
+    // la baja confirmada y hacia dónde cae el cuerpo (core/sentirTiro.js:
+    // __mduSinBajaConfirmada, __mduSinCaidaFuerza). Lo que suelta sale de
+    // donde murió (spot, abajo): el cuerpo se corre después.
+    g.sentir?.alMorir(z, info, type);
+    // lo que dan las bajas en el rush de jefes (core/rushBuild.js)
+    g.rush?.build?.alMorir(z, info, type);
     // (el derretido deja su charco de barro, no sangre)
     if (type !== 'melt' && type !== 'luz' && !info.hell && !this.dry(z)) g.fx.decal(1, { x: z.pos.x + (Math.random() - 0.5) * 0.6, y: (z.baseY || 0) + 0.02, z: z.pos.z + (Math.random() - 0.5) * 0.6 }, { x: 0, y: 1, z: 0 }, 0.8 + Math.random() * 0.6);
     if (type !== 'freeze' && type !== 'yerba' && type !== 'luz') g.audio.growl(neck.clone(), 'death');

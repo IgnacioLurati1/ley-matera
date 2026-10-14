@@ -1,0 +1,10 @@
+/* La letra propia de cada mapa (la de su entrada, ui/intro.css) para su nombre
+   fuera del mapa: la postal de la carga y los logros (el usuario, 2026-10-13).
+   El molino y el Monumento usan la de siempre. Solo variables: cada pantalla
+   las toma con var(--mapfont, la suya). */
+[data-map='granja'] { --mapfont: 'Rye', 'Special Elite', serif; --mapfont-w: normal; }
+[data-map='penal'] { --mapfont: 'Stardos Stencil', 'Special Elite', serif; --mapfont-w: 700; }
+[data-map='torre'] { --mapfont: 'Cinzel', 'Special Elite', serif; --mapfont-w: 900; --mapfont-k: 0.78; }
+[data-map='castillo'] { --mapfont: 'UnifrakturMaguntia', 'Cinzel', serif; --mapfont-w: normal; }
+[data-map='esteros'] { --mapfont: 'Kaushan Script', 'Special Elite', serif; --mapfont-w: normal; }
+[data-map='eclipse'] { --mapfont: 'Cinzel', 'Special Elite', serif; --mapfont-w: 900; --mapfont-k: 0.78; }

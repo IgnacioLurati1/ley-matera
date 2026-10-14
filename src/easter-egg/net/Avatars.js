@@ -13,7 +13,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 // color que se bambolea al moverse y su mate en la mano, animado con el mismo
 // esqueleto que los zombies. Arriba lleva el nombre.
 
-const PONCHOS = [0xa8231c, 0x1e5aa8, 0x1f7a3a, 0xc9a02a, 0x6a2a8a];
+export const PONCHOS = [0xa8231c, 0x1e5aa8, 0x1f7a3a, 0xc9a02a, 0x6a2a8a];
 // la silueta de cada compañero a través de las paredes (el color de su poncho, más vivo)
 const XRAY = [0xff5a48, 0x5aa8ff, 0x5ae07a, 0xffd24a, 0xc070ff];
 // lo que tarda en desangrarse un caído (Player: bleed)
@@ -381,14 +381,16 @@ export default class Avatars {
   // lleva el mate de siempre.
   // c: el camuflaje de la armería que lleva (weapons/camos.js; solo sin
   // mejorar). Ese sí se arma acá si todavía no estaba.
-  setGun(a, w, u, c) {
+  // acc: los accesorios de la armería que lleva ('id,id'; core/armas.js), mejorado o no.
+  setGun(a, w, u, c, acc = '') {
     a.gun?.removeFromParent();
     a.gun = null;
     const W = this.g.weapons;
     // (la hoz de oro: 'oro', mejorada o no; weapons/Weapons.js equipModel)
     const gold = w === 'hoz' && c === 'oro';
     const camo = gold || (!u && c && CAMO_BY_ID[c] && camoable(w)) ? c : null;
-    const src = w && ((camo && W?.modelOf?.(w, gold ? u : 0, camo)) || W?.models?.get(`${w}|${u}`) || W?.models?.get(`${w}|0`));
+    const ac = acc && camoable(w) && globalThis.__mduSinAccesorios !== true ? acc.split(',').filter(Boolean).slice(0, 4) : [];
+    const src = w && (((camo || ac.length) && W?.modelOf?.(w, gold ? u : camo ? 0 : u, camo, 'R', ac)) || W?.models?.get(`${w}|${u}`) || W?.models?.get(`${w}|0`));
     if (!src?.root) return;
     // (la copia de primera persona ya preparada para la mano del muñeco, una
     // por modelo: gunTemplate; cada compañero la suya, con las mismas mallas)
@@ -703,6 +705,10 @@ export default class Avatars {
       // los que esperan la próxima ronda no se ven (como en el original)
       a.group.visible = !r.dead || !!r.corpse;
       if (!a.group.visible) continue;
+      // (Zombies gauchescos: el que es zombi se ve con el cuerpo de muerto; entities/esteros/Gauchescos.js)
+      if (g.gz?.hideAvatar(a, r)) continue;
+      // (Porteño encubierto: los muertos y los del encierro no se ven; la mano vacía; entities/penal/Porteno.js)
+      if (g.pz?.avatar(a, r)) continue;
       // la vincha del Gil que quedó pedida y las bandanas de sus compañeros
       if (a.gs?.on) {
         if (a.wantVincha && !a.vincha) gilVincha(a);
@@ -739,10 +745,13 @@ export default class Avatars {
       }
       // el mate que tiene en la mano (Session 'wpn')
       const wp = this.team ? this.s.wpn?.get(r.id) : null;
-      const wkey = wp?.w ? `${wp.w}|${wp.u | 0}|${wp.c || ''}` : '';
+      const wkey = wp?.w ? `${wp.w}|${wp.u | 0}|${wp.c || ''}|${wp.a || ''}` : '';
       if (wkey !== (a.wkey || '')) {
+        // (el Lanzapava del Mate 47 que se abre o se cierra: el cerrojo se oye; weapons/lanzapava.js)
+        const lzA = /lanzapavaAbierta/.test(wkey);
+        if (/lanzapava/.test(wkey) && /lanzapava/.test(a.wkey || '') && lzA !== /lanzapavaAbierta/.test(a.wkey || '')) this.g.weapons?.lanza?.cerrojo(a.group.position, lzA);
         a.wkey = wkey;
-        this.setGun(a, wp?.w, wp?.u | 0, wp?.c);
+        this.setGun(a, wp?.w, wp?.u | 0, wp?.c, wp?.a);
       }
       // pose: caminando, quieto o caído
       if (r.downed || r.dead || r.corpse) {
@@ -957,6 +966,8 @@ export default class Avatars {
       if (a.xray) this.updateXray(a, dt);
       // caído: el nombre ya va con el ícono de reanimar
       if (this.team) a.tag.visible = !r.downed;
+      // (Porteño encubierto: sin nada en la mano, el nombre tapado por las paredes y el facón del tajo)
+      g.pz?.avatarLate(a, r);
     }
     if (this.team) g.hud.setRevives(this.revives());
   }

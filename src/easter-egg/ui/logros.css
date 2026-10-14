@@ -95,3 +95,6 @@
 .mdu-lg__name { flex: 1; min-width: 0; font-weight: normal; font-size: var(--u-s); color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mdu-lg__it:not(.is-got) .mdu-lg__name { opacity: 0.6; }
 .mdu-lg__meta { flex: none; font-style: normal; font-size: var(--u-xs); opacity: 0.7; }
+/* el nombre de cada mapa con su letra (ui/mapFonts.css; el usuario, 2026-10-13) */
+.mdu-lg__map[data-map] h3 { font-family: var(--mapfont, 'Creepster', 'Special Elite', serif); font-weight: var(--mapfont-w, normal); }
+.mdu-lg__map[data-map] h3 small { font-weight: normal; }

@@ -24,6 +24,8 @@ import { installMonumentoHooks, buildMonumento, buildMonumentoOutside } from './
 import { installEclipseHooks, buildEclipseOutside } from './Eclipse';
 import { monumentoMaterials } from './monumentoTextures';
 import { buildCastleSky } from './castleSky';
+import { skyVolUniforms, skyVolGlsl, SKYVOL_VERT, SKYVOL_VERT_MAIN, buildVeil, updateSkyVol } from './skyVol';
+import { plusOn } from '../config/quality';
 import { buildEclipseSky, eclipseShadow } from './eclipseSky';
 import Night from '../fx/Night';
 import { ARENA } from './Arena';
@@ -974,8 +976,10 @@ export default class World {
         uZenith: { value: new THREE.Vector3(...(SKY.colors?.zenith || [0.012, 0.018, 0.04])) },
         uGlow: { value: new THREE.Vector3(...(SKY.colors?.glow || [0.16, 0.04, 0.02])) },
         uSunCore: { value: SUN9 ? SUN9_CORE : 2.5 },
+        // el cielo con volumen (world/skyVol.js; en 0 queda como siempre)
+        ...skyVolUniforms(new THREE.Vector3(...((SKY.moon || {}).dir || [-0.45, 0.62, -0.64])).normalize()),
       },
-      vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+      vertexShader: `varying vec3 vDir; ${SKYVOL_VERT} void main(){ vDir = normalize(position); ${SKYVOL_VERT_MAIN} gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
       fragmentShader: `
         varying vec3 vDir; uniform float uTime, uCloud, uFlash, uBlood, uFogAmt, uDay, uSunCore; uniform vec3 uFogColor, uSun, uHorizon, uZenith, uGlow;
         float hash(vec3 p){ p = fract(p*0.3183099+.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
@@ -983,6 +987,7 @@ export default class World {
         float vnoise(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); f = f*f*(3.0-2.0*f);
           return mix(mix(h2(i), h2(i+vec2(1,0)), f.x), mix(h2(i+vec2(0,1)), h2(i+vec2(1,1)), f.x), f.y); }
         float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ s += a * vnoise(p); p *= 2.03; a *= 0.5; } return s; }
+        ${skyVolGlsl(1.6, '0.012, 0.004')}
         void main(){
           float h = vDir.y;
           vec3 horizon = mix(uHorizon, vec3(0.22,0.04,0.03), uBlood);
@@ -1001,12 +1006,26 @@ export default class World {
           star *= 0.6 + 0.4 * sin(uTime * 2.0 + hash(cell + 3.0) * 30.0);
           // nubes que tapan las estrellas y se iluminan con los relámpagos
           vec2 cp = vDir.xz / (h + 0.25) * 1.6 + vec2(uTime * 0.012, uTime * 0.004);
-          float cl = smoothstep(0.62 - uCloud * 0.45, 0.95 - uCloud * 0.2, fbm(cp)) * smoothstep(-0.02, 0.15, h);
-          col += vec3(star) * (1.0 - cl);
+          float fb = fbm(cp);
+          float hm = smoothstep(-0.02, 0.15, h);
+          float cl = smoothstep(0.62 - uCloud * 0.45, 0.95 - uCloud * 0.2, fb) * hm;
+          // (cielo con volumen, world/skyVol.js: la capa alta y fina, atrás)
+          // (solo arriba del horizonte y de noche: abajo y de día no se calcula)
+          float cl2 = uVol > 0.001 && hm > 0.001 && uDay < 0.999 ? svHigh(vDir, hm) * uVol * (1.0 - cl) * (1.0 - uDay) : 0.0;
+          col += vec3(star) * (1.0 - cl) * (1.0 - cl2);
           vec3 cloudCol = mix(vec3(0.045, 0.045, 0.055), vec3(0.09, 0.02, 0.02), uBlood);
           // las nubes del atardecer se prenden de naranja del lado del sol
           cloudCol = mix(cloudCol, mix(vec3(0.35, 0.18, 0.2), vec3(1.0, 0.5, 0.25), pow(sd, 3.0)), uDay);
-          col = mix(col, cloudCol, cl * 0.9);
+          float vm = 0.0;
+          // (de día —el atardecer de La Tapera— nada: el cielo de siempre y sin gastar)
+          if (uVol > 0.001 && uDay < 0.999) {
+            col = mix(col, cloudCol * 1.15 + uMoonTint * 0.05 * (1.0 - uDay) * pow(max(dot(vDir, uMoonDir), 0.0), 4.0), cl2);
+            if (cl > 0.003) cloudCol = svCloudLit(cloudCol, vDir, cp, fb, cl, uVol * (1.0 - uDay));
+            // (delante de la luna las pinta el velo)
+            vm = svMoonMask() * uVol * (1.0 - uDay);
+            col += uMoonTint * svRays(vDir) * 0.07 * uVol * smoothstep(0.2, 0.65, uCloud) * (1.0 - cl * 0.85) * (1.0 - uDay);
+          }
+          col = mix(col, cloudCol, cl * 0.9 * (1.0 - vm));
           col += uFlash * (vec3(0.35, 0.4, 0.55) * (0.4 + cl * 1.2)) * smoothstep(-0.1, 0.3, h);
           col = mix(col, uFogColor, uFogAmt * (1.0 - smoothstep(0.0, 0.7, h) * 0.5));
           gl_FragColor = vec4(col, 1.0);
@@ -1032,6 +1051,15 @@ export default class World {
     this.moonDir = moonDir;
     this.moonSprite = moon;
     this.moonHalo = halo;
+    // las nubes delante de la luna (cielo con volumen, world/skyVol.js)
+    this.skyVeil = buildVeil(this, sky, moon.position, {
+      S: 1.6,
+      DR: '0.012, 0.004',
+      colGlsl: `float sd = max(dot(d, uSun), 0.0);
+        vec3 cc = mix(vec3(0.045, 0.045, 0.055), vec3(0.09, 0.02, 0.02), uBlood);
+        return mix(cc, mix(vec3(0.35, 0.18, 0.2), vec3(1.0, 0.5, 0.25), pow(sd, 3.0)), uDay);`,
+      flashGlsl: 'col += uFlash * vec3(0.35, 0.4, 0.55) * (0.4 + cl * 1.2) * smoothstep(-0.1, 0.3, h);',
+    });
     // la noche del estero: luna llena, niebla sobre el agua y luciérnagas
     if (SKY.night) this.night = new Night(this.g, this, SKY.night);
     // el sol del atardecer (solo en los mapas que tienen día)
@@ -1332,6 +1360,8 @@ export default class World {
     this.moonHalo.material.opacity = 0.35 * vis + blood * 0.2;
     this.moonBase = 0.9 * (1 - cloud * 0.45) * (SKY.moon?.light ?? 1);
     this.blood = blood;
+    // el cielo con volumen (Ultra/Épica según el mapa: config/quality.js GFX_PLUS)
+    updateSkyVol(this, plusOn(this.g, 'sky'));
   }
 
   // Destello de un relámpago: la luna se vuelve un flash blanco que entra por las ventanas.

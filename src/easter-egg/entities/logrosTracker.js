@@ -143,8 +143,10 @@ export default class LogrosTracker {
     const ids = [...new Set(PERK_SPOTS.map((s) => s.perk))];
     if (ids.length && ids.every((id) => p.perks.has(id))) this.got(L.unlock('perks'));
     // todas las puertas abiertas
+    // (en el rush no cuenta: el estero se abre entero solo para la pelea del
+    // Luisón, core/bossRush.js onNewRun, y regalaba el logro)
     const open = g.world?.doorOpen;
-    if (DOORS.length && open && DOORS.every((d, i) => open[i])) this.got(L.unlock('doors'));
+    if (!g.rush?.on && DOORS.length && open && DOORS.every((d, i) => open[i])) this.got(L.unlock('doors'));
     if (g.net?.remote?.size > 0) this.got(L.unlock('online'));
     // las empanadas (g.emp es de cada partida)
     if (g.emp && g.emp !== this.emp) {

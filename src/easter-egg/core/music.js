@@ -80,6 +80,10 @@ export const TRACKS = {
   // Wikimedia Commons, San_Lorenzo_-_U.S._Marine_Band.ogg. Entera, de la
   // introducción al acorde final)
   'marcha-san-lorenzo': { name: 'La Marcha de San Lorenzo', gain: 1, loop: [0.1, 230.4] },
+  // el final nuevo de San Lorenzo (entities/eclipse/slFinal.js, a medias, __mduSlFinal): la del
+  // usuario, "Dark Cinematic Finale" (royaltyfreemusicstudio); entra con la corona rota y su
+  // final abrupto (69,4 s) cae en el salto del Gil
+  'final-eclipse': { name: 'El final de San Lorenzo', gain: 0.7 },
   // el final de Eclipse Matero (ui/EclipseEnding.js): de fondo, bajita, del
   // santuario a cuando se cose el universo (Determined Pursuit, Emma_MA, CC0)
   'cine-eclipse-final': { name: 'El final de Eclipse Matero', gain: 0.45 },

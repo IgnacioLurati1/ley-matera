@@ -22,9 +22,34 @@ const CIRCLE_R = 8;
 const FEATHER_SPEED = 21;
 const FEATHER_DMG = 25;
 const DIVE_DMG = 55;
+// La torre del Challenge (2026-10-12, el usuario: "el cuervo entra por los
+// huecos del medio, no importa que clipee un poquito, lo importante es que no
+// trate de entrar por una pared sólida"): la vuelta es un cuadrado de puntas
+// redondeadas a RING_GAP m de las caras (el círculo de 18 m cortaba las
+// esquinas, que están a 18,4 m del medio) y la picada y la salida pasan por el
+// medio de un arco: se alinea GATE_OUT m afuera, lo cruza y sigue GATE_IN m
+// adentro. El hueco va del antepecho (1,04) a la clave (2,94) y el cuervo no
+// entra entero (con las alas plegadas de la picada mide 6,4 m de ancho y le
+// cuelgan 2,7 m abajo del centro; aleteando, 9,7 m): las alturas que menos
+// rozan, medidas con el cuerpo de verdad, son entrando el medio del arco a
+// GATE_H del piso, bajando GATE_SLOPE por metro, y saliendo a GATE_OUT_H,
+// subiendo GATE_OUT_SLOPE por metro; en la cima, GATE_TOP (por arriba de la
+// baranda). __mduCuervoViejo: como antes.
+const RING_GAP = 5.5;
+const RING_V = 9;
+const GATE_OUT = 4.5;
+const GATE_IN = 1.3;
+const GATE_H = 2.4;
+const GATE_SLOPE = 0.3;
+const GATE_OUT_H = 2;
+const GATE_OUT_SLOPE = 0.15;
+const GATE_TOP = 3;
 
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
+const ringP = { x: 0, z: 0 };
+const ringT = { x: 0, z: 0 };
+const pathT = new THREE.Vector3();
 
 export default class Crow {
   constructor(game) {
@@ -178,6 +203,7 @@ export default class Crow {
     this.shootCd = 3;
     this.diveCd = 8;
     this.divePlot = null;
+    this.gate = null;
     this.rig.visible = true;
     // el cuerpo de verdad (entities/crowSkin.js): baja la primera vez que viene
     this.skin ||= new CrowSkin(this);
@@ -202,6 +228,9 @@ export default class Crow {
     this.state = s;
     this.t = 0;
     if (s === prev) return;
+    // (la torre del Challenge: el camino por el arco y el lugar en la vuelta se rehacen)
+    this.path = null;
+    this.ringS = null;
     const a = this.g.audio;
     if (s === 'dive') a.crowScreech(this.z.pos);
     else if (s === 'aim') this.caw(2);
@@ -233,6 +262,99 @@ export default class Crow {
     return !w.isIndoorCell(Math.floor(p.pos.x), Math.floor(p.pos.z));
   }
 
+  // La torre del Challenge: por qué arco entra a buscar al que está en P (el
+  // punto donde se va a posar). Los arcos del piso de P (en la cima, los
+  // huecos de la baranda) con el paso libre atrás del arco (escaleras,
+  // paredes, utilería) y hasta P (si el costado roza algo, pesa 3 m más);
+  // de esos, los más cercanos a P (hasta 2,5 m más que el mejor) y, de los
+  // más cercanos, uno al que llega por afuera sin cortar la torre: el de
+  // camino más corto. Si los cercanos le quedan del otro lado, el de este lado
+  // más conveniente aunque quede más lejos del jugador (null solo si no hay
+  // ninguno: espera dando vueltas).
+  // Devuelve el arco ({ x, z: el medio del muro; nx, nz: para afuera; fy: el
+  // piso; top: la cima; pts: los puntos de la picada, gatePts }) o null.
+  planGate(T, P) {
+    const w = this.g.world;
+    const z = this.z;
+    const TT = T.T;
+    if (!T.inFoot(P.x, P.z)) return null;
+    const l = T.levelOf(P.y - this.perchY());
+    const fy = T.yOf(l);
+    const top = l === T.L - 1;
+    const list = [];
+    // cada cara: la normal para afuera y dónde está el medio del muro
+    for (const [nx, nz, b] of [[0, -1, TT.z0 - 0.5], [1, 0, TT.x1 + 1.5], [0, 1, TT.z1 + 1.5], [-1, 0, TT.x0 - 0.5]]) {
+      for (const [a0, a1] of T.archSpans()) {
+        const u = (a0 + a1 + 1) / 2;
+        const G = { x: nx ? b : u, z: nx ? u : b, nx, nz, fy, top };
+        const [O, O2, , I] = (G.pts = this.gatePts(G, top ? GATE_TOP : GATE_H, GATE_SLOPE));
+        // (el paso del arco, también un poco más abajo: la panza en la picada)
+        if (blocked(w, O2, I, 0.6, 0.7)) continue;
+        const tight = blocked(w, I, P, 0.5);
+        if (tight && blocked(w, I, P)) continue;
+        G.cost = I.distanceTo(P) + (tight ? 3 : 0);
+        G.tight = tight;
+        list.push(G);
+      }
+    }
+    if (!list.length) return null;
+    const near = Math.min(...list.map((a) => a.cost)) + 2.5;
+    let best = null;
+    let bestC = Infinity;
+    // (si los cercanos le quedan del otro lado, en vez de esperar dando vueltas entra por
+    // uno más lejos del jugador que le quede de este lado: el usuario, 2026-10-12, "prefiero
+    // que se tire antes". globalThis.__mduCuervoEspera: espera como antes)
+    for (const any of [false, true]) {
+      if (any && (best || globalThis.__mduCuervoEspera === true)) break;
+      for (const a of list) {
+        const O = a.pts[0];
+        if ((!any && a.cost > near) || cutsTower(T, z.pos, O, 2)) continue;
+        // (el lejano cruza más piso: solo con el paso de adentro bien ancho y libre abajo)
+        if (any && (a.tight || blocked(w, a.pts[3], P, 0.9, 0.6))) continue;
+        const c = Math.hypot(O.x - z.pos.x, O.z - z.pos.z) + 2 * a.cost;
+        if (c < bestC) {
+          best = a;
+          bestC = c;
+        }
+      }
+    }
+    return best;
+  }
+
+  // Los puntos del cruce del arco G, en fila (afuera, afuera cerca, el medio
+  // del muro, adentro): a h del piso en el medio del muro y slope más alto
+  // por cada metro para afuera.
+  gatePts(G, h, slope) {
+    const at = (d) => new THREE.Vector3(G.x + G.nx * d, G.fy + h + slope * d, G.z + G.nz * d);
+    return [at(0.5 + GATE_OUT), at(1.7), at(0), at(-(0.5 + GATE_IN))];
+  }
+
+  // El camino por los puntos (una curva que pasa por todos: derecha entre
+  // los que están en fila, como los del arco) y por dónde va.
+  makePath(pts) {
+    this.path = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    this.pathLen = Math.max(0.01, this.path.getLength());
+    this.pathS = 0;
+    this.pathV = this.vel.length();
+  }
+
+  // Un paso por el camino: la velocidad sube (o baja) hacia speed de a poco,
+  // como con fly. Deja la dirección en pathT; true al llegar al final. over:
+  // lo que se pasa del final lo sigue derecho (si no, el último cuadro anda
+  // menos y se nota un tirón al volver a la vuelta).
+  pathStep(dt, speed, over = false) {
+    const z = this.z;
+    this.pathV += (speed - this.pathV) * Math.min(1, dt * 3);
+    this.pathS += this.pathV * dt;
+    const u = Math.min(1, this.pathS / this.pathLen);
+    this.path.getPointAt(u, z.pos);
+    this.path.getTangentAt(u, pathT);
+    if (over && this.pathS > this.pathLen) z.pos.addScaledVector(pathT, this.pathS - this.pathLen);
+    // (la velocidad de verdad: la caída si muere y la inclinación la usan)
+    this.vel.copy(pathT).multiplyScalar(this.pathV);
+    return u >= 1;
+  }
+
   // ---------------- cerebro (anfitrión) ----------------
   update(dt) {
     const g = this.g;
@@ -254,6 +376,8 @@ export default class Crow {
     const CH = T ? base + 2.4 : CIRCLE_H;
     const oc = T ? { x: T.T.cx, z: T.T.cz } : tgt ? tgt.pos : g.player.pos;
     const OR = T ? 18 : CIRCLE_R;
+    // (la torre del Challenge: la vuelta en cuadrado y la entrada por los arcos; RING_GAP)
+    const RG = T && T.T.challenge && globalThis.__mduCuervoViejo !== true;
     const face = (x, zz, rate) => {
       let d = Math.atan2(x - z.pos.x, zz - z.pos.z) - z.yaw;
       while (d > Math.PI) d -= Math.PI * 2;
@@ -273,7 +397,12 @@ export default class Crow {
         const p = tgt ? tgt.pos : g.player.pos;
         let ax = p.x;
         let az = p.z;
-        if (T) {
+        if (RG) {
+          // (al punto más cercano de la vuelta)
+          ringAt(T, ringNear(T, z.pos.x, z.pos.z), ringP);
+          ax = ringP.x;
+          az = ringP.z;
+        } else if (T) {
           const a = Math.atan2(z.pos.z - oc.z, z.pos.x - oc.x);
           ax = oc.x + Math.cos(a) * OR;
           az = oc.z + Math.sin(a) * OR;
@@ -291,10 +420,22 @@ export default class Crow {
           fly(z.pos.x + Math.cos(this.orbit) * 2, CH + 3, z.pos.z + Math.sin(this.orbit) * 2, 5);
           break;
         }
-        this.orbit += dt * 0.55;
-        const cx = oc.x + Math.cos(this.orbit) * OR;
-        const cz = oc.z + Math.sin(this.orbit) * OR;
-        fly(cx, CH + Math.sin(this.t * 0.8) * 0.8, cz, 9);
+        if (RG) {
+          // (la vuelta en cuadrado, a RING_V: va por el camino y lo que se
+          // desvió lo corrige de a poco, sin tirones)
+          if (this.ringS == null) this.ringS = ringNear(T, z.pos.x, z.pos.z);
+          this.ringS += dt * RING_V;
+          ringAt(T, this.ringS, ringP, ringT);
+          tmpV.set(ringT.x * RING_V + (ringP.x - z.pos.x) * 2.5, (CH + Math.sin(this.t * 0.8) * 0.8 - z.pos.y) * 2.5, ringT.z * RING_V + (ringP.z - z.pos.z) * 2.5);
+          if (tmpV.length() > 14) tmpV.setLength(14);
+          this.vel.lerp(tmpV, Math.min(1, dt * 5));
+          z.pos.addScaledVector(this.vel, dt);
+        } else {
+          this.orbit += dt * 0.55;
+          const cx = oc.x + Math.cos(this.orbit) * OR;
+          const cz = oc.z + Math.sin(this.orbit) * OR;
+          fly(cx, CH + Math.sin(this.t * 0.8) * 0.8, cz, 9);
+        }
         face(z.pos.x + this.vel.x, z.pos.z + this.vel.z, 4);
         this.shootCd -= dt;
         this.diveCd -= dt;
@@ -307,16 +448,31 @@ export default class Crow {
             this.diveCd = (z.hp < z.maxHp * 0.5 ? 7 : 10) + Math.random() * 3;
             this.diveAt = new THREE.Vector3(plot.x, plot.y + this.perchY(), plot.z);
             this.divePlot = plot.i;
+            this.gate = null;
             this.setState('dive');
             // (en la forja de la hoz va al techo del establo: entities/FarmEgg.js)
             break;
           }
         }
         if (!seen) break;
-        if (this.diveCd <= 0) {
+        // (la torre del Challenge: se tira solo si tiene un arco por donde
+        // entrar y llega a él por afuera; si no, sigue dando vueltas, tira
+        // plumas y prueba de nuevo: planGate)
+        const at = this.diveCd <= 0 ? new THREE.Vector3(tgt.pos.x, (tgt.pos.y || 0) + this.perchY(), tgt.pos.z) : null;
+        let gate = null;
+        if (at && RG) {
+          // (buscar el arco cuesta unos 0,17 ms: mientras espera, cada 0,2 s)
+          this.planCd = (this.planCd || 0) - dt;
+          if (this.planCd <= 0) {
+            this.planCd = 0.2;
+            gate = this.planGate(T, at);
+          }
+        }
+        if (at && (!RG || gate)) {
           this.diveCd = (z.hp < z.maxHp * 0.5 ? 7 : 10) + Math.random() * 3;
           this.divePlot = null;
-          this.diveAt = new THREE.Vector3(tgt.pos.x, (tgt.pos.y || 0) + this.perchY(), tgt.pos.z);
+          this.diveAt = at;
+          this.gate = gate;
           this.setState('dive');
         } else if (this.shootCd <= 0) {
           this.shootCd = (z.hp < z.maxHp * 0.5 ? 3.2 : 4.5) + Math.random() * 1.5;
@@ -343,17 +499,32 @@ export default class Crow {
         if (this.t < 0.6) {
           // toma aire antes de tirarse
           this.vel.multiplyScalar(Math.max(0, 1 - dt * 3));
+          // (la torre del Challenge: frena de a poco en vez de clavarse en el aire)
+          if (this.gate) z.pos.addScaledVector(this.vel, dt);
           z.pos.y += dt * 2;
           face(p.x, p.z, 6);
           break;
         }
-        const d = fly(p.x, p.y, p.z, 19);
-        face(p.x, p.z, 8);
+        let arrived;
+        if (this.gate) {
+          // (la torre del Challenge: afuera del arco, por el medio del arco y al
+          // jugador; el arco se vuelve a elegir desde donde quedó al tomar aire)
+          if (!this.path) {
+            this.gate = (RG && this.planGate(T, p)) || this.gate;
+            this.makePath([z.pos.clone(), ...this.gate.pts, p.clone()]);
+          }
+          arrived = this.pathStep(dt, 19);
+          face(z.pos.x + pathT.x, z.pos.z + pathT.z, 8);
+        } else {
+          const d = fly(p.x, p.y, p.z, 19);
+          face(p.x, p.z, 8);
+          // (el techo del establo en la forja de la granja queda más alto de lo que
+          // vuela: por la altura sola se "posaría" en el aire lejos de ahí)
+          arrived = d < 0.8 || (z.pos.y < p.y + 0.2 && Math.hypot(p.x - z.pos.x, p.z - z.pos.z) < 2);
+        }
         // atropella a los que agarra en la bajada
         this.hitPlayers(1.7, DIVE_DMG);
-        // (el techo del establo en la forja de la granja queda más alto de lo que
-        // vuela: por la altura sola se "posaría" en el aire lejos de ahí)
-        if (d < 0.8 || (z.pos.y < p.y + 0.2 && Math.hypot(p.x - z.pos.x, p.z - z.pos.z) < 2)) {
+        if (arrived) {
           this.setState('perch');
           z.pos.y = p.y;
           this.vel.set(0, 0, 0);
@@ -378,6 +549,23 @@ export default class Crow {
         break;
       case 'climb': {
         const p = tgt ? tgt.pos : z.pos;
+        if (this.gate) {
+          // (la torre del Challenge: sale por el mismo arco, de frente, y se
+          // suma a la vuelta un poco más adelante)
+          if (!this.path) {
+            const G = this.gate;
+            const [O, O2, C, I] = this.gatePts(G, G.top ? GATE_TOP : GATE_OUT_H, GATE_OUT_SLOPE);
+            ringAt(T, ringNear(T, O.x, O.z) + 5, ringP);
+            this.makePath([z.pos.clone(), I, C, O2, O, new THREE.Vector3(ringP.x, CH + 1, ringP.z)]);
+          }
+          const out = this.pathStep(dt, 10, true);
+          face(z.pos.x + pathT.x, z.pos.z + pathT.z, 5);
+          if (out || this.t > 6) {
+            this.gate = null;
+            this.setState('circle');
+          }
+          break;
+        }
         if (T) {
           // vuelve a salir por la arcada más cercana
           const a = Math.atan2(z.pos.z - oc.z, z.pos.x - oc.x);
@@ -726,4 +914,129 @@ function wrap(a) {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
+}
+
+// ---------------- la torre del Challenge: la vuelta y los arcos ----------------
+// La vuelta: las rectas a RING_GAP de cada cara y, en las puntas, un cuarto de
+// círculo de radio RING_GAP alrededor de la esquina (nunca más cerca que eso).
+// hw: del medio a la cara de afuera; q: lo que mide cada cuarto (recta + punta).
+function ringDims(T) {
+  const hw = (T.T.x1 + 2 - (T.T.x0 - 1)) / 2;
+  const arc = (Math.PI / 2) * RING_GAP;
+  return { hw, seg: hw * 2, q: hw * 2 + arc, len: (hw * 2 + arc) * 4 };
+}
+
+// El punto de la vuelta a s metros (out: { x, z }) y su dirección (tan). Va
+// para el mismo lado que la vuelta de antes (de +x a +z).
+function ringAt(T, s, out, tan = null) {
+  const D = ringDims(T);
+  s = ((s % D.len) + D.len) % D.len;
+  const q = Math.min(3, Math.floor(s / D.q));
+  const u = s - q * D.q;
+  let x;
+  let z;
+  let tx;
+  let tz;
+  if (u < D.seg) {
+    x = D.hw + RING_GAP;
+    z = u - D.hw;
+    tx = 0;
+    tz = 1;
+  } else {
+    const a = (u - D.seg) / RING_GAP;
+    x = D.hw + Math.cos(a) * RING_GAP;
+    z = D.hw + Math.sin(a) * RING_GAP;
+    tx = -Math.sin(a);
+    tz = Math.cos(a);
+  }
+  // (cada cuarto es el anterior girado 90°: (x, z) → (-z, x))
+  for (let i = 0; i < q; i++) {
+    [x, z] = [-z, x];
+    [tx, tz] = [-tz, tx];
+  }
+  out.x = T.T.cx + x;
+  out.z = T.T.cz + z;
+  if (tan) {
+    tan.x = tx;
+    tan.z = tz;
+  }
+  return out;
+}
+
+// Los metros de la vuelta del punto más cercano a (px, pz).
+function ringNear(T, px, pz) {
+  const D = ringDims(T);
+  let x = px - T.T.cx;
+  let z = pz - T.T.cz;
+  let best = Infinity;
+  let bs = 0;
+  for (let q = 0; q < 4; q++) {
+    // (el punto llevado al primer cuarto: el giro al revés, (x, z) → (z, -x))
+    if (q) [x, z] = [z, -x];
+    const sz = Math.max(-D.hw, Math.min(D.hw, z));
+    const d1 = (x - D.hw - RING_GAP) ** 2 + (z - sz) ** 2;
+    if (d1 < best) {
+      best = d1;
+      bs = q * D.q + sz + D.hw;
+    }
+    const a = Math.max(0, Math.min(Math.PI / 2, Math.atan2(z - D.hw, x - D.hw)));
+    const d2 = (x - D.hw - Math.cos(a) * RING_GAP) ** 2 + (z - D.hw - Math.sin(a) * RING_GAP) ** 2;
+    if (d2 < best) {
+      best = d2;
+      bs = q * D.q + D.seg + a * RING_GAP;
+    }
+  }
+  return bs;
+}
+
+// ¿El tramo de a a b (visto de arriba) pasa a menos de m metros de la torre?
+function cutsTower(T, a, b, m) {
+  const h = ringDims(T).hw + m;
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  let t0 = 0;
+  let t1 = 1;
+  for (const [p, q] of [[-dx, a.x - (T.T.cx - h)], [dx, T.T.cx + h - a.x], [-dz, a.z - (T.T.cz - h)], [dz, T.T.cz + h - a.z]]) {
+    if (Math.abs(p) < 1e-9) {
+      if (q < 0) return false;
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) t0 = Math.max(t0, r);
+    else t1 = Math.min(t1, r);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+
+// ¿Hay algo macizo en el tramo de a a b (y en dos paralelos a side metros a
+// los costados, y en uno drop metros más abajo)? Paredes, pilares, losas,
+// escaleras, escombros y utilería; no las paredes invisibles de los arcos ni
+// las barandas.
+function blocked(w, a, b, side = 0, drop = 0) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dz = b.z - a.z;
+  const n = Math.max(1, Math.ceil(Math.hypot(dx, dy, dz) / 0.35));
+  const hl = Math.hypot(dx, dz) || 1;
+  const ox = (-dz / hl) * side;
+  const oz = (dx / hl) * side;
+  for (let i = 0; i <= n; i++) {
+    const k = i / n;
+    for (let s = side ? -1 : 0; s <= (side ? 1 : 0) + (drop ? 1 : 0); s++) {
+      // (s = 2: el de abajo, por el medio)
+      const low = s === 2 || (!side && s === 1);
+      const x = a.x + dx * k + (low ? 0 : ox * s);
+      const y = a.y + dy * k - (low ? drop : 0);
+      const z = a.z + dz * k + (low ? 0 : oz * s);
+      const cx = Math.floor(x);
+      const cz = Math.floor(z);
+      if (!w.inside(cx, cz)) continue;
+      for (const bx of w.cellBoxes[w.idx(cx, cz)]) {
+        if (!bx.active || bx.kind === 'arch' || bx.kind === 'rail' || (!bx.solid && bx.kind !== 'slab')) continue;
+        if (x >= bx.x0 && x <= bx.x1 && y >= bx.y0 && y <= bx.y1 && z >= bx.z0 && z <= bx.z1) return true;
+      }
+    }
+  }
+  return false;
 }

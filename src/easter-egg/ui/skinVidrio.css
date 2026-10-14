@@ -1,0 +1,459 @@
+/* La piel "Vidrio con tinta" de los menús (la E que eligió el usuario el
+   2026-10-13: "más sobrio, profesional y moderno", sin los carteles marrones).
+   Es solo piel: el orden, los lugares, lo que se clickea y los textos no
+   cambian, y el HUD de la partida tampoco. El logo queda el original (Creepster
+   rojo: "me gusta más el original").
+   Va todo detrás de .mdu-root[data-skin='vidrio'] (lo pone index.js launch):
+   así le gana a los CSS de cada pantalla sin importar el orden en que cargan, y
+   con globalThis.__mduMenuViejo = true vuelve la piel de antes.
+   Vidrio oscuro con tinte tostado, Manrope para la interfaz y Cormorant
+   Garamond para títulos, nombres de cartas y números grandes; acento dorado. */
+
+.mdu-root[data-skin='vidrio'] {
+  --vd-txt: #f5efe4;
+  --vd-mut: rgba(241, 232, 216, 0.64);
+  --vd-glass: linear-gradient(160deg, rgba(44, 31, 20, 0.56), rgba(14, 14, 18, 0.52));
+  --vd-glass-hi: linear-gradient(160deg, rgba(62, 44, 25, 0.64), rgba(20, 18, 22, 0.58));
+  --vd-bd: rgba(255, 232, 196, 0.17);
+  --vd-bf: blur(18px) saturate(1.35);
+  --vd-r: 12px;
+  --vd-cr: 18px;
+  --vd-acc: #e9b55c;
+  --vd-acc-ink: #1d1407;
+  --vd-sel: linear-gradient(90deg, rgba(233, 181, 92, 0.3), rgba(233, 181, 92, 0.03));
+  --vd-sel-txt: #fff7e8;
+  --vd-ring: inset 0 0 0 1px rgba(233, 181, 92, 0.28);
+  --vd-card: rgba(24, 19, 16, 0.62);
+  --vd-kbd: rgba(24, 19, 16, 0.94);
+  --vd-field: rgba(20, 16, 14, 0.78);
+  --vd-pri: linear-gradient(180deg, #f4c977, #d9973a);
+  --vd-sans: 'Manrope', system-ui, 'Segoe UI', sans-serif;
+  --vd-serif: 'Cormorant Garamond', Georgia, serif;
+  --vd-tshadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+/* Las pantallas de la piel: acá adentro los colores de siempre pasan a los de
+   la E (el HUD no está adentro, así que no cambia). */
+.mdu-root[data-skin='vidrio'] :is(.mdu-menu, .mdu-rc, .mdu-lvup, .mdu-gzend, .mdu-ach, .mdu-armup) {
+  --ink: var(--vd-txt);
+  --cream: var(--vd-txt);
+  --gold: #efc579;
+  --red-hi: var(--vd-acc);
+  --panel: var(--vd-glass);
+  --panel-hi: var(--vd-glass-hi);
+  --edge: var(--vd-bd);
+  --edge-hi: rgba(233, 181, 92, 0.75);
+  --glow: 0 0 30px -6px rgba(233, 181, 92, 0.45);
+  --shadow: var(--vd-tshadow);
+  font-family: var(--vd-sans);
+  /* (los números de Cormorant vienen "de texto": el 0 parecía una o) */
+  font-variant-numeric: lining-nums;
+}
+
+/* ---------- fondos: sin el marrón ---------- */
+.mdu-root[data-skin='vidrio'] .mdu-menu--solid:not(.mdu-menu--armory):not(.mdu-menu--pulp) { background: radial-gradient(ellipse at 30% 40%, rgba(16, 14, 14, 0.72), rgba(0, 0, 0, 0.94) 75%); }
+.mdu-root[data-skin='vidrio'] .mdu-panel { scrollbar-color: rgba(233, 181, 92, 0.45) transparent; }
+
+/* ---------- textos ---------- */
+.mdu-root[data-skin='vidrio'] .mdu-menu .mdu-tag { font-family: var(--vd-serif); font-style: italic; font-weight: 500; font-size: clamp(17px, 2.4vh, 22px); color: rgba(245, 239, 228, 0.8); opacity: 1; text-shadow: var(--vd-tshadow); }
+.mdu-root[data-skin='vidrio'] .mdu-menu .mdu-small { font-size: 13px; color: var(--vd-mut); opacity: 1; }
+.mdu-root[data-skin='vidrio'] .mdu-menu .mdu-small[data-eggs] { letter-spacing: 0.02em !important; }
+.mdu-root[data-skin='vidrio'] :is(.mdu-h2, .mdu-kit-title, .mdu-mapsel__h) {
+  font-family: var(--vd-serif);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  line-height: 1.02;
+  color: var(--vd-txt);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+}
+.mdu-root[data-skin='vidrio'] .mdu-h2 { font-size: clamp(40px, 6.6vh, 64px); margin-bottom: clamp(10px, 1.8vh, 18px); }
+.mdu-root[data-skin='vidrio'] .mdu-kit-title { font-size: clamp(42px, 7vh, 80px); }
+.mdu-root[data-skin='vidrio'] .mdu-kit-sub { font-family: var(--vd-serif); font-weight: 500; font-size: var(--u-l); color: rgba(245, 239, 228, 0.78); opacity: 1; }
+
+/* ---------- los botones de las listas: una píldora de vidrio con el punto dorado ---------- */
+.mdu-root[data-skin='vidrio'] .mdu-menu .mdu-list { justify-items: stretch; width: fit-content; min-width: min(100%, 340px); max-width: 100%; gap: 3px; }
+.mdu-root[data-skin='vidrio'] .mdu-menu .mdu-btn {
+  position: relative;
+  font-family: var(--vd-sans);
+  font-weight: 600;
+  font-size: clamp(17px, 2.5vh, 24px);
+  line-height: 1.3;
+  text-align: left;
+  padding: clamp(5px, 0.75vh, 9px) 16px clamp(5px, 0.75vh, 9px) 12px;
+  border-radius: var(--vd-r);
+  color: var(--vd-txt);
+  text-shadow: var(--vd-tshadow);
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s, text-indent 0.18s;
+}
+.mdu-root[data-skin='vidrio'] .mdu-menu .mdu-btn::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--vd-acc);
+  box-shadow: 0 0 10px 2px rgba(233, 181, 92, 0.7);
+  opacity: 0;
+  transform: scale(0.4);
+  transition: opacity 0.18s, transform 0.18s;
+}
+.mdu-root[data-skin='vidrio'] .mdu-menu .mdu-btn:hover,
+.mdu-root[data-skin='vidrio'] .mdu-menu .mdu-btn:focus-visible {
+  color: var(--vd-sel-txt);
+  background: var(--vd-sel);
+  box-shadow: var(--vd-ring);
+  transform: none;
+  text-indent: 14px;
+}
+.mdu-root[data-skin='vidrio'] .mdu-menu .mdu-btn:hover::before,
+.mdu-root[data-skin='vidrio'] .mdu-menu .mdu-btn:focus-visible::before { opacity: 1; transform: none; }
+.mdu-root[data-skin='vidrio'] .mdu-menu .mdu-btn--mini { font-size: clamp(13px, 1.75vh, 16px); font-weight: 500; color: var(--vd-mut); opacity: 1; padding-block: 3px; }
+/* fuera de una lista ("Volver" de Jugar, del mapa, de la armería): sin píldora, el punto y el corrimiento */
+.mdu-root[data-skin='vidrio'] .mdu-menu :not(.mdu-list) > .mdu-btn { padding-left: 0; padding-right: 0; }
+.mdu-root[data-skin='vidrio'] .mdu-menu :not(.mdu-list) > .mdu-btn::before { left: 0; }
+.mdu-root[data-skin='vidrio'] .mdu-menu :not(.mdu-list) > .mdu-btn:is(:hover, :focus-visible) { background: none; box-shadow: none; text-indent: 14px; }
+/* el botón principal (Continuar en la pausa, Fast restart al final): dorado */
+.mdu-root[data-skin='vidrio'] :is([data-screen='pause'] [data-act='resume'], [data-screen='over'] .mdu-list > [data-act='restart']) {
+  justify-self: start;
+  margin: 0 0 6px;
+  padding-inline: 14px 18px;
+  text-indent: 0 !important;
+  background: var(--vd-pri);
+  color: var(--vd-acc-ink);
+  text-shadow: none;
+  box-shadow: 0 8px 24px -8px rgba(233, 181, 92, 0.7);
+}
+.mdu-root[data-skin='vidrio'] :is([data-screen='pause'] [data-act='resume'], [data-screen='over'] .mdu-list > [data-act='restart'])::before { display: none; }
+.mdu-root[data-skin='vidrio'] :is([data-screen='pause'] [data-act='resume'], [data-screen='over'] .mdu-list > [data-act='restart']):is(:hover, :focus-visible) {
+  background: linear-gradient(180deg, #f8d48a, #e2a547);
+  color: var(--vd-acc-ink);
+  box-shadow: 0 10px 30px -8px rgba(233, 181, 92, 0.9);
+}
+
+/* ---------- el vidrio ---------- */
+.mdu-root[data-skin='vidrio'] :is(.mdu-curmap, .mdu-card, .mdu-lgcard, .mdu-rushpick) {
+  background: var(--vd-glass);
+  border: 1px solid var(--vd-bd);
+  border-radius: var(--vd-r);
+  backdrop-filter: var(--vd-bf);
+  -webkit-backdrop-filter: var(--vd-bf);
+  box-shadow: 0 16px 40px -18px rgba(0, 0, 0, 0.6);
+}
+.mdu-root[data-skin='vidrio'] :is(.mdu-curmap, .mdu-card, .mdu-lgcard, .mdu-rushpick):is(:hover, :focus-visible):not([disabled]) {
+  background: var(--vd-glass-hi);
+  border-color: rgba(233, 181, 92, 0.6);
+  box-shadow: 0 16px 40px -18px rgba(0, 0, 0, 0.6), 0 0 26px -8px rgba(233, 181, 92, 0.5);
+}
+
+/* el capítulo elegido (título, Jugar y la sala) */
+.mdu-root[data-skin='vidrio'] .mdu-curmap__art { border-radius: 7px; }
+.mdu-root[data-skin='vidrio'] .mdu-curmap__txt small { font-size: 11px; letter-spacing: 0.12em; color: var(--vd-mut); opacity: 1; }
+/* (el nombre con la letra de su propio mapa, como la postal; el usuario, 2026-10-13) */
+.mdu-root[data-skin='vidrio'] .mdu-curmap__txt b { font-family: var(--font); font-weight: normal; font-size: clamp(20px, 2.9vh, 25px); color: var(--vd-txt); text-shadow: var(--vd-tshadow); }
+.mdu-root[data-skin='vidrio'] .mdu-curmap__go { font-size: 12px; color: var(--vd-mut); opacity: 1; }
+
+/* la tarjeta del nivel y la de los logros */
+.mdu-root[data-skin='vidrio'] :is(.mdu-card__txt, .mdu-lgcard__txt) b { font-family: var(--vd-serif); font-weight: 600; color: var(--vd-txt); text-shadow: none; }
+.mdu-root[data-skin='vidrio'] .mdu-card__txt b { font-size: var(--u-l); }
+.mdu-root[data-skin='vidrio'] .mdu-lgcard__txt b { font-size: var(--u); }
+.mdu-root[data-skin='vidrio'] :is(.mdu-card__txt, .mdu-lgcard__txt) small { color: var(--vd-mut); opacity: 1; }
+.mdu-root[data-skin='vidrio'] .mdu-card__bar { height: 5px; border: 0; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.mdu-root[data-skin='vidrio'] .mdu-card__bar i { border-radius: 3px; background: linear-gradient(90deg, #d9973a, #ffd98f); box-shadow: 0 0 10px rgba(233, 181, 92, 0.6); }
+.mdu-root[data-skin='vidrio'] .mdu-card__pesos { border-left-color: var(--vd-bd); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--vd-txt); }
+.mdu-root[data-skin='vidrio'] .mdu-card__new { border-radius: 999px; font-family: var(--vd-sans); font-weight: 700; background: var(--vd-pri); color: var(--vd-acc-ink); }
+
+/* ---------- Jugar ---------- */
+.mdu-root[data-skin='vidrio'] .mdu-kit-card { border-radius: var(--vd-cr); box-shadow: 0 18px 44px -20px rgba(0, 0, 0, 0.7); }
+.mdu-root[data-skin='vidrio'] .mdu-kit-card:hover:not([disabled]),
+.mdu-root[data-skin='vidrio'] .mdu-kit-card:focus-visible { box-shadow: 0 0 0 1px rgba(233, 181, 92, 0.25), 0 22px 56px -16px rgba(233, 181, 92, 0.5); }
+.mdu-root[data-skin='vidrio'] .mdu-play__card { backdrop-filter: var(--vd-bf); -webkit-backdrop-filter: var(--vd-bf); }
+.mdu-root[data-skin='vidrio'] .mdu-play__txt b { font-family: var(--vd-serif); font-weight: 600; font-size: clamp(28px, 4.4vh, 50px); line-height: 1.05; color: var(--vd-txt); text-shadow: none; }
+.mdu-root[data-skin='vidrio'] .mdu-play__card:is(:hover, :focus-visible) .mdu-play__txt b { color: #ffd98f; }
+.mdu-root[data-skin='vidrio'] .mdu-play__txt small { color: var(--vd-mut); opacity: 1; }
+.mdu-root[data-skin='vidrio'] .mdu-rushpick { border-left-width: 1px; }
+.mdu-root[data-skin='vidrio'] .mdu-rushpick b { font-family: var(--vd-serif); font-weight: 600; font-size: clamp(19px, 2.7vh, 26px); color: var(--vd-txt); }
+.mdu-root[data-skin='vidrio'] .mdu-rushpick small { color: var(--vd-mut); opacity: 1; }
+.mdu-root[data-skin='vidrio'] .mdu-rushpick[aria-pressed='true'] {
+  background: linear-gradient(160deg, rgba(92, 64, 24, 0.62), rgba(20, 16, 14, 0.56));
+  border-color: rgba(233, 181, 92, 0.85);
+  box-shadow: 0 0 0 1px rgba(233, 181, 92, 0.25), 0 14px 40px -12px rgba(233, 181, 92, 0.55);
+}
+.mdu-root[data-skin='vidrio'] .mdu-rushpick[aria-pressed='true'] b { color: #ffe3a6; }
+.mdu-root[data-skin='vidrio'] .mdu-rushpick--mayhem[aria-pressed='true'] {
+  background: linear-gradient(160deg, rgba(66, 30, 90, 0.62), rgba(18, 14, 24, 0.56));
+  border-color: rgba(201, 166, 255, 0.85);
+  box-shadow: 0 0 0 1px rgba(201, 166, 255, 0.25), 0 14px 40px -12px rgba(177, 140, 255, 0.6);
+}
+.mdu-root[data-skin='vidrio'] .mdu-rushpick--mayhem[aria-pressed='true'] b { color: #eadcff; }
+
+/* ---------- la pausa y el fin del juego: el panel de vidrio ---------- */
+.mdu-root[data-skin='vidrio'] :is([data-screen='pause'], [data-screen='over']) .mdu-panel {
+  width: auto;
+  min-width: min(400px, calc(100% - 48px));
+  max-width: min(660px, calc(100% - 48px));
+  padding: clamp(18px, 3.4vh, 36px) clamp(26px, 3.2vw, 44px);
+  background: var(--vd-glass);
+  border: 1px solid var(--vd-bd);
+  border-radius: var(--vd-r);
+  backdrop-filter: var(--vd-bf);
+  -webkit-backdrop-filter: var(--vd-bf);
+  box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.7);
+}
+.mdu-root[data-skin='vidrio'] .mdu-pause-note { color: var(--vd-acc); opacity: 1; }
+.mdu-root[data-skin='vidrio'] .mdu-survived { font-family: var(--vd-serif); font-style: italic; font-weight: 500; font-size: clamp(22px, 3.4vh, 30px); color: rgba(245, 239, 228, 0.85); }
+.mdu-root[data-skin='vidrio'] .mdu-stats { padding: 12px 0; border-block: 1px solid var(--vd-bd); font-size: clamp(15px, 1.8vh, 19px); gap: 6px 32px; }
+.mdu-root[data-skin='vidrio'] .mdu-stats dt { color: var(--vd-mut); }
+.mdu-root[data-skin='vidrio'] .mdu-stats dd { font-weight: 700; color: var(--vd-txt); font-variant-numeric: tabular-nums; }
+.mdu-root[data-skin='vidrio'] .mdu-board { font-size: 14px; font-variant-numeric: tabular-nums; }
+.mdu-root[data-skin='vidrio'] .mdu-board th { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--vd-mut); opacity: 1; border-bottom-color: var(--vd-bd); }
+.mdu-root[data-skin='vidrio'] .mdu-board tr.is-me td { color: var(--vd-acc); }
+
+/* el resumen de experiencia del final (ui/levels.css) */
+.mdu-root[data-skin='vidrio'] .mdu-xp { background: rgba(255, 255, 255, 0.035); border: 1px solid var(--vd-bd); border-radius: 10px; box-shadow: none; }
+.mdu-root[data-skin='vidrio'] :is(.mdu-xp__lvl b, .mdu-xp__gain) { font-family: var(--vd-serif); font-weight: 600; }
+.mdu-root[data-skin='vidrio'] .mdu-xp__lvl b { color: var(--vd-txt); }
+.mdu-root[data-skin='vidrio'] .mdu-xp__gain { color: #f3cf87; text-shadow: 0 0 16px rgba(233, 181, 92, 0.4); }
+.mdu-root[data-skin='vidrio'] .mdu-xp__bar { height: 6px; border: 0; border-radius: 3px; background: rgba(255, 255, 255, 0.12); }
+.mdu-root[data-skin='vidrio'] .mdu-xp__bar i { border-radius: 3px; background: linear-gradient(90deg, #d9973a, #ffd98f); box-shadow: 0 0 12px rgba(233, 181, 92, 0.6); }
+.mdu-root[data-skin='vidrio'] .mdu-xp__by li { border-bottom: 1px solid rgba(255, 232, 196, 0.08); }
+.mdu-root[data-skin='vidrio'] .mdu-xp__by b { color: var(--vd-txt); font-weight: 600; font-variant-numeric: tabular-nums; }
+.mdu-root[data-skin='vidrio'] .mdu-xp__armas li.is-up b { color: #f3cf87; }
+.mdu-root[data-skin='vidrio'] .mdu-xp__ups { color: #f3cf87; }
+.mdu-root[data-skin='vidrio'] .mdu-xp__chip { border-radius: 999px; background: rgba(233, 181, 92, 0.1); border-color: rgba(233, 181, 92, 0.35); }
+
+/* ---------- las cartas del rush (ui/RushCards.js) ---------- */
+.mdu-root[data-skin='vidrio'] .mdu-rc { background: radial-gradient(ellipse at 50% 46%, rgba(18, 16, 16, 0.6), rgba(0, 0, 0, 0.92) 72%); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__title {
+  font-family: var(--vd-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: clamp(40px, 7.4vh, 76px);
+  letter-spacing: 0;
+  color: var(--vd-txt);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
+}
+.mdu-root[data-skin='vidrio'] .mdu-rc__pips { gap: 8px; }
+.mdu-root[data-skin='vidrio'] .mdu-rc__pips i { width: clamp(22px, 2.4vw, 30px); height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.18); box-shadow: none; transform: none; }
+.mdu-root[data-skin='vidrio'] .mdu-rc__pips i.is-done { background: var(--vd-txt); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__pips i.is-on { background: var(--vd-acc); box-shadow: 0 0 10px rgba(233, 181, 92, 0.8); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card {
+  --c: #a3a8ad;
+  border-radius: var(--vd-cr);
+  color: var(--vd-txt);
+  background: var(--vd-card);
+  backdrop-filter: var(--vd-bf);
+  -webkit-backdrop-filter: var(--vd-bf);
+  box-shadow: 0 20px 44px -16px rgba(0, 0, 0, 0.75);
+}
+/* el filete de adentro */
+.mdu-root[data-skin='vidrio'] .mdu-rc__card::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(255, 232, 196, 0.1);
+  border-radius: calc(var(--vd-cr) - 7px);
+  pointer-events: none;
+}
+.mdu-root[data-skin='vidrio'] .mdu-rc__frame { padding: 1px; }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-gris .mdu-rc__frame { background: rgba(255, 232, 196, 0.2); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-oro { --c: #dcb75f; background: var(--vd-card); box-shadow: 0 0 0 1px rgba(233, 181, 92, 0.25), 0 22px 56px -12px rgba(233, 181, 92, 0.55); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-oro .mdu-rc__frame { background: rgba(233, 181, 92, 0.85); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-oro::before { border-color: rgba(233, 181, 92, 0.3); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-prisma { --c: #c9a6ff; background: rgba(22, 18, 26, 0.9); box-shadow: 0 22px 60px -12px rgba(177, 140, 255, 0.6); }
+/* (el brillo que cambiaba de color se va: alcanza con el borde que gira; la
+   elegida y las que se caen siguen con su animación) */
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-prisma:not(.is-picked):not(.is-out) { animation: mdu-rc-deal 0.52s cubic-bezier(0.2, 0.9, 0.25, 1.15) calc(var(--i) * 110ms) backwards; }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-prisma .mdu-rc__frame { padding: 1.5px; }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-prisma .mdu-rc__frame::before { background: conic-gradient(#7ce8ff, #b18cff, #ff8fd6, #ffd27a, #7ce8ff); animation-duration: 6s; }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-prisma::before { border-color: rgba(214, 190, 255, 0.22); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card:is(.is-oro, .is-prisma)::after { background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.09) 50%, transparent 60%); background-size: 300% 100%; }
+.mdu-root[data-skin='vidrio'] .mdu-rc__kind { font: 600 11px/1.2 var(--vd-sans); letter-spacing: 0.2em; color: var(--c); opacity: 0.9; }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-gris .mdu-rc__kind { color: var(--vd-mut); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__name { font-family: var(--vd-serif); font-weight: 600; font-size: clamp(18px, 1.55vw, 24px); line-height: 1.1; color: var(--vd-txt); text-shadow: none; }
+.mdu-root[data-skin='vidrio'] .mdu-rc__fx { font-size: clamp(11px, 0.9vw, 14px); line-height: 1.35; color: var(--vd-mut); opacity: 1; }
+.mdu-root[data-skin='vidrio'] .mdu-rc__key {
+  bottom: -13px;
+  min-width: 26px;
+  padding: 4px 7px;
+  font: 600 12px/1.2 var(--vd-sans);
+  color: var(--vd-txt);
+  background: var(--vd-kbd);
+  border: 1px solid var(--vd-bd);
+  border-radius: 6px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-oro .mdu-rc__key { color: #f3cf87; border-color: rgba(233, 181, 92, 0.5); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__card.is-prisma .mdu-rc__key { color: #dccbff; border-color: rgba(201, 166, 255, 0.5); }
+/* lo que llevás */
+.mdu-root[data-skin='vidrio'] .mdu-rc__chip { --c: #a3a8ad; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); background: var(--vd-kbd); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__chip.is-oro { --c: #e9b55c; box-shadow: 0 0 14px -2px rgba(233, 181, 92, 0.4); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__chip.is-prisma { --c: #c9a6ff; box-shadow: 0 0 14px -2px rgba(177, 140, 255, 0.5); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__chip b { font-weight: 600; font-size: clamp(12px, 1.5vh, 15px); color: var(--vd-txt); }
+.mdu-root[data-skin='vidrio'] .mdu-rc__wait { color: var(--vd-mut); opacity: 1; }
+
+/* ---------- elegir mapa (los nombres de cada mapa siguen con su letra) ---------- */
+.mdu-root[data-skin='vidrio'] .mdu-mapsel__kicker { font-weight: 600; letter-spacing: 0.24em; }
+.mdu-root[data-skin='vidrio'] .mdu-chap { border-radius: 10px; }
+.mdu-root[data-skin='vidrio'] .mdu-chap::before { border-radius: 2px; }
+.mdu-root[data-skin='vidrio'] .mdu-chap__art { border-radius: 6px; }
+.mdu-root[data-skin='vidrio'] .mdu-chap__n { font-family: var(--vd-serif); font-weight: 600; font-size: 19px; }
+.mdu-root[data-skin='vidrio'] .mdu-chap__txt small { color: var(--vd-mut); opacity: 1; }
+.mdu-root[data-skin='vidrio'] .mdu-mapsel__sub { font-family: var(--vd-serif); font-style: italic; font-size: 19px; }
+/* los modos del mapa (la torre: Historia o Challenge; los esteros: Zombies gauchescos) */
+.mdu-root[data-skin='vidrio'] .mdu-mode { border-radius: 10px; border-color: var(--vd-bd); background: var(--vd-glass); }
+.mdu-root[data-skin='vidrio'] .mdu-mode:is(:hover, :focus-visible) { background: var(--vd-glass-hi); border-color: rgba(233, 181, 92, 0.5); }
+.mdu-root[data-skin='vidrio'] .mdu-mode[aria-pressed='true'] { border-color: rgba(233, 181, 92, 0.85); background: linear-gradient(160deg, rgba(92, 64, 24, 0.62), rgba(20, 16, 14, 0.56)); box-shadow: 0 0 22px -8px rgba(233, 181, 92, 0.6); }
+.mdu-root[data-skin='vidrio'] .mdu-mode b { font-family: var(--vd-serif); font-weight: 600; font-size: 19px; letter-spacing: 0; }
+.mdu-root[data-skin='vidrio'] .mdu-mode[aria-pressed='true']:not(.mdu-mode--reto) b { color: #ffd98f; }
+.mdu-root[data-skin='vidrio'] .mdu-mode small { color: var(--vd-mut); opacity: 1; }
+.mdu-root[data-skin='vidrio'] .mdu-mapsel__lore { font-size: 14px; color: rgba(245, 239, 228, 0.82); opacity: 1; }
+
+/* ---------- opciones, controles y la sala: pestañas y campos ---------- */
+.mdu-root[data-skin='vidrio'] .mdu-tab { font-weight: 600; font-size: 17px; text-shadow: var(--vd-tshadow); }
+.mdu-root[data-skin='vidrio'] .mdu-tab:is(:hover, :focus-visible) { color: var(--vd-sel-txt); }
+.mdu-root[data-skin='vidrio'] .mdu-field { font-size: 15px; }
+.mdu-root[data-skin='vidrio'] .mdu-field :is(select, input[type='text']),
+.mdu-root[data-skin='vidrio'] .mdu-lv__import textarea {
+  font-family: var(--vd-sans);
+  font-size: 14px;
+  color: var(--vd-txt);
+  background: var(--vd-field);
+  border: 1px solid var(--vd-bd);
+  border-radius: 8px;
+  padding: 5px 9px;
+}
+.mdu-root[data-skin='vidrio'] .mdu-field :is(select, input[type='text']):focus-visible { outline: none; border-color: rgba(233, 181, 92, 0.7); box-shadow: 0 0 0 3px rgba(233, 181, 92, 0.18); }
+.mdu-root[data-skin='vidrio'] .mdu-field input[type='text']:-webkit-autofill { -webkit-box-shadow: 0 0 0 1000px #1a1512 inset; }
+.mdu-root[data-skin='vidrio'] .mdu-keys kbd { font-weight: 600; color: var(--vd-acc); }
+.mdu-root[data-skin='vidrio'] .mdu-binds :is(kbd, button) { border-color: var(--vd-bd); border-radius: 8px; background: var(--vd-field); }
+.mdu-root[data-skin='vidrio'] .mdu-warn { border-left-color: var(--vd-acc); border-radius: 0 8px 8px 0; background: rgba(233, 181, 92, 0.08); }
+
+/* ---------- carga ---------- */
+/* la carga inicial (el logo, "Listo." y la barra roja): queda la original (el usuario, 2026-10-13) */
+/* la llegada a un mapa (ui/LoadScreen.js, la postal): queda la original, sin la
+   piel (el usuario, 2026-10-13: "devolvé las postales al original, no hay que
+   reventar la personalidad"); solo el renglón del capítulo, en cursiva */
+.mdu-root[data-skin='vidrio'] .mdu-arrive__sub { font-family: var(--vd-serif); font-style: italic; font-size: 21px; color: rgba(245, 239, 228, 0.82); }
+
+/* ---------- armería ---------- */
+.mdu-root[data-skin='vidrio'] .mdu-menu--armory { --arm-gold: var(--vd-acc); }
+.mdu-root[data-skin='vidrio'] .mdu-arm__row { border-radius: 8px; }
+.mdu-root[data-skin='vidrio'] .mdu-arm__chip { border-radius: 5px; }
+.mdu-root[data-skin='vidrio'] :is(.mdu-arm__name, .mdu-arm__mate b, .mdu-arm__chip.is-secret, .mdu-acc__n) { font-family: var(--vd-serif); font-weight: 600; text-shadow: var(--vd-tshadow); }
+.mdu-root[data-skin='vidrio'] .mdu-arm__mate em { border-radius: 999px; font-weight: 600; }
+.mdu-root[data-skin='vidrio'] .mdu-arm__equip { border: 0; border-radius: var(--vd-r); background: var(--vd-pri); color: var(--vd-acc-ink); font-family: var(--vd-sans); font-weight: 700; text-shadow: none; box-shadow: 0 8px 24px -8px rgba(233, 181, 92, 0.7); }
+.mdu-root[data-skin='vidrio'] .mdu-arm__equip:is(:hover, :focus-visible) { box-shadow: 0 10px 30px -8px rgba(233, 181, 92, 0.95); }
+.mdu-root[data-skin='vidrio'] .mdu-arm__info.is-eq .mdu-arm__equip { background: var(--vd-glass); border: 1px solid rgba(233, 181, 92, 0.55); color: var(--vd-acc); box-shadow: none; }
+.mdu-root[data-skin='vidrio'] .mdu-arm__info.is-lock .mdu-arm__equip { background: rgba(26, 14, 14, 0.8); border: 1px solid rgba(255, 120, 100, 0.45); color: #ffb8a8; box-shadow: none; }
+.mdu-root[data-skin='vidrio'] .mdu-arm__sw { border-radius: 8px; }
+.mdu-root[data-skin='vidrio'] .mdu-arm__mode { border-radius: 8px; background: var(--vd-field); border-color: var(--vd-bd); font-weight: 600; }
+.mdu-root[data-skin='vidrio'] .mdu-arm__mode.is-on { background: var(--vd-pri); border-color: transparent; color: var(--vd-acc-ink); }
+.mdu-root[data-skin='vidrio'] .mdu-arm__lv { border-radius: 8px; background: var(--vd-field); border-color: rgba(233, 181, 92, 0.35); }
+.mdu-root[data-skin='vidrio'] :is(.mdu-acc__card, .mdu-acc__slot) { border-radius: 10px; }
+.mdu-root[data-skin='vidrio'] .mdu-acc__card.is-lock { background: rgba(16, 14, 14, 0.72); }
+.mdu-root[data-skin='vidrio'] .mdu-acc__slot { background: var(--vd-field); border-color: rgba(255, 232, 196, 0.22); }
+.mdu-root[data-skin='vidrio'] .mdu-acc__slot.is-on { background: linear-gradient(160deg, rgba(92, 64, 24, 0.62), rgba(20, 16, 14, 0.7)); border-color: var(--vd-acc); }
+.mdu-root[data-skin='vidrio'] .mdu-acc__bar { border-radius: 4px; }
+/* lo nuevo: la marca dorada con letra oscura (la blanca no se leía sobre el oro) */
+/* (la marca hereda el corrimiento del botón con el mouse encima: el número se iba a la derecha) */
+.mdu-root[data-skin='vidrio'] .mdu-btn.mdu-btn--new::after { text-indent: 0; }
+.mdu-root[data-skin='vidrio'] .mdu-btn.mdu-btn--new::after,
+.mdu-root[data-skin='vidrio'] .mdu-arm__newtag,
+.mdu-root[data-skin='vidrio'] .mdu-acc__card.is-new::after { color: var(--vd-acc-ink); box-shadow: 0 0 10px rgba(233, 181, 92, 0.6); }
+
+/* ---------- pulpería ---------- */
+.mdu-root[data-skin='vidrio'] :is(.mdu-pulp__purse b, .mdu-pulp__banner b, .mdu-pulp__tip b) { font-family: var(--vd-serif); font-weight: 600; }
+.mdu-root[data-skin='vidrio'] .mdu-pulp__tip { border-radius: 10px; background: rgba(28, 22, 18, 0.97); border-color: var(--vd-bd); }
+.mdu-root[data-skin='vidrio'] .mdu-pulp__tip::after { background: rgba(28, 22, 18, 0.97); }
+.mdu-root[data-skin='vidrio'] .mdu-pulp__tip span { font-family: var(--vd-sans); font-size: 0.92em; color: rgba(245, 239, 228, 0.86); }
+.mdu-root[data-skin='vidrio'] .mdu-pulp__cardin { border-radius: var(--vd-cr); background: linear-gradient(160deg, rgba(36, 27, 19, 0.96), rgba(13, 13, 16, 0.96)); }
+.mdu-root[data-skin='vidrio'] .mdu-pulp__odds { border-radius: 3px; overflow: hidden; }
+.mdu-root[data-skin='vidrio'] .mdu-btn .mdu-pulp__tag { border-radius: 999px; }
+/* (el número bajaba 0,21em para la letra de antes; con Manrope quedaba corrido abajo) */
+.mdu-root[data-skin='vidrio'] .mdu-btn .mdu-pulp__tag b { top: 0; line-height: 1; }
+
+/* ---------- niveles y prestigios, logros ---------- */
+.mdu-root[data-skin='vidrio'] :is(.mdu-lv__who > b, .mdu-lg__who > b) { font-family: var(--vd-serif); font-weight: 500; line-height: 1; color: var(--vd-txt); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55); }
+.mdu-root[data-skin='vidrio'] :is(.mdu-lv__bar, .mdu-pass__rail) { border: 0; border-radius: 4px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.mdu-root[data-skin='vidrio'] :is(.mdu-lv__bar i, .mdu-pass__rail i) { background: linear-gradient(90deg, #d9973a, #ffd98f); box-shadow: 0 0 12px rgba(233, 181, 92, 0.55); }
+.mdu-root[data-skin='vidrio'] :is(.mdu-pass__col, .mdu-pass__tile, .mdu-lv__pr, .mdu-pass__arrow) { border-radius: 10px; }
+.mdu-root[data-skin='vidrio'] .mdu-pass__col.is-next .mdu-pass__lv { background: var(--vd-pri); border-color: #f4c977; color: var(--vd-acc-ink); }
+.mdu-root[data-skin='vidrio'] .mdu-pass__tile:hover { background: rgba(233, 181, 92, 0.08); }
+.mdu-root[data-skin='vidrio'] .mdu-pass__tile.is-sel { background: rgba(233, 181, 92, 0.14); }
+.mdu-root[data-skin='vidrio'] .mdu-lv__prestige { border: 0; border-radius: var(--vd-r); background: var(--vd-pri); color: var(--vd-acc-ink); font-weight: 700; }
+.mdu-root[data-skin='vidrio'] :is(.mdu-lv__note, .mdu-lv__save) { border-radius: 0 8px 8px 0; }
+.mdu-root[data-skin='vidrio'] .mdu-ask__box { border-radius: var(--vd-r); background: linear-gradient(160deg, rgba(36, 27, 19, 0.96), rgba(13, 13, 16, 0.95)); border: 1px solid var(--vd-bd); }
+.mdu-root[data-skin='vidrio'] .mdu-lg__it { border-radius: 10px; border-color: rgba(255, 232, 196, 0.12); background: var(--vd-glass); }
+.mdu-root[data-skin='vidrio'] .mdu-lg__it.is-got { border-color: rgba(233, 181, 92, 0.45); background: linear-gradient(160deg, rgba(92, 64, 24, 0.5), rgba(20, 16, 14, 0.55)); }
+.mdu-root[data-skin='vidrio'] .mdu-lg__map h3 small { font-family: var(--vd-sans); }
+.mdu-root[data-skin='vidrio'] :is(.mdu-pass__info b, .mdu-lv__pr b, .mdu-lv__bk b) { font-family: var(--vd-serif); font-weight: 600; }
+.mdu-root[data-skin='vidrio'] .mdu-pass__info small { color: var(--vd-acc); }
+
+/* ---------- sobre la partida: el aviso de nivel, el de logro y el del mate ---------- */
+.mdu-root[data-skin='vidrio'] .mdu-lvup {
+  background: var(--vd-glass);
+  border: 1px solid rgba(233, 181, 92, 0.45);
+  border-radius: var(--vd-r);
+  backdrop-filter: var(--vd-bf);
+  -webkit-backdrop-filter: var(--vd-bf);
+  box-shadow: 0 18px 50px -14px rgba(0, 0, 0, 0.75), 0 0 40px -14px rgba(233, 181, 92, 0.55);
+}
+.mdu-root[data-skin='vidrio'] .mdu-lvup__glow { background: radial-gradient(circle, rgba(233, 181, 92, 0.4), rgba(233, 181, 92, 0.08) 40%, transparent 70%); }
+.mdu-root[data-skin='vidrio'] .mdu-lvup__txt { text-shadow: var(--vd-tshadow); }
+.mdu-root[data-skin='vidrio'] .mdu-lvup__txt small { font-weight: 600; font-size: 11px; letter-spacing: 0.2em; color: var(--vd-acc); }
+.mdu-root[data-skin='vidrio'] .mdu-lvup__txt b { font-family: var(--vd-serif); font-weight: 600; color: var(--vd-txt); }
+.mdu-root[data-skin='vidrio'] .mdu-lvup__txt span { color: var(--vd-mut); opacity: 1; }
+.mdu-root[data-skin='vidrio'] .mdu-lvup__txt i { color: #f3cf87; }
+.mdu-root[data-skin='vidrio'] .mdu-hud .mdu-ach {
+  padding: 12px 28px 14px;
+  background: var(--vd-glass);
+  border: 1px solid rgba(233, 181, 92, 0.45);
+  border-radius: var(--vd-r);
+  backdrop-filter: var(--vd-bf);
+  -webkit-backdrop-filter: var(--vd-bf);
+  box-shadow: 0 18px 50px -14px rgba(0, 0, 0, 0.75), 0 0 36px -14px rgba(233, 181, 92, 0.5);
+  text-shadow: var(--vd-tshadow);
+}
+.mdu-root[data-skin='vidrio'] .mdu-hud .mdu-ach small { font-weight: 600; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--vd-acc); }
+.mdu-root[data-skin='vidrio'] .mdu-hud .mdu-ach b { font-family: var(--vd-serif); font-weight: 600; font-size: 26px; line-height: 1.1; color: var(--vd-txt); }
+.mdu-root[data-skin='vidrio'] .mdu-hud .mdu-ach span { font-size: 13px; color: var(--vd-mut); }
+.mdu-root[data-skin='vidrio'] .mdu-armup { background: linear-gradient(270deg, rgba(36, 27, 19, 0.82), rgba(20, 16, 14, 0.5) 80%, transparent); border-radius: 8px 0 0 8px; text-shadow: var(--vd-tshadow); }
+.mdu-root[data-skin='vidrio'] .mdu-armup b { font-weight: 600; font-size: 15px; color: var(--vd-txt); }
+.mdu-root[data-skin='vidrio'] .mdu-armup span { font-size: 13px; color: #f3cf87; }
+
+/* ---------- el final de Zombies gauchescos (entities/esteros/Gauchescos.js) ---------- */
+.mdu-root[data-skin='vidrio'] .mdu-gzend { color: var(--vd-txt); text-shadow: var(--vd-tshadow); }
+.mdu-root[data-skin='vidrio'] .mdu-gzend__card {
+  padding: 24px 28px 20px;
+  background: var(--vd-glass);
+  border: 1px solid var(--vd-bd);
+  border-radius: var(--vd-r);
+  backdrop-filter: var(--vd-bf);
+  -webkit-backdrop-filter: var(--vd-bf);
+  box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.75);
+}
+.mdu-root[data-skin='vidrio'] .mdu-gzend__k { font-weight: 600; letter-spacing: 0.22em; color: var(--vd-acc); }
+.mdu-root[data-skin='vidrio'] .mdu-gzend h2 { font-family: var(--vd-serif); font-weight: 500; font-size: 48px; line-height: 1.05; color: var(--vd-txt); }
+.mdu-root[data-skin='vidrio'] .mdu-gzend__sub { font-family: var(--vd-serif); font-style: italic; font-size: 19px; color: rgba(245, 239, 228, 0.8); opacity: 1; }
+.mdu-root[data-skin='vidrio'] .mdu-gzend li { border-radius: 8px; font-size: 14px; }
+.mdu-root[data-skin='vidrio'] .mdu-gzend li b { color: var(--vd-mut); font-variant-numeric: tabular-nums; }
+.mdu-root[data-skin='vidrio'] .mdu-gzend li :is(em, i) { color: var(--vd-mut); opacity: 1; }
+.mdu-root[data-skin='vidrio'] .mdu-gzend li.is-me { background: rgba(233, 181, 92, 0.1); }
+.mdu-root[data-skin='vidrio'] .mdu-gzend li.is-win { box-shadow: inset 0 0 0 1px rgba(233, 181, 92, 0.55); }
+.mdu-root[data-skin='vidrio'] .mdu-gzend li.is-win b { color: var(--vd-acc); }
+.mdu-root[data-skin='vidrio'] .mdu-gzend__btns { gap: 10px; }
+.mdu-root[data-skin='vidrio'] .mdu-gzend .mdu-btn { font-family: var(--vd-sans); font-weight: 600; font-size: 15px; padding: 9px 18px; border: 1px solid var(--vd-bd); border-radius: var(--vd-r); color: var(--vd-txt); text-shadow: none; transition: background 0.18s, border-color 0.18s, box-shadow 0.18s; }
+.mdu-root[data-skin='vidrio'] .mdu-gzend .mdu-btn:is(:hover, :focus-visible) { transform: none; color: var(--vd-sel-txt); background: var(--vd-sel); border-color: rgba(233, 181, 92, 0.45); }
+.mdu-root[data-skin='vidrio'] .mdu-gzend .mdu-btn[data-gzagain] { background: var(--vd-pri); border-color: transparent; color: var(--vd-acc-ink); box-shadow: 0 8px 24px -8px rgba(233, 181, 92, 0.7); }
+.mdu-root[data-skin='vidrio'] .mdu-gzend .mdu-btn[data-gzagain]:is(:hover, :focus-visible) { background: linear-gradient(180deg, #f8d48a, #e2a547); color: var(--vd-acc-ink); }
+
+/* ---------- lo que se mueve: suave, y quieto si el sistema lo pide ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .mdu-root[data-skin='vidrio'] .mdu-rc__card.is-prisma .mdu-rc__frame::before,
+  .mdu-root[data-skin='vidrio'] .mdu-rc__card:is(.is-oro, .is-prisma)::after { animation: none; }
+  .mdu-root[data-skin='vidrio'] .mdu-menu .mdu-btn,
+  .mdu-root[data-skin='vidrio'] .mdu-menu .mdu-btn::before { transition: none; }
+}

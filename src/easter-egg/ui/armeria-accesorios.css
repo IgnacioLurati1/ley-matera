@@ -1,0 +1,228 @@
+/* La armería mejorada (core/armas.js): la mitad de los accesorios en la
+   armería (ui/Armory.js) y el aviso chico de la partida (ui/armeriaAviso.js).
+   Tamaños de ui/menuKit.css; colores de ui/armory.css. */
+
+/* ---------- la lista de mates: el nivel de cada uno ---------- */
+.mdu-arm__row { grid-template-columns: calc(var(--u) * 3.2) 1fr auto; }
+.mdu-arm__lv {
+  min-width: 1.9em;
+  padding: 0.12em 0.4em;
+  font-style: normal;
+  font-size: var(--u-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--arm-gold);
+  border: 1px solid rgba(240, 191, 82, 0.35);
+  background: rgba(20, 12, 4, 0.6);
+}
+
+/* ---------- camuflajes | accesorios ---------- */
+.mdu-arm__modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: clamp(8px, 1.2vh, 14px); }
+.mdu-arm__mode {
+  appearance: none;
+  padding: 0.45em 0.6em;
+  font: inherit;
+  font-size: var(--u);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 241, 214, 0.65);
+  background: rgba(20, 10, 4, 0.55);
+  border: 1px solid var(--edge);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.2s;
+}
+.mdu-arm__mode:hover,
+.mdu-arm__mode:focus-visible { outline: none; color: var(--cream); border-color: var(--edge-hi); }
+.mdu-arm__mode.is-on { color: #1a0e04; background: var(--arm-gold); border-color: var(--arm-gold); box-shadow: 0 0 18px rgba(240, 191, 82, 0.4); }
+/* (con accesorios, el cartel de abajo del mate es de los camuflajes: se va) */
+.mdu-menu--armory.is-acc .mdu-arm__info { opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.mdu-arm__tabs[hidden],
+.mdu-arm__grid[hidden],
+.mdu-acc[hidden] { display: none; }
+
+/* ---------- la mitad de los accesorios ---------- */
+.mdu-acc {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.3vh, 16px);
+}
+.mdu-acc__lvl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.25em 0.8em;
+}
+.mdu-acc__cat { grid-column: 1 / -1; font-size: var(--u-xs); letter-spacing: 0.22em; text-transform: uppercase; color: var(--arm-gold); opacity: 0.85; }
+.mdu-acc__n { font-family: 'Creepster', 'Special Elite', serif; font-weight: normal; font-size: var(--u-l); color: var(--cream); line-height: 1; }
+.mdu-acc__xp { font-size: var(--u-xs); opacity: 0.7; font-variant-numeric: tabular-nums; }
+.mdu-acc__bar { grid-column: 1 / -1; height: 8px; background: rgba(0, 0, 0, 0.6); border: 1px solid var(--edge); overflow: hidden; }
+.mdu-acc__bar span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  transform: scaleX(var(--k, 0));
+  background: linear-gradient(90deg, #a86a1c, var(--arm-gold));
+  box-shadow: 0 0 10px rgba(240, 191, 82, 0.6);
+  transition: transform 0.5s var(--ease-pop);
+}
+
+/* los tres lugares */
+.mdu-acc__slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.mdu-acc__slots.is-deny { animation: mdu-acc-deny 0.45s; }
+@keyframes mdu-acc-deny {
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-3px); }
+}
+.mdu-acc__slot {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+  min-height: calc(var(--u) * 2.6);
+  padding: 0.3em 0.45em;
+  font: inherit;
+  font-size: var(--u-xs);
+  line-height: 1.1;
+  text-align: center;
+  color: rgba(255, 241, 214, 0.55);
+  background: rgba(10, 6, 3, 0.55);
+  border: 1px dashed rgba(255, 200, 110, 0.3);
+}
+.mdu-acc__slot svg { width: 1.3em; height: 1.3em; flex: none; }
+.mdu-acc__slot.is-lock { color: #ffb89a; border-style: solid; border-color: rgba(255, 90, 70, 0.3); opacity: 0.75; }
+.mdu-acc__slot.is-on {
+  color: var(--cream);
+  border: 1px solid var(--arm-gold);
+  background: linear-gradient(180deg, rgba(74, 40, 12, 0.85), rgba(24, 12, 4, 0.9));
+  box-shadow: 0 0 14px rgba(240, 191, 82, 0.3);
+  cursor: pointer;
+  animation: mdu-arm-pop 0.35s var(--ease-pop);
+}
+.mdu-acc__slot.is-on svg { color: var(--arm-gold); }
+.mdu-acc__slot.is-on:hover { border-color: #ffb0a0; }
+
+/* la lista de su categoría y el especialista */
+.mdu-acc__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: clamp(6px, 0.9vh, 10px);
+  padding: 2px 8px 8px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(240, 191, 82, 0.45) transparent;
+}
+.mdu-acc__card {
+  appearance: none;
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(var(--u) * 2.4) 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 0.1em 0.7em;
+  padding: 0.55em 0.75em 0.55em 0.55em;
+  font: inherit;
+  text-align: left;
+  color: var(--ink, var(--cream));
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-pop), border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+.mdu-acc.is-enter .mdu-acc__card { animation: mdu-arm-in 0.38s var(--ease-pop) both; animation-delay: calc(var(--i, 0) * 35ms); }
+.mdu-acc__card:hover,
+.mdu-acc__card:focus-visible { outline: none; transform: translateX(-4px); border-color: var(--edge-hi); background: var(--panel-hi); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6), var(--glow); }
+.mdu-acc__ico {
+  grid-row: 1 / 3;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  color: var(--arm-gold);
+  background: radial-gradient(circle at 40% 35%, rgba(240, 191, 82, 0.18), rgba(0, 0, 0, 0.5) 70%);
+  border: 1px solid rgba(240, 191, 82, 0.35);
+  border-radius: 50%;
+}
+.mdu-acc__ico svg { width: 62%; height: 62%; }
+.mdu-acc__name { font-weight: normal; font-size: var(--u-s); line-height: 1.15; color: var(--cream); }
+.mdu-acc__name small { display: block; font-size: var(--u-xs); letter-spacing: 0.18em; text-transform: uppercase; color: var(--arm-gold); }
+.mdu-acc__fx { grid-column: 2; font-style: normal; font-size: var(--u-xs); color: #b9e08a; }
+.mdu-acc__tag {
+  grid-row: 1 / 3;
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  font-size: var(--u-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+.mdu-acc__tag svg { width: 1.1em; height: 1.1em; flex: none; }
+.mdu-acc__card.is-lock { background: rgba(14, 8, 5, 0.75); }
+.mdu-acc__card.is-lock .mdu-acc__ico { filter: grayscale(0.8) brightness(0.7); }
+.mdu-acc__card.is-lock .mdu-acc__name,
+.mdu-acc__card.is-lock .mdu-acc__fx { opacity: 0.6; }
+.mdu-acc__card.is-lock .mdu-acc__tag { color: #ffb89a; opacity: 1; }
+.mdu-acc__card.is-eq { border-color: var(--arm-gold); box-shadow: 0 0 0 1px rgba(240, 191, 82, 0.5), 0 0 18px rgba(240, 191, 82, 0.3); }
+.mdu-acc__card.is-eq .mdu-acc__tag { color: var(--arm-gold); opacity: 1; }
+.mdu-acc__card.is-eq .mdu-acc__ico { background: radial-gradient(circle at 40% 35%, rgba(255, 210, 110, 0.5), rgba(60, 30, 4, 0.8) 70%); }
+/* lo ganado que todavía no se vio (core/armas.js nuevos): el puntito en la
+   fila del mate y "Nuevo" en la tarjeta, como los camuflajes */
+.mdu-arm__lv.is-new { position: relative; }
+.mdu-arm__lv.is-new::after { content: ''; position: absolute; top: -4px; right: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--red-hi, #ff3b2a); box-shadow: 0 0 8px var(--red-hi, #ff3b2a); }
+.mdu-acc__card.is-new::after {
+  content: 'Nuevo';
+  position: absolute;
+  top: -0.55em;
+  right: 0.8em;
+  padding: 0.1em 0.5em;
+  font: 700 var(--u-xs) / 1.2 Arial, Helvetica, sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--red-hi, #ff3b2a);
+  box-shadow: 0 0 10px rgba(255, 59, 42, 0.6);
+  pointer-events: none;
+  animation: mdu-acc-new 1.6s ease-in-out infinite alternate;
+}
+@keyframes mdu-acc-new { from { opacity: 0.75; } to { opacity: 1; } }
+/* el especialista: aparte, con la estrella */
+.mdu-acc__esp { margin-top: clamp(4px, 0.8vh, 10px); border-color: rgba(255, 150, 60, 0.5); background: linear-gradient(180deg, rgba(70, 26, 6, 0.92), rgba(20, 6, 2, 0.95)); }
+.mdu-acc__ico.is-star { color: #ffcf5a; border-color: rgba(255, 207, 90, 0.6); box-shadow: 0 0 14px rgba(255, 170, 40, 0.35); }
+.mdu-acc__none { margin: 0.4em 0; font-size: var(--u-s); opacity: 0.6; }
+
+/* ---------- el aviso de la partida ---------- */
+.mdu-armup {
+  position: absolute;
+  right: 0;
+  /* (arriba del cartel del mate que se agarra, .mdu-pickup: no se pisan) */
+  bottom: calc(100% + 112px);
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  padding: 6px 12px 6px 16px;
+  white-space: nowrap;
+  background: linear-gradient(270deg, rgba(30, 14, 4, 0.9), rgba(30, 14, 4, 0.55) 75%, transparent);
+  border-right: 3px solid #f0bf52;
+  text-shadow: 0 1px 3px #000;
+  pointer-events: none;
+  animation: mdu-armup-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.mdu-armup b { font-weight: normal; font-size: 17px; color: #ffe2a0; }
+.mdu-armup span { font-size: 14px; color: #b9e08a; }
+.mdu-armup.is-out { animation: mdu-armup-out 0.4s ease-in forwards; }
+@keyframes mdu-armup-in {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mdu-armup-out {
+  to { opacity: 0; transform: translateX(30px); }
+}
