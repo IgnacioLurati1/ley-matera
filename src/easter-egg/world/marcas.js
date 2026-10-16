@@ -175,6 +175,9 @@ function prepare(g) {
 export function marca(g, o, d, t, hit) {
   const box = hit.box;
   if (prep !== g.world && g.world) prepare(g);
+  // (de qué era lo que frenó el tiro: el impacto según el material, fx/impactos.js)
+  out.box = box;
+  out.obj = null;
   if (!box || typeof box !== 'object' || SOLID.has(box.kind)) {
     out.k = 2;
     out.point.copy(hit.point);
@@ -222,6 +225,7 @@ export function marca(g, o, d, t, hit) {
   if (bi < 0) return null;
   const j = bi * 9;
   out.k = s.es[s.ent[bi]].thin ? 1 : 2;
+  out.obj = s.es[s.ent[bi]].o;
   out.point.set(ox + dx * best, oy + dy * best, oz + dz * best);
   va.set(V[j + 3] - V[j], V[j + 4] - V[j + 1], V[j + 5] - V[j + 2]);
   vb.set(V[j + 6] - V[j], V[j + 7] - V[j + 1], V[j + 8] - V[j + 2]);

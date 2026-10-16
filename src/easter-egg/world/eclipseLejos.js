@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ISLANDS } from '../config/maps/eclipse';
 import { flatMaterial, reflBucket } from './perkMachines';
 import { setFarHook, camFrustumIs, pxScale, markUp, upHidden } from '../core/sizeCull';
+import { surfaceOnly } from '../fx/Surfaces';
 
 // Las islas de lejos de Eclipse Matero (2026-10-09, el usuario: "posta es
 // demasiado exigente"). Las islas no tienen puentes: se pasa de una a otra por
@@ -63,6 +64,12 @@ const SLICE = 200;
 const SLEEP_R = 3;
 // lo instanciado de lejos: radio en px de pantalla de una copia
 const FAR_PX = 10;
+// las juntas con textura (2026-10-15): el lado de cada capa del arreglo, cuántas capas a lo sumo y la de "sin textura"
+const LJ_TEX = 256;
+// los efectos (transparentes o que brillan) de las islas de lejos: de este radio en px de pantalla para abajo no se dibujan
+const FX_PX = 8;
+const LJ_MAX = 250;
+const NO_TEX = 255;
 // lo que se mueve aunque no lo parezca (World.dynamic y los nombres de lo que gira o se anima)
 const MOVES = /spin|fan|flywheel|wellRig|candle|kilnGlow|orbit|live|bandera|flag|asador|rope|bucket|pulley|aspas|rueda|helice/i;
 
@@ -99,6 +106,78 @@ function dropArray() {
   this.array = null;
 }
 
+// Las texturas de las juntas en un arreglo (DataArrayTexture) de LJ_TEX px, una capa por textura, con mipmaps. Las
+// imágenes con flipY se dan vuelta (la fila 0 es v = 0); las que no son sRGB se codifican, así el arreglo (sRGB) da
+// el mismo valor que la textura sola. La que no se puede leer queda de su color promedio (avg, en lineal).
+function texArray(list, avg) {
+  const S = LJ_TEX;
+  const N = list.length;
+  const data = new Uint8Array(S * S * 4 * N);
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  const enc = (x) => (x <= 0.0031308 ? x * 12.92 : 1.055 * Math.pow(x, 1 / 2.4) - 0.055);
+  const encT = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) encT[i] = Math.round(255 * enc(i / 255));
+  list.forEach((t, k) => {
+    const base = k * S * S * 4;
+    let ok = false;
+    try {
+      const im = t.image;
+      cx.clearRect(0, 0, S, S);
+      if (im?.data && im.width && im.height && (im.data instanceof Uint8Array || im.data instanceof Uint8ClampedArray) && im.data.length >= im.width * im.height * 4) {
+        const tc = document.createElement('canvas');
+        tc.width = im.width;
+        tc.height = im.height;
+        tc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(im.data.buffer, im.data.byteOffset, im.width * im.height * 4), im.width, im.height), 0, 0);
+        cx.drawImage(tc, 0, 0, S, S);
+        ok = true;
+      } else if (im && (im.width || im.videoWidth) && !im.data) {
+        cx.drawImage(im, 0, 0, S, S);
+        ok = true;
+      }
+      if (ok) {
+        const px = cx.getImageData(0, 0, S, S).data;
+        const flip = t.flipY === true;
+        for (let y = 0; y < S; y++) {
+          const sy = flip ? S - 1 - y : y;
+          data.set(px.subarray(sy * S * 4, (sy + 1) * S * 4), base + y * S * 4);
+        }
+        if (t.colorSpace !== THREE.SRGBColorSpace) {
+          for (let i = base; i < base + S * S * 4; i += 4) {
+            data[i] = encT[data[i]];
+            data[i + 1] = encT[data[i + 1]];
+            data[i + 2] = encT[data[i + 2]];
+          }
+        }
+      }
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      const a = avg(t) || [1, 1, 1];
+      const c = a.map((x) => Math.round(255 * enc(Math.min(1, x))));
+      for (let i = base; i < base + S * S * 4; i += 4) {
+        data[i] = c[0];
+        data[i + 1] = c[1];
+        data[i + 2] = c[2];
+        data[i + 3] = 255;
+      }
+    }
+  });
+  const tex = new THREE.DataArrayTexture(data, S, S, N);
+  tex.format = THREE.RGBAFormat;
+  tex.type = THREE.UnsignedByteType;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export function eclipseLejos(g) {
   if (globalThis.__mduNoEclLejos === true) return null;
   const w = g.world;
@@ -131,8 +210,12 @@ export function eclipseLejos(g) {
     return L.me;
   };
   const live = () => globalThis.__mduNoEclLejos !== true;
+  // (2026-10-15, rendimiento: el espejo del agua dibujaba la isla donde está entera, pieza por pieza —en el Claro, de
+  // sus 247 dibujos por cuadro, ~70 eran de ahí—. En el agua movida no se distingue: el espejo ve también esa isla
+  // con su malla junta, que ahora lleva las texturas. globalThis.__mduEspejoIslaEntera: como antes)
+  const flatMirror = (c) => globalThis.__mduEspejoIslaEntera !== true && c === g.water?.mirror;
   // ¿la isla i va con su malla junta para esta cámara?
-  const farFor = (i, c) => i >= 0 && L.dirty[i] === 0 && i !== near(c) && live();
+  const farFor = (i, c) => i >= 0 && L.dirty[i] === 0 && (i !== near(c) || flatMirror(c)) && live();
 
   // ---------------- qué entra ----------------
   const hidden = new Set(w.warmHidden || []);
@@ -150,11 +233,18 @@ export function eclipseLejos(g) {
     for (let q = o; q && q !== root; q = q.parent) if (dyn.has(q) || q.userData?.dynamic) return true;
     return false;
   };
+  // (2026-10-15, el usuario: "no me importa que se pierdan detallitos, mientras la imagen grosa se vea y las texturas
+  // de sus paredes". Medido: con la cámara en una isla, lo de las otras eran 550-780 dibujos por cuadro —la mitad— y
+  // escondiéndolo el juego iba 38-61 % más rápido. Mucho era arquitectura quieta que no entraba en la junta por tener
+  // la matriz automática —el Monumento de afuera, la torre de arriba, los faroles— y lo que brilla parejo —techos,
+  // establo, rocas—. Ahora entran: si algo de eso se mueve o cambia de verdad, el vigía deja esa isla entera (y lo
+  // anota en L.why). globalThis.__mduLejosEstricto: como antes)
+  const STRICT = globalThis.__mduLejosEstricto === true;
   const staticUp = (o) => {
     for (let q = o; q && q !== root; q = q.parent) {
       if (dyn.has(q) || q.userData?.dynamic || MOVES.test(q.name || '')) return false;
       if (q.mcFrozen || q.name === 'statics') return true;
-      if (q.matrixAutoUpdate) return false;
+      if (q.matrixAutoUpdate && STRICT) return false;
     }
     return true;
   };
@@ -167,7 +257,7 @@ export function eclipseLejos(g) {
     !!m &&
     (m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial) &&
     !m.transparent && m.depthWrite && m.colorWrite !== false && m.visible && m.opacity >= 1 && !(m.alphaTest > 0) && !m.alphaMap &&
-    m.blending === THREE.NormalBlending && !m.userData?.foliage && !m.userData?.vRefl && !glows(m) && !m.wireframe;
+    m.blending === THREE.NormalBlending && !m.userData?.foliage && !m.userData?.vRefl && !(STRICT ? glows(m) : !!m.emissiveMap) && !m.wireframe;
   const own = (o, p) => Object.prototype.hasOwnProperty.call(o, p);
   const fits = (o) => {
     if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.isBatchedMesh || Array.isArray(o.material)) return false;
@@ -343,7 +433,7 @@ export function eclipseLejos(g) {
       cm.intersectsFrustum = function (f) {
         const c = camFrustumIs(f);
         if (c === null || !live()) return false;
-        if (this.__ljI >= 0 && this.__ljI !== near(c) && L.dirty[this.__ljI] === 0) return false;
+        if (this.__ljI >= 0 && (this.__ljI !== near(c) || flatMirror(c)) && L.dirty[this.__ljI] === 0) return false;
         if (this.__scUp !== undefined && upHidden(this, c)) return false;
         return PROTO(this, f);
       };
@@ -359,6 +449,27 @@ export function eclipseLejos(g) {
     };
     o.__ljChunks = mine;
   }
+
+  // (2026-10-15, el usuario: "el arreglo de no cargar las texturas de paredes de otros lugares lejanos le quitó
+  // bastante detalle". Las juntas llevan la textura: todas las de las islas en un arreglo de LJ_TEX px, una capa por
+  // textura, y cada vértice su coordenada y su capa; el color, el del material —sin el promedio—. Sin coordenadas o
+  // sin lugar en el arreglo, el color promedio de siempre. Sigue siendo un dibujo por junta.
+  // globalThis.__mduLejosPlano: el color promedio, como antes)
+  const TEXD = globalThis.__mduLejosPlano !== true;
+  const layers = new Map();
+  const layerOf = (t) => {
+    if (!TEXD || !t?.image) return NO_TEX;
+    let k = layers.get(t);
+    if (k === undefined) {
+      if (layers.size >= LJ_MAX) return NO_TEX;
+      k = layers.size;
+      layers.set(t, k);
+    }
+    return k;
+  };
+  const arrU = { value: null };
+  // dónde quedó cada pieza suelta en su junta (para sacarla después: vigía)
+  const place = new Map();
 
   // armar las juntas
   const group = new THREE.Group();
@@ -401,10 +512,14 @@ export function eclipseLejos(g) {
       const PB = new Uint8Array(nv * 2);
       const EM = new Uint16Array(nv * 3);
       const RF = new Uint8Array(nv);
+      const TU = TEXD ? new Float32Array(nv * 2) : null;
+      const TL = TEXD ? new Uint8Array(nv).fill(NO_TEX) : null;
       const I = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
       let v0 = 0;
       let i0 = 0;
+      const recs = [];
       for (const { it, remap, used, cnt, idx, st, list } of maps2) {
+        if (!list) recs.push([it.o, v0, used]);
         const o = it.o;
         const m = o.material;
         const geo = o.geometry;
@@ -413,11 +528,24 @@ export function eclipseLejos(g) {
         const nor = geo.attributes.normal;
         const vc = m.vertexColors && geo.attributes.color ? geo.attributes.color : null;
         nm3.getNormalMatrix(o.matrixWorld);
-        const ta = texAvg(m.map) || [1, 1, 1];
+        const tm = m.map;
+        const uvA = TEXD && tm ? geo.attributes[tm.channel ? 'uv' + tm.channel : 'uv'] : null;
+        const lay = uvA ? layerOf(tm) : NO_TEX;
+        const useTex = lay !== NO_TEX;
+        let e3 = null;
+        if (useTex) {
+          if (tm.matrixAutoUpdate) tm.updateMatrix();
+          e3 = tm.matrix.elements;
+        }
+        const ta = useTex ? [1, 1, 1] : texAvg(m.map) || [1, 1, 1];
         const col = m.color;
         const rough = m.isMeshStandardMaterial ? m.roughness : m.isMeshPhongMaterial ? Math.max(0.2, 1 - (m.shininess ?? 30) / 100) : 1;
         const metal = m.isMeshStandardMaterial ? m.metalness : 0;
         const rb = m.isMeshStandardMaterial ? reflBucket(m) : 0;
+        const ek = !STRICT && m.emissive ? (m.emissiveIntensity ?? 1) : 0;
+        const eR = half(ek * (m.emissive?.r ?? 0));
+        const eG = half(ek * (m.emissive?.g ?? 0));
+        const eB = half(ek * (m.emissive?.b ?? 0));
         const r0 = col.r * ta[0];
         const g0 = col.g * ta[1];
         const b0 = col.b * ta[2];
@@ -446,8 +574,17 @@ export function eclipseLejos(g) {
           C[q * 3 + 2] = Math.min(65535, Math.round(b * 65535));
           PB[q * 2] = Math.round(rough * 255);
           PB[q * 2 + 1] = Math.round(metal * 255);
-          EM[q * 3] = EM[q * 3 + 1] = EM[q * 3 + 2] = half(0);
+          EM[q * 3] = eR;
+          EM[q * 3 + 1] = eG;
+          EM[q * 3 + 2] = eB;
           RF[q] = Math.round((rb / 15) * 255);
+          if (useTex) {
+            const u = uvA.getX(v);
+            const w2 = uvA.getY(v);
+            TU[q * 2] = e3[0] * u + e3[3] * w2 + e3[6];
+            TU[q * 2 + 1] = e3[1] * u + e3[4] * w2 + e3[7];
+            TL[q] = lay;
+          }
         }
         for (let j = 0; j < cnt; j++) {
           const v = list ? list[j] : idx ? idx[st + j] : st + j;
@@ -487,6 +624,10 @@ export function eclipseLejos(g) {
       ng.setAttribute('pbr', new THREE.BufferAttribute(PB, 2, true));
       ng.setAttribute('emi', new THREE.Float16BufferAttribute(EM, 3));
       ng.setAttribute('refl', new THREE.BufferAttribute(RF, 1, true));
+      if (TEXD) {
+        ng.setAttribute('tuv', new THREE.BufferAttribute(TU, 2));
+        ng.setAttribute('tlay', new THREE.BufferAttribute(TL, 1));
+      }
       ng.setIndex(new THREE.BufferAttribute(I, 1));
       ng.computeBoundingSphere();
       // (apagado, 2026-10-10) soltar de la memoria de JS los datos de estas
@@ -502,7 +643,7 @@ export function eclipseLejos(g) {
         ng.index.onUpload(dropArray);
       }
       const m0 = P.m;
-      const mesh = new THREE.Mesh(ng, flatMaterial(m0.side, !!m0.flatShading, m0.envMapIntensity ?? 1));
+      const mesh = new THREE.Mesh(ng, flatMaterial(m0.side, !!m0.flatShading, m0.envMapIntensity ?? 1, TEXD ? arrU : null));
       mesh.name = 'lejos:' + ISL[i].k;
       mesh.position.copy(mid);
       mesh.updateMatrix();
@@ -511,6 +652,12 @@ export function eclipseLejos(g) {
       mesh.receiveShadow = true;
       mesh.raycast = noRay;
       mesh.userData.lejos = true;
+      // (core/sizeCull gbDrop: al G-buffer no va)
+      mesh.userData.ljFar = true;
+      for (const [o, start, count] of recs) {
+        if (!place.has(o)) place.set(o, []);
+        place.get(o).push({ mesh, start, count });
+      }
       mesh.__ljI = i;
       mesh.intersectsFrustum = function (f) {
         const c = camFrustumIs(f);
@@ -525,6 +672,7 @@ export function eclipseLejos(g) {
   root.add(group);
   group.updateMatrixWorld(true);
   L.group = group;
+  if (TEXD && layers.size) arrU.value = texArray([...layers.keys()], texAvg);
 
   // las piezas sueltas de cada isla: no se dibujan con la cámara en otra
   const isl = new Map();
@@ -575,6 +723,124 @@ export function eclipseLejos(g) {
     };
   }
 
+  // (2026-10-15) Los efectos de las islas de lejos —transparentes o que brillan: marcas, la disformidad, grietas,
+  // motas— que en pantalla miden menos de FX_PX de radio no se dibujan (de lejos son un punto); los portales y lo grande
+  // quedan. Y lo instanciado: lo del mapa que no se recortaba por la vista (piedras que orbitan, ladrillos y tablas
+  // que flotan), de lejos por su esfera de todas las copias (con margen: se mueven poco); lo que cuelga de la escena
+  // (lo del easter egg), por su esfera mientras no se mueva (si cambia más de 3 veces, como antes). De cerca y en las
+  // sombras, como antes. Se mira toda la escena al armar y otra vez cada 4 s (lo que aparece después). Afuera: los
+  // jugadores, los muertos, las partículas, lo que se mueve. Medido (A/B por cargas): -3 % de cuadros, +0,1-0,4 ms de
+  // CPU (un gancho más por pieza en cada pasada) y ningún ahorro en la placa: apagado. globalThis.__mduLejosFxTodo = true: prendido
+  const FXON = !STRICT && globalThis.__mduLejosFxTodo === true;
+  const fxSph = new THREE.Sphere();
+  const fxP = new THREE.Vector3();
+  L.fx = { efectos: 0, libres: 0, sueltos: 0 };
+  const scanFx = () => {
+    if (!FXON) return;
+    const skip = new Set([g.net?.avatars?.root, g.zombies?.root, g.zombies?.batch?.mesh, g.fx?.root, g.powerups?.root, g.weapons?.vmScene].filter(Boolean));
+    const walk = (o, inMap) => {
+      if (skip.has(o) || o.isCamera || o.isLight) return;
+      if (o.name === 'eclipsePortals' || o.userData?.dynamic || MOVES.test(o.name || '')) return;
+      if (o === root) inMap = true;
+      if ((o.isMesh || o.isPoints) && !o.__ljFx) {
+        o.__ljFx = true;
+        add(o, inMap);
+      }
+      for (const c of o.children) walk(c, inMap);
+    };
+    walk(g.scene, false);
+  };
+  const add = (o, inMap) => {
+    if (o.isSkinnedMesh || o.layers.mask !== 1 || own(o, 'onBeforeRender') || own(o, 'intersectsFrustum') || managed(o)) return;
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    const inst = o.isInstancedMesh && o.count > 0 && (!inMap || o.frustumCulled === false);
+    const fx = !o.isInstancedMesh && !!m && (m.transparent || m.blending === THREE.AdditiveBlending) && o.frustumCulled;
+    if (!inst && !fx) return;
+    if (inst) {
+      o.computeBoundingSphere();
+      if (!o.boundingSphere) return;
+      fxSph.copy(o.boundingSphere).applyMatrix4(o.matrixWorld);
+    } else {
+      const geo = o.geometry;
+      if (!geo?.attributes?.position) return;
+      if (!geo.boundingSphere) geo.computeBoundingSphere();
+      fxSph.copy(geo.boundingSphere).applyMatrix4(o.matrixWorld);
+    }
+    const i = islandOf(fxSph.center.x, fxSph.center.z);
+    if (i < 0 || fxSph.radius > MAP_R) return;
+    o.__ljI = i;
+    if (inst) {
+      const fc0 = o.frustumCulled;
+      // (lo del mapa: con margen para lo que se mueve poco; lo de la escena: su esfera, mientras no se mueva)
+      const pad = inMap && !fc0;
+      o.__ljFxS = new THREE.Sphere(fxSph.center.clone(), pad ? fxSph.radius * 1.25 + 4 : fxSph.radius);
+      o.__ljV = o.instanceMatrix.version;
+      o.__ljN = 0;
+      o.frustumCulled = true;
+      if (inMap) L.fx.libres++;
+      else L.fx.sueltos++;
+      o.intersectsFrustum = function (f) {
+        const c = camFrustumIs(f);
+        if (!pad && this.instanceMatrix.version !== this.__ljV) {
+          this.__ljV = this.instanceMatrix.version;
+          // (se mueve: como antes, para siempre)
+          if (++this.__ljN > 3) {
+            delete this.intersectsFrustum;
+            this.frustumCulled = fc0;
+            return fc0 ? PROTO(this, f) : true;
+          }
+          this.computeBoundingSphere();
+          fxSph.copy(this.boundingSphere).applyMatrix4(this.matrixWorld);
+          this.__ljFxS.copy(fxSph);
+        }
+        if (c === null || !farFor(this.__ljI, c)) return fc0 ? PROTO(this, f) : true;
+        const S2 = this.__ljFxS;
+        const k = pxScale(c);
+        const d = Math.max(1, fxP.setFromMatrixPosition(c.matrixWorld).distanceTo(S2.center) - S2.radius);
+        if (k > 0 && (S2.radius * k) / d < FX_PX) return false;
+        return f.intersectsSphere(S2);
+      };
+    } else {
+      L.fx.efectos++;
+      o.intersectsFrustum = function (f) {
+        const c = camFrustumIs(f);
+        if (c !== null && farFor(this.__ljI, c)) {
+          const geo = this.geometry;
+          if (geo.boundingSphere) {
+            fxSph.copy(geo.boundingSphere).applyMatrix4(this.matrixWorld);
+            const k = pxScale(c);
+            const d = Math.max(1, fxP.setFromMatrixPosition(c.matrixWorld).distanceTo(fxSph.center) - fxSph.radius);
+            if (k > 0 && (fxSph.radius * k) / d < FX_PX) return false;
+          }
+        }
+        return PROTO(this, f);
+      };
+    }
+  };
+  // (2026-10-15) Las cajas de consulta de los cuartos (core/sizeCull: '¿se ve este cuarto?') de las otras islas: lo de
+  // adentro ya va en su junta o dormido, y cada consulta era un dibujo más y media docena de llamadas a la placa cada
+  // pocos cuadros —~40 cuartos—. Con su isla de lejos no se piden. globalThis.__mduLejosCuartos: como antes
+  if (!STRICT && globalThis.__mduLejosCuartos !== true) {
+    const bx = new THREE.Box3();
+    for (const o of g.scene.children) {
+      if (!/^room:/.test(o.name || '') || !o.isMesh || own(o, 'intersectsFrustum')) continue;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      bx.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
+      const ri = islandOf((bx.min.x + bx.max.x) / 2, (bx.min.z + bx.max.z) / 2);
+      if (ri < 0) continue;
+      o.__ljRoom = ri;
+      L.fx.cuartos = (L.fx.cuartos || 0) + 1;
+      o.intersectsFrustum = function (f) {
+        const c = camFrustumIs(f);
+        if (c !== null && farFor(this.__ljRoom, c)) return false;
+        return PROTO(this, f);
+      };
+    }
+  }
+  scanFx();
+  let fxT = 0;
+  L.scanFx = scanFx;
+
   // ---------------- el vigía ----------------
   // lo que cambia después de armar deja su isla entera
   const mats = new Map();
@@ -589,16 +855,176 @@ export function eclipseLejos(g) {
   for (const [o, i] of isl) touch(o, i);
   for (const o of maps) for (const c of o.__ljChunks) if (c.__ljI >= 0) touch(o, c.__ljI);
   const matList = [...mats.entries()];
+  // (de quién es: los nombres de los padres; muchas piezas no tienen nombre)
+  const whoOf = (o) => {
+    const n = [];
+    for (let q = o; q && n.length < 4; q = q.parent) if (q.name) n.push(q.name);
+    return (n.join(" < ") || o.type) + (o.matrixAutoUpdate ? " (matriz automática)" : "");
+  };
   L.dirtyIsl = (i, why) => {
+    // (pruebas: globalThis.__mduLejosLog anota todas, no solo la primera de cada isla)
+    if (globalThis.__mduLejosLog === true && i >= 0 && (L.log ||= []).length < 400) L.log.push(ISL[i].k + ": " + why);
     if (i < 0 || L.dirty[i]) return;
     L.dirty[i] = 1;
     L.why.push(ISL[i].k + ': ' + why);
+  };
+  // (2026-10-15) Lo que cambia después de armar: si es una pieza suelta de una junta, sale de la junta —sus vértices
+  // quedan todos en un punto— y se dibuja como antes, sola; la isla sigue junta. Lo de las mallas de todo el mapa (o
+  // con la junta ya soltada de la memoria) deja la isla entera, como antes. globalThis.__mduLejosEstricto: como antes
+  const evict = (o, i, why) => {
+    L.unbatch?.(o);
+    const P2 = place.get(o);
+    if (STRICT || !P2 || P2.some((r) => !r.mesh.geometry.attributes.position.array?.length)) return L.dirtyIsl(i, why);
+    for (const r of P2) {
+      const pos = r.mesh.geometry.attributes.position;
+      pos.array.fill(0, r.start * 3, (r.start + r.count) * 3);
+      pos.addUpdateRange(r.start * 3, r.count * 3);
+      pos.needsUpdate = true;
+    }
+    place.delete(o);
+    isl.delete(o);
+    o.__ljI = undefined;
+    if (globalThis.__mduLejosLog === true && (L.log ||= []).length < 400) L.log.push(ISL[i].k + ': sacada, ' + why);
+    L.sacadas = (L.sacadas || 0) + 1;
   };
   // (la visibilidad que le puso el juego, sin el sueño de las islas)
   const rawUp = (o) => {
     for (let q = o; q; q = q.parent) if (!(q.__ljRaw ? q.__ljRaw() : q.visible)) return false;
     return true;
   };
+
+  // ---------------- la isla de la cámara: un dibujo por material ----------------
+  // (2026-10-15, el usuario: "hacé el multi-draw para lo quieto que comparte material". Con la cámara en una isla, lo
+  // de esa isla se dibujaba pieza por pieza: ~6-10 llamadas a la placa cada una, y el proceso de la placa de Chrome
+  // era el cuello. Las piezas quietas de cada isla que comparten material —y los mismos atributos— van en un dibujo
+  // múltiple (BatchedMesh) con su material de siempre: mismas texturas y luz. Qué pieza entra en cada cuadro lo
+  // decide cada pieza, como antes (visible, su recorte de core/sizeCull —chicas, cuartos, planas—, la vista). Solo con
+  // la cámara en los ojos y en su isla; en las sombras (las piezas tiran las suyas), el espejo del agua, las
+  // cinemáticas y con la isla entera (L.dirty), como antes. Lo que cambia sale del lote (vigía: evict). Afuera: los
+  // materiales con onBeforeCompile propio (salvo el de fx/Surfaces), lo espejado. Medido: junta 45 piezas en 18 lotes
+  // en todo el mapa (2-4 dibujos de lote por cuadro): lo de la isla de la cámara que se dibuja pieza por pieza es poco
+  // —lo grueso es lo instanciado y lo transparente—. Misma imagen, sin ganancia que se mida: apagado.
+  // globalThis.__mduIslaLote = true: prendido)
+  const LOTE = !STRICT && globalThis.__mduIslaLote === true;
+  L.lotes = { lotes: 0, piezas: 0, sacadas: 0 };
+  if (LOTE) {
+    const baseObc = (m) => {
+      let p = Object.getPrototypeOf(m);
+      while (p && !own(p, 'onBeforeCompile')) p = Object.getPrototypeOf(p);
+      return p ? p.onBeforeCompile : null;
+    };
+    const sigOf = (geo) => {
+      let k = geo.index ? 'I' : '';
+      for (const nm of Object.keys(geo.attributes).sort()) {
+        const a = geo.attributes[nm];
+        if (a.isInterleavedBufferAttribute || !(a.array?.length >= a.count * a.itemSize)) return null;
+        k += '|' + nm + a.itemSize + (a.normalized ? 'n' : '');
+      }
+      if (geo.index && !(geo.index.array?.length >= geo.index.count)) return null;
+      return geo.drawRange.start === 0 && geo.drawRange.count === Infinity ? k : null;
+    };
+    const det = new THREE.Matrix4();
+    // (visible hasta la escena: lo que sacaron de la escena —la copia de una puerta cerrada al abrirla— no)
+    const inScene = (o) => {
+      for (let q = o; q; q = q.parent) {
+        if (!q.visible) return false;
+        if (q === g.scene) return true;
+      }
+      return false;
+    };
+    for (let i = 0; i < n; i++) {
+      const groups = new Map();
+      for (const o of per[i]) {
+        const m = o.material;
+        if ((m.onBeforeCompile !== baseObc(m) && !surfaceOnly(m)) || det.copy(o.matrixWorld).determinant() <= 0) continue;
+        const sg = sigOf(o.geometry);
+        if (sg === null) continue;
+        const key = m.id + '#' + sg + '#' + o.receiveShadow + '#' + o.renderOrder;
+        let l = groups.get(key);
+        if (!l) groups.set(key, (l = []));
+        l.push(o);
+      }
+      for (const list of groups.values()) {
+        if (list.length < 2) continue;
+        const uniq = new Map();
+        let nv = 0;
+        let ni = 0;
+        for (const o of list) {
+          if (uniq.has(o.geometry)) continue;
+          uniq.set(o.geometry, -1);
+          nv += o.geometry.attributes.position.count;
+          ni += o.geometry.index ? o.geometry.index.count : 0;
+        }
+        const o0 = list[0];
+        const B = new THREE.BatchedMesh(list.length, nv, Math.max(ni, 3), o0.material);
+        for (const geo of uniq.keys()) uniq.set(geo, B.addGeometry(geo));
+        const ids = new Int32Array(list.length);
+        for (let j = 0; j < list.length; j++) {
+          ids[j] = B.addInstance(uniq.get(list[j].geometry));
+          B.setMatrixAt(ids[j], list[j].matrixWorld);
+        }
+        B.name = 'lote:' + ISL[i].k;
+        B.matrixAutoUpdate = false;
+        B.perObjectFrustumCulled = false;
+        B.sortObjects = globalThis.__mduLoteOrden === true;
+        B.castShadow = false;
+        B.receiveShadow = o0.receiveShadow;
+        B.renderOrder = o0.renderOrder;
+        B.raycast = noRay;
+        B.userData.lote = true;
+        B.computeBoundingSphere();
+        // (para las islas dormidas: dónde está, en el mundo)
+        B.geometry.boundingSphere = B.boundingSphere.clone();
+        const vis = new Uint8Array(list.length).fill(1);
+        const rec = { B, list, ids, vis, i };
+        // ¿esta cámara dibuja la isla con el lote?
+        const on = (f) => {
+          const c = camFrustumIs(f);
+          return c !== null && live() && L.dirty[i] === 0 && !farFor(i, c);
+        };
+        rec.on = on;
+        B.intersectsFrustum = function (f) {
+          if (!on(f)) return false;
+          let any = false;
+          for (let j = 0; j < list.length; j++) {
+            const o = list[j];
+            // (lo mismo que hacía el renderer con la pieza: visible hasta arriba y su recorte)
+            const v = o.__ljB === rec && inScene(o) && (o.__ljPrev ? o.__ljPrev.call(o, f) : PROTO(o, f)) ? 1 : 0;
+            if (v !== vis[j]) {
+              vis[j] = v;
+              this.setVisibleAt(ids[j], v === 1);
+            }
+            if (v) any = true;
+          }
+          return any;
+        };
+        for (const o of list) {
+          o.__ljPrev = own(o, 'intersectsFrustum') ? o.intersectsFrustum : null;
+          o.__ljB = rec;
+          o.intersectsFrustum = function (f) {
+            const R2 = this.__ljB;
+            if (R2 !== undefined && R2.on(f)) return false;
+            return this.__ljPrev ? this.__ljPrev.call(this, f) : PROTO(this, f);
+          };
+        }
+        group.add(B);
+        L.lotes.lotes++;
+        L.lotes.piezas += list.length;
+      }
+    }
+    group.updateMatrixWorld(true);
+    L.unbatch = (o) => {
+      const R2 = o.__ljB;
+      if (R2 === undefined) return;
+      o.__ljB = undefined;
+      const j = R2.list.indexOf(o);
+      if (j >= 0 && R2.vis[j]) {
+        R2.vis[j] = 0;
+        R2.B.setVisibleAt(R2.ids[j], false);
+      }
+      L.lotes.sacadas++;
+    };
+  }
 
   // ---------------- las islas dormidas ----------------
   // on: se duerme (jugando, con la cámara en los ojos); me: la isla del jugador;
@@ -795,6 +1221,11 @@ export function eclipseLejos(g) {
   let k = 0;
   let km = 0;
   L.tick = () => {
+    // (lo que aparece después: cada 4 s)
+    if (FXON && performance.now() - fxT > 4000) {
+      fxT = performance.now();
+      scanFx();
+    }
     // qué isla está despierta: la del jugador, jugando con la cámara en sus ojos
     const P = g.player;
     const cp = g.camera?.position;
@@ -828,20 +1259,23 @@ export function eclipseLejos(g) {
     for (let s = 0; s < SLICE && watch.length; s++) {
       const W = watch[k];
       k = (k + 1) % watch.length;
-      if (L.dirty[W.i]) continue;
+      if (L.dirty[W.i] || W.gone) continue;
       const o = W.o;
       if (o.material !== W.mat) {
-        L.dirtyIsl(W.i, 'material ' + (o.name || o.type));
+        W.gone = true;
+        evict(o, W.i, 'material ' + whoOf(o));
         continue;
       }
       if (!rawUp(o)) {
-        L.dirtyIsl(W.i, 'se escondió ' + (o.name || o.type));
+        W.gone = true;
+        evict(o, W.i, 'se escondió ' + whoOf(o));
         continue;
       }
       const e = o.matrixWorld.elements;
       for (let j = 0; j < 16; j++) {
         if (Math.abs(e[j] - W.m[j]) > 1e-4) {
-          L.dirtyIsl(W.i, 'se movió ' + (o.name || o.type));
+          W.gone = true;
+          evict(o, W.i, 'se movió ' + whoOf(o));
           break;
         }
       }
@@ -852,7 +1286,16 @@ export function eclipseLejos(g) {
       const now = snap(m);
       for (let j = 0; j < now.length; j++) {
         if (now[j] !== M.s[j]) {
-          for (const i of M.isl) L.dirtyIsl(i, 'cambió un material');
+          // (las piezas con ese material salen de su junta; si no se puede, la isla queda entera)
+          if (STRICT) for (const i of M.isl) L.dirtyIsl(i, 'cambió un material');
+          else {
+            for (const W of watch) {
+              if (W.gone || W.mat !== m) continue;
+              W.gone = true;
+              evict(W.o, W.i, 'cambió su material ' + whoOf(W.o));
+            }
+            M.s = now;
+          }
           break;
         }
       }

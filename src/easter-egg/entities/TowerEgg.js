@@ -6,6 +6,8 @@ import Avatars from '../net/Avatars';
 import { FierroNpc } from '../ui/fierroNpc';
 import SongEgg from '../world/SongEgg';
 import { TRACKS } from '../core/music';
+import { PERKS } from '../config/perks';
+import { comercial } from '../core/edicion';
 import { fireflies } from '../fx/Fireflies';
 import { TowerFlyers, sndWindLoop } from './towerKit';
 import TowerWind from './towerWind';
@@ -651,7 +653,7 @@ export default class TowerEgg {
       radius: 2.2,
       prompt: () => {
         if (this.parts.mecha === 'ground') return { text: 'agarrar la mecha', noCost: true };
-        if (this.parts.mecha === 'sealed' && this.step >= 1) return { text: 'Un sello de oro. Solo se rompe si alguien le cae encima desde arriba... con PhD Flopper', noCost: true, info: true };
+        if (this.parts.mecha === 'sealed' && this.step >= 1) return { text: `Un sello de oro. Solo se rompe si alguien le cae encima desde arriba... con ${PERKS.phd.name}`, noCost: true, info: true };
         return null;
       },
       cost: () => 0,
@@ -1964,7 +1966,7 @@ export default class TowerEgg {
         list: [
           this.canoLine(p.cano, go),
           p.rueda === 'hanging' ? ['Rueda', `piso 8, rompé los 3 candados${go(8)}`] : p.rueda === 'falling' || p.rueda === 'ground' ? ['Rueda', 'cayó al piso 5'] : ['Rueda', '', true],
-          p.mecha === 'sealed' ? ['Mecha', `piso 10, caé encima con PhD${go(11)}`] : p.mecha === 'ground' ? ['Mecha', 'quedó en el piso 10'] : ['Mecha', '', true],
+          p.mecha === 'sealed' ? ['Mecha', `piso 10, caé encima con ${comercial() ? PERKS.phd.name : 'PhD'}${go(11)}`] : p.mecha === 'ground' ? ['Mecha', 'quedó en el piso 10'] : ['Mecha', '', true],
         ],
       };
     } else if (this.step === 2) o = { main: 'Llevá las piezas al cañón', sub: `Piso 15, la cima${go(15)}` };

@@ -576,6 +576,32 @@ export function gbBegin(camera, aoOnly) {
 // esto la oclusión y los reflejos no se ven.
 const ECL_GB_FAR = 70;
 export function gbDrop(o) {
+  // (2026-10-15, rendimiento de Eclipse: mirando a otras islas, al G-buffer iban 100-140 dibujos de ellas: lo
+  // instanciado —sin __scFR, no entraba en la regla de abajo— y las juntas de las islas de lejos —world/eclipseLejos:
+  // grandes, nunca "lejos" por su radio—. Lo que el principal dibuja de esas juntas ya es de lejos: afuera; lo
+  // instanciado, por su esfera (lo que se mueve siempre —más de 3 esferas nuevas— se queda, como antes).
+  // globalThis.__mduGbIslasCerca: como antes)
+  if (FEATURES.eclipse && globalThis.__mduGbIslasCerca !== true) {
+    if (o.userData.ljFar === true) {
+      sizeCullStats.fog++;
+      return true;
+    }
+    if (o.isInstancedMesh === true && o.count > 0) {
+      if (o.__gbV !== o.instanceMatrix.version && (o.__gbN = (o.__gbN || 0) + 1) <= 3) {
+        o.computeBoundingSphere();
+        o.__gbV = o.instanceMatrix.version;
+      }
+      if (o.__gbN <= 3 && o.boundingSphere) {
+        _v.copy(o.boundingSphere.center).applyMatrix4(o.matrixWorld);
+        const c = gbCam.matrixWorld.elements;
+        const d = ECL_GB_FAR + o.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis();
+        if ((_v.x - c[12]) ** 2 + (_v.y - c[13]) ** 2 + (_v.z - c[14]) ** 2 > d * d) {
+          sizeCullStats.fog++;
+          return true;
+        }
+      }
+    }
+  }
   if (FEATURES.eclipse && o.__scFR !== undefined) {
     _v.copy(o.geometry.boundingSphere.center).applyMatrix4(o.matrixWorld);
     const c = gbCam.matrixWorld.elements;

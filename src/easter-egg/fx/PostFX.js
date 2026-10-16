@@ -13,6 +13,7 @@ import { gbBeginPass, gbEndPass } from './gbMrt';
 import Surfaces from './Surfaces';
 import TAAPass, { GRASS_JIT } from './TAA';
 import FsrPass, { FSR_SCALE } from './Fsr';
+import Dinamico from './dinamico';
 import { FEATURES, MAP_ID } from '../config/map';
 import SliceWalk from './sliceWalk';
 
@@ -104,11 +105,15 @@ const GradeShader = {
     uHiTint: { value: new THREE.Vector3(0.02, 0.008, -0.012) },
     uGain: { value: new THREE.Vector3(1, 1, 1) },
     uLift: { value: new THREE.Vector3(0, 0, 0) },
+    // el modo para daltónicos (fx/colorblind.js): la matriz de corrección y si está prendido
+    uCB: { value: new THREE.Matrix3() },
+    uCBOn: { value: 0 },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
     uniform sampler2D tDiffuse; uniform float uTime, uHurt, uHit, uDown, uFlash, uGrain, uCrit, uPulse, uVida, uUnder, uWish, uWishBeat, uFuria; uniform vec2 uRes, uHitDir; uniform vec3 uUnderCol; uniform float uSat, uCon; uniform vec3 uShTint, uHiTint, uGain, uLift;
     uniform vec3 uRip;
+    uniform mat3 uCB; uniform float uCBOn;
     uniform float uEclipse, uKeepNeon, uSoftF, uTens;
     varying vec2 vUv;
     float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -278,6 +283,11 @@ const GradeShader = {
       col += n * (0.008 + uGrain * 0.55 * smoothstep(0.04, 0.5, grainL));
       // destello blanco (kaboom / easter egg)
       col = mix(col, vec3(1.0), clamp(uFlash, 0.0, 1.0));
+      // daltonismo: la corrección en RGB lineal (fx/colorblind.js)
+      if (uCBOn > 0.5) {
+        vec3 lin = pow(clamp(col, 0.0, 1.0), vec3(2.2));
+        col = pow(clamp(uCB * lin, 0.0, 1.0), vec3(1.0 / 2.2));
+      }
       gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
     }`,
 };
@@ -428,6 +438,8 @@ export default class PostFX {
     this.fsr = new FsrPass(real);
     this.fsr.enabled = false;
     this.composer.addPass(this.fsr);
+    // (la resolución dinámica de los efectos: fx/dinamico)
+    this.dyn = new Dinamico(renderer, this);
     this.flashV = 0;
     this.sweepT = 0;
     this.vmT = 0;
@@ -507,6 +519,7 @@ export default class PostFX {
   // Escalado (Opciones → Gráficos): 'off' (nativo) o un modo de FSR 1; sharp
   // 0..1; pct: la resolución base del modo 'custom' (0,5 a 1; en 1 solo afila).
   setUpscale(mode, sharp = 0.8, pct = 0.77) {
+    this.dyn?.reset();
     this.scale = mode === 'custom' ? Math.max(0.5, Math.min(1, pct || 0.77)) : FSR_SCALE[mode] || 1;
     this.fsr.enabled = mode !== 'off' && !!(FSR_SCALE[mode] || mode === 'custom');
     this.fsr.setSharpness(sharp);
@@ -522,6 +535,13 @@ export default class PostFX {
     this.composer.setSize(w, h);
     this.bloom.setSize(Math.floor((w * p) / 2), Math.floor((h * p) / 2));
     this.grade.uniforms.uRes.value.set(w * p, h * p);
+  }
+
+  // El modo para daltónicos: la matriz (por filas, fx/colorblind cbMatrix) o null.
+  setColorblind(M) {
+    const u = this.grade.uniforms;
+    if (M) u.uCB.value.set(...M);
+    u.uCBOn.value = M ? 1 : 0;
   }
 
   flash(v) {
@@ -599,6 +619,7 @@ export default class PostFX {
     const mwa = scene.matrixWorldAutoUpdate;
     scene.matrixWorldAutoUpdate = false;
     const water = this.game?.water;
+    this.dyn.begin();
     try {
       water?.prerender?.(this.renderer, scene, cam);
       // (Eclipse Matero: lo que se ve adentro de los portales, world/eclipsePortals)
@@ -608,6 +629,7 @@ export default class PostFX {
       scene.matrixWorldAutoUpdate = mwa;
       if (water) water.pre = null;
     }
+    this.dyn.end(dt * 1000, performance.now());
     this.epic.after();
     this.taa.unjitter();
   }
@@ -617,6 +639,7 @@ export default class PostFX {
     this.world.dispose();
     this.taa.dispose();
     this.fsr.dispose();
+    this.dyn.dispose();
     this.composer.dispose();
   }
 }

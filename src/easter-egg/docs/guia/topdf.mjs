@@ -6,14 +6,28 @@ import { chromium } from 'playwright';
 // guia.html y este script a una carpeta con playwright instalado
 // (npm i playwright) y se corre ahí, con la ruta completa del PDF de salida.
 // uso: node <esta carpeta>/topdf.mjs <raíz>/public/assets/sotano/guia-easter-eggs.pdf
-const out = process.argv[2];
-const png = process.argv[3];
+// --comercial: la de la versión de escritorio (core/edicion.js), sin los nombres de
+// Call of Duty: sin la columna "Perk" y cada perk por su paquete de yerba
+// (public/assets/sotano/guia-easter-eggs-escritorio.pdf)
+const COM = process.argv.includes('--comercial');
+const [out, png] = process.argv.slice(2).filter((a) => a !== '--comercial');
+const YERBA = { 'Quick Revive': 'Rosamorte', Juggernog: 'Taragüerno', 'Speed Cola': 'Rapidito', 'Double Tap': 'Doble Cruz', 'Mule Kick': 'Mulanda', 'Deadshot Daiquiri': 'Nadarias', 'PhD Flopper': 'Flopa Hermanos', 'Electric Cherry': 'Chisporé', 'Stamin-Up': 'Trotadora', 'Dying Wish': 'Extremaunión' };
 const src = new URL('./guia.html', import.meta.url).href;
 const b = await chromium.launch({ headless: true });
 const kill = setTimeout(async () => { console.log('TIMEOUT'); try { await b.close(); } catch {} process.exit(2); }, 60000);
 try {
   const p = await b.newPage();
   await p.goto(src, { waitUntil: 'load' });
+  if (COM)
+    await p.evaluate((Y) => {
+      for (const row of document.querySelectorAll('table.perks tr')) row.children[1]?.remove();
+      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const re = new RegExp(Object.keys(Y).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        let t = n.nodeValue.replace('Flopa Hermanos/PhD', 'Flopa Hermanos').replace(re, (m) => Y[m]);
+        if (t !== n.nodeValue) n.nodeValue = t;
+      }
+    }, YERBA);
   await p.emulateMedia({ media: 'print' });
   await p.pdf({
     path: out,

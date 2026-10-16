@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
+import { DYN } from './dinamico';
 import { AVATAR_SETS } from '../net/Avatars';
 // (FOLIAGE_B de fx/Epic: el pasto alto marcado en el G-buffer; acá a mano,
 // Epic importa este archivo)
@@ -271,6 +272,12 @@ const ApplyShader = {
     }`,
 };
 
+// (sin objetos nuevos en cada cuadro: capsules)
+const byD2 = (a, b) => a.d2 - b.d2;
+function dropOld(w, k, map) {
+  if (this - w.seen > 2000) map.delete(k);
+}
+
 export default class Contacto extends Pass {
   constructor() {
     super();
@@ -406,17 +413,38 @@ export default class Contacto extends Pass {
     const caps = this.caps;
     caps.length = 0;
     const cp = camera.position;
-    const add = (key, x, y, z, s, on, dog) => {
+    // (2026-10-15, el usuario: "2": sin objetos nuevos en cada cuadro; las cápsulas salen
+    // de un juego guardado, capPool, y se ordenan con una función fija)
+    const pool = (this.capPool ||= []);
+    const add = (this.capAdd ||= (key, x, y, z, s, on, dog) => {
+      const C = this.capCtx;
       let w = W.get(key);
-      if (w === undefined) w = { k: 0, seen: 0 };
-      w.k = Math.max(0, Math.min(1, w.k + (on ? dt : -dt) / CAP_IN));
-      w.seen = now;
-      W.set(key, w);
+      if (w === undefined) {
+        w = { k: 0, seen: 0 };
+        W.set(key, w);
+      }
+      w.k = Math.max(0, Math.min(1, w.k + (on ? C.dt : -C.dt) / CAP_IN));
+      w.seen = C.now;
       if (w.k <= 0) return;
-      const d2 = (x - cp.x) ** 2 + (y - cp.y) ** 2 + (z - cp.z) ** 2;
+      const p = C.cp;
+      const d2 = (x - p.x) ** 2 + (y - p.y) ** 2 + (z - p.z) ** 2;
       if (d2 > CAP_FAR * CAP_FAR) return;
-      caps.push({ x, y, z, s, k: w.k, d2, dog });
-    };
+      const c = C.pool[C.used] || (C.pool[C.used] = { x: 0, y: 0, z: 0, s: 0, k: 0, d2: 0, dog: false });
+      C.used++;
+      c.x = x;
+      c.y = y;
+      c.z = z;
+      c.s = s;
+      c.k = w.k;
+      c.d2 = d2;
+      c.dog = dog;
+      caps.push(c);
+    });
+    const C = (this.capCtx ||= { dt: 0, now: 0, cp: null, pool, used: 0 });
+    C.dt = dt;
+    C.now = now;
+    C.cp = cp;
+    C.used = 0;
     for (const zb of game?.zombies?.pool || []) {
       if (!zb.active) {
         W.delete(zb);
@@ -443,8 +471,8 @@ export default class Contacto extends Pass {
       }
     }
     // (lo que ya no está: afuera)
-    for (const [k, w] of W) if (now - w.seen > 2000) W.delete(k);
-    caps.sort((a, b) => a.d2 - b.d2);
+    W.forEach(dropOld, now);
+    caps.sort(byD2);
     const n = Math.min(caps.length, MAX_C);
     for (let i = 0; i < n; i++) {
       const c = caps[i];
@@ -463,7 +491,8 @@ export default class Contacto extends Pass {
 
   // (la cuenta, a media resolución)
   setSize(w, h) {
-    this.rt.setSize(Math.max(1, Math.ceil(w / 2)), Math.max(1, Math.ceil(h / 2)));
+    // (DYN.contact: 2, o más chica cuando la placa no llega: fx/dinamico)
+    this.rt.setSize(Math.max(1, Math.ceil(w / DYN.contact)), Math.max(1, Math.ceil(h / DYN.contact)));
   }
 
   render(renderer, writeBuffer, readBuffer) {

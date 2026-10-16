@@ -757,7 +757,7 @@ export default class Aliados {
     if (S.lead) {
       const M = this.sm;
       const mh = leadHorse(M);
-      M.lead = { from: { pos: mh.pos.clone(), yaw: mh.yaw }, k: 0 };
+      M.lead = { from: { pos: mh.pos.clone(), yaw: mh.yaw }, k: 0, sp: 0 };
     }
     this.laneDust(path);
     this.clarin();
@@ -954,12 +954,19 @@ export default class Aliados {
         const tu = toLocal(tmpU.x, tmpU.z, {}).u;
         hold = fu > F.wallU && tu < F.wallU + 1.5;
       }
-      if (!hold) M.lead.k = Math.min(1, M.lead.k + dt / 1.6);
+      // (2026-10-15, el usuario: "cuando San Martín lanza a la carga, la animación con la que se une a los
+      // granaderos es terrible, se teletransporta prácticamente". Medido: iba de su lugar a la punta —unos 19 m—
+      // en 1,6 s fijos: arrancaba parado, en medio segundo iba a 17 m/s al galope mientras la columna salía al
+      // trote, y frenaba de golpe a la marcha de ella. Ahora sale con la columna: acelera de a poco, mira adonde
+      // va y se suma a la punta un poco más rápido que ella. globalThis.__mduSmUnionVieja: como antes)
+      const OLDJ = globalThis.__mduSmUnionVieja === true;
+      if (!hold && OLDJ) M.lead.k = Math.min(1, M.lead.k + dt / 1.6);
       const mh = leadHorse(M);
       if (hold) {
         mh.speed = 0;
         M.lead.from.pos.copy(mh.pos);
-      } else place(mh, 4.2, 0, M.lead.from, ease(M.lead.k));
+      } else if (!OLDJ && M.lead.k < 1) this.leadJoin(S, M, mh, v, dt);
+      else place(mh, 4.2, 0, M.lead.from, ease(M.lead.k));
       const inLane = S.s + 4 > P.laneA - 10 && S.s + 4 < P.laneB + 4;
       M.mont.brazos = inLane ? 'carga' : 'sable';
     }
@@ -982,6 +989,42 @@ export default class Aliados {
         this.smToWait(false);
       }
     }
+  }
+
+  // San Martín va a la punta de la columna S (4,2 m adelante, en el medio) a caballo de verdad: a lo sumo un
+  // poco más rápido que la columna (v), acelerando de a poco, de cara a donde va y, al llegar, al paso de ella.
+  // Ya en la punta (k = 1) lo lleva place, como a los demás.
+  leadJoin(S, M, mh, v, dt) {
+    const P = S.path;
+    const s = Math.max(0, Math.min(P.len, S.s + 4.2));
+    P.curve.getPointAt(s / P.len, tmpV);
+    P.curve.getTangentAt(s / P.len, tmpW);
+    tmpW.y = 0;
+    tmpW.normalize();
+    if (S.s + 4.2 < 0) tmpV.addScaledVector(tmpW, S.s + 4.2);
+    const dx = tmpV.x - mh.pos.x;
+    const dz = tmpV.z - mh.pos.z;
+    const d = Math.hypot(dx, dz);
+    const L0 = M.lead;
+    // lejos, la columna más 6 m/s (nunca más que el galope); al acercarse, de a poco la de la columna
+    const want = Math.min(V_GAL * 1.1, Math.max(0, v) + 1.5 + Math.min(d, 10) * 0.45);
+    L0.sp += THREE.MathUtils.clamp(want - L0.sp, -5 * dt, 5 * dt);
+    const st = Math.min(d, L0.sp * dt);
+    if (d > 1e-4) {
+      mh.pos.x += (dx / d) * st;
+      mh.pos.z += (dz / d) * st;
+    }
+    // de cara a donde va; al llegar, la de la columna
+    const tan = Math.atan2(tmpW.x, tmpW.z);
+    const go = d > 0.3 ? Math.atan2(dx, dz) : tan;
+    mh.yaw = angLerp(mh.yaw, angLerp(go, tan, THREE.MathUtils.clamp(1 - (d - 0.6) / 3, 0, 1)), Math.min(1, dt * 4));
+    toLocal(mh.pos.x, mh.pos.z, L);
+    mh.pos.y = hLoc(L.u, L.v);
+    mh.groundY = mh.pos.y;
+    mh.speed = dt > 0 ? st / dt : 0;
+    // (si a los 6 s no llegó, lo sigue place, que tampoco corre más que la columna)
+    L0.t = (L0.t || 0) + dt;
+    if (d - st < 0.6 || L0.t > 6) L0.k = 1;
   }
 
   // (anfitrión) Los muertos que agarra la carga en el carril: el frente de la

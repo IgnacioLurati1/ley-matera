@@ -167,6 +167,12 @@ export default class FinEclipseBlend {
     // cuándo se va Fierro: el fin de su último tramo visible; se funde en los 4,5 s de antes
     const vis = D.actors.FIERRO?.vis;
     this.fierroEnd = vis?.length ? vis[vis.length - 1][1] / D.fps : D.dur;
+    // (2026-10-15, el usuario: "cuando Fierro desaparece no llega a desaparecer del todo y manda pantallazo blanco".
+    // Su tramo visible dura la escena entera, así que se fundía de 110,7 a 115,2 s y el blanco final —111,2— lo
+    // tapaba a medio irse. Como en la vista previa aprobada (fin_eclipse.py: se funde hasta 1 s antes del blanco
+    // final), termina 1 s antes del último 'blanco on'. globalThis.__mduFinFierroTarde: como antes)
+    const lastOn = [...(D.events || [])].reverse().find((e) => e.name === 'blanco on')?.t;
+    if (globalThis.__mduFinFierroTarde !== true && lastOn != null) this.fierroEnd = Math.min(this.fierroEnd, lastOn - 1);
     this.inWhite = false;
   }
 
@@ -189,6 +195,8 @@ export default class FinEclipseBlend {
       this.fadeWhite(1, +m[1]);
       // la canción termina con el blanco (como en la vista previa)
       this.g.music?.stop(+m[1]);
+      // (y el ambiente con ella: ver quietWorld)
+      this.quietWorld(true, +m[1]);
     } else if (n === 'blanco on') {
       this.fadeWhite(1, this.inWhite ? 0.5 : 0.01);
       if (!this.inWhite) this.whiteWorld(true);
@@ -207,7 +215,10 @@ export default class FinEclipseBlend {
     const fade = at(/^blanco funde/);
     const on = at(/^blanco on$/);
     const off = at(/^blanco off$/);
-    if (fade != null && t >= fade) this.g.music?.stop(0.3);
+    if (fade != null && t >= fade) {
+      this.g.music?.stop(0.3);
+      this.quietWorld(true, 0.3);
+    }
     if (on != null && t >= on) {
       if (!this.inWhite) this.whiteWorld(true);
       this.wk = this.wTo = off != null && t >= off ? 0 : 1;
@@ -238,6 +249,7 @@ export default class FinEclipseBlend {
       st.padding = on ? '6px 40px' : '';
     }
     this.echo(on);
+    this.quietWorld(on);
     const BL = this.g.post?.bloom;
     if (BL) {
       if (on) {
@@ -253,6 +265,57 @@ export default class FinEclipseBlend {
       const U = r.a?.M?.gaucho?.userData.life;
       // (con 0,55 la cara pasaba el umbral del bloom y brillaba como una lámpara)
       if (U?.uFill) U.uFill.value.setRGB(on ? FILL : 0, on ? FILL : 0, on ? FILL : 0);
+    }
+  }
+
+  // (2026-10-15, el usuario: "saca el sonido ambiente de la parte blanca de la cinemática". En el mundo blanco suenan
+  // solo las voces (con su eco y su cola) y los pasos de la escena. Se apagan: el ambiente del juego —el tipo 'world'
+  // de core/audio: el aire de la isla, los truenos del cielo, el clima—, el viento de fondo (startAmbience) y todos
+  // los efectos, que traían el campo de San Lorenzo: el panner no baja más allá de 70 m, así que los cascos, los
+  // bucles y lo demás, a 1 km, se oían como a 70; y la música —el guion: "sin música, solo el eco de las voces"—,
+  // donde quedaban colchones de ronda y el aullido del viento de fondo. La cola de las voces —core/audio reverb— sale derecho y los pasos
+  // van por su propio camino (BlendScene foleyBus), con el volumen de los efectos. Vuelve todo al salir.
+  // globalThis.__mduFinConAmbiente: como antes)
+  quietWorld(on, secs = 0.6) {
+    const A = this.g.audio;
+    if (!A?.ctx || globalThis.__mduFinConAmbiente === true) return;
+    const now = A.ctx.currentTime;
+    if (on && !this.quiet) {
+      const W = A.cats?.world;
+      const ps = [W?.dry.gain, W?.wet.gain, A.amb?.out.gain, A.sfx?.gain, A.hallK?.gain, A.roomK?.gain, A.music?.gain].filter(Boolean);
+      const sfxV = A.sfx?.gain.value ?? 1;
+      this.quiet = ps.map((p) => [p, p.value]);
+      for (const p of ps) {
+        p.cancelScheduledValues(now);
+        p.setValueAtTime(p.value, now);
+        p.linearRampToValueAtTime(0, now + secs);
+      }
+      if (A.reverbGain && A.master) {
+        A.reverbGain.connect(A.master);
+        this.verbDirect = true;
+      }
+      if (!this.foley) {
+        this.foley = A.ctx.createGain();
+        this.foley.connect(A.master);
+      }
+      this.foley.gain.value = sfxV;
+      this.B.foleyBus = this.foley;
+    } else if (!on && this.quiet) {
+      for (const [p, v] of this.quiet) {
+        p.cancelScheduledValues(now);
+        p.setValueAtTime(p.value, now);
+        p.linearRampToValueAtTime(v, now + 1.2);
+      }
+      this.quiet = null;
+      if (this.verbDirect) {
+        try {
+          A.reverbGain.disconnect(A.master);
+        } catch {
+          /* ya estaba */
+        }
+        this.verbDirect = false;
+      }
+      this.B.foleyBus = null;
     }
   }
 
@@ -338,6 +401,8 @@ export default class FinEclipseBlend {
       // Fierro se funde en el blanco (nunca dorado: hacia el blanco)
       const f = THREE.MathUtils.clamp((t - (this.fierroEnd - 4.5)) / 4.5, 0, 1);
       if (f > 0) this.fadeFierro(f);
+      // (ya ido: fuera del todo, que no quede ni un borde)
+      if (f >= 1 && globalThis.__mduFinFierroTarde !== true && this.fierro.a?.group) this.fierro.a.group.visible = false;
     }
     if (t > this.B.dur + 0.5) this.end();
     return true;
@@ -392,6 +457,8 @@ export default class FinEclipseBlend {
     this.el.remove();
     this.B.dispose?.();
     this.whiteWorld(false);
+    this.foley?.disconnect();
+    this.foley = null;
     this.C.dispose();
     if (this.fist) {
       const Bn = this.gil.a?.gs?.bones;

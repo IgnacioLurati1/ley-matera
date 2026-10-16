@@ -37,6 +37,9 @@ export async function launch({ onExit, signal, logo = null } = {}) {
   // los menús de vidrio con tinta (el usuario, 2026-10-13; ui/skinVidrio.css);
   // globalThis.__mduMenuViejo = true: la piel de antes
   if (!globalThis.__mduMenuViejo) root.dataset.skin = 'vidrio';
+  // (el acento, rojo como antes desde el 2026-10-16; globalThis.__mduMenuDorado = true:
+  // el dorado)
+  if (globalThis.__mduMenuDorado) root.dataset.oro = '1';
   // (el desenfoque del vidrio, medido: ~0,25 ms por cuadro sobre la partida a
   // 960x540)
   document.body.appendChild(root);

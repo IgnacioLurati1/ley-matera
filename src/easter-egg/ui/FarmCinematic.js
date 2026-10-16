@@ -11,6 +11,7 @@ import { shownChars } from '../core/voice';
 import { revealSub } from './subReveal';
 import { cineClip, poseCineClip, gauchoClip, cineSnap, headProp, FACE_EYES } from '../net/gauchoSkin';
 import { assetUrl } from '../../lib/assets';
+import { libreDe } from '../core/edicion';
 
 // Final de La Tapera, adentro del juego, en el Prado. El Espantapájaros queda
 // de rodillas, levanta la cabeza al cielo y dice lo que nadie entiende todavía:
@@ -54,7 +55,8 @@ const PILE_AT = 0.95;
 // usa la intro de La Tapera, intro-granja.mp3, 26,9 s): desde la última frase
 // (a 103 bpm, 8 tiempos) hasta el golpe del final, que cae con la placa
 // (pedido del usuario 2026-10-01)
-const SONG_AT = 16.3;
+// (la de escritorio, otra canción: core/edicion LIBRES finAt)
+const SONG_AT = libreDe('intro-granja')?.finAt ?? 16.3;
 const EMBER = new THREE.Color(0xff5a10);
 const CHAR = new THREE.Color(0x1a120c);
 

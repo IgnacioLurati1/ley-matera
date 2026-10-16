@@ -1978,7 +1978,7 @@ export default class Weapons {
       // así sigue matando de un tiro en cualquier ronda (a los jefes no)
       // (la bala cuchilla del Imperial: mata a los comunes; weapons/especialistas.js)
       const base = st.cuchilla ? this.oper.filo(h.z, st, point) : st.gutFrac && !h.z.boss ? Math.max(st.damage, (h.z.maxHp || 0) * st.gutFrac) : st.damage;
-      g.zombies.damage(h.z, base * mult * falloff * dmgMult * this.zoneMult(h.zone, h.z), { type: st.gutFrac ? 'gut' : 'bullet', zone: h.zone, arm: h.arm, point, dir, burn: st.burn, elem: st.elem, pup: st.bossMult, hell: st.hell, cap: st.bossCap, esp: st.esp === 'brasa' ? (!hitAny && pellet === 0 ? this.oper?.brasa(h.z) : undefined) : st.esp });
+      g.zombies.damage(h.z, base * mult * falloff * dmgMult * this.zoneMult(h.zone, h.z), { type: st.gutFrac ? 'gut' : 'bullet', zone: h.zone, arm: h.arm, part: h.part, point, dir, burn: st.burn, elem: st.elem, pup: st.bossMult, hell: st.hell, cap: st.bossCap, esp: st.esp === 'brasa' ? (!hitAny && pellet === 0 ? this.oper?.brasa(h.z) : undefined) : st.esp });
       // (las balas del infierno: chispas de fuego donde pegan)
       if (st.hell && this.shotN % 3 === 0) g.fx.sparks(point, 3, { x: -dir.x * 0.5, y: 0.6, z: -dir.z * 0.5 }, [1, 0.45, 0.1]);
       if (st.trail && pellet === 0 && this.shotN % 3 === 0) trailHit(g, st, point, { x: -dir.x * 0.5, y: 0.6, z: -dir.z * 0.5 });

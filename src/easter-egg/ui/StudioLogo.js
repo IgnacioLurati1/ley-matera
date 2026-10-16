@@ -278,7 +278,7 @@ export function playStudioLogo(parent = document.body) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const lay = logoLayout(vw, vh);
+  let lay = logoLayout(vw, vh);
   let calm = false;
   try {
     calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -302,6 +302,22 @@ export function playStudioLogo(parent = document.body) {
   logo.style.cssText = `left:${lay.left}px;top:${lay.top}px;width:${lay.bw}px;height:${lay.bh}px`;
   el.append(back, logo);
   parent.appendChild(el);
+  // (2026-10-16, el usuario: "la intro mía aparece arriba a la izquierda y en
+  // chiquito". En la app de escritorio la página arranca con la ventana todavía
+  // escondida y chica, y recién después pasa a pantalla completa: la caja del logo
+  // quedaba la de entonces. Si la ventana cambia de tamaño, la caja se rehace y el
+  // lienzo se redibuja a la medida nueva, también en el otro hilo.
+  // globalThis.__mduLogoFijo = true: como antes)
+  let relayout = null;
+  const onResize = () => {
+    if (over || globalThis.__mduLogoFijo === true) return;
+    const L = logoLayout(window.innerWidth, window.innerHeight);
+    if (L.bw === lay.bw && L.bh === lay.bh && L.left === lay.left && L.top === lay.top) return;
+    lay = L;
+    logo.style.cssText = `left:${L.left}px;top:${L.top}px;width:${L.bw}px;height:${L.bh}px`;
+    relayout?.(L);
+  };
+  window.addEventListener('resize', onResize);
   const startedAt = performance.now();
   const t0 = performance.timeOrigin + startedAt;
 
@@ -327,6 +343,7 @@ export function playStudioLogo(parent = document.body) {
   const remove = () => {
     if (over) return;
     over = true;
+    window.removeEventListener('resize', onResize);
     clearTimeout(safety);
     worker?.terminate();
     el.remove();
@@ -358,7 +375,14 @@ export function playStudioLogo(parent = document.body) {
       const nl = logo.cloneNode(false);
       logo.replaceWith(nl);
       logo = nl;
-      const painter = createLogoPainter(lay, dpr, calm);
+      logo.width = Math.round(lay.bw * dpr);
+      logo.height = Math.round(lay.bh * dpr);
+      let painter = createLogoPainter(lay, dpr, calm);
+      relayout = (L) => {
+        logo.width = Math.round(L.bw * dpr);
+        logo.height = Math.round(L.bh * dpr);
+        painter = createLogoPainter(L, dpr, calm);
+      };
       const bctx = back.getContext('2d');
       const lctx = logo.getContext('2d');
       let frozen = null;
@@ -395,6 +419,7 @@ export function playStudioLogo(parent = document.body) {
     };
     worker.postMessage({ back: ob, logo: ol, lay, dpr, t0, calm, gpu: false }, [ob, ol]);
     seek = (ms) => worker?.postMessage({ seek: ms });
+    relayout = (L) => worker?.postMessage({ relay: L, dpr });
   } catch {
     paintHere();
   }

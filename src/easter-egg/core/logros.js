@@ -8,6 +8,7 @@
 // muestra: ui/Logros.js (la tarjeta del título y la pantalla).
 import * as P from './progress';
 import { MAP_LIST } from '../config/map';
+import { PERKS } from '../config/perks';
 
 // los mapas de siempre (ni el bonus ni el final canónico cambian Trotamundos)
 const BASE_MAPS = MAP_LIST.filter((m) => !m.bonus && !m.final);
@@ -35,7 +36,7 @@ const GENERAL = [
   { id: 'boss', name: 'Matajefes', desc: 'Derrotá un minijefe.', icon: 'crown', tier: 'bronce', stat: 'bosses', goal: 1 },
   { id: 'boss25', name: 'Cazador de jefes', desc: 'Derrotá 25 minijefes.', icon: 'crown', tier: 'oro', stat: 'bosses', goal: 25 },
   { id: 'emp', name: 'Empanadero', desc: 'Comé 10 empanadas.', icon: 'empanada', tier: 'bronce', stat: 'emp', goal: 10 },
-  { id: 'stamin', name: 'Maratón', desc: 'Corré 1 km con Stamin-Up.', icon: 'shoe', tier: 'plata', stat: 'metros', goal: 1000 },
+  { id: 'stamin', name: 'Maratón', desc: `Corré 1 km con ${PERKS.stamin.name}.`, icon: 'shoe', tier: 'plata', stat: 'metros', goal: 1000 },
   { id: 'tour', name: 'Trotamundos', desc: 'Jugá todos los mapas.', icon: 'map', tier: 'plata', stat: 'mapas', goal: BASE_MAPS.length },
   { id: 'lvl55', name: 'Gaucho completo', desc: 'Llegá al nivel 55.', icon: 'star', tier: 'oro' },
   { id: 'prest', name: 'Prestigio', desc: 'Prestigiá por primera vez.', icon: 'sun', tier: 'oro' },

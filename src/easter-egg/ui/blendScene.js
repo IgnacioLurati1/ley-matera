@@ -200,13 +200,16 @@ export default class BlendScene {
     if (r?.a && !r.a.group.visible) return;
     const pos = va.set(e.p[0], e.p[1], e.p[2]);
     this.pasos++;
+    // (foleyBus: otro camino para los pasos, si la escena lo pone —ui/finEclipseBlend, el mundo blanco, con los
+    // efectos del juego apagados—; sin él, como siempre)
+    const bus = this.foleyBus || null;
     if (e.k === 'roce') {
-      const o = A.out({ pos, gain: 0.1, reverb: 0.05, ref: 2.5 });
+      const o = A.out({ pos, gain: 0.1, reverb: 0.05, ref: 2.5, bus });
       A.noise(o, { dur: 0.16, type: 'bandpass', freq: 2600, freqEnd: 1500, q: 0.6, gain: 0.5, attack: 0.03 });
       return;
     }
     const surf = g.world.surfaceAt?.(e.p[0], e.p[2]);
-    const o = A.out({ pos, gain: 0.45, reverb: 0.08, ref: 3 });
+    const o = A.out({ pos, gain: 0.45, reverb: 0.08, ref: 3, bus });
     const f = { dirt: 500, wood: 700, tile: 1600, concrete: 1300 }[surf] || 900;
     A.noise(o, { dur: 0.09, freq: f * (0.8 + Math.random() * 0.4), q: 1, gain: 0.8 });
     if (surf === 'wood') A.tone(o, { dur: 0.08, freq: 120, freqEnd: 70, gain: 0.3 });

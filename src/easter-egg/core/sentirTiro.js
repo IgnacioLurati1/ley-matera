@@ -240,7 +240,8 @@ export default class SentirTiro {
     if (info.sf != null) return info.sf;
     const st = this.tiro;
     if (!st) return 0;
-    return (nominal(st) >= UMBRAL_REVIENTA ? 1 : 0) | ((st.pellets || 1) > 1 ? 2 : 0);
+    // (4: la Labrador, que tambalea menos: core/golpes.js)
+    return (nominal(st) >= UMBRAL_REVIENTA ? 1 : 0) | ((st.pellets || 1) > 1 ? 2 : 0) | (st.sound === 'labrador' ? 4 : 0);
   }
 
   propio(info) {
@@ -309,7 +310,8 @@ export default class SentirTiro {
   // sangre, los pedazos y el ruido; el que llama no pone los suyos)
   reventar(z, info, hp) {
     const g = this.g;
-    if (z.boss || z.dog || z.jinete || info.hell || (info.type || 'bullet') !== 'bullet' || z.slowT > 0 || g.zombies?.dry?.(z)) return false;
+    // (Opciones > Sangre: poca, la cabeza sale volando como antes: core/golpes.js)
+    if (z.boss || z.dog || z.jinete || info.hell || (info.type || 'bullet') !== 'bullet' || z.slowT > 0 || g.zombies?.dry?.(z) || g.golpes?.poca()) return false;
     const fuerte = info.sf != null ? !!(info.sf & 1) : this.propio(info) && nominal(this.tiro) >= UMBRAL_REVIENTA;
     if (!fuerte) return false;
     z.mduRevId = z.id;

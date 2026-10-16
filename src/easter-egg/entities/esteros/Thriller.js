@@ -3,6 +3,7 @@ import { assetUrl } from '../../../lib/assets';
 import { mesh, boxGeo } from '../../world/props';
 import { songOn } from '../../world/SongEgg';
 import { prefetchTrack } from '../../core/music';
+import { libreDe } from '../../core/edicion';
 import { isHost, announce } from '../castle/common';
 import { MAT, glint, pulse } from './common';
 
@@ -87,6 +88,14 @@ export default class Thriller {
     const K = {};
     d.keys.forEach((k, i) => (K[k] = i));
     this.data = { ...d, a, K, nk: d.keys.length };
+    // la de escritorio baila otra canción: dónde entra cada parte y a qué velocidad
+    // (core/edicion LIBRES baile; los cuadros por segundo de canción, por rate)
+    const B = libreDe(TRACK)?.baile;
+    if (B) {
+      this.data.parts = d.parts.map((p, i) => ({ ...p, at: B.at[i] ?? p.at }));
+      this.data.end = B.end;
+      this.data.fps = d.fps * B.rate;
+    }
   }
 
   // ---------------- el tocadiscos ----------------

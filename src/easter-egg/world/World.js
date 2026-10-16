@@ -56,6 +56,8 @@ const DOOR_H = 2.7;
 const MAX_LIGHTS = 10;
 const CULL_FROM = 13;
 const TIER_LIGHTS = { perf: 3, low: 5, medium: 7, high: 10 };
+// (Eclipse: a lo sumo estas; ver maxLamps)
+const ECL_LIGHTS = 6;
 // las luces de evento (adoptLight): cuántas de verdad las representan
 const POOL = { perf: 2, low: 2 };
 const POOL_MAX = 3;
@@ -1212,6 +1214,12 @@ export default class World {
   // Cuántas lámparas del mapa van prendidas a la vez (Infinity: todas).
   maxLamps() {
     const n = TIER_LIGHTS[this.g.settings?.quality];
+    // (2026-10-15, rendimiento de Eclipse: con 246 lámparas en el mapa iban 10 prendidas, más las 5 de sombra de
+    // Épica y las 3 de reserva: 19 luces cuya posición se mandaba ~107 veces por cuadro —el 22 % de las llamadas a la
+    // placa— y que cada píxel recorre. Las lámparas alumbran 22 m: más allá de las 6 más cercanas casi no se ve
+    // la diferencia. PERO medido alternando cargas no ganó nada claro (dentro del ruido) y se perdían los brillos
+    // de los faroles lejanos en el agua del Claro: apagado; globalThis.__mduEclLuces6 = true lo prende para probar)
+    if (FEATURES.eclipse && globalThis.__mduEclLuces6 === true) return Math.min(n || ECL_LIGHTS, ECL_LIGHTS);
     if (n) return n;
     return this.lights.length >= CULL_FROM ? MAX_LIGHTS : Infinity;
   }

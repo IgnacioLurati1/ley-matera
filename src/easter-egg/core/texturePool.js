@@ -1,5 +1,6 @@
 import { BASE_NAMES, MAP_SETS, paintBase, putPre, putWearField } from './textures';
 import { PERKS } from '../config/perks';
+import { comercial } from './edicion';
 import { CASTLE_PAINT } from '../world/castleTextures';
 import { MONU_PAINT } from '../world/monumentoTextures';
 
@@ -33,7 +34,12 @@ function deal(names, lists) {
 // sube la calidad, fx/Surfaces repinta esa textura acá y lo arma (repaint).
 export function paintInWorkers(mapId, { relief = true, timeout = 12000 } = {}) {
   if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return Promise.resolve(null);
-  const k = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
+  // Hasta 12 hilos (2026-10-15, el usuario: "hacé 2"; antes 4). Medido pintando las de
+  // cada mapa (20 hilos de CPU): Eclipse 1,95 s con 4, 1,55 con 8, 1,29 con 12; el
+  // castillo 1,33 / 1,15 / 1,07. Más no rinde: las más pesadas van de a una por hilo.
+  // En una compu con menos núcleos, uno menos que los que tenga, como siempre.
+  // (globalThis.__mduHilosTex: otro tope; 4 = como antes)
+  const k = Math.max(1, Math.min(globalThis.__mduHilosTex || 12, (navigator.hardwareConcurrency || 4) - 1));
   const sets = NEEDS[mapId] || [];
   const need = [...BASE_NAMES, ...sets.flatMap((s) => SETS[s])];
   const lists = Array.from({ length: k }, () => []);
@@ -97,7 +103,7 @@ export function paintInWorkers(mapId, { relief = true, timeout = 12000 } = {}) {
         if (need.includes(m.name) && ++got === need.length) send();
       };
       w.onerror = () => doneOne(w);
-      w.postMessage({ names, wear: wear[i], later: later[i], relief });
+      w.postMessage({ names, wear: wear[i], later: later[i], relief, comercial: comercial() });
     });
   });
 }

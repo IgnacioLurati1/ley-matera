@@ -1178,6 +1178,9 @@
   background: var(--red-hi);
   transition: width 0.2s;
 }
+/* el modo para daltónicos (fx/colorblind.js): el HUD y los menús, con la misma corrección que el 3D (el lienzo ya
+   viene corregido del último pase de color) */
+.mdu-root.mdu-cb > :not(canvas) { filter: url(#mdu-cb); }
 .mdu-grain {
   position: absolute;
   inset: 0;

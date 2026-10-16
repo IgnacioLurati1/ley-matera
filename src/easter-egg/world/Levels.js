@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import GeoBuilder from './GeoBuilder';
 import Water from '../fx/Water';
 import { rng } from '../core/noise';
-import { MAP_W, MAP_H, WALL_H, ZONES, RAMPS, WINDOWS, RIVER, FEATURES } from '../config/map';
+import { MAP_W, MAP_H, WALL_H, ZONES, RAMPS, WINDOWS, RIVER, FEATURES, MAPS } from '../config/map';
 import { windy } from '../fx/grassPush';
 
 // Mapas con pisos a distintas alturas (el penal): cada zona (o cada
@@ -41,6 +41,22 @@ const DIRS = [
   [0, 1],
   [0, -1],
 ];
+
+// (2026-10-15, el usuario: "cuando hay paneos por arriba en cinemáticas, los techos de ciertos mapas no se
+// renderizan y se ve a través") En Eclipse el cielorraso es de una sola cara, mirando para abajo, y la tapa de
+// arriba solo la llevaban las salas con `lid`: de las que vienen del castillo (el trono, la herrería, la biblioteca,
+// la capilla, la bodega, las mazmorras, la gruta) y del penal (las duchas, la oficina, la enfermería, la capilla,
+// el secadero, los calabozos) desde arriba —los paneos de las cinemáticas, las islas más altas— se veía adentro.
+// Llevan la de su mapa: la pizarra del castillo (nieve en las que allá iban bajo tierra) y la chapa del penal.
+// globalThis.__mduEclSinTapa: como antes
+function eclLid(Z) {
+  if (!FEATURES.eclipse || globalThis.__mduEclSinTapa === true) return null;
+  if (Z.lid) return Z.lid;
+  const src = Z.tp?.src;
+  if (src === 'penal') return 'roofTin';
+  if (src !== 'castillo') return null;
+  return MAPS?.castillo?.ZONES?.[Z.tp.key]?.under ? 'snowCap' : 'roofTop';
+}
 
 // Altura de una rampa en (x, z): sube de y0 a y1 en la dirección `dir`.
 export function rampY(r, x, z) {
@@ -895,6 +911,8 @@ export function buildLevelArchitecture(w, DOORS) {
           else if (FEATURES.castle && !Z.under) gb.flat('roofTop', x, z, x + 1, z + 1, roof + 0.02, true);
           // el penal: chapa por arriba (desde la telesilla se veían solo las vigas)
           else if (FEATURES.penal) gb.flat(Z.lid || 'roofTin', x, z, x + 1, z + 1, roof + 0.02, true);
+          // Eclipse: las salas que vienen del castillo y del penal, con la tapa que tenían allá
+          else if (eclLid(Z)) gb.flat(eclLid(Z), x, z, x + 1, z + 1, roof + 0.02, true);
           else if (Z.lid) gb.flat(Z.lid, x, z, x + 1, z + 1, roof + 0.02, true);
         }
         // escalón del techo: donde la celda de al lado tiene el techo más bajo

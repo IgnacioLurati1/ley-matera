@@ -49,6 +49,8 @@ const SNAP_AGE = 12;
 const SNAP_GAP = 2.5;
 // las esquirlas de cada punta
 const SHARDS = 7;
+// hasta dónde se dibuja la marca del piso (la de la grieta grande, 1,8 veces)
+const MARK_R = 45;
 // La GRIETA (el portal trabado, a La Disformidad; el usuario: "en el medio debería
 // haber una grieta que lleva a la dimensión oscura"): el mismo tajo pero enorme,
 // de 14 m de alto, con la marca y las esquirlas al tamaño.
@@ -541,6 +543,10 @@ export default class EclipsePortals {
       const dz = cp.z - e.pos.z;
       const d = Math.hypot(dx, dz);
       e.dist = Math.hypot(d, cp.y - e.pos.y - MID);
+      // (2026-10-15, rendimiento de Eclipse: la marca del piso, un círculo chato, de lejos es una raya que no se ve
+      // y era un dibujo más por punta —33—. Se dibuja hasta MARK_R m; el tajo, siempre.
+      // globalThis.__mduPortalMarcaLejos: como antes)
+      if (globalThis.__mduPortalMarcaLejos !== true) e.mark.visible = e.dist < (e.big ? MARK_R * 1.8 : MARK_R);
       e.mesh.rotation.y = Math.atan2(dx, dz);
       if (d > 0.01) e.U.uPar.value.set(((dx * -e.face[1] + dz * e.face[0]) / d) * 0.1, Math.max(-0.05, Math.min(0.05, (cp.y - e.pos.y - 1.7) * 0.02)));
       if (e.kick > 0) e.kick = Math.max(0, e.kick - dt * 1.3);

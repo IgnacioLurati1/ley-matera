@@ -195,6 +195,7 @@ export default class Hud {
 
   reset() {
     this.cache = {};
+    this.hintRaw = undefined;
     this.popups.innerHTML = '';
     this.popPool = null;
     // lo de un instante (el cartel del potenciador, la sangre del cuchillazo, el
@@ -430,6 +431,9 @@ export default class Hud {
 
   // ---------------- avisos ----------------
   setHint(text) {
+    // (se pide en cada cuadro con el mismo texto: sin rehacerlo; 2026-10-15, "2")
+    if (text === this.hintRaw && text !== undefined) return;
+    this.hintRaw = text;
     text = withKeys(text);
     this.set('hint', text, (t) => {
       this.hint.textContent = t || '';

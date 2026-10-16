@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { DYN } from './dinamico';
 import { FEATURES } from '../config/map';
 import { gbufferPass, gbBegin, gbDrop } from '../core/sizeCull';
 import { GB, gbInstall } from './gbMrt';
@@ -833,8 +834,9 @@ class VolPass extends Pass {
   }
 
   setSize(w, h) {
-    const hw = Math.max(1, Math.ceil(w / 2));
-    const hh = Math.max(1, Math.ceil(h / 2));
+    // (DYN.vol: 2, o más chica cuando la placa no llega: fx/dinamico)
+    const hw = Math.max(1, Math.ceil(w / DYN.vol));
+    const hh = Math.max(1, Math.ceil(h / DYN.vol));
     this.target.setSize(hw, hh);
     this.tmp.setSize(hw, hh);
   }
@@ -1386,14 +1388,18 @@ export default class Epic {
     this.gtao.setGBuffer(this.gbuffer.depthTexture, this.gbuffer.target.texture);
     safeGtao(this.gtao, this.gbuffer.target.texture);
     this.aoBlurFree = aoBlur(this.gtao, this.gbuffer.depthTexture);
-    this.gtao.updateGtaoMaterial({ radius: 0.7, distanceExponent: 1.2, thickness: 1.2, scale: 1.1, samples: 12 });
+    // (2026-10-15, el usuario: "2": la oclusión ya iba a media resolución; ahora con 8
+    // muestras en lugar de 12, un tercio menos de su pasada; el ruido de más lo limpia el
+    // filtro que sigue. globalThis.__mduGtao12: 12, como antes)
+    this.gtao.updateGtaoMaterial({ radius: 0.7, distanceExponent: 1.2, thickness: 1.2, scale: 1.1, samples: globalThis.__mduGtao12 === true ? 12 : 8 });
     this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 5, rings: 2, samples: 8 });
     this.gtao.blendIntensity = 0.95;
     // la oclusión a media resolución (el composer le pasa la entera): casi no
     // se nota y cuesta la cuarta parte
     const gtaoSize = this.gtao.setSize.bind(this.gtao);
     this.gtao.setSize = (w, h) => {
-      gtaoSize(Math.ceil(w / 2), Math.ceil(h / 2));
+      // (DYN.ao: 2, o más chica cuando la placa no llega: fx/dinamico)
+      gtaoSize(Math.ceil(w / DYN.ao), Math.ceil(h / DYN.ao));
       // (el píxel de pantalla, para mirar la marca del pasto alrededor)
       this.gtao.blendMaterial.uniforms.uGTexel.value.set(1 / w, 1 / h);
     };

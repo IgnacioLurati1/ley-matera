@@ -1,6 +1,6 @@
 // Prueba de rendimiento sola (2026-10-12, para comparar los modos de video en
 // placas que no son la del usuario: Opciones › Gráficos › Prueba de rendimiento;
-// main.cjs abre el juego con DirectX 11, Vulkan y OpenGL, con --mdu-medir). Sin
+// main.cjs abre el juego con DirectX 11 y OpenGL, con --mdu-medir). Sin
 // tocar nada: carga, entra a dos mapas, mira alrededor sin muertos y después con
 // 24, y main.cjs deja los números en un archivo del escritorio.
 // Los ajustes del jugador se guardan antes y se devuelven al terminar.

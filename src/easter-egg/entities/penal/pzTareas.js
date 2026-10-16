@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EE, ZONES } from '../../config/map';
+import PzMinijuegos from './pzMinijuegos';
 
 // Porteño encubierto (entities/penal/Porteno.js): las tareas de cada uno. Los
 // lugares son cosas que ya están en el penal (la olla del comedor, el fogón,
@@ -35,6 +36,8 @@ export default class PzTareas {
     this.marks = new Map();
     this.fxT = 0;
     this.holding = -1;
+    // los minijuegos de cada tarea (entities/penal/pzMinijuegos.js)
+    this.mini = new PzMinijuegos(g);
   }
 
   // La lista que mandó el anfitrión (los números de las tareas y cuáles ya están).
@@ -52,6 +55,7 @@ export default class PzTareas {
   reset() {
     this.setList([]);
     this.holding = -1;
+    this.mini?.close(false);
   }
 
   pending() {
@@ -86,6 +90,11 @@ export default class PzTareas {
   // Cada cuadro. can: puede hacer tareas (vivo y jugando); input: null sin control.
   update(dt, input, can) {
     const g = this.g;
+    // con el minijuego abierto, solo él (el jugador quieto: g.menuOpen)
+    if (this.mini?.abierto()) {
+      this.mini.update(dt, can);
+      return;
+    }
     const p = g.player.pos;
     const t = g.time;
     let best = null;
@@ -128,6 +137,16 @@ export default class PzTareas {
       return;
     }
     const S = this.st[best.i];
+    // el minijuego: F lo abre (si no hay un cuerpo o el botón, que van primero)
+    if (PzMinijuegos.hay(S.id)) {
+      g.hud.setHint(`[F] · ${S.name}`);
+      this.hinted = true;
+      if (input.hit('KeyF') && !this.pz.prompted) {
+        const m = best;
+        this.mini.open(S, () => this.terminar(m));
+      }
+      return;
+    }
     g.hud.setHint(`Mantené [F] · ${S.name}`);
     this.hinted = true;
     if (!input.key('KeyF')) {
@@ -146,15 +165,20 @@ export default class PzTareas {
       this.fxT = 0.16;
       this.workFx(S);
     }
-    if (best.prog >= S.secs) {
-      best.done = true;
-      this.holding = -1;
-      g.hud.setHold(null);
-      g.hud.setHint(null);
-      this.hinted = false;
-      this.doneFx(S);
-      this.pz.taskDone(best.i);
-    }
+    if (best.prog >= S.secs) this.terminar(best);
+  }
+
+  // una tarea hecha (manteniendo F o con su minijuego)
+  terminar(m) {
+    if (m.done) return;
+    const g = this.g;
+    m.done = true;
+    this.holding = -1;
+    g.hud.setHold(null);
+    g.hud.setHint(null);
+    this.hinted = false;
+    this.doneFx(this.st[m.i]);
+    this.pz.taskDone(m.i);
   }
 
   // Lo que se ve mientras se hace (cada uno lo suyo).

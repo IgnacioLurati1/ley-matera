@@ -1118,9 +1118,11 @@ export function flattenable(m) {
 }
 
 const flatMats = new Map();
-export function flatMaterial(side, flat, env) {
+// tex (opcional, world/eclipseLejos): { value: DataArrayTexture } — además la textura de cada vértice (attribute tuv,
+// su coordenada, y tlay, su capa en el arreglo; 255: sin textura). Ese no se guarda: es de un mapa armado.
+export function flatMaterial(side, flat, env, tex = null) {
   const key = `${side}|${flat}|${env}`;
-  let m = flatMats.get(key);
+  let m = tex ? null : flatMats.get(key);
   if (m) return m;
   m = std({ color: 0xffffff, roughness: 1, metalness: 1, vertexColors: true, side, flatShading: flat, envMapIntensity: env });
   // (el reflejo de fx/Epic va por vértice: attribute refl)
@@ -1135,9 +1137,18 @@ export function flatMaterial(side, flat, env) {
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n\troughnessFactor *= vPbr.x;')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n\tmetalnessFactor *= vPbr.y;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += vEmi;');
+    if (tex) {
+      sh.uniforms.uArr = tex;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec2 tuv;\nattribute float tlay;\nvarying vec2 vTuv;\nvarying float vTlay;')
+        .replace('#include <color_vertex>', '#include <color_vertex>\n\tvTuv = tuv;\n\tvTlay = tlay;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nprecision highp sampler2DArray;\nuniform sampler2DArray uArr;\nvarying vec2 vTuv;\nvarying float vTlay;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\n\tif ( vTlay < 254.5 ) diffuseColor.rgb *= texture( uArr, vec3( vTuv, floor( vTlay + 0.5 ) ) ).rgb;');
+    }
   };
-  m.customProgramCacheKey = () => 'perkFlat';
-  flatMats.set(key, m);
+  m.customProgramCacheKey = () => (tex ? 'perkFlatTex' : 'perkFlat');
+  if (!tex) flatMats.set(key, m);
   return m;
 }
 

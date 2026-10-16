@@ -25,6 +25,7 @@ import { SPEEDS, rollSpeed, rollSpeedHold, walkPace, runShare, ZOMBIE_DAMAGE, DO
 import { rng } from '../core/noise';
 import BossMoves from './bossMoves';
 import { reelStep, reelPose } from './zombieReel';
+import Munieco from './munieco';
 import * as Armas from '../core/armas';
 
 // Zombies por rondas: aparición (ventanas y tierra), IA, animación procedural,
@@ -261,6 +262,8 @@ export default class Zombies {
     // siempre: freeSlot. __mduTorreGrupoViejo: 40)
     if (FEATURES.tower && globalThis.__mduTorreGrupoViejo !== true) MAX = 64;
     this.g = game;
+    // el muñeco con física de los muertos y los pedazos que vuelan (entities/munieco.js)
+    this.mu = new Munieco(game);
     // cómo se visten los de este mapa: telas, prendas propias y el color de los ojos
     const L = (this.look = zombieLook(MAP_ID));
     this.geo = { ...geometries(), ...lookGeometries(L) };
@@ -1031,6 +1034,7 @@ export default class Zombies {
 
   reset() {
     for (const z of this.pool) if (z.active) this.free(z);
+    this.mu.dispose();
     if (this.boss) this.removeBoss();
     this.moves.reset();
   }
@@ -1308,6 +1312,8 @@ export default class Zombies {
     // para qué lado cae y si le reventó la cabeza, como lo decidió el anfitrión
     // (core/sentirTiro.js; f.caida: Session)
     this.g.sentir?.remota(zz, f, was, state);
+    // los pedazos que volaron y para dónde cae el muñeco (core/golpes.js)
+    this.g.golpes?.remota(zz, f, was, state);
     if (was !== state) this.remoteSound(zz, was, state);
   }
 
@@ -3538,6 +3544,8 @@ export default class Zombies {
   }
 
   poseDeath(z) {
+    // el muñeco con física (entities/munieco.js; __mduSinMunieco: esta caída)
+    if (this.mu.muerto(z)) return;
     const P = z.P;
     if (z.static) return;
     const k = Math.min(1, z.stateT / 0.75);
@@ -3556,8 +3564,12 @@ export default class Zombies {
     P.torsoP = lerp(f.torsoP, 0.1 * back);
     P.shLp = lerp(f.shLp, back > 0 ? -2.8 : -0.4);
     P.shRp = lerp(f.shRp, back > 0 ? -2.5 : -0.7);
-    P.shLr = lerp(f.shLr, 0.9);
-    P.shRr = lerp(f.shRr, -0.7);
+    // (los brazos abiertos: con el signo al revés las manos quedaban cruzadas;
+    // entities/zombieReel.js. Los jefes, como siempre: sus animaciones no se
+    // tocan sin el sí del usuario. __mduBrazosViejos: como antes)
+    const ab = globalThis.__mduBrazosViejos || z.boss ? 1 : -1;
+    P.shLr = lerp(f.shLr, 0.9 * ab);
+    P.shRr = lerp(f.shRr, -0.7 * ab);
     P.elL = lerp(f.elL, -0.3);
     P.elR = lerp(f.elR, -0.9);
     P.headR = lerp(f.headR, 0.6);
@@ -3671,6 +3683,8 @@ export default class Zombies {
     // la usa (cada una es una llamada por pasada: sin muertos, o con prendas
     // que nadie lleva, se dibujaban igual, vacías)
     for (const M of this.meshes) M.top = 0;
+    // el muñeco: mueve los cuerpos y les pone las piezas (entities/munieco.js)
+    this.mu.update(dt);
     // de lejos y con muchos cuadros por segundo, la pose de cada uno se arma
     // un cuadro sí y otro no (la mitad cada cuadro): a más de 90 fps no se
     // nota. Nunca cuando quedan pocos (los últimos, con la silueta a la vista),
@@ -3688,7 +3702,9 @@ export default class Zombies {
         z.poseDt = (z.poseDt || 0) + dt;
         fresh = false;
       }
-      if (!z.static && fresh) {
+      // (al muñeco las piezas se las pone entities/munieco.js)
+      if (z.ragId === z.id) z.solved = true;
+      else if (!z.static && fresh) {
         const pd = dt + (z.poseDt || 0);
         z.poseDt = 0;
         z.solved = true;
@@ -3697,6 +3713,9 @@ export default class Zombies {
         const tw = z.dead ? 0 : z.twitch || 0;
         R.headY += tw * 0.8;
         R.headR += tw * 0.5;
+        // la sacudida de los tiros, igual: solo este cuadro (core/golpes.js)
+        const gk = z.gkId === z.id && !z.dead ? z.gk : null;
+        if (gk) this.g.golpes?.sumar(R, gk, 1);
         const by = z.baseY || 0;
         R.rootY += by;
         // (nadando, el cuerpo acostado gira en la cadera: la raíz va un poco atrás)
@@ -3708,6 +3727,7 @@ export default class Zombies {
         R.rootY -= by;
         R.headY -= tw * 0.8;
         R.headR -= tw * 0.5;
+        if (gk) this.g.golpes?.sumar(R, gk, -1);
         if (z.solvedOnce) {
           z.static = true;
           z.solvedOnce = false;
@@ -3715,12 +3735,15 @@ export default class Zombies {
       }
       // (con cuerpo de verdad, las piezas no se dibujan: siguen para los tiros)
       const skinned = this.zskins.drive(z, dt);
+      // los pedazos arrancados van sueltos, con su matriz (entities/munieco.js)
+      const lz = z.looseId === z.id ? z.loose : 0;
       for (const M of this.meshes) {
         const off = skinned || (M.need && !z.flags?.[M.need]);
         for (let k = 0; k < M.parts.length; k++) {
           const part = M.parts[k];
-          const no = off || z.hidden & (1 << part);
-          if (fresh) M.im.setMatrixAt(z.slot * M.parts.length + k, no ? ZERO : z.mats[part]);
+          const lo = lz & (1 << part);
+          const no = off || (z.hidden & (1 << part) && !lo);
+          if (fresh || lo) M.im.setMatrixAt(z.slot * M.parts.length + k, no ? ZERO : lo ? z.lmats[part] : z.mats[part]);
           if (!no && z.slot >= M.top) M.top = z.slot + 1;
         }
       }
@@ -3929,6 +3952,8 @@ export default class Zombies {
       if (info.point && !z.jinete && !['freeze', 'chain', 'blast', 'luz'].includes(info.type)) {
         this.bleed(z, info.point, info.dir ? tmpV2.copy(info.dir).multiplyScalar(0.6) : { x: 0, y: 0.5, z: 0 }, info.zone === 'head' ? 14 : 8);
       }
+      // lo que se ve de su propio tiro: la sacudida y la sangre (core/golpes.js)
+      g.golpes?.alGolpe(z, amount, info, true);
       g.net.reportHit(z, amount, info);
       return true;
     }
@@ -3994,7 +4019,8 @@ export default class Zombies {
       if (!info.noPoints && type !== 'burn') g.addPoints(POINTS.hit, info.point);
       // perder un antebrazo o las piernas
       if (!z.boss) {
-        if (info.arm !== undefined && dmg > z.maxHp * 0.3 && Math.random() < 0.5) {
+        // (con los pedazos que vuelan lo decide core/golpes.js)
+        if (info.arm !== undefined && dmg > z.maxHp * 0.3 && Math.random() < 0.5 && !g.golpes?.despiece()) {
           z.hidden |= 1 << (5 + info.arm);
           if (info.point) g.fx.blood(info.point, { x: 0, y: -0.2, z: 0 }, 12);
         }
@@ -4016,8 +4042,11 @@ export default class Zombies {
       if (z.boss && z.state === 'chase' && Math.random() < 0.02) this.setState(z, 'intro');
       // quejido de dolor de vez en cuando
       if (!z.boss && Math.random() < 0.12 && type !== 'burn') g.audio.growl(tmpV.set(z.pos.x, (z.baseY || 0) + 1.5, z.pos.z), 'idle');
+      // la sacudida, el tambaleo de la escopeta, el brazo que vuela y la sangre de atrás (core/golpes.js)
+      g.golpes?.alGolpe(z, dmg, info);
       return true;
     }
+    g.golpes?.alGolpe(z, dmg, info);
     this.kill(z, info);
     // (los especialistas que hacen algo con la baja: el desgarro, la bendición, el cerrojo)
     if (info.esp) g.weapons?.oper?.mata(z, info, dmg);
@@ -4251,6 +4280,8 @@ export default class Zombies {
     // Lo que suelta sale de
     // donde murió (spot, abajo): el cuerpo se corre después.
     g.sentir?.alMorir(z, info, type);
+    // cómo cae el muñeco y lo que se le arranca (core/golpes.js)
+    g.golpes?.alMorir(z, info, type);
     // lo que dan las bajas en el rush de jefes (core/rushBuild.js)
     g.rush?.build?.alMorir(z, info, type);
     // (el derretido deja su charco de barro, no sangre)

@@ -2,6 +2,7 @@
 // paquete publicado el orden de carga lo da quién importa a quién. Sin esta
 // línea la marca se ponía después y Eclipse no aparecía)
 import '../core/eclipseFlag';
+import { comercial } from '../core/edicion';
 // Perks: máquinas con forma de paquete gigante de yerba. Cada una imita el
 // paquete de una yerba mítica (colores y estilo), con una marca en joda.
 
@@ -331,3 +332,16 @@ if (globalThis.__mduEclipse === true) {
 }
 
 export const PERK_ORDER = ['jugg', 'revive', 'speed', 'doubletap', 'mule', 'deadshot', 'stamin'];
+
+// La versión de escritorio (la de uso comercial, core/edicion.js; el usuario, 2026-10-15:
+// "dejá el nombre de las yerbas en su lugar"): los que se llamaban como los perks de
+// Call of Duty se llaman como su paquete de yerba, y en la banda del paquete
+// (core/textures) va lo que hacen. La web sigue con los nombres de siempre.
+const YERBA = { jugg: 'AGUANTE', revive: 'LEVANTADA', speed: 'RECARGA', doubletap: 'DOBLE TIRO', mule: 'TERCER MATE', deadshot: 'PUNTERÍA', phd: 'PANZAZO', cherry: 'DESCARGA', wish: 'ÚLTIMA VOLUNTAD', stamin: 'AL TROTE' };
+for (const [k, band] of Object.entries(YERBA)) {
+  const P = PERKS[k];
+  if (!P) continue;
+  const cod = P.name;
+  P.label.kind = band;
+  Object.defineProperty(P, 'name', { get: () => (comercial() ? P.label.brand : cod), enumerable: true, configurable: true });
+}

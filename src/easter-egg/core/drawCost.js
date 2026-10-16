@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ownToArray, ownUniforms } from './uniformKinds';
+import { lightBlock } from './lightBlock';
 
 ownToArray(THREE.Matrix4);
 
@@ -65,6 +66,8 @@ const SHADOW_MATS = ['sunShadowMatrix', 'directionalShadowMatrix', 'spotLightMat
 const LIGHTS = ['ambientLightColor', 'lightProbe', 'sunLights', 'sunLightShadows', 'directionalLights', 'directionalLightShadows', 'pointLights', 'pointLightShadows', 'spotLights', 'spotLightShadows', 'rectAreaLights', 'hemisphereLights', ...SHADOW_MATS];
 // cambia al entrar y al salir de cada render
 let pass = 0;
+// las luces en bloques de uniforms (core/lightBlock; null: como antes)
+let lb = null;
 const twins = new WeakMap();
 
 function twinOf(m) {
@@ -350,6 +353,8 @@ function gateShadowMatrices(U) {
   const upload = U.upload;
   U.upload = function (gl, seq, values, textures) {
     const pl = values.pointLights;
+    // (las luces en bloques, core/lightBlock: una vez por render)
+    if (lb !== null && pl !== undefined) lb.sync(values, pass);
     if (pl !== undefined) {
       // (la marca que three acaba de poner a las luces de este material)
       const nu = pl.needsUpdate;
@@ -380,6 +385,8 @@ function gateShadowMatrices(U) {
 export function drawCost(renderer) {
   if (renderer.__drawCost) return;
   renderer.__drawCost = true;
+  lb = lightBlock(renderer);
+  renderer.__mduLuces = lb;
   const render = renderer.render;
   renderer.render = function (scene, camera) {
     pass++;
@@ -419,6 +426,7 @@ export function drawCost(renderer) {
       const pr = renderer.properties.get(material).currentProgram;
       if (pr) {
         gateShadowMatrices(pr.getUniforms().constructor);
+        lb?.gate(pr.getUniforms().constructor);
         ownUniforms(pr.getUniforms().constructor);
         gated = true;
       }

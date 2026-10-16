@@ -3,7 +3,7 @@
 // protocolo app:// (como un sitio: las rutas '/assets/sotano/...' del juego
 // andan igual). Sin barra de menú, en pantalla completa (F11), la placa de video
 // dedicada en las notebooks y aislado (COOP/COEP) para SharedArrayBuffer.
-const { app, BrowserWindow, Menu, dialog, ipcMain, net, powerSaveBlocker, protocol, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, net, powerSaveBlocker, protocol, screen, shell } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -31,6 +31,18 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 // menos pasadas chicas del recolector. MDU_JS_FLAGS=0: solo --expose-gc, como antes.
 const HEAP_MB = Math.max(4096, Math.min(8192, Math.floor(os.totalmem() / 1048576 / 2)));
 app.commandLine.appendSwitch('js-flags', process.env.MDU_JS_FLAGS === '0' ? '--expose-gc' : `--expose-gc --max-old-space-size=${HEAP_MB} --max-semi-space-size=64`);
+// Banderas de dibujo de Chromium (2026-10-15, el usuario: "3"; a probar con la prueba
+// de rendimiento, que ahora mide también "DirectX 11 + banderas"): el rasterizado de
+// la página (el HUD y los menús, en HTML) en la placa y con 4 hilos, las texturas de
+// eso sin copia de más, y sin el árbol de accesibilidad que Chromium arma de todo el
+// HTML. Apagadas por defecto: --mdu-banderas (lo pasa la prueba) o MDU_BANDERAS=1.
+const BANDERAS = process.argv.includes('--mdu-banderas') || process.env.MDU_BANDERAS === '1';
+if (BANDERAS) {
+  app.commandLine.appendSwitch('enable-gpu-rasterization');
+  app.commandLine.appendSwitch('enable-zero-copy');
+  app.commandLine.appendSwitch('num-raster-threads', '4');
+  app.commandLine.appendSwitch('disable-renderer-accessibility');
+}
 // Los shaders compilados quedan en disco (escritorio 7): Chromium ya los guarda,
 // pero con un tope chico (unos MB) y el juego arma ~500 programas en Eclipse: se
 // pisaban y cada arranque volvía a compilar. 512 MB de caché en disco y 64 en
@@ -50,8 +62,11 @@ if (process.env.MDU_GPU_CACHE !== '0') {
 // se cae o el juego termina dibujando por software, vuelve sola a D3D11 y lo anota
 // ({"angle": "d3d11"}: elegido a mano o por la vuelta; manda sobre la marca).
 // Para probar: MDU_ANGLE o --use-angle=… en la línea de comandos.
+// (2026-10-16: Vulkan fuera del menú y de la prueba —el usuario: "sacá vulkan"—. Medido
+// en la ventana de verdad, pantalla completa: Electron compone por software, 72-104 fps
+// contra 180-275 con D3D11, y en 3 de 4 vueltas no llegó al título. Quien lo tenía
+// elegido vuelve a D3D11. Solo queda para pruebas, con MDU_ANGLE o --use-angle.)
 const VIDEO = () => path.join(app.getPath('userData'), 'video.json');
-const AMD = 0x1002;
 const FALLBACK = process.argv.includes('--mdu-video-d3d11');
 function videoPrefs() {
   try {
@@ -64,13 +79,11 @@ function videoMode() {
   if (FALLBACK) return 'd3d11';
   if (process.env.MDU_ANGLE) return process.env.MDU_ANGLE;
   const v = videoPrefs();
-  if (['d3d11', 'vulkan', 'gl'].includes(v.angle)) return v.angle;
+  if (['d3d11', 'gl'].includes(v.angle)) return v.angle;
   // (2026-10-12, más tarde: con Vulkan, Electron compone por software y lee cada
   // cuadro de vuelta de la placa —gpu_compositing "disabled_software", WebGL
-  // "enabled_readback"; lo vio el agente de WebGPU—, cosa que el banco sin ventana
-  // no mide. Hasta medirlo con ventana, D3D11 para todos; Vulkan, a mano desde
-  // Opciones › Gráficos o con la prueba de rendimiento. MDU_VULKAN_AMD=1: Vulkan en AMD)
-  return process.env.MDU_VULKAN_AMD === '1' && v.vendor === AMD ? 'vulkan' : 'd3d11';
+  // "enabled_readback"—; medido con ventana el 2026-10-16: mucho peor, ver arriba)
+  return 'd3d11';
 }
 const ANGLE = app.commandLine.hasSwitch('use-angle') && !FALLBACK ? app.commandLine.getSwitchValue('use-angle') : videoMode();
 app.commandLine.appendSwitch('use-angle', ANGLE);
@@ -78,6 +91,23 @@ app.commandLine.appendSwitch('use-angle', ANGLE);
 // sola con cada modo, mide sin tope de cuadros y pasa al siguiente.
 const MEDIR = process.argv.includes('--mdu-medir');
 if (MEDIR) {
+  app.commandLine.appendSwitch('disable-gpu-vsync');
+  app.commandLine.appendSwitch('disable-frame-rate-limit');
+}
+// Sin VSync (2026-10-16, el usuario: "a"; Opciones › Gráficos › "Sin límite de FPS"):
+// el juego dibuja todos los cuadros que da la placa, sin esperar al monitor (menos
+// demora entre el mouse y la pantalla; la imagen se puede cortar). La cola de cuadros
+// (src/easter-egg/core/frameQueue.js) no deja que la CPU se adelante más de 2 cuadros
+// a la placa: sin ella, la cola de la placa se llenaba y se sentía trabado. Vale desde
+// el arranque siguiente (userData/video.json {"vsync": false}).
+// SACADA del menú el mismo día (el usuario: "va terrible, muchos fps pero se siente como
+// a 2 fps"). Medido en su pantalla con capturas de lo que muestra Windows: sin VSync el
+// juego arma 157-231 cuadros por segundo y Chromium presenta hasta 176, pero la pantalla
+// cambia solo 10-14 veces por segundo (huecos de 80-110 ms), en pantalla completa y en
+// ventana maximizada, y también con --disable-direct-composition. Con VSync: 152-163
+// cambios por segundo. Queda solo para pruebas: MDU_SIN_VSYNC=1 (el video.json se ignora).
+const SIN_VSYNC = !MEDIR && process.env.MDU_SIN_VSYNC === '1';
+if (SIN_VSYNC) {
   app.commandLine.appendSwitch('disable-gpu-vsync');
   app.commandLine.appendSwitch('disable-frame-rate-limit');
 }
@@ -112,9 +142,9 @@ app.on('child-process-gone', (e, d) => {
   if (d.type === 'GPU' && d.reason !== 'clean-exit') videoFallback(`placa ${d.reason}`);
 });
 
-// Vsync siempre prendido, como en el navegador (el usuario, 2026-10-03: sin
+// Vsync prendido por defecto, como en el navegador (el usuario, 2026-10-03: sin
 // él, con muchos fps, el juego se sentía trabado; con él va parejo). Sin tope
-// de FPS: manda el refresco del monitor.
+// de FPS: manda el refresco del monitor. Apagarlo: SIN_VSYNC, arriba.
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, codeCache: true } },
@@ -272,7 +302,8 @@ function createWindow() {
   // se muestra cuando ya pintó algo (no una ventana blanca esperando)
   win.once('ready-to-show', () => {
     if (TEST) {
-      win.setBounds({ x: 0, y: 0, width: 960, height: 540 });
+      // (MDU_TEST_X/Y: en otra pantalla, para no tapar la del usuario)
+      win.setBounds({ x: +process.env.MDU_TEST_X || 0, y: +process.env.MDU_TEST_Y || 0, width: 960, height: 540 });
       win.showInactive();
       return;
     }
@@ -326,8 +357,13 @@ function createWindow() {
     return { action: 'deny' };
   });
   const q = new URLSearchParams();
-  if (TEST) q.set('test', '1');
+  // (MDU_TEST_REAL: la app como la abre el jugador —pantalla completa, con foco—, pero
+  // con window.g para medirla desde afuera)
+  if (TEST || process.env.MDU_TEST_REAL) q.set('test', '1');
   if (MEDIR) q.set('medir', ANGLE);
+  // (sin VSync, la resolución dinámica de efectos apunta al refresco del monitor:
+  // los intervalos entre cuadros ya no lo dicen)
+  if (SIN_VSYNC) q.set('hz', String(Math.round(screen.getDisplayMatching(win.getBounds()).displayFrequency) || 60));
   // (pruebas: una sola vuelta corta)
   if (MEDIR && process.env.MDU_MEDIR_CORTO) q.set('corto', '1');
   if (process.env.MDU_TEST_SETTINGS) q.set('set', process.env.MDU_TEST_SETTINGS);
@@ -340,14 +376,17 @@ function createWindow() {
 }
 
 // Opciones › Gráficos (desktop/preload.cjs): el modo de video y la prueba
-const MODES = ['d3d11', 'vulkan', 'gl'];
-const MODE_NAME = { d3d11: 'DirectX 11', vulkan: 'Vulkan', gl: 'OpenGL', swiftshader: 'Software' };
+const MODES = ['d3d11', 'gl'];
+const MODE_NAME = { d3d11: 'DirectX 11', 'd3d11+': 'DirectX 11 + banderas', vulkan: 'Vulkan', gl: 'OpenGL', swiftshader: 'Software' };
+// los de la prueba de rendimiento: DirectX 11 con y sin las banderas, y OpenGL
+const MEDIR_MODES = [['d3d11'], ['d3d11', true], ['gl']];
+const medirArgs = ([angle, flags]) => ['--mdu-medir', `--use-angle=${angle}`, ...(flags ? ['--mdu-banderas'] : [])];
 const MEDIR_FILE = () => path.join(app.getPath('userData'), 'medir.json');
 const relaunchWith = (extra) => {
   app.relaunch({ args: process.argv.slice(1).filter((a) => !a.startsWith('--use-angle') && !a.startsWith('--mdu-')).concat(extra) });
   app.exit(0);
 };
-ipcMain.handle('mdu:video', () => ({ actual: ANGLE, elegido: videoPrefs().angle || 'auto' }));
+ipcMain.handle('mdu:video', () => ({ actual: ANGLE, elegido: MODES.includes(videoPrefs().angle) ? videoPrefs().angle : 'auto' }));
 ipcMain.handle('mdu:setVideo', (e, mode) => {
   const v = videoPrefs();
   if (MODES.includes(mode)) v.angle = mode;
@@ -361,14 +400,14 @@ ipcMain.handle('mdu:setVideo', (e, mode) => {
 });
 ipcMain.handle('mdu:medir', () => {
   fs.writeFileSync(MEDIR_FILE(), JSON.stringify({ i: 0, res: [], desde: new Date().toISOString() }));
-  relaunchWith(['--mdu-medir', `--use-angle=${MODES[0]}`]);
+  relaunchWith(medirArgs(MEDIR_MODES[0]));
 });
 function medirResumen(st) {
   const f = (n, d = 0) => (n == null ? '-' : Number(n).toFixed(d).replace('.', ','));
   const a = st.res[0] || {};
   const L = [`Mate der Untoten · prueba de rendimiento · ${new Date().toLocaleString('es-AR')}`, `Placa: ${a.placa || '?'}`, `Pantalla: ${a.pantalla || '?'} · calidad ${a.calidad || '?'}`, ''];
   for (const r of st.res) {
-    L.push(`${MODE_NAME[r.modo] || r.modo}: al título ${f(r.alTitulo_s, 1)} s${r.placa !== a.placa ? ` (placa: ${r.placa})` : ''}${r.error ? ` · error: ${r.error}` : ''}`);
+    L.push(`${MODE_NAME[r.modo] || r.modo}: al título ${f(r.alTitulo_s, 1)} s${r.placa !== a.placa ? ` (placa: ${r.placa})` : ''}${r.composicion && !/^enabled/.test(r.composicion) ? ` · compone por software (${r.composicion})` : ''}${r.error ? ` · error: ${r.error}` : ''}`);
     for (const [map, m] of Object.entries(r.mapas || {})) {
       const x = (k) => (m[k] ? `${f(m[k].fps)} fps, 95 % de los cuadros en ${f(m[k].p95, 1)} ms, ${m[k].tirones25} tirones` : '-');
       L.push(`  ${map}: entrar ${f(m.aJugar_s, 1)} s · solo ${x('solo')} · con ${m.vivos} muertos ${x('conMuertos')}`);
@@ -382,11 +421,12 @@ ipcMain.handle('mdu:medirListo', (e, res) => {
   try {
     st = JSON.parse(fs.readFileSync(MEDIR_FILE(), 'utf8'));
   } catch {}
-  st.res.push({ modo: ANGLE, ...res });
+  const fs0 = app.getGPUFeatureStatus();
+  st.res.push({ modo: ANGLE + (BANDERAS ? '+' : ''), ...res, composicion: fs0.gpu_compositing, webgl: fs0.webgl2 });
   st.i = st.res.length;
-  if (st.i < MODES.length) {
+  if (st.i < MEDIR_MODES.length) {
     fs.writeFileSync(MEDIR_FILE(), JSON.stringify(st));
-    relaunchWith(['--mdu-medir', `--use-angle=${MODES[st.i]}`]);
+    relaunchWith(medirArgs(MEDIR_MODES[st.i]));
     return;
   }
   const txt = medirResumen(st);

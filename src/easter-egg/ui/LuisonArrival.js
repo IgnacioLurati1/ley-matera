@@ -16,6 +16,7 @@ import { speechPlan, voiceLength } from '../core/voice';
 import { cineClip, poseCineClip, gauchoClip, cineSnap, headProp, FACE_EYES } from '../net/gauchoSkin';
 import { assetUrl } from '../../lib/assets';
 import { gilVincha } from '../net/gilLook';
+import { libreDe } from '../core/edicion';
 
 // "Mate no Numa": la llegada del Luisón (EsterosEgg.startLuison). Gil deja la
 // luz de los ahogados en el hueco del Algarrobo de los Colgados y arranca la
@@ -65,6 +66,8 @@ export const AT = {
   leap: 67.5,
   end: 68.55,
 };
+// (la de escritorio, con otra canción: sus momentos, core/edicion LIBRES)
+Object.assign(AT, libreDe(SONG)?.luison?.at || {});
 // lo que dura el salto de la loma al claro (cae justo al terminar)
 const LEAP = AT.end - AT.leap - 0.1;
 // la subida: arranca CLIMB_NM antes del grito y dura CLIMB_T (después se

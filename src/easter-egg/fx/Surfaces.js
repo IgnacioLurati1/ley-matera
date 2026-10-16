@@ -334,6 +334,12 @@ function patchPom(sh, depthU) {
 // userData: Material.copy lo pasa por JSON (con las texturas adentro).
 const saved = new WeakMap();
 const PROTO_KEY = THREE.Material.prototype.customProgramCacheKey;
+// (world/eclipseLejos, el dibujo múltiple: ¿lo único que se le agrega al shader es lo de acá —el parallax, el
+// detalle y el mosaico ya saben de USE_BATCHING— sobre el de three?)
+export function surfaceOnly(m) {
+  const s = saved.get(m);
+  return !!s && s.obc === THREE.Material.prototype.onBeforeCompile && m.onBeforeCompile === s.fn;
+}
 // calidad y texturas del mapa actual (las usan los onBeforeCompile)
 let Q = 'perf';
 let T = null;
@@ -400,6 +406,7 @@ function enhance(m) {
       if (tile) patchTiling(sh, Q, tile);
     };
     m.customProgramCacheKey = () => base() + (tile ? TILING_KEY(Q) + bk : '') + DETAIL_KEY(det, Q) + (pom() ? 'pom' : '');
+    s.fn = m.onBeforeCompile;
   }
   refresh(m);
 }

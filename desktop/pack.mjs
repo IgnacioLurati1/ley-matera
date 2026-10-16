@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SOLO_WEB } from '../src/easter-egg/core/edicion.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 if (!existsSync(resolve(here, 'app', 'index.html'))) {
@@ -30,6 +31,14 @@ const paths = await packager({
   appCopyright: 'El Luta · Ley Matera',
   win32metadata: { CompanyName: 'Ley Matera', FileDescription: 'Mate der Untoten', ProductName: 'Mate der Untoten' },
   extraResource: [resolve(here, '..', 'public', 'assets', 'sotano')],
+  // sin lo que es solo de la web (src/easter-egg/core/edicion.js SOLO_WEB: la guía con
+  // los nombres de Call of Duty y las canciones con dueño que ya tienen reemplazo): la
+  // de escritorio es la de uso comercial (el usuario, 2026-10-15)
+  afterCopyExtraResources: [
+    async ({ buildPath }) => {
+      for (const f of SOLO_WEB) rmSync(resolve(buildPath, 'resources', 'sotano', f), { force: true });
+    },
+  ],
   ignore: (p) => !!p && !(KEEP.includes(p) || p === '/app' || p.startsWith('/app/')),
   // de los idiomas de Chromium (los menús del sistema) quedan castellano e
   // inglés: los otros son 47 MB que el juego no usa

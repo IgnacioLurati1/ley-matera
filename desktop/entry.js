@@ -46,12 +46,14 @@ document.head.appendChild(css);
 // la prueba de rendimiento (Opciones › Gráficos; main.cjs abre con ?medir): con
 // ajustes fijos, que se devuelven al terminar (desktop/medir.js)
 let medirSaved;
+// sin VSync (main.cjs): lo que dura un cuadro del monitor, para fx/dinamico.js
+if (q.has('hz')) globalThis.__mduMonitorMs = 1000 / Number(q.get('hz'));
 if (q.has('medir')) {
   const k = 'lm-zombies-settings';
   try {
     medirSaved = localStorage.getItem(k);
     const s = JSON.parse(medirSaved || '{}') || {};
-    localStorage.setItem(k, JSON.stringify({ ...s, quality: 'high', qualityMode: 'manual', fpsCap: '0', voiceMode: 'off', supremoAsked: true }));
+    localStorage.setItem(k, JSON.stringify({ ...s, quality: 'high', qualityMode: 'manual', fpsCap: '0', voiceMode: 'off', supremoAsked: true, dynRes: false }));
   } catch {
     /* sin ajustes */
   }

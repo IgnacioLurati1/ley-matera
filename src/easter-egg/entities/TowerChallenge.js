@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { EE, TOWER, DOORS } from '../config/map';
 import { toTexture } from '../core/textures';
+import { songName } from '../core/edicion';
 import { WEAPONS } from '../config/weapons';
 import { VM } from '../weapons/viewmodels';
 import { buildNovaDisplay, animateNova } from '../weapons/Supernova';
@@ -365,7 +366,7 @@ export default class TowerChallenge {
     // (ya en la escena final no arranca: llegó tarde el aviso)
     if (this.cielo || g.state === 'won') return;
     this.song = streamSong(g, WARRIORS.url, () => (this.song = null), { gain: WARRIORS.gain });
-    if (this.song) g.hud.toast(`♪ ${WARRIORS.name}`);
+    if (this.song) g.hud.toast(`♪ ${songName(WARRIORS.url, WARRIORS.name)}`);
   }
 
   stopWarriors(fade = 1.5) {

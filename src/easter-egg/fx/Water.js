@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ZONES } from '../config/map';
 import SliceWalk from './sliceWalk';
+import { DYN } from './dinamico';
 import { pxScale, flatOf, upRow } from '../core/sizeCull';
 
 // El agua de los mapas que la tienen (el río del penal, los esteros): una sola
@@ -172,6 +173,8 @@ function faceUp(o) {
 // reflejo queda detrás de la orilla o es una raya en el agua movida, y en el
 // estero eran ~2 millones de triángulos por espejo
 const MIRROR_FOL = 12;
+// (Eclipse) los efectos transparentes y los sprites, en el espejo solo hasta esta distancia (ver cullList)
+const ECL_FX = 30;
 
 // El espejo solo para el agua de cerca (la idea del usuario, 2026-10-02): el
 // recorte de la imagen donde cae el agua hasta donde la niebla la tapa (99%, o
@@ -1325,13 +1328,22 @@ export default class Water {
       const cineLive = !!this.g.intro?.active;
       const live = (this.g.mapId === 'eclipse' || cineLive) && this.camMoved(camera);
       const every = live ? 0 : (REFL_MS - dt * 500) * (this.stripSlow(camera) ? 2 : 1);
+      // (2026-10-15, el usuario: "1", sabiendo que el reflejo queda un cuadro atrás: con
+      // la cámara en movimiento y más de 90 cuadros por segundo, entero un cuadro sí y
+      // otro no; el que no, el agua sigue con el del anterior (~11 ms viejo a lo sumo).
+      // Era un dibujo entero de la escena por cuadro cerca de la laguna del Claro
+      // (1,6-2,4 ms de CPU). globalThis.__mduEspejoCadaCuadro: en cada cuadro)
+      const half = live && dt < 1 / 90 && u.uPlanar.value === 1 && globalThis.__mduEspejoCadaCuadro !== true;
+      this.liveOdd = half ? !this.liveOdd : false;
       let on = true;
       if (live && this.job?.on) this.job.on = false;
       this.noCut = live;
       // (la segunda mitad del espejo partido; partido solo si el anterior está
       // y sobran cuadros: con menos de ~90 por segundo, entero como siempre)
       if (this.job?.on && u.uPlanar.value === 1) this.reflect(renderer, scene, null, 2);
-      else if (u.uPlanar.value === 0 || t - (this.reflAt || 0) >= every) {
+      else if (this.liveOdd) {
+        /* (este cuadro no: queda el reflejo del anterior) */
+      } else if (u.uPlanar.value === 0 || t - (this.reflAt || 0) >= every) {
         const rc = this.mirrorCam(camera);
         if (rc) {
           this.reflAt = t;
@@ -1640,12 +1652,29 @@ export default class Water {
     const w = this.g.world;
     const lv = this.level;
     const walk = (this.cullWalk ||= new SliceWalk());
+    // (Eclipse, 2026-10-15, el usuario: optimizar Eclipse. Medido en el Claro: el espejo eran 247 dibujos por cuadro,
+    // 102 de efectos transparentes —portales, la disformidad, las marcas, grietas— y 13 de sprites. En el agua movida
+    // los de lejos no se distinguen: el espejo los deja a más de ECL_FX m. globalThis.__mduEspejoTodo: como antes)
+    const eclFx = this.g.mapId === 'eclipse' && globalThis.__mduEspejoTodo !== true;
     const done = walk.step([scene], (o) => {
       if (o === this.mesh || o.userData.reflect === true) return;
       // (userData.reflect false: también puntos, como las motas de los haces)
       if (o.userData.reflect === false) {
         if (o.isMesh || o.isPoints) N.push(o);
         return;
+      }
+      // (lo que brilla —los halos de los faroles, aditivos— sí: en el agua se ve de lejos)
+      const em = Array.isArray(o.material) ? o.material[0] : o.material;
+      if (eclFx && em?.blending !== THREE.AdditiveBlending && (o.isSprite || o.isPoints || (o.isMesh && !o.isInstancedMesh && em?.transparent))) {
+        const geo = o.geometry;
+        if (geo?.attributes?.position) {
+          if (!geo.boundingSphere) geo.computeBoundingSphere();
+          const s = tmpSph.copy(geo.boundingSphere).applyMatrix4(o.matrixWorld);
+          if (s.center.distanceTo(cp) - s.radius > ECL_FX) {
+            N.push(o);
+            return;
+          }
+        }
       }
       if (!o.isMesh) return;
       // (lo plano que mira para arriba y es de una cara —pisos, charcos, calcos
@@ -1861,8 +1890,9 @@ export default class Water {
       return;
     }
     const size = renderer.getDrawingBufferSize(tmpS);
-    const w = Math.max(16, Math.floor(size.x * this.tier.refl));
-    const h = Math.max(16, Math.floor(size.y * this.tier.refl));
+    // (DYN.refl: más chico cuando la placa no llega: fx/dinamico)
+    const w = Math.max(16, Math.floor(size.x * this.tier.refl * DYN.refl));
+    const h = Math.max(16, Math.floor(size.y * this.tier.refl * DYN.refl));
     const mk = () => new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
     if (!this.reflRT) {
       this.reflRT = mk();

@@ -28,7 +28,8 @@ const FINAL_KINDS = [1, 2, 4, 5];
 const MOVE_HZ = 20;
 // la altura va en 2 bytes (centímetros): la torre tiene más de 60 m
 const PLAYER_BYTES = 13;
-const ZOMBIE_BYTES = 12;
+// (+2: los pedazos que volaron y cómo cae el muñeco, core/golpes.js foto)
+const ZOMBIE_BYTES = 14;
 // los avisos del anfitrión que un invitado no puede mandar con share
 const HOST_ONLY = new Set(['start', 'go', 'arrive', 'map', 'pause', 'win', 'over']);
 
@@ -398,6 +399,9 @@ export default class Session {
       // reventó la cabeza; core/sentirTiro.js z.mduCaida)
       v.setUint8(o + 9, (z.crawler || (z.dog && z.yac) ? 1 : 0) | (z.dead ? 2 : 0) | ((z.dead && z.mduCaida != null ? z.mduCaida : SPEEDS.indexOf(z.speedType)) << 2) | (z.hidden & (1 << 2) ? 16 : 0) | (z.dog ? 32 : 0) | (z.level ? 64 : 0) | (z.horse ? 128 : 0));
       v.setInt16(o + 10, packY(z.pos.y), true);
+      const gf = g.golpes?.foto(z);
+      v.setUint8(o + 12, gf ? gf[0] : 0);
+      v.setUint8(o + 13, gf ? gf[1] : 0);
       o += ZOMBIE_BYTES;
     }
     if (boss) {
@@ -473,9 +477,11 @@ export default class Session {
       const st = STATES[v.getUint8(o + 8) - 1] || 'chase';
       const f = v.getUint8(o + 9);
       const y = v.getInt16(o + 10, true) / 100;
+      const gm = v.getUint8(o + 12);
+      const gc = v.getUint8(o + 13);
       o += ZOMBIE_BYTES;
       seen.add(id);
-      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1) && !(f & 32), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', caida: (f >> 2) & 3, noHead: !!(f & 16), dog: !!(f & 32), level: !!(f & 64), horse: !!(f & 128), yac: !!(f & 1) && !!(f & 32), y });
+      this.g.zombies.applyRemote(id, x, z, yaw, st, { crawler: !!(f & 1) && !(f & 32), dead: !!(f & 2), speedType: SPEEDS[(f >> 2) & 3] || 'walk', caida: (f >> 2) & 3, noHead: !!(f & 16), dog: !!(f & 32), level: !!(f & 64), horse: !!(f & 128), yac: !!(f & 1) && !!(f & 32), y, gm, gc });
     }
     this.g.zombies.pruneRemote(seen);
     if (hasBoss) {
@@ -933,6 +939,8 @@ export default class Session {
       dx: info.dir ? +info.dir.x.toFixed(2) : 0,
       dz: info.dir ? +info.dir.z.toFixed(2) : 0,
       arm: info.arm,
+      // (la parte del cuerpo: la sacudida y los pedazos, core/golpes.js)
+      pt: info.part,
       burn: info.burn ? 1 : 0,
       el: info.elem || undefined,
       // (las balas del infierno de la Máquina de Muerte: el muerto queda carbonizado)
@@ -965,6 +973,7 @@ export default class Session {
       type: m.k,
       zone: m.zone,
       arm: m.arm,
+      part: Number.isInteger(m.pt) ? m.pt : undefined,
       burn: !!m.burn,
       elem: m.el,
       hell: !!m.hl,

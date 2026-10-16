@@ -542,6 +542,7 @@ function armar(w, g) {
     const m = new THREE.Mesh(merged, mat);
     m.castShadow = mat !== M.rim && mat !== M.voidTop;
     m.receiveShadow = true;
+    m.userData.caosFijo = true;
     root.add(m);
   }
   if (punches.length) {
@@ -561,6 +562,15 @@ function armar(w, g) {
   anim.push(...rigidInst(w, root, M));
   anim.push(...floaters(w, root, floats, M));
   anim.push(...flowers(w, root, flows, M));
+  // (2026-10-15, rendimiento de Eclipse: lo que se mueve —los pedazos que flotan, las losas, los techos, las
+  // piedras que fluyen— no tira sombra. La caché de sombras guarda lo quieto, pero lo que se mueve se redibujaba en
+  // la sombra en cada cuadro: 79 dibujos por cuadro mirando el penal, y casi todo cae al vacío, donde nada la
+  // recibe. Lo quieto del penal partido la sigue tirando. globalThis.__mduCaosSombras: como antes)
+  if (globalThis.__mduCaosSombras !== true) {
+    root.traverse((o) => {
+      if (o.isMesh && !o.userData.caosFijo) o.castShadow = false;
+    });
+  }
   anim.push((t) => {
     M.crack.uniforms.uTime.value = t;
   });

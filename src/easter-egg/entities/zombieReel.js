@@ -63,8 +63,14 @@ export function reelPose(zs, z, t) {
   P.headR = Math.sin(w * 0.5) * 0.3 * k;
   P.shLp = -0.9 * k + Math.sin(w) * 0.5;
   P.shRp = -0.7 * k + Math.cos(w * 1.1) * 0.5;
-  P.shLr = 1.35 * k + 0.1;
-  P.shRr = -1.35 * k - 0.1;
+  // (abiertos de verdad: el izquierdo está en -x y se abre con el giro negativo
+  // —skeleton.js, como zombieGaits—; con el signo al revés las manos se
+  // cruzaban en X adelante del pecho. El usuario, 2026-10-16, con el tambaleo
+  // de la escopeta. globalThis.__mduBrazosViejos = true: como antes, también
+  // en el volteado de abajo y en la caída de Zombies.poseDeath)
+  const ab = globalThis.__mduBrazosViejos ? 1 : -1;
+  P.shLr = ab * (1.35 * k + 0.1);
+  P.shRr = -ab * (1.35 * k + 0.1);
   P.elL = -0.6 - Math.sin(w * 1.3) * 0.3;
   P.elR = -0.5 - Math.cos(w * 1.2) * 0.3;
   const step = Math.sin(w * 0.9);
@@ -101,8 +107,10 @@ export function volteadoPose(zs, z, t) {
   P.headR = Math.sin(w * 0.4) * 0.25 * lie;
   P.shLp = -2.6 * lie - sit * 0.6 + kick;
   P.shRp = -2.3 * lie - sit * 0.5 - kick;
-  P.shLr = 0.9 * lie + 0.1;
-  P.shRr = -0.8 * lie - 0.1;
+  // (los brazos arriba de la cabeza, abiertos: con el signo al revés las manos se cruzaban, como en el tambaleo)
+  const ab = globalThis.__mduBrazosViejos ? 1 : -1;
+  P.shLr = ab * (0.9 * lie + 0.1);
+  P.shRr = -ab * (0.8 * lie + 0.1);
   P.elL = -0.3 - 0.4 * lie;
   P.elR = -0.6 - 0.3 * lie;
   P.hipLp = 0.1 * lie + kick * 0.8 - sit * 1.2;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
+import { DYN } from './dinamico';
 
 // Luz rebotada en pantalla (Épica): lo que está iluminado le tira un poco de su
 // color a lo que tiene cerca y lo mira de frente (la pared roja tiñe el piso al
@@ -324,8 +325,9 @@ export default class Bounce extends Pass {
 
   // (a un cuarto de resolución: la luz rebotada es suave y así cuesta poco)
   setSize(w, h) {
-    const hw = Math.max(1, Math.ceil(w / 4));
-    const hh = Math.max(1, Math.ceil(h / 4));
+    // (DYN.bounce: 4, o más chica cuando la placa no llega: fx/dinamico)
+    const hw = Math.max(1, Math.ceil(w / DYN.bounce));
+    const hh = Math.max(1, Math.ceil(h / DYN.bounce));
     this.rtA.setSize(hw, hh);
     this.rtB.setSize(hw, hh);
     this.gather.uniforms.uTexel.value.set(1 / hw, 1 / hh);

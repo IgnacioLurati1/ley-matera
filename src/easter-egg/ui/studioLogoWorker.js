@@ -40,12 +40,22 @@ self.onmessage = ({ data }) => {
     draw();
     return;
   }
+  // la ventana cambió de tamaño (ui/StudioLogo.js): el lienzo y el dibujo, a la medida nueva
+  if (data.relay) {
+    if (!st) return;
+    st.logo.width = Math.round(data.relay.bw * data.dpr);
+    st.logo.height = Math.round(data.relay.bh * data.dpr);
+    st.lctx = st.logo.getContext('2d', st.opt);
+    st.painter = createLogoPainter(data.relay, data.dpr, st.calm);
+    if (st.frozen != null) draw();
+    return;
+  }
   const { back, logo, lay, dpr, t0, calm, gpu } = data;
   // Por software, no con la placa: la placa está ocupada compilando los
   // shaders del juego y un lienzo acelerado espera en la misma fila (el logo
   // se quedaba quieto ~1 s justo al apagarse). Por software se pinta en este
   // hilo y la página solo lo compone, que la placa hace primero que nada.
   const opt = gpu ? {} : { willReadFrequently: true };
-  st = { back, logo, bctx: back.getContext('2d', opt), lctx: logo.getContext('2d', opt), painter: createLogoPainter(lay, dpr, calm), t0, frozen: null, ready: false };
+  st = { back, logo, opt, calm, bctx: back.getContext('2d', opt), lctx: logo.getContext('2d', opt), painter: createLogoPainter(lay, dpr, calm), t0, frozen: null, ready: false };
   frame(tick);
 };

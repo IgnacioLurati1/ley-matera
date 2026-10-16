@@ -1,4 +1,5 @@
 import Lobby from './Lobby';
+import { guiaPdf } from '../core/edicion';
 import Profile from './Profile';
 import LogrosMenu from './Logros';
 import Pulperia from './Pulperia';
@@ -123,7 +124,7 @@ export default class Menus {
          <button class="mdu-btn" data-act="controls">Controles</button>
          <button class="mdu-btn" data-act="options">Opciones</button>
          <button class="mdu-btn" data-act="libro">La Ronda Eterna</button>
-         <a class="mdu-btn" href="/assets/sotano/guia-easter-eggs.pdf" download="Mate der Untoten - Guia de los easter eggs.pdf" style="text-decoration:none">Guía de los easter eggs (PDF)</a>
+         <a class="mdu-btn" href="${guiaPdf()}" download="Mate der Untoten - Guia de los easter eggs.pdf" style="text-decoration:none">Guía de los easter eggs (PDF)</a>
        </div>
        <p class="mdu-small" data-best></p>
        <div data-gpu></div>`,
@@ -157,6 +158,7 @@ export default class Menus {
          <label class="mdu-field">Correr <select data-set="sprintMode"><option value="hold">Mantener</option><option value="toggle">Tocar</option></select></label>
          <label class="mdu-field">Campo de visión <input type="range" min="60" max="100" step="1" data-set="fov"><output></output></label>
          <label class="mdu-field">Temblor de cámara <input type="range" min="0" max="1" step="0.05" data-set="shake"><output></output></label>
+         <label class="mdu-field" title="Poca: sin pedazos que vuelan, sin manchas en las paredes ni gotas en la pantalla, y las cabezas no revientan. Mucha: más de todo">Sangre <select data-set="gore"><option value="poca">Poca</option><option value="normal">Normal</option><option value="mucha">Mucha</option></select></label>
          <label class="mdu-field">Tamaño de subtítulos <input type="range" min="0.8" max="1.8" step="0.1" data-set="subSize"><output></output></label>
          <label class="mdu-field" data-supremo hidden>Mate Supremo en la caja <input type="checkbox" data-set="supremo"></label>
        </div>
@@ -250,10 +252,12 @@ export default class Menus {
          </div>
          <label class="mdu-field">Mostrar FPS <input type="checkbox" data-set="showFps"></label>
          <label class="mdu-field">Menos destellos <input type="checkbox" data-set="calmFx"></label>
+         <label class="mdu-field" title="Cuando la placa no llega, el espejo del agua, la oclusión y otros efectos se dibujan un poco más chicos (la imagen principal no cambia); vuelven solos cuando sobra">Resolución dinámica de efectos <input type="checkbox" data-set="dynRes"></label>
+         <label class="mdu-field" title="Corrige los colores del juego, del HUD y de los menús para que lo que se distingue por color se distinga igual">Daltonismo <select data-set="colorblind"><option value="off">No</option><option value="protan">Protanopía (rojo)</option><option value="deutan">Deuteranopía (verde)</option><option value="tritan">Tritanopía (azul)</option></select></label>
          <p class="mdu-small" data-gpu2></p>
          <div data-desk hidden>
-           <label class="mdu-field" title="Cómo le habla el juego a la placa de video. Se aplica al volver a abrir el juego">Modo de video <select data-desk-video><option value="auto">Automático</option><option value="d3d11">DirectX 11</option><option value="vulkan">Vulkan</option><option value="gl">OpenGL</option></select></label>
-           <div class="mdu-list"><button class="mdu-btn mdu-btn--mini" data-act="medir" title="Prueba los tres modos de video: el juego se cierra y se abre solo, unos 6 minutos">Prueba de rendimiento</button></div>
+           <label class="mdu-field" title="Cómo le habla el juego a la placa de video. Se aplica al volver a abrir el juego">Modo de video <select data-desk-video><option value="auto">Automático</option><option value="d3d11">DirectX 11</option><option value="gl">OpenGL</option></select></label>
+           <div class="mdu-list"><button class="mdu-btn mdu-btn--mini" data-act="medir" title="Prueba los modos de video (DirectX 11 con y sin banderas de dibujo, y OpenGL): el juego se cierra y se abre solo, unos 5 minutos">Prueba de rendimiento</button></div>
            <p class="mdu-small" data-desk-note></p>
          </div>
        </div>
@@ -269,7 +273,7 @@ export default class Menus {
          <button class="mdu-btn" data-act="options">Opciones</button>
          <button class="mdu-btn" data-act="controls">Controles</button>
          <button class="mdu-btn" data-act="libro">La Ronda Eterna</button>
-         <a class="mdu-btn" href="/assets/sotano/guia-easter-eggs.pdf" download="Mate der Untoten - Guia de los easter eggs.pdf" style="text-decoration:none">Guía de los easter eggs (PDF)</a>
+         <a class="mdu-btn" href="${guiaPdf()}" download="Mate der Untoten - Guia de los easter eggs.pdf" style="text-decoration:none">Guía de los easter eggs (PDF)</a>
          <button class="mdu-btn" data-act="restart">Fast restart</button>
          <button class="mdu-btn" data-act="toTitle">Volver al menú del juego</button>
          <button class="mdu-btn" data-act="leaveRoom" hidden>Salir de la sala</button>

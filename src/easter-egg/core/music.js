@@ -5,6 +5,7 @@ import './eclipseFlag';
 import { streamSong, songOn } from '../world/SongEgg';
 import { MAP_ID } from '../config/map';
 import { assetUrl } from '../../lib/assets';
+import { comercial, LIBRES, songUrl, libreDe } from './edicion';
 
 // La música de las escenas: las entradas de cada mapa, las peleas contra los
 // jefes, algunas cinemáticas y la muerte. Son mp3 de /public/assets/sotano/
@@ -24,10 +25,10 @@ const DIR = '/assets/sotano/musica/';
 // traición) ya no espera a la red. Una vez por canción.
 const fetched = new Set();
 export function prefetchTrack(id) {
-  if (fetched.has(id) || !TRACKS[id]) return;
+  if (fetched.has(id) || !TRACKS[id] || libreDe(id)?.sin) return;
   fetched.add(id);
   try {
-    fetch(assetUrl(DIR + id + '.mp3')).catch(() => {});
+    fetch(assetUrl(songUrl(DIR + id + '.mp3'))).catch(() => {});
   } catch {
     /* sin red: se baja al arrancar */
   }
@@ -135,6 +136,8 @@ export const TRACKS = {
   'muerte-penal': { name: 'Muerte (penal)', gain: 0.7 },
   muerte: { name: 'Muerte', gain: 0.64 },
 };
+// (la de escritorio: las reemplazadas, con los tiempos de su reemplazo; core/edicion LIBRES)
+if (comercial()) for (const [id, L] of Object.entries(LIBRES)) if (TRACKS[id] && L.track) Object.assign(TRACKS[id], L.track);
 
 // Hasta dónde suena la del final del penal: ahí se acaba la paz (el Gil
 // levanta la cabeza para decir algo) y se va con un fundido. La escena estira
@@ -147,7 +150,7 @@ export const PENAL_PEACE = 39.7;
 export const PENAL_FROM = 0;
 // La del Luisón arranca pasada su intro larga: desde acá hasta el golpe
 // (boom) es el suspenso mientras llega del oeste.
-export const LUISON_FROM = 22;
+export const LUISON_FROM = libreDe('jefe-esteros')?.luison?.desde ?? 22;
 
 const now = () => performance.now() / 1000;
 
@@ -166,6 +169,8 @@ export default class Music {
   play(id, { at = 0, delay = 0, fadeIn = 0, loop = false, while: keep = null, gain = null } = {}) {
     const T = TRACKS[id];
     if (!T || !this.g.audio?.ctx) return false;
+    // (la de escritorio deja algunas escenas sin música: core/edicion LIBRES sin)
+    if (libreDe(id)?.sin) return false;
     this.stop(0.8);
     this.cur = { id, T, at, loop: loop ? T.loop : null, keep, fadeIn, startAt: now() + delay, song: null, asked: 0, gain: gain ?? T.gain };
     if (delay <= 0) this.begin(this.cur);
@@ -233,7 +238,30 @@ export default class Music {
   // Por dónde va la que suena (segundos), o -1.
   time() {
     const el = this.cur?.song?.el;
-    return el && !el.paused ? el.currentTime : -1;
+    if (!el || el.paused) return -1;
+    const ct = el.currentTime;
+    if (globalThis.__mduRelojCancionViejo) return ct;
+    // (2026-10-16, el usuario: "parecía que estaba a 15 fps la cámara" en la
+    // llegada del Luisón. La posición del audio no avanza en cada cuadro: el
+    // navegador la actualiza a saltos —medido: 37 a 50 veces por segundo en
+    // Chrome, y en Electron puede ser cada 66 ms— y lo que va al compás de la
+    // canción (la llegada del Luisón, el baile, las escenas con su reloj)
+    // avanzaba a saltos. Entre salto y salto se completa con el reloj de la
+    // compu (hasta 0,12 s), sin volver para atrás salvo un salto de verdad
+    // —el loop, jumpTo—. globalThis.__mduRelojCancionViejo = true: como antes)
+    const now = performance.now();
+    const C = (this.reloj ||= { el: null, ct: -1, at: 0, out: -1 });
+    if (C.el !== el || ct !== C.ct) {
+      const salto = C.el !== el || Math.abs(ct - C.out) > 0.25;
+      C.el = el;
+      C.ct = ct;
+      C.at = now;
+      C.out = salto ? ct : Math.max(C.out, ct);
+      return C.out;
+    }
+    const est = ct + Math.min(0.12, (now - C.at) / 1000) * (el.playbackRate || 1);
+    C.out = Math.max(C.out, est);
+    return C.out;
   }
 
   // Cada cuadro (también en el título y en la pantalla del final).

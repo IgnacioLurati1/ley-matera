@@ -635,7 +635,13 @@ export default class CabralScene extends CastleCine {
   marcha() {
     if (globalThis.__mduOldCabralMarcha === true) return;
     const sl = this.sl;
-    // (el final nuevo, entities/eclipse/slFinal.js: sin Marcha; con el grito vuelve la música de la pelea)
+    // (el final nuevo, entities/eclipse/slFinal.js: la Marcha suena desde el grito hasta la corona rota, cuando
+    // entra la canción del final —el usuario, 2026-10-15: "sacala cuando lleguemos al paso de Belgrano, no del
+    // todo"—. globalThis.__mduSlFinalSinMarcha: sin Marcha, con el grito vuelve la música de la pelea, como antes)
+    if (globalThis.__mduSlFinal !== false && globalThis.__mduSlFinalSinMarcha !== true) {
+      this.g.music?.play('marcha-san-lorenzo', { loop: true, while: (G) => sl.active && [3, 4].includes(sl.st.phase) && (G.state === 'playing' || G.state === 'paused') });
+      return;
+    }
     if (globalThis.__mduSlFinal !== false) {
       this.g.music?.play('jefe-eclipse', { loop: true, fadeIn: 1.2, while: (G) => sl.active && [3, 4].includes(sl.st.phase) && (G.state === 'playing' || G.state === 'paused') });
       return;

@@ -37,6 +37,8 @@ const paint = (name, relief) => {
 // etiquetas de los perks; later: las de los otros mapas (quedan guardadas
 // para cuando se arme cada uno).
 self.onmessage = (e) => {
+  // (la edición de la página: las etiquetas de los perks, core/edicion)
+  if (typeof e.data.comercial === 'boolean') globalThis.__mduComercial = e.data.comercial;
   const relief = e.data.relief !== false;
   for (const name of e.data.names || []) paint(name, relief);
   for (const [key, w, h, seed, amount] of e.data.wear || []) {

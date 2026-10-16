@@ -5,6 +5,7 @@ import { buildChiqui, chiquiGiggle, chiquiGlitch, chiquiAnchor, chiquiEmber, chi
 import Avatars from '../net/Avatars';
 import { ELEMENTS, ELEM_COLOR, ELEM_RGB, ELEM_NAME, isHost, rayHit, announce } from '../entities/castle/common';
 import { streamSong } from './SongEgg';
+import { songName } from '../core/edicion';
 import { PLAYER } from '../config/rules';
 import DragonFire from '../fx/DragonFire';
 import { buildFragments, floatingRocks, FRAGMENTS } from './eterFragments';
@@ -1140,7 +1141,7 @@ export default class GranGuerra extends Arena {
     this.chaosK = 0;
     this.skyFlash = 0;
     g.hud.location(this.name, this.sub);
-    if (this.song) g.hud.toast(`♪ ${SONG.name}`);
+    if (this.song) g.hud.toast(`♪ ${songName(SONG.url, SONG.name)}`);
     // (lo dice el anfitrión y les llega a todos: el que entra tarde, en el
     // caos, no tiene que leer lo de las gemas)
     if (isHost(g)) announce(g, '', 6, true);
@@ -1389,7 +1390,7 @@ export default class GranGuerra extends Arena {
     );
     if (!this.song) return;
     // (en el vuelo no hay HUD: el cartel sale al empezar la pelea)
-    if (this.active) g.hud.toast(`♪ ${SONG.name}`);
+    if (this.active) g.hud.toast(`♪ ${songName(SONG.url, SONG.name)}`);
     this.duck(true);
   }
 

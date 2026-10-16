@@ -462,7 +462,11 @@ export default class EclipseEnding extends CastleCine {
       fog: g.scene.fog ? { c: g.scene.fog.color.clone(), d: g.scene.fog.density } : null,
     };
     this.mode('negro');
-    this.fade(true);
+    // (2026-10-15: viniendo del mundo blanco del final nuevo —ee.fromWhite, entities/eclipse/SanLorenzo finish—, el
+    // blanco de arriba ya tapa el armado y se va solo; el negro de acá se veía en el medio: blanco, gris oscuro,
+    // la escena)
+    if (!this.ee.fromWhite) this.fade(true);
+    this.ee.fromWhite = false;
     warmScene(g);
     return this.script0();
   }
@@ -1162,7 +1166,9 @@ export default class EclipseEnding extends CastleCine {
       this.wind(14);
       // (el "ahhhh" del cielo, al arrancar la escena final y en ningún otro
       // lado: el usuario, 2026-10-10)
-      this.at(0.5, () => ahhPlay(this.g, { gain: 0.8 }));
+      // (2026-10-15, el usuario: "sigue sonando un ahhhh cuando volvemos de la zona blanca, sacalo, ese ah no
+      // es". globalThis.__mduFinConAhh: vuelve)
+      if (globalThis.__mduFinConAhh === true) this.at(0.5, () => ahhPlay(this.g, { gain: 0.8 }));
       eclSfx(this.g).load?.(['portal-caos-abre', 'portal-cose']);
       this.at(0.4, () => this.fade(false));
       this.cut(10, F(1.2, -5.4, 1.85), F(2.6, -4.6, 1.75), F(9.6, 0.2, 1.25), F(9.8, 0.3, 1.3), 46);

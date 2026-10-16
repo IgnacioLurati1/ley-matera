@@ -73,7 +73,7 @@
   width: 0;
   border-radius: 6px;
   background: var(--vd-pri, linear-gradient(180deg, #f4c977, #d9973a));
-  box-shadow: 0 0 14px rgba(233, 181, 92, 0.6);
+  box-shadow: 0 0 14px rgba(var(--vd-acc-rgb, 233, 181, 92), 0.6);
   transition: width 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -176,7 +176,7 @@
   background: var(--vd-glass, linear-gradient(160deg, rgba(44, 31, 20, 0.7), rgba(14, 14, 18, 0.66)));
   backdrop-filter: blur(16px) saturate(1.3);
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.75), 0 0 50px -16px rgba(233, 181, 92, 0.55);
+  box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.75), 0 0 50px -16px rgba(var(--vd-acc-rgb, 233, 181, 92), 0.55);
   color: var(--vd-txt, #f5efe4);
   font-family: var(--vd-sans, 'Manrope', system-ui, sans-serif);
   pointer-events: none;
@@ -269,8 +269,8 @@
 .mdu-pzvote li s { grid-area: d; display: flex; gap: 4px; text-decoration: none; }
 .mdu-pzvote s u { display: block; width: 9px; height: 9px; border-radius: 50%; background: var(--vd-acc, #e9b55c); animation: mdu-pz-dot 0.4s ease both; }
 .mdu-pzvote li.is-voted em { opacity: 1; }
-.mdu-pzvote li:hover { background: rgba(233, 181, 92, 0.12); }
-.mdu-pzvote li.is-pick { background: rgba(233, 181, 92, 0.2); box-shadow: inset 0 0 0 1px rgba(233, 181, 92, 0.7); }
+.mdu-pzvote li:hover { background: rgba(var(--vd-acc-rgb, 233, 181, 92), 0.12); }
+.mdu-pzvote li.is-pick { background: rgba(var(--vd-acc-rgb, 233, 181, 92), 0.2); box-shadow: inset 0 0 0 1px rgba(var(--vd-acc-rgb, 233, 181, 92), 0.7); }
 .mdu-pzvote li.is-mine { box-shadow: inset 0 0 0 2px var(--vd-acc, #e9b55c); }
 .mdu-pzvote li.is-me span::after { content: ' (vos)'; font-weight: 400; color: var(--vd-mut, rgba(241, 232, 216, 0.64)); }
 /* (10-13: el nombre va en el color del poncho, y hay poncho colorado: el compañero policía se marca aparte) */
@@ -294,8 +294,8 @@
   transition: background 0.18s, border-color 0.18s, opacity 0.2s;
 }
 .mdu-pzvote__foot button s { display: flex; gap: 4px; text-decoration: none; }
-.mdu-pzvote__foot button:hover:not(:disabled) { background: rgba(233, 181, 92, 0.14); }
-.mdu-pzvote__skip.is-pick { border-color: rgba(233, 181, 92, 0.7); background: rgba(233, 181, 92, 0.18); }
+.mdu-pzvote__foot button:hover:not(:disabled) { background: rgba(var(--vd-acc-rgb, 233, 181, 92), 0.14); }
+.mdu-pzvote__skip.is-pick { border-color: rgba(var(--vd-acc-rgb, 233, 181, 92), 0.7); background: rgba(var(--vd-acc-rgb, 233, 181, 92), 0.18); }
 .mdu-pzvote__skip.is-mine { box-shadow: inset 0 0 0 2px var(--vd-acc, #e9b55c); }
 .mdu-pzvote__go { background: var(--vd-pri, linear-gradient(180deg, #f4c977, #d9973a)) !important; color: var(--vd-acc-ink, #1d1407) !important; border-color: transparent !important; }
 .mdu-pzvote__go:disabled { opacity: 0.4; cursor: default; }
@@ -333,7 +333,7 @@
   cursor: pointer;
   transition: background 0.18s, border-color 0.18s, color 0.18s;
 }
-.mdu-pzcops button:hover { background: rgba(233, 181, 92, 0.14); }
+.mdu-pzcops button:hover { background: rgba(var(--vd-acc-rgb, 233, 181, 92), 0.14); }
 .mdu-pzcops button[aria-pressed='true'] { background: var(--vd-pri, linear-gradient(180deg, #f4c977, #d9973a)); border-color: transparent; color: var(--vd-acc-ink, #1d1407); }
 .mdu-pzcops small { min-height: 1em; font-size: 12px; color: #ffb08a; }
 

@@ -3,9 +3,11 @@ import { buildTextures } from './core/textures';
 import { paintInWorkers } from './core/texturePool';
 import { setPapMap } from './weapons/camos';
 import { eclipseBake } from './fx/eclipseMusic';
+import { cbMatrix, applyColorblindDom } from './fx/colorblind';
 import { sizeCull, setFarHook } from './core/sizeCull';
 import { eclipseLejos } from './world/eclipseLejos';
 import { drawCost } from './core/drawCost';
+import { frameQueue } from './core/frameQueue';
 import { devKeys } from './core/devKeys';
 import { retireScene } from './core/sceneFlush';
 // las matrices de lo que no se movió no se recalculan (mismo resultado que three)
@@ -19,6 +21,8 @@ import Barriers from './world/Barriers';
 import Interactables from './world/Interactables';
 import Effects from './fx/Effects';
 import SentirTiro from './core/sentirTiro';
+import Golpes from './core/golpes';
+import Impactos from './fx/impactos';
 import PostFX from './fx/PostFX';
 import { LEVELS } from './fx/Epic';
 import { tiersOf, MAP_GFX } from './config/quality';
@@ -153,7 +157,7 @@ const MIN_FPS = 40;
 // rendimiento, los oídos tapados y el silencio con la ventana atrás.
 const SOUND_MIX = { volWeapons: 1, volZombies: 1, volWorld: 1, volPlayer: 1, volUi: 1, audioOut: 'phones', dynRange: 'normal', reverb: 1, audioPerf: 'auto', muffleLow: true, muffleWater: true, muteBg: false };
 const SOUND_KEYS = ['master', 'music', 'sfx', 'voice', 'voiceMode', 'voiceClarity', ...Object.keys(SOUND_MIX)];
-const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.75, sfx: 0.9, shake: 1, quality: 'high', qualityMode: 'auto', invertY: false, voiceMode: 'murmur', voiceClarity: 0.5, showFps: false, fpsCap: '0', map: 'molino', v: 6, voice: 0.9, subSize: 1, adsSens: 1, adsMode: 'hold', crouchMode: 'hold', sprintMode: 'hold', calmFx: false, upscale: 'off', sharp: 0.8, fsrPct: 0.77, supremo: true, supremoAsked: false, ...SOUND_MIX };
+const DEFAULTS = { sensitivity: 1, fov: 74, master: 0.8, music: 0.75, sfx: 0.9, shake: 1, quality: 'high', qualityMode: 'auto', invertY: false, voiceMode: 'murmur', voiceClarity: 0.5, showFps: false, fpsCap: '0', map: 'molino', v: 6, voice: 0.9, subSize: 1, adsSens: 1, adsMode: 'hold', crouchMode: 'hold', sprintMode: 'hold', calmFx: false, gore: 'normal', dynRes: true, colorblind: 'off', upscale: 'off', sharp: 0.8, fsrPct: 0.77, supremo: true, supremoAsked: false, ...SOUND_MIX };
 
 // Entrada vacía: el jugador sigue con su física pero no toca nada (menú abierto en línea).
 const IDLE_INPUT = { mouse: { dx: 0, dy: 0 }, sensitivity: 1, invertY: false, key: () => false, hit: () => false };
@@ -270,6 +274,8 @@ export default class Game {
     r.shadowMap.autoUpdate = false;
     // lo que three repite en cada dibujo sin que cambie nada (core/drawCost)
     drawCost(r);
+    // cuántos cuadros van por delante de la placa (core/frameQueue)
+    this.fq = frameQueue(r);
     this.gpu = this.detectGpu();
     if (this.settings.qualityMode === 'auto') this.settings.quality = this.autoTier();
     this.perf = { t: 0, n: 0, warm: false };
@@ -335,6 +341,9 @@ export default class Game {
     await step(0.38, 'Despertando a los peones…');
     this.post = new PostFX(this.renderer, this.scene, this.camera, this.weapons.vmScene, this.weapons.vmCamera, this);
     this.post.setUpscale?.(this.settings.upscale, this.settings.sharp, this.settings.fsrPct);
+    // (la resolución dinámica de los efectos, fx/dinamico: Opciones › Gráficos, con cualquier calidad)
+    this.post.dyn?.setOn(this.settings.dynRes !== false);
+    this.applyColorblind();
     this.applyQuality();
     this.onResize = () => this.resize();
     window.addEventListener('resize', this.onResize);
@@ -685,6 +694,10 @@ export default class Game {
     // cómo se siente tirar y matar: la baja confirmada, la carne, la caída y
     // el peso del tiro (core/sentirTiro.js)
     this.sentir = new SentirTiro(this);
+    // los tiros a lo Left 4 Dead: la sacudida, el tambaleo, los pedazos y la sangre (core/golpes.js)
+    this.golpes = new Golpes(this);
+    // el tiro según dónde pega: madera, piedra, tierra, metal (fx/impactos.js)
+    this.impactos = new Impactos(this);
     this.barriers = new Barriers(this);
     this.player = new Player(this);
     if (!this.weapons) {
@@ -1692,6 +1705,8 @@ export default class Game {
       this.resize();
     }
     if (k === 'showFps' && !v) this.hud.setFps(null);
+    if (k === 'colorblind') this.applyColorblind();
+    if (k === 'dynRes') this.post?.dyn?.setOn(v !== false);
     if (k === 'binds') {
       setBinds(v);
       this.input.setRemap(remapTable());
@@ -1815,12 +1830,22 @@ export default class Game {
 
   // ---------------- bucle ----------------
   // (el jugador ya no tiene tope de FPS, el usuario 2026-10-03: vsync siempre)
+  // El modo para daltónicos (fx/colorblind.js): el 3D, en el último pase de color, y el HUD y los menús, con el
+  // mismo filtro en CSS.
+  applyColorblind() {
+    const M = cbMatrix(this.settings.colorblind);
+    this.post?.setColorblind?.(M);
+    applyColorblindDom(this.root, this.settings.colorblind);
+  }
+
   fpsCap() {
     return navigator.webdriver ? +this.settings.fpsCap || 0 : 0;
   }
 
   loop(now) {
     this.raf = requestAnimationFrame(this.loop);
+    // (la placa todavía no terminó los cuadros de antes: este no se arma)
+    if (this.fq && !this.fq.ready(now)) return;
     // tope de FPS: solo en las pruebas automáticas (fpsCap), para no cargar la
     // PC; jugando manda el vsync. Se saltean los cuadros que llegan antes de
     // tiempo (a paso fijo, así el promedio da el tope aunque no divida al monitor).
@@ -1867,6 +1892,7 @@ export default class Game {
     if (!stage && !this.qHold && !this.switchHold) this.render(dt);
     this.hitch?.end();
     this.input.endFrame();
+    this.fq?.mark(now);
   }
 
   // (2026-10-08, el usuario: "el castillo titila en el menú", "los bordes que
@@ -2004,6 +2030,7 @@ export default class Game {
     A.cat = null;
     this.fx.update(dt, this.camera);
     this.sentir?.update(dt);
+    this.golpes?.update(dt);
     this.hud.update(dt);
     // la tabla de puntos, mientras se mantiene Tab
     this.hud.setBoard(this.state === 'playing' && !this.menuOpen && input.key('Tab') ? scoreboard(this) : null);
@@ -2111,6 +2138,7 @@ export default class Game {
     if (this.scene) this.disposeScene();
     for (const t of Object.values(this.textures || {})) t.dispose?.();
     this.post?.dispose();
+    this.fq?.dispose();
     this.renderer?.dispose();
     this.renderer?.forceContextLoss?.();
   }

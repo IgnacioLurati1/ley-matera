@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { makeNoise, rng } from './noise';
 import { drawPerkIcon } from '../ui/perkIcons';
+import { comercial } from './edicion';
 
 // Texturas procedurales pintadas en canvas: no se descarga ninguna imagen.
 
@@ -1029,6 +1030,11 @@ function paintPerkLabel(perk) {
   // marca
   ctx.fillStyle = L.brandColor || L.text;
   ctx.font = `italic bold ${L.brandSize || 92}px Georgia, serif`;
+  // (2026-10-15: "Taragüerno" no entraba y se cortaba en los bordes del paquete; en la
+  // de escritorio es el nombre del perk. Si no entra, se achica hasta entrar.
+  // globalThis.__mduMarcaSinAjuste = true: como antes)
+  const bw = ctx.measureText(L.brand).width;
+  if (bw > W * 0.84 && globalThis.__mduMarcaSinAjuste !== true) ctx.font = `italic bold ${Math.floor(((L.brandSize || 92) * W * 0.84) / bw)}px Georgia, serif`;
   ctx.save();
   ctx.translate(W / 2, H * 0.16);
   ctx.rotate(-0.06);
@@ -1042,11 +1048,16 @@ function paintPerkLabel(perk) {
   // (el lema puede venir en renglones, con \n: el del Deadshot no entraba en
   // uno; centrados en el mismo alto)
   const lines = L.tagline.split('\n');
+  // (el de Chisporé y el de Mulanda también se cortaban: se achican igual que la marca)
+  const tw = Math.max(...lines.map((ln) => ctx.measureText(ln).width));
+  if (tw > W * 0.86 && globalThis.__mduMarcaSinAjuste !== true) ctx.font = `bold ${Math.floor((28 * W * 0.86) / tw)}px "Special Elite", monospace`;
   lines.forEach((ln, i) => ctx.fillText(ln, W / 2, H * 0.26 + (i - (lines.length - 1) / 2) * 34));
-  // nombre del perk en la banda
+  // nombre del perk en la banda (en la de escritorio, lo que hace: el nombre ya es la
+  // marca de arriba, config/perks.js YERBA)
+  const band = (comercial() && L.kind) || perk.name;
   ctx.fillStyle = L.bandText;
-  ctx.font = `bold ${perk.name.length > 12 ? 50 : 62}px Impact, "Arial Black", sans-serif`;
-  ctx.fillText(perk.name.toUpperCase(), W / 2, H * 0.7);
+  ctx.font = `bold ${band.length > 12 ? 50 : 62}px Impact, "Arial Black", sans-serif`;
+  ctx.fillText(band.toUpperCase(), W / 2, H * 0.7);
   ctx.font = '26px "Special Elite", monospace';
   ctx.fillStyle = L.text;
   ctx.fillText('YERBA MATE ELABORADA CON PALO', W / 2, H * 0.83);

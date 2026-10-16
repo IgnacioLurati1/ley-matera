@@ -733,8 +733,14 @@ export default class SanLorenzo {
       this.scene?.skip?.();
       this.darkTo = 0;
       // (si ya suena —entró con el grito de San Martín, slCabral marcha—, sigue)
-      // (el final nuevo, slFinal: la Marcha se va; sigue la de la pelea y la canción nueva entra con la corona rota)
-      if (finOn()) {
+      // (el final nuevo, slFinal: la canción nueva entra con la corona rota y se lleva la Marcha)
+      // (2026-10-15, el usuario: la Marcha sigue hasta la corona rota —slCabral marcha—; __mduSlFinalSinMarcha: sin ella)
+      if (finOn() && globalThis.__mduSlFinalSinMarcha !== true) {
+        if (!music?.is('marcha-san-lorenzo')) {
+          music?.stop(0.4);
+          music?.play('marcha-san-lorenzo', { loop: true, while: keep([4]) });
+        }
+      } else if (finOn()) {
         if (!music?.is('jefe-eclipse')) music?.play('jefe-eclipse', { loop: true, fadeIn: 1.5, while: keep([4]) });
       } else if (!music?.is('marcha-san-lorenzo')) {
         music?.stop(0.4);
@@ -1559,7 +1565,8 @@ export default class SanLorenzo {
   }
 
   // Rota la corona: el blanco y el final (EclipseEgg.arenaWon; la cinemática se engancha ahí).
-  finish() {
+  // fromWhite: viene del mundo blanco de la cinemática del final nuevo (entities/eclipse/slFinal end).
+  finish(fromWhite = false) {
     const g = this.g;
     this.st.done = 1;
     // (qa-flujo) la Furia que rompió la corona termina acá, debajo del blanco:
@@ -1585,8 +1592,21 @@ export default class SanLorenzo {
     };
     const el = document.createElement('div');
     el.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:0;transition:opacity 2.2s;pointer-events:none;z-index:40';
+    // (2026-10-15, el usuario: "manda pantallazo blanco" al terminar el mundo blanco del final nuevo —ui/finEclipseBlend—.
+    // Medido: del blanco de la escena (224) este subía a blanco puro en 2,2 s y, al irse, dejaba ver el fundido negro
+    // con que arranca ui/EclipseEnding —2 s de entrada y 2 de salida—: blanco, más blanco, gris oscuro, la escena.
+    // Viniendo de ahí: el mismo blanco, ya puesto, y se va cuando el negro de abajo ya se fue.
+    // globalThis.__mduFinPantallazo: como antes)
+    const fromW = fromWhite && globalThis.__mduFinPantallazo !== true;
+    if (fromW) {
+      el.style.background = 'rgb(224,224,224)';
+      el.style.transition = 'none';
+      el.style.opacity = '1';
+    }
     (g.root || document.body).appendChild(el);
-    requestAnimationFrame(() => (el.style.opacity = '1'));
+    if (!fromW) requestAnimationFrame(() => (el.style.opacity = '1'));
+    // (ui/EclipseEnding arranca sin su negro)
+    if (this.ee) this.ee.fromWhite = fromW;
     this.white = el;
     g.later(2.4, () => {
       skyBack();
@@ -1598,8 +1618,8 @@ export default class SanLorenzo {
       // el blanco se va: sin cinemática, despacio; con la cinemática final
       // (ui/EclipseEnding.js), apenas arranca (qa-flujo: antes se quedaba
       // en 1 encima del lienzo y la cinemática entera se veía blanca)
-      g.later(1.5, () => {
-        el.style.transition = this.ee.scene ? 'opacity 1.2s' : 'opacity 2.2s';
+      g.later(fromW ? 2.7 : 1.5, () => {
+        el.style.transition = fromW ? 'opacity 1.5s' : this.ee.scene ? 'opacity 1.2s' : 'opacity 2.2s';
         el.style.opacity = '0';
         g.later(2.5, () => el.remove());
       });

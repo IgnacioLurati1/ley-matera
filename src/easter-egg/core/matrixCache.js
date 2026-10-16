@@ -46,7 +46,23 @@ function keep(e, c) {
   for (let i = 0; i < 16; i++) c[10 + i] = e[i];
 }
 
+// La matriz entera de lo que no se movió (touched: 16 comparaciones por objeto y por
+// cuadro, ~3000 objetos) se revisa uno de cada FULL_N cuadros, cada objeto en su turno;
+// en los otros, solo su posición (3) (2026-10-15, el usuario: "3"). Solo agarra una
+// matriz escrita a mano en algo con matrixAutoUpdate, que three pisa en el cuadro
+// siguiente: en Eclipse hay ~80 (islas a ~300 m) y con la posición se ven en el mismo
+// cuadro; una escrita a mano que solo gira se pisa hasta FULL_N cuadros después. Lo que
+// se movió (posición, giro, escala, padre) se ve en el mismo cuadro, como siempre.
+// globalThis.__mduMatrizSiempre: entera en cada cuadro.
+const FULL_N = 8;
+let tick = 0;
+let every = false;
+
 function cached(force) {
+  if (this.parent === null) {
+    tick++;
+    every = globalThis.__mduMatrizSiempre === true;
+  }
   if (this.mcSleep === true && this.visible === false) {
     this.matrixWorldNeedsUpdate = true;
     return;
@@ -71,7 +87,7 @@ function cached(force) {
       c[7] !== s.x ||
       c[8] !== s.y ||
       c[9] !== s.z ||
-      touched(e, c)
+      (every || (tick + this.id) % FULL_N === 0 ? touched(e, c) : c[22] !== e[12] || c[23] !== e[13] || c[24] !== e[14])
     ) {
       this.updateMatrix();
       // (pasado a otro padre sin moverse: el mundo cambia igual)

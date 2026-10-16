@@ -52,6 +52,8 @@ const KCOL = [0xff6a20, 0x8affd8, 0xfff27a, 0x8cc8ff];
 //  __mduSlFinalSinJinetes: sin la tanda de jinetes contra el Gil en la carrera (entities/eclipse/slJinetes);
 //  __mduSlFinalAnilloViejo: el anillo del encierro violeta parejo)
 const SW = (k) => globalThis[`__mduSlFinal${k}`] === true;
+// de un ángulo a otro por el lado corto
+const angLerp = (a, b, k) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
 // las guadañas: tamaño, de dónde salen las de luz (los desgarros del cielo) y cuánto tardan en llegar
 const SCY_K = 1.7;
 const RIFT_R = 18;
@@ -692,6 +694,12 @@ export default class SlFinal {
     if (this.isGil()) {
       const P = g.player;
       this.lift = { from: P.pos.clone(), to: toWorld(U0, 0, rampY(U0), new THREE.Vector3()) };
+      // (la vista, para llevarla de a poco a la de la carrera: ver carry)
+      const r0 = toWorld(U0, 0, 0, new THREE.Vector3());
+      const r1 = toWorld(U1, 0, 0, new THREE.Vector3());
+      this.lift.yaw0 = P.yaw;
+      this.lift.pitch0 = P.pitch;
+      this.lift.yawRun = Math.atan2(-(r1.x - r0.x), -(r1.z - r0.z));
     }
   }
 
@@ -748,6 +756,17 @@ export default class SlFinal {
     P.pos.lerpVectors(this.lift.from, this.lift.to, e);
     P.pos.y += Math.sin(Math.PI * e) * 4;
     P.vel?.set?.(0, 0, 0);
+    // (2026-10-15, el usuario: "cuando se creó el facón salí disparado, algo me tiró hacia atrás, y luego me
+    // teletransportaron a la corrida; debería ser más uniforme". Medido: el vuelo es parejo, pero la vista quedaba
+    // donde estaba —arriba, en el nudo de la forja— y al arrancar la carrera saltaba en un cuadro a la de la
+    // rampa: hasta 86° de costado y 30° para abajo, con el facón ya en la mano. Ahora, después de ver nacer el
+    // facón, la vista va de a poco a la de la carrera y llega justa. globalThis.__mduSlFinalVistaGolpe: como antes)
+    if (!SW('VistaGolpe') && this.lift.yawRun != null) {
+      const L = this.lift;
+      const w = THREE.MathUtils.smoothstep(k, 0.25, 1);
+      P.yaw = angLerp(L.yaw0, L.yawRun, w);
+      P.pitch = L.pitch0 + (-0.12 - L.pitch0) * w;
+    }
     this.camFix();
   }
 
@@ -857,6 +876,7 @@ export default class SlFinal {
       this.end();
     });
     cine.clock = () => performance.now() / 1000 - this.t0 - T_CINE;
+    this.cine = cine;
     ee.scene = { update: (dt) => cine.update(dt), kind: 'eclipse-salto', cine };
     // (el que entra tarde, o un cuadro largo: la escena arranca donde va la de los demás)
     const late = this.t - T_CINE;
@@ -869,11 +889,14 @@ export default class SlFinal {
     this.ended = true;
     this.dropFacon();
     if (this.sl.ee) this.sl.ee.handsOff = false;
-    this.sl.finish();
+    this.sl.finish(!!this.cine);
   }
 
   dispose() {
     this.on = false;
+    // (si se sale en el mundo blanco: el ambiente y lo lejano vuelven a sonar en la partida que sigue)
+    this.cine?.quietWorld?.(false);
+    this.cine = null;
     if (this.sl.ee) this.sl.ee.handsOff = false;
     this.dropFacon();
     this.cup?.dispose();

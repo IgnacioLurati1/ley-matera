@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { assetUrl } from '../../lib/assets';
+import { songUrl, songName, songGain } from '../core/edicion';
 import { mergeByMaterial, compactGroup } from './props';
 
 // Easter eggs musicales: tres cosas escondidas por el mapa; cuando el equipo
@@ -132,6 +133,9 @@ function followPause(ctx) {
 // la sube o la baja sin cortarla (1 = normal). gain: con qué volumen arranca;
 // cut: false para la música de las escenas (core/music.js), que la M no corta.
 export function streamSong(g, url, onEnd, { at = 0, gain = 1, cut: cuttable = true } = {}) {
+  // (en la de escritorio, las que tienen dueño suenan con su reemplazo: core/edicion LIBRES)
+  gain *= songGain(url);
+  url = songUrl(url);
   const A = g.audio;
   if (!A?.ctx) return null;
   followPause(A.ctx);
@@ -710,7 +714,7 @@ export default class SongEgg {
     const A = g.audio;
     if (this.playing || !A?.ctx) return;
     this.playing = true;
-    g.hud.toast(`♪ ${this.C.name}`);
+    g.hud.toast(`♪ ${songName(this.C.url, this.C.name)}`);
     this.song = streamSong(g, this.C.url, () => {
       this.playing = false;
       this.song = null;

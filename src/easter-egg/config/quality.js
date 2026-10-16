@@ -106,7 +106,9 @@ export const MAP_GFX = {
   // Medido desde lo alto girando sobre las islas: bordes titilando fuerte 0,02%
   // con MSAA, 0,04% así y 0,40% sin el temporal; el MSAA costaba 0,4-0,9 ms de
   // placa a 1440p)
-  eclipse: { high: { ao: 12 }, ultra: { aa: 'smaa', taa: true }, epic: { aa: 'smaa' } },
+  // (2026-10-15, rendimiento: 3 fuegos con sombra en vez de 5, como el penal y la torre: cada uno es una luz más que
+  // recorre cada píxel. globalThis.__mduEclSombras5, puesto antes de cargar: como antes)
+  eclipse: { high: { ao: 12 }, ultra: { aa: 'smaa', taa: true }, epic: { aa: 'smaa', ...(globalThis.__mduEclSombras5 === true ? {} : { lamps: 3 }) } },
   // el molino y La Tapera (2026-10-03): mirando de la capilla al cementerio o
   // del corral al maizal las cinco luces con sombra alcanzaban toda la pantalla
   // (el molino NO: con 3 el farol del cementerio y el del galpón iluminaban la
